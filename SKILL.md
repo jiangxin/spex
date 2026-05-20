@@ -52,7 +52,7 @@ If no command is given or the command is unrecognized, show this usage informati
 **Before executing any command, resolve the spec root path first.** Run:
 
 ```bash
-python <skill-path>/scripts/_shared/common.py
+python <skill-path>/scripts/common.py
 ```
 
 The script prints the spec root path to stdout. Store this value as `$spec_root` — all subsequent operations reference paths relative to `$spec_root`.

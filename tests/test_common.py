@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from _shared.common import (
+from common import (
     get_archives_dir,
     get_spec_root,
     get_specs_dir,

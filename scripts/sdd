@@ -6,10 +6,9 @@ import shutil
 import sys
 from pathlib import Path
 
-# Add scripts/ and scripts/_shared to sys.path for sibling imports.
+# Add scripts/ to sys.path for sibling imports.
 _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
-sys.path.insert(0, str(_scripts_dir / "_shared"))
 
 USAGE = """\
 Usage: sdd <command>

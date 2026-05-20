@@ -9,7 +9,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "_shared"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import PROMPT_LOG, get_specs_dir, local_iso_timestamp
 
 INDENT = "    "
