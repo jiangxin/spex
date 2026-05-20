@@ -98,13 +98,6 @@ class TestLLMCommands:
         assert "requires an AI coding agent" in result.stderr
         assert "'/sdd modify'" in result.stderr
 
-    def test_edit_prints_hint(self):
-        result = _run_sdd("edit")
-
-        assert result.returncode == 1
-        assert "requires an AI coding agent" in result.stderr
-        assert "'/sdd edit'" in result.stderr
-
     def test_init_alias(self):
         result = _run_sdd("init")
 

@@ -3,6 +3,7 @@
 import importlib
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -60,3 +61,47 @@ class TestCreateTopic:
         result = create_topic("2026-01-01-add-v2-api", specs_dir)
 
         assert result.is_dir()
+
+
+class TestMain:
+    """Tests for the main() CLI entry point."""
+
+    def test_missing_argument_exits(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["prog"])
+        with pytest.raises(SystemExit) as exc_info:
+            create_topic_dir.main()
+        assert exc_info.value.code == 1
+
+    def test_too_many_arguments_exits(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["prog", "arg1", "arg2"])
+        with pytest.raises(SystemExit) as exc_info:
+            create_topic_dir.main()
+        assert exc_info.value.code == 1
+
+    def test_invalid_topic_exits(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "argv", ["prog", "INVALID"])
+        with patch.object(
+            create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_topic_dir.main()
+            assert exc_info.value.code == 1
+
+    def test_existing_topic_exits(self, monkeypatch, tmp_path):
+        (tmp_path / "2026-05-20-existing").mkdir()
+        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-existing"])
+        with patch.object(
+            create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_topic_dir.main()
+            assert exc_info.value.code == 1
+
+    def test_success_prints_path(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-new-topic"])
+        with patch.object(
+            create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
+        ):
+            create_topic_dir.main()
+        output = capsys.readouterr().out.strip()
+        assert output == str(tmp_path / "2026-05-20-new-topic")

@@ -1,9 +1,11 @@
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import archive_specs
 from archive_specs import find_completed_topics, is_topic_completed, move_topic
 
 
@@ -136,3 +138,40 @@ class TestMoveTopic:
         assert dest == archives / "my-topic-3"
         assert dest.is_dir()
         assert not topic.exists()
+
+
+class TestMain:
+    """Tests for the main() CLI entry point."""
+
+    def test_no_completed_topics(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "No completed topics" in output
+
+    def test_archives_completed_topics(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        _write_todo(
+            specs / "wip-topic",
+            [_make_task("1", completed=False)],
+        )
+        archives = tmp_path / "archives"
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "done-topic" in output
+        assert "wip-topic" not in output
+        assert (archives / "done-topic").is_dir()
+        assert (specs / "wip-topic").is_dir()

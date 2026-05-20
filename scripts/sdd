@@ -24,7 +24,6 @@ Commands (require AI coding agent):
   apply       Apply a spec step-by-step
   create      Create a new spec (aliases: init, new)
   modify      Modify an existing spec
-  edit        Edit spec details
 
 Internal commands (used by skill):
   get --spec-root|--specs-dir|--archives-dir
@@ -40,7 +39,7 @@ Internal commands (used by skill):
                 get-done, mark-done)
 """
 
-LLM_COMMANDS = {"apply", "create", "init", "new", "modify", "edit"}
+LLM_COMMANDS = {"apply", "create", "init", "new", "modify"}
 
 
 def _run_list():
