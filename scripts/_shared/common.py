@@ -4,23 +4,27 @@
 import subprocess
 from pathlib import Path
 
+PROMPT_LOG = "prompt.log"
+SPEC_FILE = "spec.md"
+TODO_FILE = "todo.json"
 
-def get_spec_dir(workdir=None):
-    """Return the spec directory path.
+
+def get_spec_root(workdir=None):
+    """Return the spec root directory path.
 
     Uses `git rev-parse --show-toplevel` to find the git repository root,
-    then places the spec directory in its parent as a hidden directory:
+    then places the spec root in its parent as a hidden directory:
     .<repo_basename>.specs
 
     For example:
         git toplevel = /Users/alice/projects/my-app
-        spec_dir = /Users/alice/projects/.my-app.specs
+        spec_root = /Users/alice/projects/.my-app.specs
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
 
     Returns:
-        Absolute path to the spec directory.
+        Absolute path to the spec root directory.
     """
     cmd = ["git", "rev-parse", "--show-toplevel"]
     result = subprocess.run(
@@ -33,9 +37,18 @@ def get_spec_dir(workdir=None):
     parent = repo_root.parent
     dirname = repo_root.name
 
-    spec_dir = parent / f".{dirname}.specs"
-    return str(spec_dir)
+    return str(parent / f".{dirname}.specs")
+
+
+def get_specs_dir(workdir=None):
+    """Return the specs directory: <spec_root>/specs/."""
+    return str(Path(get_spec_root(workdir)) / "specs")
+
+
+def get_archives_dir(workdir=None):
+    """Return the archives directory: <spec_root>/archives/."""
+    return str(Path(get_spec_root(workdir)) / "archives")
 
 
 if __name__ == "__main__":
-    print(get_spec_dir())
+    print(get_spec_root())

@@ -1,54 +1,134 @@
 # sdd create
 
-Create a new specification document in the spec directory.
+Create a new specification topic with requirement analysis, detailed design,
+and test plan.
 
 ## Usage
 
+```text
+/sdd create [prompt]
 ```
-/sdd create <spec-name> [description]
+
+## Procedure
+
+Follow these steps in order. Do not skip or reorder.
+
+### Step 1: Collect Prompt
+
+If `$prompt` is not provided or empty, ask the user to describe the
+requirement. The user's full input becomes `$prompt`.
+
+### Step 2: Generate Topic Name
+
+Based on `$prompt`, generate a topic name:
+
+- Compose a short English name (<32 bytes) using only `[a-z0-9-]`,
+  replacing spaces with `-`.
+- Prepend the current date as `YYYY-MM-DD`.
+- The result is `$topic` (e.g., `2026-05-20-add-login-api`).
+
+### Step 3: Create Topic Directory
+
+Run:
+
+```bash
+python <skill-path>/scripts/create-topic-dir.py $topic
 ```
 
-## Behavior
+If the script exits with an error (e.g., topic already exists or invalid
+name), return to Step 2 and retry with a different name.
 
-1. Resolve the spec directory by running `scripts/_shared/common.py`
-2. Create the spec directory if it does not exist
-3. Create a new spec file named `<spec-name>.md` inside the spec directory
-4. Initialize the spec with a template containing:
-   - Title (from spec-name)
-   - Description (from argument or prompt the user)
-   - Status: `draft`
-   - Created date: today
-   - Sections: Overview, Requirements, Design, Implementation Notes
+### Step 4: Log Original Prompt
 
-## Template
+Run:
+
+```bash
+echo "$prompt" | python <skill-path>/scripts/topic-log.py $topic
+```
+
+This records the user's original prompt via stdin.
+
+### Step 5: Create spec.md
+
+Create the file `$spec_root/specs/$topic/spec.md` using the same language as the
+user's prompt (e.g., English or Chinese). Use the following template:
 
 ```markdown
----
-title: <spec-name>
-status: draft
-created: <YYYY-MM-DD>
----
+# Requirement
 
-# <spec-name>
+<Requirement analysis based on the user's original prompt>
 
-## Overview
+# User Clarification
 
-<description>
+<Clarifications from the user on ambiguous requirements>
 
-## Requirements
+# Constraints
 
-- [ ] TODO
+- DRY — Don't Repeat Yourself: analyze existing architecture and code,
+  reuse what exists, **never** generate duplicate code.
+- KISS — Keep It Simple, Stupid: no over-engineering; keep it simple while
+  considering performance and security.
+- Single Responsibility: each function/method does one thing; consider
+  splitting if it exceeds 30 lines.
+- Small Batches: break development into atomic tasks so each step is under
+  200 lines of code, easy to review, cherry-pick, and revert.
+- Commit Often: create a commit after each development task; follow the
+  Conventional Commits format; wrap commit messages at 72 characters.
+- Test Often: run lint and unit tests after each step; proceed only when
+  all checks pass.
 
-## Design
+# Detailed Design
 
-TODO
+<Detailed design based on analysis of the current repository architecture
+and codebase>
 
-## Implementation Notes
+# Test Plan
 
-TODO
+<Detailed test plan based on the design above>
 ```
 
-## Error Handling
+Before writing the Requirement, Detailed Design, and Test Plan sections,
+analyze the current repository structure, architecture, and existing code
+to ensure the design integrates properly.
 
-- If a spec with the same name already exists, warn the user and ask whether to overwrite
-- If `<spec-name>` is not provided, prompt the user for a name
+For the User Clarification section, ask the user to clarify any ambiguities
+discovered during requirement analysis. If nothing is ambiguous, leave the
+section empty.
+
+### Step 6: Generate todo.json
+
+Break down the work into development steps following DRY, KISS, Small
+Batches, Commit Often, and Test Often. Create
+`$spec_root/specs/$topic/todo.json` listing each step in order:
+
+```json
+[
+  {
+    "id": "<step-id>",
+    "name": "<step-name>",
+    "details": "<detailed description in markdown without headings>",
+    "completed_at": "",
+    "commit_title": ""
+  }
+]
+```
+
+- `details`: a markdown-formatted description of what this step does,
+  including file changes, logic, and acceptance criteria. Do not use
+  headings (`#`, `##`, etc.) inside the value — use lists, bold, and
+  inline code instead.
+- All steps start with `completed_at: ""` and an empty `commit_title`.
+- After a step is fully implemented and committed, set `completed_at` to
+  the current UTC timestamp (ISO 8601, e.g. `2026-05-20T14:30:00Z`) and
+  fill `commit_title` with the actual commit title.
+
+### Step 7: Validate todo.json
+
+Run:
+
+```bash
+python <skill-path>/scripts/parse_todo.py validate $spec_root/specs/$topic/todo.json
+```
+
+If the script exits with an error, read the error message, fix the JSON
+format in `todo.json`, and re-run until validation passes.
