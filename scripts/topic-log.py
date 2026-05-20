@@ -7,11 +7,10 @@ Reads text from stdin and appends it with a timestamp to
 
 import sys
 import unicodedata
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "_shared"))
-from common import PROMPT_LOG, get_specs_dir
+from common import PROMPT_LOG, get_specs_dir, local_iso_timestamp
 
 INDENT = "    "
 WRAP_WIDTH = 70
@@ -93,7 +92,7 @@ def main():
         sys.exit(1)
 
     log_file = topic_dir / PROMPT_LOG
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    timestamp = local_iso_timestamp()
     wrapped = format_prompt(content)
 
     with open(log_file, "a", encoding="utf-8") as f:

@@ -8,8 +8,10 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_shared"))
+from common import local_iso_timestamp
 
 
 def main():
@@ -41,9 +43,7 @@ def main():
     found = False
     for item in data:
         if isinstance(item, dict) and item.get("id") == task_id:
-            item["completed_at"] = datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            item["completed_at"] = local_iso_timestamp()
             item["commit_title"] = commit_title
             found = True
             break

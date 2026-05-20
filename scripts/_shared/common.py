@@ -2,6 +2,7 @@
 """Shared utilities for the SDD skill."""
 
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 PROMPT_LOG = "prompt.log"
@@ -48,6 +49,14 @@ def get_specs_dir(workdir=None):
 def get_archives_dir(workdir=None):
     """Return the archives directory: <spec_root>/archives/."""
     return str(Path(get_spec_root(workdir)) / "archives")
+
+
+def local_iso_timestamp() -> str:
+    """Return current local time as ISO 8601 with timezone offset."""
+    now = datetime.now().astimezone()
+    base = now.strftime("%Y-%m-%dT%H:%M:%S")
+    offset = now.strftime("%z")
+    return f"{base}{offset[:3]}:{offset[3:]}"
 
 
 if __name__ == "__main__":

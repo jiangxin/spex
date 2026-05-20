@@ -124,8 +124,9 @@ Create `$spec_root/specs/$topic/todo.json` listing each step in order:
   inline code instead.
 - All steps start with `completed_at: ""` and an empty `commit_title`.
 - After a step is fully implemented and committed, set `completed_at` to
-  the current UTC timestamp (ISO 8601, e.g. `2026-05-20T14:30:00Z`) and
-  fill `commit_title` with the actual commit title.
+  the current local timestamp with timezone offset (ISO 8601, e.g.
+  `2026-05-20T22:30:00+08:00`) and fill `commit_title` with the actual
+  commit title.
 
 ### Step 7: Validate todo.json
 

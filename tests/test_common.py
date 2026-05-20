@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -6,7 +7,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from _shared.common import get_archives_dir, get_spec_root, get_specs_dir
+from _shared.common import (
+    get_archives_dir,
+    get_spec_root,
+    get_specs_dir,
+    local_iso_timestamp,
+)
 
 
 def _init_git_repo(path):
@@ -81,3 +87,9 @@ def test_archives_dir(tmp_path):
 
     result = get_archives_dir(str(repo))
     assert result == str(tmp_path / ".my-app.specs" / "archives")
+
+
+def test_local_iso_timestamp_format():
+    ts = local_iso_timestamp()
+    pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$"
+    assert re.match(pattern, ts), f"Unexpected format: {ts}"
