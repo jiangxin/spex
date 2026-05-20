@@ -98,8 +98,13 @@ section empty.
 ### Step 6: Generate todo.json
 
 Break down the work into development steps following DRY, KISS, Small
-Batches, Commit Often, and Test Often. Create
-`$spec_root/specs/$topic/todo.json` listing each step in order:
+Batches, Commit Often, and Test Often.
+
+- Group implementation code and its associated test cases in the same
+  step — do not split them into separate steps. Each step should be a
+  self-contained unit that includes both production code and its tests.
+
+Create `$spec_root/specs/$topic/todo.json` listing each step in order:
 
 ```json
 [
