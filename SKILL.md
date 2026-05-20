@@ -1,11 +1,11 @@
 ---
 name: sdd
 disable-model-invocation: true
-description: "Spec-Driven Development (SDD) skill for managing specification documents, and generating code. Invoked manually via /sdd <command>. Supports commands: create (init, new), list, list-all, modify, apply (run, do, go), archive."
+description: "Spec-Driven Development (SDD) skill for managing specification documents, and generating code. Invoked manually via /sdd <command>. Supports commands: create (init, new), list, list-all, edit, modify, apply (run, do, go), archive, install."
 arguments:
   - name: command
     required: true
-    description: "Sub-command to execute. Must be one of: create (aliases: init, new), list, list-all, modify, apply (aliases: run, do, go), archive. Show usage help and exit if missing or unrecognized."
+    description: "Sub-command to execute. Must be one of: create (aliases: init, new), list, list-all, edit, modify, apply (aliases: run, do, go), archive, install. Show usage help and exit if missing or unrecognized."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -31,6 +31,7 @@ A skill for managing specification documents in a structured spec directory.
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
 | `archive`  |                  | Archive a completed spec          |
+| `install`  |                  | Install sdd CLI to ~/.local/bin   |
 
 ## Command Routing
 
@@ -42,6 +43,7 @@ Parse the first argument as `<command>` and route to the corresponding command f
 - `modify` → Read and follow `commands/modify.md`
 - `apply` / `run` / `do` / `go` → Read and follow `commands/apply.md`
 - `archive` → Read and follow `commands/archive.md`
+- `install` → Read and follow `commands/install.md`
 
 If no command is given or the command is unrecognized, show this usage information to the user.
 
