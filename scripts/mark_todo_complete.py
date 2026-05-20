@@ -5,7 +5,9 @@ Usage: mark_todo_complete.py <task-id> <commit-title> <todo.json>
 """
 
 import json
+import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,10 +55,23 @@ def main():
         )
         sys.exit(1)
 
-    todo_path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    tmp_fd = tempfile.NamedTemporaryFile(
+        mode="w",
         encoding="utf-8",
+        dir=todo_path.parent,
+        suffix=".tmp",
+        delete=False,
     )
+    try:
+        tmp_fd.write(content)
+        tmp_fd.close()
+        os.replace(tmp_fd.name, str(todo_path))
+    except BaseException:
+        tmp_fd.close()
+        if os.path.exists(tmp_fd.name):
+            os.unlink(tmp_fd.name)
+        raise
     print(f"Marked '{task_id}' as completed.")
 
 
