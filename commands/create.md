@@ -32,7 +32,7 @@ Based on `$prompt`, generate a topic name:
 Run:
 
 ```bash
-python <skill-path>/scripts/create-topic-dir.py $topic
+<skill-path>/scripts/sdd create-topic $topic
 ```
 
 If the script exits with an error (e.g., topic already exists or invalid
@@ -43,7 +43,7 @@ name), return to Step 2 and retry with a different name.
 Run:
 
 ```bash
-echo "$prompt" | python <skill-path>/scripts/topic-log.py $topic
+echo "$prompt" | <skill-path>/scripts/sdd write-log $topic
 ```
 
 This records the user's original prompt via stdin.
@@ -133,7 +133,7 @@ Create `$spec_root/specs/$topic/todo.json` listing each step in order:
 Run:
 
 ```bash
-python <skill-path>/scripts/parse_todo.py validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/sdd todo validate $spec_root/specs/$topic/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

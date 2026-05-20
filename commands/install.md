@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-python <skill-path>/scripts/sdd install
+<skill-path>/scripts/sdd install
 ```
 
 Report the output to the user.

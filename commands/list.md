@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-python <skill-path>/scripts/list_specs.py
+<skill-path>/scripts/sdd list
 ```
 
 ### Step 2: Report Results

@@ -24,7 +24,7 @@ changes they want to make to the spec. The user's full input becomes
 Run:
 
 ```bash
-python <skill-path>/scripts/get_topic.py "$topic_name"
+<skill-path>/scripts/sdd get-topic "$topic_name"
 ```
 
 Read the command output to determine `$topic`:
@@ -40,7 +40,7 @@ Read the command output to determine `$topic`:
 Run:
 
 ```bash
-echo "$prompt" | python <skill-path>/scripts/topic-log.py $topic
+echo "$prompt" | <skill-path>/scripts/sdd write-log $topic
 ```
 
 ### Step 4: Build Context
@@ -97,7 +97,7 @@ Follow the same format and rules as the create command:
 Run:
 
 ```bash
-python <skill-path>/scripts/parse_todo.py validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/sdd todo validate $spec_root/specs/$topic/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

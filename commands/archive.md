@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-python <skill-path>/scripts/archive_specs.py
+<skill-path>/scripts/sdd archive
 ```
 
 ### Step 2: Report Results
