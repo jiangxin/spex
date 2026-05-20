@@ -115,7 +115,7 @@ def _run_get():
 
     flags = sys.argv[2:]
     flag_map = {
-        "--spec-root": common.get_spec_root,
+        "--spec-root": common.get_specs_root,
         "--specs-dir": common.get_specs_dir,
         "--archives-dir": common.get_archives_dir,
     }
@@ -155,8 +155,8 @@ def _run_write_log():
         print("Usage: sdd write-log <topic>", file=sys.stderr)
         sys.exit(1)
 
-    mod = importlib.import_module("topic-log")
-    sys.argv = ["topic-log.py"] + sys.argv[2:]
+    mod = importlib.import_module("write-log")
+    sys.argv = ["write-log.py"] + sys.argv[2:]
     mod.main()
 
 
