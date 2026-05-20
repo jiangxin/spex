@@ -57,4 +57,4 @@ If no command is given or the command is unrecognized, show this usage informati
 
 The script prints the spec root path to stdout. Store this value as `$spec_root` — all subsequent operations reference paths relative to `$spec_root`.
 
-The default location is `<parent-of-cwd>/.<workdir-name>.specs`. For example, if working in `/Users/alice/projects/my-app`, then `$spec_root` is `/Users/alice/projects/.my-app.specs`.
+The default location is `<repo-root>/.specs`. For example, if working in `/Users/alice/projects/my-app`, then `$spec_root` is `/Users/alice/projects/my-app/.specs`.

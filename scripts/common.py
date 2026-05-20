@@ -24,7 +24,7 @@ def get_specs_root(workdir=None):
     Resolution order:
     1. Environment variable SPECS_ROOT.
     2. Git config key specs.rootdir.
-    3. Default: .<repo_basename>.specs next to the git toplevel.
+    3. Default: .specs inside the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
@@ -63,10 +63,7 @@ def get_specs_root(workdir=None):
         raise RuntimeError("Not inside a git repository")
 
     repo_root = Path(result.stdout.strip()).resolve()
-    parent = repo_root.parent
-    dirname = repo_root.name
-
-    specs_root = str(parent / f".{dirname}.specs")
+    specs_root = str(repo_root / ".specs")
     _spec_root_cache[cache_key] = specs_root
     return specs_root
 

@@ -33,7 +33,7 @@ def test_default_uses_cwd(monkeypatch, tmp_path):
     monkeypatch.chdir(repo)
 
     result = get_specs_root()
-    assert result == str(tmp_path / ".my-app.specs")
+    assert result == str(repo / ".specs")
 
 
 def test_custom_workdir(tmp_path):
@@ -42,7 +42,7 @@ def test_custom_workdir(tmp_path):
     _init_git_repo(repo)
 
     result = get_specs_root(str(repo))
-    assert result == str(tmp_path / ".project-x.specs")
+    assert result == str(repo / ".specs")
 
 
 def test_subdirectory_resolves_to_repo_root(tmp_path):
@@ -53,7 +53,7 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     subdir.mkdir(parents=True)
 
     result = get_specs_root(str(subdir))
-    assert result == str(tmp_path / ".my-app.specs")
+    assert result == str(repo / ".specs")
 
 
 def test_not_a_git_repo(tmp_path):
@@ -72,10 +72,8 @@ def test_naming_convention(tmp_path):
     result = get_specs_root(str(repo))
     spec_path = Path(result)
 
-    assert spec_path.parent == tmp_path
-    assert spec_path.name.startswith(".")
-    assert spec_path.name.endswith(".specs")
-    assert "hello-world" in spec_path.name
+    assert spec_path.parent == repo
+    assert spec_path.name == ".specs"
 
 
 def test_specs_dir(tmp_path):
@@ -84,7 +82,7 @@ def test_specs_dir(tmp_path):
     _init_git_repo(repo)
 
     result = get_specs_dir(str(repo))
-    assert result == str(tmp_path / ".my-app.specs" / "specs")
+    assert result == str(repo / ".specs" / "specs")
 
 
 def test_archives_dir(tmp_path):
@@ -93,7 +91,7 @@ def test_archives_dir(tmp_path):
     _init_git_repo(repo)
 
     result = get_archives_dir(str(repo))
-    assert result == str(tmp_path / ".my-app.specs" / "archives")
+    assert result == str(repo / ".specs" / "archives")
 
 
 def test_local_iso_timestamp_format():
@@ -132,4 +130,4 @@ def test_default_fallback_when_no_config(monkeypatch, tmp_path):
     _init_git_repo(repo)
 
     result = get_specs_root(str(repo))
-    assert result == str(tmp_path / ".my-app.specs")
+    assert result == str(repo / ".specs")

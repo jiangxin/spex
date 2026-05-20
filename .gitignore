@@ -1,6 +1,7 @@
 .agents
 .claude
 .cursor
+.specs/
 node_modules/
 
 __pycache__/
