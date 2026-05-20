@@ -1,5 +1,6 @@
 """Tests for the sdd CLI entry point."""
 
+import json
 import os
 import subprocess
 import sys
@@ -209,3 +210,115 @@ class TestInstallCommand:
 
         assert result.returncode == 0
         assert "is not in your PATH" not in result.stdout
+
+
+class TestGetCommand:
+    """Tests for the get subcommand."""
+
+    def test_spec_root_prints_path(self, tmp_path):
+        """sdd get --spec-root prints a valid path, exit 0."""
+        # Create a git repo so get_spec_root works
+        subprocess.run(
+            ["git", "init"], cwd=str(tmp_path), capture_output=True
+        )
+        result = subprocess.run(
+            [sys.executable, SDD_SCRIPT, "get", "--spec-root"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip() != ""
+        assert ".specs" in result.stdout
+
+    def test_no_flag_prints_usage_exit_1(self):
+        """sdd get (no flag) prints usage to stderr, exit 1."""
+        result = _run_sdd("get")
+
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+
+class TestGetTopicCommand:
+    """Tests for the get-topic subcommand."""
+
+    def test_no_matching_topics_exit_1(self, tmp_path, monkeypatch):
+        """sdd get-topic (no matching topics) exits 1."""
+        monkeypatch.setenv("SDD_SPEC_ROOT", str(tmp_path))
+        specs_dir = tmp_path / "specs"
+        specs_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, SDD_SCRIPT, "get-topic"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 1
+
+
+class TestCreateTopicCommand:
+    """Tests for the create-topic subcommand."""
+
+    def test_no_arg_exit_1(self):
+        """sdd create-topic (no arg) exits 1."""
+        result = _run_sdd("create-topic")
+
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+
+class TestWriteLogCommand:
+    """Tests for the write-log subcommand."""
+
+    def test_no_arg_exit_1(self):
+        """sdd write-log (no arg) exits 1."""
+        result = _run_sdd("write-log")
+
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+
+class TestTodoCommand:
+    """Tests for the todo subcommand."""
+
+    def test_no_subcommand_exit_1(self):
+        """sdd todo (no subcommand) exits 1."""
+        result = _run_sdd("todo")
+
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+    def test_validate_valid_file(self, tmp_path):
+        """sdd todo validate <valid-file> exits 0."""
+        todo_file = tmp_path / "todo.json"
+        todo_file.write_text(
+            json.dumps([
+                {
+                    "id": "task-1",
+                    "name": "Test task",
+                    "details": "Some details",
+                    "completed_at": None,
+                    "commit_title": None,
+                }
+            ]),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [sys.executable, SDD_SCRIPT, "todo", "validate", str(todo_file)],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0
+        assert "OK:" in result.stdout
+
+    def test_mark_done_wrong_args_exit_1(self):
+        """sdd todo mark-done (wrong args) exits 1."""
+        result = _run_sdd("todo", "mark-done")
+
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
