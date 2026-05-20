@@ -4,7 +4,7 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that bring
 
 ## Why
 
-In many projects, keeping specification documents alongside code creates a maintenance burden: the code evolves but specs go stale, leaving two conflicting sources of truth. SDD solves this by storing specs in a sibling hidden directory (e.g., `.my-app.spec/`) outside the git repository, so specs serve as living planning artifacts without polluting the codebase.
+In many projects, keeping specification documents alongside code creates a maintenance burden: the code evolves but specs go stale, leaving two conflicting sources of truth. SDD solves this by storing specs in a sibling hidden directory (e.g., `.my-app.specs/`) outside the git repository, so specs serve as living planning artifacts without polluting the codebase.
 
 ## Usage
 
@@ -46,7 +46,7 @@ Specs are stored **outside** the project repository in a sibling hidden director
 ```
 /Users/alice/projects/
 ├── my-app/              ← your project (git repo)
-└── .my-app.spec/        ← spec directory (not in git)
+└── .my-app.specs/        ← spec directory (not in git)
     ├── feature-auth.md
     ├── api-redesign.md
     └── archived/
