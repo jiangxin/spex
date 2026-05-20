@@ -1,28 +1,132 @@
 # sdd apply
 
-Apply a specification to generate code implementation.
+Apply a specification to implement code step by step.
 
 ## Usage
 
+```text
+/sdd apply [topic_name]
 ```
-/sdd apply <spec-name>
+
+## Procedure
+
+Follow these steps in order. Do not skip or reorder.
+
+### Step 1: Resolve Topic
+
+Run:
+
+```bash
+python <skill-path>/scripts/get_topic.py "$topic_name"
 ```
 
-## Behavior
+Read the command output to determine `$topic`:
 
-1. Resolve the spec directory by running `scripts/_shared/common.py`
-2. Locate the spec file `<spec-name>.md` in the spec directory
-3. Read and parse the spec (frontmatter + body sections)
-4. Update the spec's frontmatter status to `active`
-5. Read the Requirements and Design sections
-6. Generate code implementation based on the spec content:
-   - Create files/directories as described in Design
-   - Implement features listed in Requirements
-   - Mark completed requirement checkboxes in the spec
-7. After implementation, update spec status to `completed`
+- If the output is a single line matching `YYYY-MM-DD-<name>`, set `$topic`
+  to that value.
+- If the output contains multiple lines, present a numbered list to the
+  user and ask them to choose. Set `$topic` to the selected name.
+- If the script exits with an error, report the error and stop.
 
-## Error Handling
+### Step 2: Get Next Undone Task
 
-- If `<spec-name>` is not provided, show available specs and prompt the user to choose
-- If the spec does not exist, inform the user and suggest running `/sdd list`
-- If the spec is already archived, inform the user (no action needed)
+Run:
+
+```bash
+python <skill-path>/scripts/parse_todo.py get-next-undone --only-id $spec_root/specs/$topic/todo.json
+```
+
+Save the output to `$next_task_id`.
+
+If `$next_task_id` is empty, all tasks are done — report completion and
+stop.
+
+Then run:
+
+```bash
+python <skill-path>/scripts/parse_todo.py get-next-undone --details $spec_root/specs/$topic/todo.json
+```
+
+Save the output to `$next_task_text`.
+
+### Step 3: Get Completed Tasks
+
+Run:
+
+```bash
+python <skill-path>/scripts/parse_todo.py get-done $spec_root/specs/$topic/todo.json
+```
+
+Save the output to `$completed_tasks`.
+
+### Step 4: Build Prompt
+
+Read the full contents of `$spec_root/specs/$topic/spec.md` into
+`$spec_content`.
+
+Assemble `$prompt` using the following template:
+
+````text
+你是一个资深软件工程师，在架构设计、代码开发有着20年的经验。下面是完整的需求分析和设计。
+
+<requirement>
+$spec_content
+</requirement>
+
+$completed_section
+
+待完成的开发步骤如下：
+
+$next_task_text
+
+# Constraints
+
+- DRY — Don't Repeat Yourself: analyze existing architecture and code,
+  reuse what exists, **never** generate duplicate code.
+- KISS — Keep It Simple, Stupid: no over-engineering; keep it simple while
+  considering performance and security.
+- Single Responsibility: each function/method does one thing; consider
+  splitting if it exceeds 30 lines.
+- Test Often: run lint and unit tests to make sure all checks pass.
+````
+
+Where `$completed_section` is included only if `$completed_tasks` is not
+empty:
+
+```text
+已经完成如下步骤的开发：
+
+- <each line of $completed_tasks as a list item>
+```
+
+### Step 5: Execute Development
+
+Launch a subagent with `$prompt` to implement the current task.
+
+### Step 6: Commit
+
+Create a git commit for the changes:
+
+- Follow the Conventional Commits format.
+- Wrap commit message lines at 72 characters.
+
+After a successful commit, run:
+
+```bash
+git log -1 --pretty="%h: %s"
+```
+
+Save the output to `$commit_title`.
+
+### Step 7: Mark Task Complete
+
+Run:
+
+```bash
+python <skill-path>/scripts/mark_todo_complete.py "$next_task_id" "$commit_title" $spec_root/specs/$topic/todo.json
+```
+
+### Step 8: Loop
+
+Go back to Step 2. Do **not** stop while `todo.json` still has undone
+tasks.
