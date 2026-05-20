@@ -1,11 +1,11 @@
-# sdd list
+# sdd list-all
 
-List active (incomplete) specifications.
+List all specifications including archived ones.
 
 ## Usage
 
 ```text
-/sdd list
+/sdd list-all
 ```
 
 ## Procedure
@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-python <skill-path>/scripts/list_specs.py
+python <skill-path>/scripts/list_specs.py --all
 ```
 
 ### Step 2: Report Results

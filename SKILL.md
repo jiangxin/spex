@@ -23,12 +23,13 @@ A skill for managing specification documents in a structured spec directory.
 
 ## Supported Commands
 
-| Command   | Description            |
-|-----------|------------------------|
-| `create`  | Create a new spec      |
-| `list`    | List existing specs    |
-| `apply`   | Apply a spec to generate code |
-| `archive` | Archive a completed spec |
+| Command    | Description                       |
+|------------|-----------------------------------|
+| `create`   | Create a new spec                 |
+| `list`     | List active (incomplete) specs    |
+| `list-all` | List all specs including archived |
+| `apply`    | Apply a spec to generate code     |
+| `archive`  | Archive a completed spec          |
 
 ## Command Routing
 
@@ -36,6 +37,7 @@ Parse the first argument as `<command>` and route to the corresponding command f
 
 - `create` → Read and follow `commands/create.md`
 - `list` → Read and follow `commands/list.md`
+- `list-all` → Read and follow `commands/list-all.md`
 - `apply` → Read and follow `commands/apply.md`
 - `archive` → Read and follow `commands/archive.md`
 
