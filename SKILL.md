@@ -1,11 +1,11 @@
 ---
 name: sdd
 disable-model-invocation: true
-description: "Spec-Driven Development (SDD) skill for managing specification documents, and generating code. Invoked manually via /sdd <command>. Supports commands: create, list, apply, archive."
+description: "Spec-Driven Development (SDD) skill for managing specification documents, and generating code. Invoked manually via /sdd <command>. Supports commands: create (init, new), list, list-all, apply (run, do, go), archive."
 arguments:
   - name: command
     required: true
-    description: "Sub-command to execute. Must be one of: create, list, apply, archive. Show usage help and exit if missing or unrecognized."
+    description: "Sub-command to execute. Must be one of: create (aliases: init, new), list, list-all, apply (aliases: run, do, go), archive. Show usage help and exit if missing or unrecognized."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -23,22 +23,22 @@ A skill for managing specification documents in a structured spec directory.
 
 ## Supported Commands
 
-| Command    | Description                       |
-|------------|-----------------------------------|
-| `create`   | Create a new spec                 |
-| `list`     | List active (incomplete) specs    |
-| `list-all` | List all specs including archived |
-| `apply`    | Apply a spec to generate code     |
-| `archive`  | Archive a completed spec          |
+| Command    | Aliases          | Description                       |
+|------------|------------------|-----------------------------------|
+| `create`   | `init`, `new`    | Create a new spec                 |
+| `list`     |                  | List active (incomplete) specs    |
+| `list-all` |                  | List all specs including archived |
+| `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
+| `archive`  |                  | Archive a completed spec          |
 
 ## Command Routing
 
 Parse the first argument as `<command>` and route to the corresponding command file:
 
-- `create` → Read and follow `commands/create.md`
+- `create` / `init` / `new` → Read and follow `commands/create.md`
 - `list` → Read and follow `commands/list.md`
 - `list-all` → Read and follow `commands/list-all.md`
-- `apply` → Read and follow `commands/apply.md`
+- `apply` / `run` / `do` / `go` → Read and follow `commands/apply.md`
 - `archive` → Read and follow `commands/archive.md`
 
 If no command is given or the command is unrecognized, show this usage information to the user.
