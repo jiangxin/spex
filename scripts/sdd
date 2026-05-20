@@ -18,6 +18,7 @@ Commands (run directly):
   list        List active spec topics with progress
   list-all    List all spec topics including archived
   archive     Archive completed spec topics
+  open        Open spec directory in file browser
   install     Install sdd symlink to ~/.local/bin
 
 Commands (require AI coding agent):
@@ -62,6 +63,14 @@ def _run_archive():
     import archive_specs
 
     archive_specs.main()
+
+
+def _run_open():
+    """Open a topic directory in the system file browser."""
+    import open_topic
+
+    sys.argv = ["open_topic.py"] + sys.argv[2:]
+    open_topic.main()
 
 
 def _run_install():
@@ -194,6 +203,7 @@ DIRECT_COMMANDS = {
     "list": _run_list,
     "list-all": _run_list_all,
     "archive": _run_archive,
+    "open": _run_open,
     "install": _run_install,
     "get": _run_get,
     "get-topic": _run_get_topic,
