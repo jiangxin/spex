@@ -9,6 +9,8 @@ PROMPT_LOG = "prompt.log"
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
 
+_spec_root_cache: dict[str | None, str] = {}
+
 
 def get_spec_root(workdir=None):
     """Return the spec root directory path.
@@ -27,6 +29,10 @@ def get_spec_root(workdir=None):
     Returns:
         Absolute path to the spec root directory.
     """
+    cache_key = workdir
+    if cache_key in _spec_root_cache:
+        return _spec_root_cache[cache_key]
+
     cmd = ["git", "rev-parse", "--show-toplevel"]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=workdir
@@ -38,7 +44,9 @@ def get_spec_root(workdir=None):
     parent = repo_root.parent
     dirname = repo_root.name
 
-    return str(parent / f".{dirname}.specs")
+    spec_root = str(parent / f".{dirname}.specs")
+    _spec_root_cache[cache_key] = spec_root
+    return spec_root
 
 
 def get_specs_dir(workdir=None):
