@@ -1,5 +1,6 @@
 """Tests for the sdd CLI entry point."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -123,3 +124,88 @@ class TestUnknownCommand:
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
         assert "Usage: sdd <command>" in result.stderr
+
+
+class TestInstallCommand:
+    """Tests for the install subcommand."""
+
+    def _run_install(self, tmp_path, env_override=None):
+        """Run sdd install with HOME pointed to tmp_path."""
+        env = os.environ.copy()
+        env["HOME"] = str(tmp_path)
+        if env_override:
+            env.update(env_override)
+        return subprocess.run(
+            [sys.executable, SDD_SCRIPT, "install"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_successful_install_creates_symlink(self, tmp_path):
+        result = self._run_install(tmp_path)
+
+        assert result.returncode == 0
+        link = tmp_path / ".local" / "bin" / "sdd"
+        assert link.is_symlink()
+        assert link.resolve() == Path(SDD_SCRIPT).resolve()
+        assert "Installed:" in result.stdout
+
+    def test_already_installed_same_target(self, tmp_path):
+        # Pre-create the correct symlink
+        link_dir = tmp_path / ".local" / "bin"
+        link_dir.mkdir(parents=True)
+        link = link_dir / "sdd"
+        link.symlink_to(Path(SDD_SCRIPT).resolve())
+
+        result = self._run_install(tmp_path)
+
+        assert result.returncode == 0
+        assert "Already installed." in result.stdout
+
+    def test_conflict_symlink_different_target(self, tmp_path):
+        # Pre-create a symlink pointing elsewhere
+        link_dir = tmp_path / ".local" / "bin"
+        link_dir.mkdir(parents=True)
+        link = link_dir / "sdd"
+        other_target = tmp_path / "other_sdd"
+        other_target.write_text("#!/bin/sh\n")
+        link.symlink_to(other_target)
+
+        result = self._run_install(tmp_path)
+
+        assert result.returncode == 1
+        assert "already exists and points to" in result.stderr
+
+    def test_conflict_non_symlink_file(self, tmp_path):
+        # Pre-create a regular file at the target path
+        link_dir = tmp_path / ".local" / "bin"
+        link_dir.mkdir(parents=True)
+        link = link_dir / "sdd"
+        link.write_text("#!/bin/sh\n")
+
+        result = self._run_install(tmp_path)
+
+        assert result.returncode == 1
+        assert "is not a symlink" in result.stderr
+
+    def test_path_hint_when_not_in_path(self, tmp_path):
+        # Use a PATH that does not include ~/.local/bin
+        env_override = {"PATH": "/usr/bin:/bin"}
+        result = self._run_install(tmp_path, env_override=env_override)
+
+        assert result.returncode == 0
+        assert "is not in your PATH" in result.stdout
+        assert 'export PATH="$HOME/.local/bin:$PATH"' in result.stdout
+
+    def test_no_path_hint_when_in_path(self, tmp_path):
+        # Include ~/.local/bin in PATH and place a working symlink there
+        link_dir = tmp_path / ".local" / "bin"
+        link_dir.mkdir(parents=True)
+        env_override = {"PATH": f"{link_dir}:/usr/bin:/bin"}
+
+        # First install to create the symlink
+        result = self._run_install(tmp_path, env_override=env_override)
+
+        assert result.returncode == 0
+        assert "is not in your PATH" not in result.stdout

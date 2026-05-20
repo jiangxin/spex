@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """SDD - Spec-Driven Development CLI tool."""
 
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -16,16 +18,14 @@ Commands (run directly):
   list        List active spec topics with progress
   list-all    List all spec topics including archived
   archive     Archive completed spec topics
+  install     Install sdd symlink to ~/.local/bin
 
 Commands (require AI coding agent):
   apply       Apply a spec step-by-step
   create      Create a new spec (aliases: init, new)
   modify      Modify an existing spec
   edit        Edit spec details
-
-Install:
-  ln -s {scripts_dir}/sdd ~/.local/bin/sdd
-""".format(scripts_dir=_scripts_dir)
+"""
 
 LLM_COMMANDS = {"apply", "create", "init", "new", "modify", "edit"}
 
@@ -52,10 +52,55 @@ def _run_archive():
     archive_specs.main()
 
 
+def _run_install():
+    """Install sdd symlink to ~/.local/bin."""
+    script_path = Path(__file__).resolve()
+    link_dir = Path.home() / ".local" / "bin"
+    link_path = link_dir / "sdd"
+
+    link_dir.mkdir(parents=True, exist_ok=True)
+
+    if link_path.is_symlink():
+        if link_path.resolve() == script_path:
+            print("Already installed.")
+            return
+        print(
+            f"Error: {link_path} already exists and points to "
+            f"{os.readlink(link_path)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if link_path.exists():
+        print(
+            f"Error: {link_path} already exists and is not a symlink.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    link_path.symlink_to(script_path)
+    print(f"Installed: {link_path} -> {script_path}")
+
+    _check_path(link_dir)
+
+
+def _check_path(link_dir: Path):
+    """Check if sdd is reachable via PATH and print hint if not."""
+    found = shutil.which("sdd")
+    if found and Path(found).resolve() == (link_dir / "sdd").resolve():
+        return
+    print(
+        f"\nNote: {link_dir} is not in your PATH.\n"
+        f"Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):\n"
+        f'  export PATH="$HOME/.local/bin:$PATH"',
+    )
+
+
 DIRECT_COMMANDS = {
     "list": _run_list,
     "list-all": _run_list_all,
     "archive": _run_archive,
+    "install": _run_install,
 }
 
 
