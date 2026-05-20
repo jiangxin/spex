@@ -7,6 +7,7 @@ requires-python = ">=3.9"
 dev = [
     "ruff",
     "pytest",
+    "pytest-cov",
 ]
 
 [tool.ruff]
@@ -19,3 +20,10 @@ select = ["E", "F", "W", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["scripts"]
+include = ["scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
