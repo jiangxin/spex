@@ -1,0 +1,141 @@
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+
+from list_specs import (
+    collect_topics,
+    format_output,
+    get_todo_progress,
+    parse_prompt_log,
+)
+
+
+def _make_prompt_log(topic_dir, timestamp="2026-05-20T10:00:00+08:00",
+                     prompt="some prompt text"):
+    """Create a prompt.log file in topic_dir."""
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    content = f'**[{timestamp}]**\n\n```prompt\n    {prompt}\n```\n'
+    (topic_dir / "prompt.log").write_text(content, encoding="utf-8")
+
+
+def _make_todo(topic_dir, tasks):
+    """Create a todo.json file in topic_dir."""
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    (topic_dir / "todo.json").write_text(
+        json.dumps(tasks), encoding="utf-8"
+    )
+
+
+def _task(task_id, completed=True):
+    return {
+        "id": task_id,
+        "name": f"Task {task_id}",
+        "details": "details",
+        "completed_at": "2026-01-01T00:00:00+08:00" if completed else "",
+        "commit_title": "abc: done" if completed else "",
+    }
+
+
+class TestParsePromptLog:
+    def test_normal_parse(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        _make_prompt_log(topic, "2026-05-20T18:00:00+08:00", "hello world")
+
+        ts, prompt = parse_prompt_log(topic / "prompt.log")
+
+        assert ts == "2026-05-20T18:00:00+08:00"
+        assert prompt == "hello world"
+
+    def test_missing_file(self, tmp_path):
+        ts, prompt = parse_prompt_log(tmp_path / "nonexistent" / "prompt.log")
+
+        assert ts == ""
+        assert prompt == ""
+
+    def test_multiline_prompt(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        topic.mkdir(parents=True)
+        content = (
+            "**[2026-05-20T10:00:00+08:00]**\n\n"
+            "```prompt\n"
+            "    line one\n"
+            "    line two\n"
+            "```\n"
+        )
+        (topic / "prompt.log").write_text(content, encoding="utf-8")
+
+        ts, prompt = parse_prompt_log(topic / "prompt.log")
+
+        assert ts == "2026-05-20T10:00:00+08:00"
+        assert prompt == "line one line two"
+
+
+class TestGetTodoProgress:
+    def test_all_done(self, tmp_path):
+        topic = tmp_path / "t"
+        _make_todo(topic, [_task("1"), _task("2")])
+
+        assert get_todo_progress(topic) == (2, 2)
+
+    def test_partial(self, tmp_path):
+        topic = tmp_path / "t"
+        _make_todo(topic, [_task("1"), _task("2", completed=False)])
+
+        assert get_todo_progress(topic) == (1, 2)
+
+    def test_missing_file(self, tmp_path):
+        assert get_todo_progress(tmp_path / "no-topic") == (0, 0)
+
+
+class TestFormatOutput:
+    def test_empty_list(self):
+        assert format_output([]) == "No specs found."
+
+    def test_sort_descending(self):
+        topics = [
+            {"name": "older", "timestamp": "2026-05-01T10:00:00+08:00",
+             "n": 1, "m": 2, "prompt": "old"},
+            {"name": "newer", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "new"},
+        ]
+        output = format_output(topics)
+        lines = output.splitlines()
+        assert lines[0].startswith("newer")
+        assert lines[1].startswith("older")
+
+    def test_topic_truncation(self):
+        long_name = "a" * 40
+        topics = [
+            {"name": long_name, "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "test"},
+        ]
+        output = format_output(topics)
+        assert "..." in output
+        assert len(output.splitlines()[0]) <= 80
+
+    def test_line_width_limit(self):
+        topics = [
+            {"name": "topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 1, "m": 3, "prompt": "x" * 200},
+        ]
+        output = format_output(topics)
+        for line in output.splitlines():
+            assert len(line) <= 80
+
+
+class TestCollectTopics:
+    def test_collects_from_dirs(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "my-topic"
+        _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "hello")
+        _make_todo(topic, [_task("1", completed=False)])
+
+        result = collect_topics([specs])
+
+        assert len(result) == 1
+        assert result[0]["name"] == "my-topic"
+        assert result[0]["n"] == 0
+        assert result[0]["m"] == 1
+        assert result[0]["prompt"] == "hello"
