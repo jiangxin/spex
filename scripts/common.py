@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared utilities for the SDD skill."""
 
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -12,16 +13,18 @@ TODO_FILE = "todo.json"
 _spec_root_cache: dict[str | None, str] = {}
 
 
-def get_spec_root(workdir=None):
+def clear_specs_root_cache():
+    """Clear the spec_root cache. Useful for testing."""
+    _spec_root_cache.clear()
+
+
+def get_specs_root(workdir=None):
     """Return the spec root directory path.
 
-    Uses `git rev-parse --show-toplevel` to find the git repository root,
-    then places the spec root in its parent as a hidden directory:
-    .<repo_basename>.specs
-
-    For example:
-        git toplevel = /Users/alice/projects/my-app
-        spec_root = /Users/alice/projects/.my-app.specs
+    Resolution order:
+    1. Environment variable SPECS_ROOT.
+    2. Git config key specs.rootdir.
+    3. Default: .<repo_basename>.specs next to the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
@@ -33,6 +36,25 @@ def get_spec_root(workdir=None):
     if cache_key in _spec_root_cache:
         return _spec_root_cache[cache_key]
 
+    # 1. Check environment variable
+    env_root = os.environ.get("SPECS_ROOT")
+    if env_root:
+        specs_root = str(Path(env_root).resolve())
+        _spec_root_cache[cache_key] = specs_root
+        return specs_root
+
+    # 2. Check git config
+    cmd = ["git", "config", "--get", "specs.rootdir"]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, cwd=workdir
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        git_root = result.stdout.strip()
+        specs_root = str(Path(git_root).resolve())
+        _spec_root_cache[cache_key] = specs_root
+        return specs_root
+
+    # 3. Fallback: compute from git toplevel
     cmd = ["git", "rev-parse", "--show-toplevel"]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=workdir
@@ -44,19 +66,19 @@ def get_spec_root(workdir=None):
     parent = repo_root.parent
     dirname = repo_root.name
 
-    spec_root = str(parent / f".{dirname}.specs")
-    _spec_root_cache[cache_key] = spec_root
-    return spec_root
+    specs_root = str(parent / f".{dirname}.specs")
+    _spec_root_cache[cache_key] = specs_root
+    return specs_root
 
 
 def get_specs_dir(workdir=None):
     """Return the specs directory: <spec_root>/specs/."""
-    return str(Path(get_spec_root(workdir)) / "specs")
+    return str(Path(get_specs_root(workdir)) / "specs")
 
 
 def get_archives_dir(workdir=None):
     """Return the archives directory: <spec_root>/archives/."""
-    return str(Path(get_spec_root(workdir)) / "archives")
+    return str(Path(get_specs_root(workdir)) / "archives")
 
 
 def local_iso_timestamp() -> str:
@@ -68,4 +90,4 @@ def local_iso_timestamp() -> str:
 
 
 if __name__ == "__main__":
-    print(get_spec_root())
+    print(get_specs_root())

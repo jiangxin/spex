@@ -217,7 +217,7 @@ class TestGetCommand:
 
     def test_spec_root_prints_path(self, tmp_path):
         """sdd get --spec-root prints a valid path, exit 0."""
-        # Create a git repo so get_spec_root works
+        # Create a git repo so get_specs_root works
         subprocess.run(
             ["git", "init"], cwd=str(tmp_path), capture_output=True
         )
