@@ -67,6 +67,43 @@ cp -r sdd-skill ~/.claude/skills/sdd
 cp -r sdd-skill .claude/skills/sdd
 ```
 
+## Development
+
+### Prerequisites
+
+- Python 3.9+
+- Node.js (for markdownlint and husky)
+
+### Setup
+
+Install dev dependencies:
+
+```bash
+pip install ruff pytest
+npm install
+```
+
+Running `npm install` also sets up [husky](https://typicode.github.io/husky/) git hooks via the `prepare` script.
+
+### Available Make Targets
+
+| Command | Description |
+|---------|-------------|
+| `make lint` | Run ruff linter on Python files |
+| `make lint-md` | Run markdownlint on Markdown files |
+| `make format` | Auto-format Python files with ruff |
+| `make test` | Run pytest unit tests |
+| `make check` | Run all checks (lint + lint-md + test) |
+
+### Pre-commit Hooks
+
+This project uses husky to enforce quality checks before each commit:
+
+- **pre-commit**: Runs `make check` (ruff lint, markdownlint, pytest) — commits are blocked if any check fails.
+- **commit-msg**: Injects a co-developed-by trailer for AI-assisted commits.
+
+These hooks are installed automatically when you run `npm install`.
+
 ## License
 
 MIT
