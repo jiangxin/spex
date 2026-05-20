@@ -5,7 +5,7 @@ Apply a specification to implement code step by step.
 ## Usage
 
 ```text
-/sdd apply [topic_name]
+/sdd apply [topic_name | --all | -a]
 ```
 
 ## Procedure
@@ -14,7 +14,15 @@ Follow these steps in order. Do not skip or reorder.
 
 ### Step 1: Resolve Topic
 
-Run:
+If `$topic_name` is `--all` or `-a`:
+
+1. Run `python <skill-path>/scripts/get_topic.py ""` to get all topics with
+   undone tasks.
+2. Store all output lines as `$all_topics`.
+3. For each `$topic` in `$all_topics`, execute Steps 2 through 8.
+4. After completing all topics, stop.
+
+Otherwise, run:
 
 ```bash
 python <skill-path>/scripts/get_topic.py "$topic_name"
