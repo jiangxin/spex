@@ -30,20 +30,35 @@ def _has_undone_tasks(topic_dir):
     )
 
 
-def main():
-    topic_name = sys.argv[1] if len(sys.argv) > 1 else ""
-    specs_dir = Path(get_specs_dir())
+def resolve_topic(topic_name, specs_dir):
+    """Resolve topic name against specs_dir.
+
+    Returns a list of matching topic names.
+    Raises SystemExit on error.
+    """
+    specs_dir = Path(specs_dir)
 
     if topic_name:
-        topic_dir = specs_dir / topic_name
-        if not topic_dir.is_dir():
+        if (specs_dir / topic_name).is_dir():
+            return [topic_name]
+
+        matches = sorted(
+            d.name
+            for d in specs_dir.iterdir()
+            if d.is_dir()
+            and topic_name in d.name
+            and _has_undone_tasks(d)
+        )
+
+        if not matches:
             print(
-                f"Error: topic '{topic_name}' not found in {specs_dir}",
+                f"Error: no topic matching '{topic_name}' found in"
+                f" {specs_dir}",
                 file=sys.stderr,
             )
             sys.exit(1)
-        print(topic_name)
-        return
+
+        return matches
 
     if not specs_dir.is_dir():
         print(
@@ -62,7 +77,15 @@ def main():
         print("Error: no topics with undone tasks found.", file=sys.stderr)
         sys.exit(1)
 
-    for name in candidates:
+    return candidates
+
+
+def main():
+    topic_name = sys.argv[1] if len(sys.argv) > 1 else ""
+    specs_dir = Path(get_specs_dir())
+
+    results = resolve_topic(topic_name, specs_dir)
+    for name in results:
         print(name)
 
 
