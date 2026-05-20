@@ -1,32 +1,28 @@
 # sdd archive
 
-Archive a completed specification document.
+Archive completed specification topics.
 
 ## Usage
 
-```
-/sdd archive <spec-name>
-```
-
-## Behavior
-
-1. Resolve the spec directory by running `scripts/_shared/common.py`
-2. Locate the spec file `<spec-name>.md` in the spec directory
-3. Update the spec's frontmatter status to `archived`
-4. Add an `archived: <YYYY-MM-DD>` field to the frontmatter
-5. Move the file into an `archived/` subdirectory within the spec directory
-
-## Directory Structure After Archive
-
-```
-.project.specs/
-├── active-spec.md
-├── archived/
-│   └── old-spec.md
+```text
+/sdd archive
 ```
 
-## Error Handling
+## Procedure
 
-- If `<spec-name>` is not provided, show available specs and prompt the user to choose
-- If the spec does not exist, inform the user and suggest running `/sdd list`
-- If the spec is already archived, inform the user (no action needed)
+Follow these steps in order. Do not skip or reorder.
+
+### Step 1: Run Archive Script
+
+Run:
+
+```bash
+python <skill-path>/scripts/archive_specs.py
+```
+
+### Step 2: Report Results
+
+- If the script output indicates topics were archived, report the list of
+  archived topics to the user.
+- If no topics were archived, inform the user that there are no completed
+  topics to archive.
