@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""SDD - Spec-Driven Development CLI tool."""
+
+import sys
+from pathlib import Path
+
+# Add scripts/ and scripts/_shared to sys.path for sibling imports.
+_scripts_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_scripts_dir))
+sys.path.insert(0, str(_scripts_dir / "_shared"))
+
+USAGE = """\
+Usage: sdd <command>
+
+Commands (run directly):
+  list        List active spec topics with progress
+  list-all    List all spec topics including archived
+  archive     Archive completed spec topics
+
+Commands (require AI coding agent):
+  apply       Apply a spec step-by-step
+  create      Create a new spec (aliases: init, new)
+  modify      Modify an existing spec
+  edit        Edit spec details
+
+Install:
+  ln -s {scripts_dir}/sdd ~/.local/bin/sdd
+""".format(scripts_dir=_scripts_dir)
+
+LLM_COMMANDS = {"apply", "create", "init", "new", "modify", "edit"}
+
+
+def _run_list():
+    """Run the list command."""
+    import list_specs
+
+    list_specs.main()
+
+
+def _run_list_all():
+    """Run the list-all command (list with --all flag)."""
+    import list_specs
+
+    sys.argv.append("--all")
+    list_specs.main()
+
+
+def _run_archive():
+    """Run the archive command."""
+    import archive_specs
+
+    archive_specs.main()
+
+
+DIRECT_COMMANDS = {
+    "list": _run_list,
+    "list-all": _run_list_all,
+    "archive": _run_archive,
+}
+
+
+def main():
+    """CLI entry point."""
+    if len(sys.argv) < 2:
+        print(USAGE, end="")
+        sys.exit(0)
+
+    command = sys.argv[1]
+
+    if command in DIRECT_COMMANDS:
+        DIRECT_COMMANDS[command]()
+    elif command in LLM_COMMANDS:
+        print(
+            f"Error: 'sdd {command}' requires an AI coding agent. "
+            f"Run '/sdd {command}' in Claude Code or equivalent.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    else:
+        print(f"Unknown command: {command}\n", file=sys.stderr)
+        print(USAGE, end="", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
