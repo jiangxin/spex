@@ -115,6 +115,58 @@ def cmd_get_next_undone(args):
     # No undone task found — output nothing, exit 0
 
 
+def _format_item_summary(item):
+    """Format a completed item as a one-line summary."""
+    return f"{item.get('id', '')}: {item.get('name', '')}"
+
+
+def _format_item_details(item):
+    """Format a completed item with full details block."""
+    task_id = item.get("id", "")
+    name = item.get("name", "")
+    details = item.get("details", "")
+    lines = [
+        f"**Task**: {task_id} - {name}",
+        "",
+        "**Implementation Details**:",
+        "",
+        "<details>",
+        f"{details}",
+        "</details>",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _format_done_output(done_items, details_mode):
+    """Format all completed items into a single output string."""
+    parts = []
+    for item in done_items:
+        if details_mode:
+            parts.append(_format_item_details(item))
+        else:
+            parts.append(_format_item_summary(item))
+    return "\n".join(parts)
+
+
+def _format_truncated_output(done_items, details_mode):
+    """Format truncated output showing only last 10 items."""
+    total = len(done_items)
+    last_10 = done_items[-10:]
+    parts = [f"... ({total} completed, showing last 10)"]
+    for item in last_10[:-1]:
+        parts.append(_format_item_summary(item))
+    last_item = last_10[-1]
+    if details_mode:
+        parts.append(_format_item_details(last_item))
+    else:
+        parts.append(_format_item_summary(last_item))
+    return "\n".join(parts)
+
+
+MAX_OUTPUT_BYTES = 10240
+
+
 def cmd_get_done(args):
     """Print completed tasks."""
     details_mode = False
@@ -135,24 +187,20 @@ def cmd_get_done(args):
         print("Error: top-level value must be an array.", file=sys.stderr)
         sys.exit(1)
 
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        if item.get("completed_at"):
-            task_id = item.get("id", "")
-            name = item.get("name", "")
-            if details_mode:
-                details = item.get("details", "")
-                print(f"**Task**: {task_id} - {name}")
-                print()
-                print("**Implementation Details**:")
-                print()
-                print("<details>")
-                print(f"{details}")
-                print("</details>")
-                print()
-            else:
-                print(f"{task_id}: {name}")
+    done_items = [
+        item for item in data
+        if isinstance(item, dict) and item.get("completed_at")
+    ]
+
+    if not done_items:
+        return
+
+    full_output = _format_done_output(done_items, details_mode)
+
+    if len(full_output.encode("utf-8")) <= MAX_OUTPUT_BYTES:
+        print(full_output)
+    else:
+        print(_format_truncated_output(done_items, details_mode))
 
 
 def main():
