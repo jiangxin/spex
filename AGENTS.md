@@ -2,7 +2,7 @@
 
 ## About This Project
 
-This project is a **Claude Code skill** (invoked via `/sdd`). All changes to
+This project is a **Claude Code skill** (invoked via `/spex`). All changes to
 `SKILL.md`, commands, scripts, and references MUST conform to the Claude Code
 Skills Specification documented in `references/SKILLS-SPEC.md`.
 
