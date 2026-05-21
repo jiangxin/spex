@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SDD - Spec-Driven Development CLI tool."""
+"""Spex - Spec-Driven Development CLI tool."""
 
 import importlib
 import os
@@ -12,14 +12,14 @@ _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
 
 USAGE = """\
-Usage: sdd <command>
+Usage: spex <command>
 
 Commands (run directly):
   list        List active spec topics with progress
   list-all    List all spec topics including archived
   archive     Archive completed spec topics
   open        Open spec directory in file browser
-  install     Install sdd symlink to ~/.local/bin
+  install     Install spex symlink to ~/.local/bin
 
 Commands (require AI coding agent):
   apply       Apply a spec step-by-step
@@ -74,10 +74,10 @@ def _run_open():
 
 
 def _run_install():
-    """Install sdd symlink to ~/.local/bin."""
+    """Install spex symlink to ~/.local/bin."""
     script_path = Path(__file__).resolve()
     link_dir = Path.home() / ".local" / "bin"
-    link_path = link_dir / "sdd"
+    link_path = link_dir / "spex"
 
     link_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,9 +106,9 @@ def _run_install():
 
 
 def _check_path(link_dir: Path):
-    """Check if sdd is reachable via PATH and print hint if not."""
-    found = shutil.which("sdd")
-    if found and Path(found).resolve() == (link_dir / "sdd").resolve():
+    """Check if spex is reachable via PATH and print hint if not."""
+    found = shutil.which("spex")
+    if found and Path(found).resolve() == (link_dir / "spex").resolve():
         return
     print(
         f"\nNote: {link_dir} is not in your PATH.\n"
@@ -130,7 +130,7 @@ def _run_get():
 
     if len(flags) != 1 or flags[0] not in flag_map:
         print(
-            "Usage: sdd get --spec-root|--specs-dir|--archives-dir",
+            "Usage: spex get --spec-root|--specs-dir|--archives-dir",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -149,7 +149,7 @@ def _run_get_topic():
 def _run_create_topic():
     """Create a new topic directory."""
     if len(sys.argv) < 3:
-        print("Usage: sdd create-topic <topic>", file=sys.stderr)
+        print("Usage: spex create-topic <topic>", file=sys.stderr)
         sys.exit(1)
 
     mod = importlib.import_module("create-topic-dir")
@@ -160,7 +160,7 @@ def _run_create_topic():
 def _run_write_log():
     """Log a prompt to a topic's prompt.log."""
     if len(sys.argv) < 3:
-        print("Usage: sdd write-log <topic>", file=sys.stderr)
+        print("Usage: spex write-log <topic>", file=sys.stderr)
         sys.exit(1)
 
     mod = importlib.import_module("write-log")
@@ -172,7 +172,7 @@ def _run_todo():
     """Route todo subcommands."""
     if len(sys.argv) < 3:
         print(
-            "Usage: sdd todo <subcommand> ...\n"
+            "Usage: spex todo <subcommand> ...\n"
             "Subcommands: validate, get-next-undone, get-done, mark-done",
             file=sys.stderr,
         )
@@ -225,8 +225,8 @@ def main():
         DIRECT_COMMANDS[command]()
     elif command in LLM_COMMANDS:
         print(
-            f"Error: 'sdd {command}' requires an AI coding agent. "
-            f"Run '/sdd {command}' in Claude Code or equivalent.",
+            f"Error: 'spex {command}' requires an AI coding agent. "
+            f"Run '/spex {command}' in Claude Code or equivalent.",
             file=sys.stderr,
         )
         sys.exit(1)

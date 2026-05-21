@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared utilities for the SDD skill."""
+"""Shared utilities for the Spex skill."""
 
 import os
 import subprocess

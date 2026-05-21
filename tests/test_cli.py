@@ -1,4 +1,4 @@
-"""Tests for the sdd CLI entry point."""
+"""Tests for the spex CLI entry point."""
 
 import json
 import os
@@ -6,13 +6,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-SDD_SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "sdd")
+SPEX_SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "spex")
 
 
-def _run_sdd(*args):
-    """Run the sdd CLI with given arguments and return the CompletedProcess."""
+def _run_spex(*args):
+    """Run the spex CLI with given arguments and return the CompletedProcess."""
     return subprocess.run(
-        [sys.executable, SDD_SCRIPT, *args],
+        [sys.executable, SPEX_SCRIPT, *args],
         capture_output=True,
         text=True,
     )
@@ -20,13 +20,13 @@ def _run_sdd(*args):
 
 class TestNoArgs:
     def test_prints_usage(self):
-        result = _run_sdd()
+        result = _run_spex()
 
         assert result.returncode == 0
-        assert "Usage: sdd <command>" in result.stdout
+        assert "Usage: spex <command>" in result.stdout
 
     def test_lists_commands(self):
-        result = _run_sdd()
+        result = _run_spex()
 
         assert "list" in result.stdout
         assert "archive" in result.stdout
@@ -37,10 +37,10 @@ class TestDirectCommands:
         # Create a minimal specs dir so list_specs doesn't fail
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
-        monkeypatch.setenv("SDD_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
 
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "list"],
+            [sys.executable, SPEX_SCRIPT, "list"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -52,10 +52,10 @@ class TestDirectCommands:
         assert "requires an AI coding agent" not in result.stderr
 
     def test_list_all_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SDD_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
 
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "list-all"],
+            [sys.executable, SPEX_SCRIPT, "list-all"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -64,10 +64,10 @@ class TestDirectCommands:
         assert "requires an AI coding agent" not in result.stderr
 
     def test_archive_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SDD_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
 
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "archive"],
+            [sys.executable, SPEX_SCRIPT, "archive"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -78,34 +78,34 @@ class TestDirectCommands:
 
 class TestLLMCommands:
     def test_apply_prints_hint(self):
-        result = _run_sdd("apply")
+        result = _run_spex("apply")
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
-        assert "'/sdd apply'" in result.stderr
+        assert "'/spex apply'" in result.stderr
 
     def test_create_prints_hint(self):
-        result = _run_sdd("create")
+        result = _run_spex("create")
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
-        assert "'/sdd create'" in result.stderr
+        assert "'/spex create'" in result.stderr
 
     def test_modify_prints_hint(self):
-        result = _run_sdd("modify")
+        result = _run_spex("modify")
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
-        assert "'/sdd modify'" in result.stderr
+        assert "'/spex modify'" in result.stderr
 
     def test_init_alias(self):
-        result = _run_sdd("init")
+        result = _run_spex("init")
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
 
     def test_new_alias(self):
-        result = _run_sdd("new")
+        result = _run_spex("new")
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
@@ -113,24 +113,24 @@ class TestLLMCommands:
 
 class TestUnknownCommand:
     def test_unknown_prints_usage_to_stderr(self):
-        result = _run_sdd("bogus")
+        result = _run_spex("bogus")
 
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
-        assert "Usage: sdd <command>" in result.stderr
+        assert "Usage: spex <command>" in result.stderr
 
 
 class TestInstallCommand:
     """Tests for the install subcommand."""
 
     def _run_install(self, tmp_path, env_override=None):
-        """Run sdd install with HOME pointed to tmp_path."""
+        """Run spex install with HOME pointed to tmp_path."""
         env = os.environ.copy()
         env["HOME"] = str(tmp_path)
         if env_override:
             env.update(env_override)
         return subprocess.run(
-            [sys.executable, SDD_SCRIPT, "install"],
+            [sys.executable, SPEX_SCRIPT, "install"],
             capture_output=True,
             text=True,
             env=env,
@@ -140,17 +140,17 @@ class TestInstallCommand:
         result = self._run_install(tmp_path)
 
         assert result.returncode == 0
-        link = tmp_path / ".local" / "bin" / "sdd"
+        link = tmp_path / ".local" / "bin" / "spex"
         assert link.is_symlink()
-        assert link.resolve() == Path(SDD_SCRIPT).resolve()
+        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
         assert "Installed:" in result.stdout
 
     def test_already_installed_same_target(self, tmp_path):
         # Pre-create the correct symlink
         link_dir = tmp_path / ".local" / "bin"
         link_dir.mkdir(parents=True)
-        link = link_dir / "sdd"
-        link.symlink_to(Path(SDD_SCRIPT).resolve())
+        link = link_dir / "spex"
+        link.symlink_to(Path(SPEX_SCRIPT).resolve())
 
         result = self._run_install(tmp_path)
 
@@ -161,8 +161,8 @@ class TestInstallCommand:
         # Pre-create a symlink pointing elsewhere
         link_dir = tmp_path / ".local" / "bin"
         link_dir.mkdir(parents=True)
-        link = link_dir / "sdd"
-        other_target = tmp_path / "other_sdd"
+        link = link_dir / "spex"
+        other_target = tmp_path / "other_spex"
         other_target.write_text("#!/bin/sh\n")
         link.symlink_to(other_target)
 
@@ -175,7 +175,7 @@ class TestInstallCommand:
         # Pre-create a regular file at the target path
         link_dir = tmp_path / ".local" / "bin"
         link_dir.mkdir(parents=True)
-        link = link_dir / "sdd"
+        link = link_dir / "spex"
         link.write_text("#!/bin/sh\n")
 
         result = self._run_install(tmp_path)
@@ -209,13 +209,13 @@ class TestGetCommand:
     """Tests for the get subcommand."""
 
     def test_spec_root_prints_path(self, tmp_path):
-        """sdd get --spec-root prints a valid path, exit 0."""
+        """spex get --spec-root prints a valid path, exit 0."""
         # Create a git repo so get_specs_root works
         subprocess.run(
             ["git", "init"], cwd=str(tmp_path), capture_output=True
         )
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "get", "--spec-root"],
+            [sys.executable, SPEX_SCRIPT, "get", "--spec-root"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -226,8 +226,8 @@ class TestGetCommand:
         assert ".specs" in result.stdout
 
     def test_no_flag_prints_usage_exit_1(self):
-        """sdd get (no flag) prints usage to stderr, exit 1."""
-        result = _run_sdd("get")
+        """spex get (no flag) prints usage to stderr, exit 1."""
+        result = _run_spex("get")
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
@@ -237,13 +237,13 @@ class TestGetTopicCommand:
     """Tests for the get-topic subcommand."""
 
     def test_no_matching_topics_exit_1(self, tmp_path, monkeypatch):
-        """sdd get-topic (no matching topics) exits 1."""
-        monkeypatch.setenv("SDD_SPEC_ROOT", str(tmp_path))
+        """spex get-topic (no matching topics) exits 1."""
+        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "get-topic"],
+            [sys.executable, SPEX_SCRIPT, "get-topic"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -256,8 +256,8 @@ class TestCreateTopicCommand:
     """Tests for the create-topic subcommand."""
 
     def test_no_arg_exit_1(self):
-        """sdd create-topic (no arg) exits 1."""
-        result = _run_sdd("create-topic")
+        """spex create-topic (no arg) exits 1."""
+        result = _run_spex("create-topic")
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
@@ -267,8 +267,8 @@ class TestWriteLogCommand:
     """Tests for the write-log subcommand."""
 
     def test_no_arg_exit_1(self):
-        """sdd write-log (no arg) exits 1."""
-        result = _run_sdd("write-log")
+        """spex write-log (no arg) exits 1."""
+        result = _run_spex("write-log")
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
@@ -278,14 +278,14 @@ class TestTodoCommand:
     """Tests for the todo subcommand."""
 
     def test_no_subcommand_exit_1(self):
-        """sdd todo (no subcommand) exits 1."""
-        result = _run_sdd("todo")
+        """spex todo (no subcommand) exits 1."""
+        result = _run_spex("todo")
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
 
     def test_validate_valid_file(self, tmp_path):
-        """sdd todo validate <valid-file> exits 0."""
+        """spex todo validate <valid-file> exits 0."""
         todo_file = tmp_path / "todo.json"
         todo_file.write_text(
             json.dumps([
@@ -301,7 +301,7 @@ class TestTodoCommand:
         )
 
         result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "todo", "validate", str(todo_file)],
+            [sys.executable, SPEX_SCRIPT, "todo", "validate", str(todo_file)],
             capture_output=True,
             text=True,
         )
@@ -310,8 +310,8 @@ class TestTodoCommand:
         assert "OK:" in result.stdout
 
     def test_mark_done_wrong_args_exit_1(self):
-        """sdd todo mark-done (wrong args) exits 1."""
-        result = _run_sdd("todo", "mark-done")
+        """spex todo mark-done (wrong args) exits 1."""
+        result = _run_spex("todo", "mark-done")
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
