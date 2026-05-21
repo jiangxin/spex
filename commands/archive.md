@@ -1,11 +1,11 @@
-# sdd archive
+# spex archive
 
 Archive completed specification topics.
 
 ## Usage
 
 ```text
-/sdd archive
+/spex archive
 ```
 
 ## Procedure
@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd archive
+<skill-path>/scripts/spex archive
 ```
 
 ### Step 2: Report Results

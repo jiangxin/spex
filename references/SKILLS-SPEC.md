@@ -35,7 +35,7 @@ skill-name/
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
-| `name` | Yes | string | Short name of the skill, used for invocation (e.g., `sdd`) |
+| `name` | Yes | string | Short name of the skill, used for invocation (e.g., `spex`) |
 | `description` | Yes | string | Determines when Claude will use the skill. Should use third-person and include specific trigger phrases. |
 | `disable-model-invocation` | No | boolean | When `true`, prevents the model from automatically triggering the skill. The skill can only be invoked manually by the user via `/<name>`. |
 | `version` | No | string | Semantic version of the skill (e.g., `0.1.0`) |
@@ -52,7 +52,7 @@ description: "This skill should be used when the user asks to 'specific phrase 1
 ### disable-model-invocation
 
 Set `disable-model-invocation: true` when a skill should only respond to
-explicit user invocation (e.g., `/sdd create`). This prevents the model from
+explicit user invocation (e.g., `/spex create`). This prevents the model from
 auto-triggering the skill based on conversation context.
 
 ## Progressive Disclosure

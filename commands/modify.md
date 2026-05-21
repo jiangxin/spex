@@ -1,4 +1,4 @@
-# sdd modify
+# spex modify
 
 Modify an existing specification's requirements and regenerate the
 development plan.
@@ -6,7 +6,7 @@ development plan.
 ## Usage
 
 ```text
-/sdd modify [topic_name] [prompt]
+/spex modify [topic_name] [prompt]
 ```
 
 ## Procedure
@@ -24,7 +24,7 @@ changes they want to make to the spec. The user's full input becomes
 Run:
 
 ```bash
-<skill-path>/scripts/sdd get-topic "$topic_name"
+<skill-path>/scripts/spex get-topic "$topic_name"
 ```
 
 Read the command output to determine `$topic`:
@@ -40,7 +40,7 @@ Read the command output to determine `$topic`:
 Run:
 
 ```bash
-echo "$prompt" | <skill-path>/scripts/sdd write-log $topic
+echo "$prompt" | <skill-path>/scripts/spex write-log $topic
 ```
 
 ### Step 4: Build Context
@@ -97,7 +97,7 @@ Follow the same format and rules as the create command:
 Run:
 
 ```bash
-<skill-path>/scripts/sdd todo validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo validate $spec_root/specs/$topic/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

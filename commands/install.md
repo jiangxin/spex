@@ -1,11 +1,11 @@
-# sdd install
+# spex install
 
-Install the `sdd` CLI tool to `~/.local/bin` via symlink.
+Install the `spex` CLI tool to `~/.local/bin` via symlink.
 
 ## Usage
 
 ```text
-/sdd install
+/spex install
 ```
 
 ## Procedure
@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd install
+<skill-path>/scripts/spex install
 ```
 
 Report the output to the user.

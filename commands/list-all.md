@@ -1,11 +1,11 @@
-# sdd list-all
+# spex list-all
 
 List all specifications including archived ones.
 
 ## Usage
 
 ```text
-/sdd list-all
+/spex list-all
 ```
 
 ## Procedure
@@ -17,10 +17,10 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd list-all
+<skill-path>/scripts/spex list-all
 ```
 
 ### Step 2: Report Results
 
 Show the script output to the user. If no specs are found, suggest
-using `/sdd create` to create one.
+using `/spex create` to create one.

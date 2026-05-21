@@ -1,11 +1,11 @@
-# sdd apply
+# spex apply
 
 Apply a specification to implement code step by step.
 
 ## Usage
 
 ```text
-/sdd apply [topic_name | --all | -a]
+/spex apply [topic_name | --all | -a]
 ```
 
 ## Procedure
@@ -16,7 +16,7 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$topic_name` is `--all` or `-a`:
 
-1. Run `<skill-path>/scripts/sdd get-topic ""` to get all topics with
+1. Run `<skill-path>/scripts/spex get-topic ""` to get all topics with
    undone tasks.
 2. Store all output lines as `$all_topics`.
 3. For each `$topic` in `$all_topics`, execute Steps 2 through 8.
@@ -25,7 +25,7 @@ If `$topic_name` is `--all` or `-a`:
 Otherwise, run:
 
 ```bash
-<skill-path>/scripts/sdd get-topic "$topic_name"
+<skill-path>/scripts/spex get-topic "$topic_name"
 ```
 
 Read the command output to determine `$topic`:
@@ -41,7 +41,7 @@ Read the command output to determine `$topic`:
 Run:
 
 ```bash
-<skill-path>/scripts/sdd todo get-next-undone --only-id $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-next-undone --only-id $spec_root/specs/$topic/todo.json
 ```
 
 Save the output to `$next_task_id`.
@@ -52,7 +52,7 @@ stop.
 Then run:
 
 ```bash
-<skill-path>/scripts/sdd todo get-next-undone --details $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-next-undone --details $spec_root/specs/$topic/todo.json
 ```
 
 Save the output to `$next_task_text`.
@@ -62,7 +62,7 @@ Save the output to `$next_task_text`.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd todo get-done $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-done $spec_root/specs/$topic/todo.json
 ```
 
 Save the output to `$completed_tasks`.
@@ -131,7 +131,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd todo mark-done "$next_task_id" "$commit_title" $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo mark-done "$next_task_id" "$commit_title" $spec_root/specs/$topic/todo.json
 ```
 
 ### Step 8: Loop

@@ -1,4 +1,4 @@
-# sdd create
+# spex create
 
 Create a new specification topic with requirement analysis, detailed design,
 and test plan.
@@ -6,7 +6,7 @@ and test plan.
 ## Usage
 
 ```text
-/sdd create [prompt]
+/spex create [prompt]
 ```
 
 ## Procedure
@@ -32,7 +32,7 @@ Based on `$prompt`, generate a topic name:
 Run:
 
 ```bash
-<skill-path>/scripts/sdd create-topic $topic
+<skill-path>/scripts/spex create-topic $topic
 ```
 
 If the script exits with an error (e.g., topic already exists or invalid
@@ -43,7 +43,7 @@ name), return to Step 2 and retry with a different name.
 Run:
 
 ```bash
-echo "$prompt" | <skill-path>/scripts/sdd write-log $topic
+echo "$prompt" | <skill-path>/scripts/spex write-log $topic
 ```
 
 This records the user's original prompt via stdin.
@@ -133,7 +133,7 @@ Create `$spec_root/specs/$topic/todo.json` listing each step in order:
 Run:
 
 ```bash
-<skill-path>/scripts/sdd todo validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo validate $spec_root/specs/$topic/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

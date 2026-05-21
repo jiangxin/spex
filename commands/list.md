@@ -1,11 +1,11 @@
-# sdd list
+# spex list
 
 List active (incomplete) specifications.
 
 ## Usage
 
 ```text
-/sdd list
+/spex list
 ```
 
 ## Procedure
@@ -17,10 +17,10 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-<skill-path>/scripts/sdd list
+<skill-path>/scripts/spex list
 ```
 
 ### Step 2: Report Results
 
 Show the script output to the user. If no specs are found, suggest
-using `/sdd create` to create one.
+using `/spex create` to create one.

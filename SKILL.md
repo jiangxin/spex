@@ -1,7 +1,7 @@
 ---
-name: sdd
+name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (SDD) skill for managing specification documents, and generating code. Invoked manually via /sdd <command>. Supports commands: create (init, new), list, list-all, modify, apply (run, do, go), archive, install."
+description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (init, new), list, list-all, modify, apply (run, do, go), archive, install."
 arguments:
   - name: command
     required: true
@@ -11,14 +11,14 @@ arguments:
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
 ---
 
-# SDD — Spec-Driven Development
+# Spex — Spec-Driven Development
 
 A skill for managing specification documents in a structured spec directory.
 
 ## Usage
 
 ```
-/sdd <command> [arguments...]
+/spex <command> [arguments...]
 ```
 
 ## Supported Commands
@@ -31,7 +31,7 @@ A skill for managing specification documents in a structured spec directory.
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
 | `archive`  |                  | Archive a completed spec          |
-| `install`  |                  | Install sdd CLI to ~/.local/bin   |
+| `install`  |                  | Install spex CLI to ~/.local/bin  |
 
 ## Command Routing
 
@@ -52,7 +52,7 @@ If no command is given or the command is unrecognized, show this usage informati
 **Before executing any command, resolve the spec root path first.** Run:
 
 ```bash
-<skill-path>/scripts/sdd get --spec-root
+<skill-path>/scripts/spex get --spec-root
 ```
 
 The script prints the spec root path to stdout. Store this value as `$spec_root` — all subsequent operations reference paths relative to `$spec_root`.
