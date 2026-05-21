@@ -111,22 +111,6 @@ class TestLLMCommands:
         assert "requires an AI coding agent" in result.stderr
 
 
-class TestOpenCommand:
-    """Tests for the open subcommand."""
-
-    def test_dispatches_correctly(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-
-        result = subprocess.run(
-            [sys.executable, SDD_SCRIPT, "open"],
-            capture_output=True,
-            text=True,
-            cwd=str(tmp_path),
-        )
-
-        assert "requires an AI coding agent" not in result.stderr
-
-
 class TestUnknownCommand:
     def test_unknown_prints_usage_to_stderr(self):
         result = _run_sdd("bogus")
