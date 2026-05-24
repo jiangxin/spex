@@ -20,66 +20,25 @@ requirement. The user's full input becomes `$prompt`.
 
 ### Step 2: Generate Topic Name
 
-Based on `$prompt`, generate a topic name:
+Based on `$prompt`, generate a short English name (<32 bytes) using only
+`[a-z0-9-]`, replacing spaces with `-`. The result is `$topic`
+(e.g., `add-login-api`). Do NOT prepend any date prefix.
 
-- Compose a short English name (<32 bytes) using only `[a-z0-9-]`,
-  replacing spaces with `-`.
-- Prepend the current local date and time as `YYYY-MM-DD-HH-MM`.
-- The result is `$topic` (e.g., `2026-05-20-14-30-add-login-api`).
-
-### Step 3: Create Topic Directory
+### Step 3: Create Topic
 
 Run:
 
 ```bash
-<skill-path>/scripts/spex create-topic $topic
+echo "$prompt" | <skill-path>/scripts/spex create-topic $topic
 ```
 
-If the script exits with an error (e.g., topic already exists or invalid
-name), return to Step 2 and retry with a different name.
+Parse the JSON output. Save `topic_name` as `$topic` and `topic_path`
+as `$topic_path`. If the script exits with an error, return to Step 2
+and retry with a different name.
 
-### Step 4: Log Original Prompt
+### Step 4: Create spec.md
 
-Run:
-
-```bash
-echo "$prompt" | <skill-path>/scripts/spex write-log $topic
-```
-
-This records the user's original prompt via stdin.
-
-### Step 5: Generate meta.json
-
-Collect workspace metadata and write it to
-`$spec_root/specs/$topic/meta.json`.
-
-Gather the following values by running shell commands:
-
-- `workdir`: run `git rev-parse --show-toplevel`
-- `remote_url`: run `git remote get-url origin` (use empty string
-  if the command fails)
-- `branch`: run `git branch --show-current`
-- `user_name`: run `git config user.name`
-- `user_email`: run `git config user.email`
-- `created_at`: current local timestamp in ISO 8601 with timezone
-  offset (e.g., `2026-05-24T20:00:00+08:00`)
-
-Write the file in JSON format:
-
-```json
-{
-  "workdir": "<value>",
-  "remote_url": "<value>",
-  "branch": "<value>",
-  "user_name": "<value>",
-  "user_email": "<value>",
-  "created_at": "<value>"
-}
-```
-
-### Step 6: Create spec.md
-
-Create the file `$spec_root/specs/$topic/spec.md` using the same language as the
+Create the file `$topic_path/spec.md` using the same language as the
 user's prompt (e.g., English or Chinese). Use the following template:
 
 ```markdown
@@ -124,7 +83,7 @@ For the User Clarification section, ask the user to clarify any ambiguities
 discovered during requirement analysis. If nothing is ambiguous, leave the
 section empty.
 
-### Step 7: Generate todo.json
+### Step 5: Generate todo.json
 
 Break down the work into development steps following DRY, KISS, Small
 Batches, Commit Often, and Test Often.
@@ -133,7 +92,7 @@ Batches, Commit Often, and Test Often.
   step — do not split them into separate steps. Each step should be a
   self-contained unit that includes both production code and its tests.
 
-Create `$spec_root/specs/$topic/todo.json` listing each step in order:
+Create `$topic_path/todo.json` listing each step in order:
 
 ```json
 [
@@ -157,25 +116,25 @@ Create `$spec_root/specs/$topic/todo.json` listing each step in order:
   `2026-05-20T22:30:00+08:00`) and fill `commit_title` with the actual
   commit title.
 
-### Step 8: Validate todo.json
+### Step 6: Validate todo.json
 
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo validate $topic_path/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
 
-### Step 9: Output
+### Step 7: Output
 
 Display the following summary to the user:
 
 ```text
 **Topic**: `$topic`
 
-- Spec: `$spec_root/specs/$topic/spec.md`
-- Todo: `$spec_root/specs/$topic/todo.json`
-- Meta: `$spec_root/specs/$topic/meta.json`
+- Spec: `$topic_path/spec.md`
+- Todo: `$topic_path/todo.json`
+- Meta: `$topic_path/meta.json`
 ```

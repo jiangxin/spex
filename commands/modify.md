@@ -37,11 +37,9 @@ Read the command output to determine `$topic`:
 
 ### Step 3: Log Modification Prompt
 
-Run:
-
-```bash
-echo "$prompt" | <skill-path>/scripts/spex write-log $topic
-```
+1. Read `$spec_root/specs/$topic/meta.json`.
+2. Append `$prompt` to the `prompts` array.
+3. Write the updated JSON back to `$spec_root/specs/$topic/meta.json`.
 
 ### Step 4: Build Context
 
