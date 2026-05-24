@@ -33,6 +33,9 @@ Internal commands (used by skill):
                 Resolve a topic directory
   create-topic <topic>
                 Create a new topic directory
+  meta <topic_name> <key> [value]
+                Set key/value in meta.json (appends if key is "prompts")
+                Reads value from stdin if not provided
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done)
@@ -155,6 +158,14 @@ def _run_create_topic():
     mod.main()
 
 
+def _run_meta():
+    """Set key/value in meta.json."""
+    import meta
+
+    sys.argv = ["meta.py"] + sys.argv[2:]
+    meta.main()
+
+
 def _run_todo():
     """Route todo subcommands."""
     if len(sys.argv) < 3:
@@ -195,6 +206,7 @@ DIRECT_COMMANDS = {
     "get": _run_get,
     "get-topic": _run_get_topic,
     "create-topic": _run_create_topic,
+    "meta": _run_meta,
     "todo": _run_todo,
 }
 
