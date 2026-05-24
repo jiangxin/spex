@@ -102,3 +102,14 @@ Run:
 
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
+
+### Step 8: Output
+
+Display the following summary to the user:
+
+```text
+**Topic**: `$topic`
+
+- Spec: `$spec_root/specs/$topic/spec.md`
+- Todo: `$spec_root/specs/$topic/todo.json`
+```
