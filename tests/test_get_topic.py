@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from get_topic import _has_undone_tasks, resolve_topic
+from get_topic import _has_undone_tasks, main, resolve_topic
 
 
 def _make_topic(specs_dir, name, completed=False):
@@ -118,3 +118,63 @@ class TestResolveTopic:
 
         with pytest.raises(SystemExit):
             resolve_topic("", specs)
+
+
+class TestMainJsonFlag:
+    def test_plain_output(self, tmp_path, monkeypatch, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        monkeypatch.setattr(
+            sys, "argv", ["get_topic", "2026-05-20-14-30-my-topic"]
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+        main()
+        out = capsys.readouterr().out
+        assert out.strip() == "2026-05-20-14-30-my-topic"
+
+    def test_json_single_result(self, tmp_path, monkeypatch, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["get_topic", "2026-05-20-14-30-my-topic", "--json"],
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+        main()
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        assert len(lines) == 1
+        obj = json.loads(lines[0])
+        assert obj["topic_name"] == "2026-05-20-14-30-my-topic"
+        assert obj["topic_path"] == str(specs / "2026-05-20-14-30-my-topic")
+
+    def test_json_multiple_results(self, tmp_path, monkeypatch, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-edit-alpha")
+        _make_topic(specs, "2026-05-20-14-30-edit-beta")
+
+        monkeypatch.setattr(
+            sys, "argv", ["get_topic", "--json", "edit"]
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+        main()
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        assert len(lines) == 2
+        objs = [json.loads(line) for line in lines]
+        assert objs[0]["topic_name"] == "2026-05-20-14-30-edit-alpha"
+        assert objs[0]["topic_path"] == str(
+            specs / "2026-05-20-14-30-edit-alpha"
+        )
+        assert objs[1]["topic_name"] == "2026-05-20-14-30-edit-beta"
+        assert objs[1]["topic_path"] == str(
+            specs / "2026-05-20-14-30-edit-beta"
+        )

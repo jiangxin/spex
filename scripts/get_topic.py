@@ -81,12 +81,23 @@ def resolve_topic(topic_name, specs_dir):
 
 
 def main():
-    topic_name = sys.argv[1] if len(sys.argv) > 1 else ""
+    args = sys.argv[1:]
+    json_mode = "--json" in args
+    if json_mode:
+        args = [a for a in args if a != "--json"]
+
+    topic_name = args[0] if args else ""
     specs_dir = Path(get_specs_dir())
 
     results = resolve_topic(topic_name, specs_dir)
     for name in results:
-        print(name)
+        if json_mode:
+            print(json.dumps({
+                "topic_name": name,
+                "topic_path": str(specs_dir / name),
+            }))
+        else:
+            print(name)
 
 
 if __name__ == "__main__":
