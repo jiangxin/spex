@@ -35,14 +35,23 @@ A skill for managing specification documents in a structured spec directory.
 
 ## Command Routing
 
-Parse the first argument as `<command>` and route to the corresponding command file:
+Parse the first argument as `<command>` and route to the corresponding
+command file:
 
-- `create` / `new` → Read and follow `commands/create.md`
-- `list` → Read and follow `commands/list.md`
-- `list-all` → Read and follow `commands/list-all.md`
-- `modify` → Read and follow `commands/modify.md`
-- `apply` / `run` / `do` / `go` → Read and follow `commands/apply.md`
-- `archive` → Read and follow `commands/archive.md`
-- `install` → Read and follow `commands/install.md`
+- `create` / `new` → `commands/create.md`
+- `list` → `commands/list.md`
+- `list-all` → `commands/list-all.md`
+- `modify` → `commands/modify.md`
+- `apply` / `run` / `do` / `go` → `commands/apply.md`
+- `archive` → `commands/archive.md`
+- `install` → `commands/install.md`
 
-If no command is given or the command is unrecognized, show this usage information to the user.
+### Constraints
+
+1. If the first argument matches a route above, you MUST load the
+   corresponding command markdown file and follow its procedure
+   step-by-step exactly as written. Do NOT interpret the user's prompt
+   directly or skip loading the command file.
+2. If the first argument does not match any route (or is missing), show
+   the usage information above and stop. Do NOT attempt to infer intent
+   or execute any other action.
