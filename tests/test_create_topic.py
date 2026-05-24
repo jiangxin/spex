@@ -17,15 +17,15 @@ class TestCreateTopic:
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        result = create_topic("2026-05-20-hello", specs_dir)
+        result = create_topic("2026-05-20-14-30-hello", specs_dir)
 
-        assert result == specs_dir / "2026-05-20-hello"
+        assert result == specs_dir / "2026-05-20-14-30-hello"
         assert result.is_dir()
 
     def test_creates_specs_dir_if_missing(self, tmp_path):
         specs_dir = tmp_path / "specs"
 
-        result = create_topic("2026-05-20-new-topic", specs_dir)
+        result = create_topic("2026-05-20-14-30-new-topic", specs_dir)
 
         assert specs_dir.is_dir()
         assert result.is_dir()
@@ -36,29 +36,29 @@ class TestCreateTopic:
 
     def test_invalid_name_uppercase(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-UpperCase", tmp_path)
+            create_topic("2026-05-20-14-30-UpperCase", tmp_path)
 
     def test_invalid_name_spaces(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-has space", tmp_path)
+            create_topic("2026-05-20-14-30-has space", tmp_path)
 
     def test_exceeds_max_bytes(self, tmp_path):
-        long_name = "2026-05-20-" + "a" * 60
+        long_name = "2026-05-20-14-30-" + "a" * 54
         with pytest.raises(ValueError, match="exceeds 64 bytes"):
             create_topic(long_name, tmp_path)
 
     def test_already_exists(self, tmp_path):
         specs_dir = tmp_path / "specs"
-        (specs_dir / "2026-05-20-existing").mkdir(parents=True)
+        (specs_dir / "2026-05-20-14-30-existing").mkdir(parents=True)
 
         with pytest.raises(FileExistsError, match="already exists"):
-            create_topic("2026-05-20-existing", specs_dir)
+            create_topic("2026-05-20-14-30-existing", specs_dir)
 
     def test_valid_name_with_numbers(self, tmp_path):
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        result = create_topic("2026-01-01-add-v2-api", specs_dir)
+        result = create_topic("2026-01-01-09-15-add-v2-api", specs_dir)
 
         assert result.is_dir()
 
@@ -88,8 +88,8 @@ class TestMain:
             assert exc_info.value.code == 1
 
     def test_existing_topic_exits(self, monkeypatch, tmp_path):
-        (tmp_path / "2026-05-20-existing").mkdir()
-        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-existing"])
+        (tmp_path / "2026-05-20-14-30-existing").mkdir()
+        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-14-30-existing"])
         with patch.object(
             create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
         ):
@@ -98,10 +98,10 @@ class TestMain:
             assert exc_info.value.code == 1
 
     def test_success_prints_path(self, monkeypatch, tmp_path, capsys):
-        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-new-topic"])
+        monkeypatch.setattr(sys, "argv", ["prog", "2026-05-20-14-30-new-topic"])
         with patch.object(
             create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
         ):
             create_topic_dir.main()
         output = capsys.readouterr().out.strip()
-        assert output == str(tmp_path / "2026-05-20-new-topic")
+        assert output == str(tmp_path / "2026-05-20-14-30-new-topic")

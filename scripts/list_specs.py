@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import TODO_FILE, get_archives_dir, get_specs_dir
 
 PROMPT_LOG = "prompt.log"
-MAX_TOPIC_WIDTH = 32
+MAX_TOPIC_WIDTH = 38
 MAX_LINE_WIDTH = 80
 
 

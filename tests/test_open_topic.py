@@ -23,20 +23,20 @@ class TestFindTopic:
     def test_exact_match_in_specs(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(specs, "2026-05-20-my-topic")
+        _make_dir(specs, "2026-05-20-14-30-my-topic")
 
-        result = find_topic("2026-05-20-my-topic", specs, archives)
+        result = find_topic("2026-05-20-14-30-my-topic", specs, archives)
 
         assert len(result) == 1
         assert result[0][1] == "specs"
-        assert Path(result[0][0]).name == "2026-05-20-my-topic"
+        assert Path(result[0][0]).name == "2026-05-20-14-30-my-topic"
 
     def test_exact_match_in_archives(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(archives, "2026-05-20-archived")
+        _make_dir(archives, "2026-05-20-14-30-archived")
 
-        result = find_topic("2026-05-20-archived", specs, archives)
+        result = find_topic("2026-05-20-14-30-archived", specs, archives)
 
         assert len(result) == 1
         assert result[0][1] == "archives"
@@ -56,31 +56,31 @@ class TestFindTopic:
     def test_substring_single_match(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(specs, "2026-05-20-feature-login")
-        _make_dir(specs, "2026-05-20-bugfix-logout")
+        _make_dir(specs, "2026-05-20-14-30-feature-login")
+        _make_dir(specs, "2026-05-20-14-30-bugfix-logout")
 
         result = find_topic("login", specs, archives)
 
         assert len(result) == 1
-        assert Path(result[0][0]).name == "2026-05-20-feature-login"
+        assert Path(result[0][0]).name == "2026-05-20-14-30-feature-login"
 
     def test_substring_multiple_matches(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(specs, "2026-05-20-edit-alpha")
-        _make_dir(archives, "2026-05-20-edit-beta")
+        _make_dir(specs, "2026-05-20-14-30-edit-alpha")
+        _make_dir(archives, "2026-05-20-14-30-edit-beta")
 
         result = find_topic("edit", specs, archives)
 
         assert len(result) == 2
         names = [Path(r[0]).name for r in result]
-        assert "2026-05-20-edit-alpha" in names
-        assert "2026-05-20-edit-beta" in names
+        assert "2026-05-20-14-30-edit-alpha" in names
+        assert "2026-05-20-14-30-edit-beta" in names
 
     def test_no_match(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(specs, "2026-05-20-something")
+        _make_dir(specs, "2026-05-20-14-30-something")
 
         result = find_topic("nonexistent", specs, archives)
 
@@ -99,7 +99,7 @@ class TestFindTopic:
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
         _make_dir(specs, "login")
-        _make_dir(specs, "2026-05-20-feature-login")
+        _make_dir(specs, "2026-05-20-14-30-feature-login")
 
         result = find_topic("login", specs, archives)
 
@@ -161,7 +161,7 @@ class TestMain:
     def test_single_match_opens_dir(self, tmp_path):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        topic_dir = _make_dir(specs, "2026-05-20-my-topic")
+        topic_dir = _make_dir(specs, "2026-05-20-14-30-my-topic")
 
         with patch.object(
             sys, "argv", ["open_topic.py", "my-topic"]
@@ -196,8 +196,8 @@ class TestMain:
     def test_multiple_matches_lists_and_exits(self, tmp_path, capsys):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
-        _make_dir(specs, "2026-05-20-edit-alpha")
-        _make_dir(archives, "2026-05-20-edit-beta")
+        _make_dir(specs, "2026-05-20-14-30-edit-alpha")
+        _make_dir(archives, "2026-05-20-14-30-edit-beta")
 
         with patch.object(
             sys, "argv", ["open_topic.py", "edit"]

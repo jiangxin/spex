@@ -24,8 +24,8 @@ Based on `$prompt`, generate a topic name:
 
 - Compose a short English name (<32 bytes) using only `[a-z0-9-]`,
   replacing spaces with `-`.
-- Prepend the current date as `YYYY-MM-DD`.
-- The result is `$topic` (e.g., `2026-05-20-add-login-api`).
+- Prepend the current local date and time as `YYYY-MM-DD-HH-MM`.
+- The result is `$topic` (e.g., `2026-05-20-14-30-add-login-api`).
 
 ### Step 3: Create Topic Directory
 

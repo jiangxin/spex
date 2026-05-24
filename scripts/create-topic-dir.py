@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import get_specs_dir
 
-TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
+TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 MAX_TOPIC_BYTES = 64
 
 
@@ -23,7 +23,7 @@ def create_topic(topic, specs_dir):
     if not TOPIC_PATTERN.match(topic):
         raise ValueError(
             f"invalid topic name '{topic}'. "
-            "Must match YYYY-MM-DD-<name> with [a-z0-9-]."
+            "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
         )
 
     if len(topic.encode("utf-8")) > MAX_TOPIC_BYTES:

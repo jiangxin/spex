@@ -61,54 +61,54 @@ class TestHasUndoneTasks:
 class TestResolveTopic:
     def test_exact_match(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-my-topic")
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
 
-        result = resolve_topic("2026-05-20-my-topic", specs)
-        assert result == ["2026-05-20-my-topic"]
+        result = resolve_topic("2026-05-20-14-30-my-topic", specs)
+        assert result == ["2026-05-20-14-30-my-topic"]
 
     def test_fuzzy_single_match(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-fuzzy-topic")
-        _make_topic(specs, "2026-05-20-other-thing")
+        _make_topic(specs, "2026-05-20-14-30-fuzzy-topic")
+        _make_topic(specs, "2026-05-20-14-30-other-thing")
 
         result = resolve_topic("fuzzy", specs)
-        assert result == ["2026-05-20-fuzzy-topic"]
+        assert result == ["2026-05-20-14-30-fuzzy-topic"]
 
     def test_fuzzy_multiple_matches(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-edit-alpha")
-        _make_topic(specs, "2026-05-20-edit-beta")
+        _make_topic(specs, "2026-05-20-14-30-edit-alpha")
+        _make_topic(specs, "2026-05-20-14-30-edit-beta")
 
         result = resolve_topic("edit", specs)
-        assert result == ["2026-05-20-edit-alpha", "2026-05-20-edit-beta"]
+        assert result == ["2026-05-20-14-30-edit-alpha", "2026-05-20-14-30-edit-beta"]
 
     def test_fuzzy_no_match(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-something")
+        _make_topic(specs, "2026-05-20-14-30-something")
 
         with pytest.raises(SystemExit):
             resolve_topic("nonexistent", specs)
 
     def test_fuzzy_skips_completed(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-done-topic", completed=True)
-        _make_topic(specs, "2026-05-20-active-topic")
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
 
         result = resolve_topic("topic", specs)
-        assert result == ["2026-05-20-active-topic"]
+        assert result == ["2026-05-20-14-30-active-topic"]
 
     def test_no_name_lists_all_undone(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-alpha")
-        _make_topic(specs, "2026-05-20-beta")
-        _make_topic(specs, "2026-05-20-done", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-alpha")
+        _make_topic(specs, "2026-05-20-14-30-beta")
+        _make_topic(specs, "2026-05-20-14-30-done", completed=True)
 
         result = resolve_topic("", specs)
-        assert result == ["2026-05-20-alpha", "2026-05-20-beta"]
+        assert result == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
 
     def test_no_name_no_undone_exits(self, tmp_path):
         specs = tmp_path / "specs"
-        _make_topic(specs, "2026-05-20-done", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-done", completed=True)
 
         with pytest.raises(SystemExit):
             resolve_topic("", specs)
