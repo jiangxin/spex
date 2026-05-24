@@ -48,7 +48,36 @@ echo "$prompt" | <skill-path>/scripts/spex write-log $topic
 
 This records the user's original prompt via stdin.
 
-### Step 5: Create spec.md
+### Step 5: Generate meta.json
+
+Collect workspace metadata and write it to
+`$spec_root/specs/$topic/meta.json`.
+
+Gather the following values by running shell commands:
+
+- `workdir`: run `git rev-parse --show-toplevel`
+- `remote_url`: run `git remote get-url origin` (use empty string
+  if the command fails)
+- `branch`: run `git branch --show-current`
+- `user_name`: run `git config user.name`
+- `user_email`: run `git config user.email`
+- `created_at`: current local timestamp in ISO 8601 with timezone
+  offset (e.g., `2026-05-24T20:00:00+08:00`)
+
+Write the file in JSON format:
+
+```json
+{
+  "workdir": "<value>",
+  "remote_url": "<value>",
+  "branch": "<value>",
+  "user_name": "<value>",
+  "user_email": "<value>",
+  "created_at": "<value>"
+}
+```
+
+### Step 6: Create spec.md
 
 Create the file `$spec_root/specs/$topic/spec.md` using the same language as the
 user's prompt (e.g., English or Chinese). Use the following template:
@@ -95,7 +124,7 @@ For the User Clarification section, ask the user to clarify any ambiguities
 discovered during requirement analysis. If nothing is ambiguous, leave the
 section empty.
 
-### Step 6: Generate todo.json
+### Step 7: Generate todo.json
 
 Break down the work into development steps following DRY, KISS, Small
 Batches, Commit Often, and Test Often.
@@ -128,7 +157,7 @@ Create `$spec_root/specs/$topic/todo.json` listing each step in order:
   `2026-05-20T22:30:00+08:00`) and fill `commit_title` with the actual
   commit title.
 
-### Step 7: Validate todo.json
+### Step 8: Validate todo.json
 
 Run:
 
@@ -139,7 +168,7 @@ Run:
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
 
-### Step 8: Output
+### Step 9: Output
 
 Display the following summary to the user:
 
@@ -148,4 +177,5 @@ Display the following summary to the user:
 
 - Spec: `$spec_root/specs/$topic/spec.md`
 - Todo: `$spec_root/specs/$topic/todo.json`
+- Meta: `$spec_root/specs/$topic/meta.json`
 ```
