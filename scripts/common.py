@@ -6,7 +6,6 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-PROMPT_LOG = "prompt.log"
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
 DEFAULT_SPECS_ROOT_DIR = ".specs"

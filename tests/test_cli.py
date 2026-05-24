@@ -263,17 +263,6 @@ class TestCreateTopicCommand:
         assert "Usage:" in result.stderr
 
 
-class TestWriteLogCommand:
-    """Tests for the write-log subcommand."""
-
-    def test_no_arg_exit_1(self):
-        """spex write-log (no arg) exits 1."""
-        result = _run_spex("write-log")
-
-        assert result.returncode == 1
-        assert "Usage:" in result.stderr
-
-
 class TestTodoCommand:
     """Tests for the todo subcommand."""
 

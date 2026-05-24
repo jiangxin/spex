@@ -33,8 +33,6 @@ Internal commands (used by skill):
                 Resolve a topic directory
   create-topic <topic>
                 Create a new topic directory
-  write-log <topic>
-                Read prompt from stdin and log to prompt.log
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done)
@@ -157,17 +155,6 @@ def _run_create_topic():
     mod.main()
 
 
-def _run_write_log():
-    """Log a prompt to a topic's prompt.log."""
-    if len(sys.argv) < 3:
-        print("Usage: spex write-log <topic>", file=sys.stderr)
-        sys.exit(1)
-
-    mod = importlib.import_module("write-log")
-    sys.argv = ["write-log.py"] + sys.argv[2:]
-    mod.main()
-
-
 def _run_todo():
     """Route todo subcommands."""
     if len(sys.argv) < 3:
@@ -208,7 +195,6 @@ DIRECT_COMMANDS = {
     "get": _run_get,
     "get-topic": _run_get_topic,
     "create-topic": _run_create_topic,
-    "write-log": _run_write_log,
     "todo": _run_todo,
 }
 
