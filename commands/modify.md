@@ -38,9 +38,13 @@ Read the command output and parse it as a JSON array:
 
 ### Step 3: Log Modification Prompt
 
-1. Read `$topic_path/meta.json`.
-2. Append `$prompt` to the `prompts` array.
-3. Write the updated JSON back to `$topic_path/meta.json`.
+Run:
+
+```bash
+echo "$prompt" | <skill-path>/scripts/spex meta $topic prompts
+```
+
+If the script exits with an error, report the error and stop.
 
 ### Step 4: Build Context
 
