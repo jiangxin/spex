@@ -18,7 +18,8 @@ If `$topic_name` is `--all` or `-a`:
 
 1. Run `<skill-path>/scripts/spex get-topic --json ""` to get all topics
    with undone tasks.
-2. Parse each JSON line to extract `topic_name` and `topic_path`.
+2. Parse the output as a JSON array of objects, each containing
+   `topic_name` and `topic_path`.
 3. For each entry, set `$topic` and `$topic_path` and execute Steps 2
    through 8.
 4. After completing all topics, stop.
@@ -29,11 +30,11 @@ Otherwise, run:
 <skill-path>/scripts/spex get-topic --json "$topic_name"
 ```
 
-Read the command output:
+Read the command output and parse it as a JSON array:
 
-- If the output is a single JSON line, parse it and set `$topic` to
-  `topic_name` and `$topic_path` to `topic_path`.
-- If the output contains multiple JSON lines, present a numbered list of
+- If the array contains a single element, set `$topic` to its
+  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains multiple elements, present a numbered list of
   `topic_name` values to the user and ask them to choose. Set `$topic`
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.

@@ -27,11 +27,11 @@ Run:
 <skill-path>/scripts/spex get-topic --json "$topic_name"
 ```
 
-Read the command output:
+Read the command output and parse it as a JSON array:
 
-- If the output is a single JSON line, parse it and set `$topic` to
-  `topic_name` and `$topic_path` to `topic_path`.
-- If the output contains multiple JSON lines, present a numbered list of
+- If the array contains a single element, set `$topic` to its
+  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains multiple elements, present a numbered list of
   `topic_name` values to the user and ask them to choose. Set `$topic`
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
