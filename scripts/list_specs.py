@@ -9,9 +9,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import TODO_FILE, get_archives_dir, get_specs_dir
 
+META_FILE = "meta.json"
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
 MAX_LINE_WIDTH = 80
+
+
+def _read_meta(topic_dir: Path):
+    """Read meta.json, return (created_at, first_prompt) or None."""
+    meta_path = topic_dir / META_FILE
+    if not meta_path.is_file():
+        return None
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    timestamp = data.get("created_at", "")
+    prompts = data.get("prompts", [])
+    prompt_text = prompts[0] if prompts else ""
+    return (timestamp, prompt_text)
 
 
 def parse_prompt_log(log_path: Path) -> tuple:
@@ -61,7 +79,10 @@ def collect_topics(dirs: list) -> list:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            timestamp, prompt = parse_prompt_log(sub / PROMPT_LOG)
+            result = _read_meta(sub)
+            if result is None:
+                result = parse_prompt_log(sub / PROMPT_LOG)
+            timestamp, prompt = result
             n, m = get_todo_progress(sub)
             topics.append({
                 "name": sub.name,

@@ -5,11 +5,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from list_specs import (
+    _read_meta,
     collect_topics,
     format_output,
     get_todo_progress,
     parse_prompt_log,
 )
+
+
+def _make_meta(topic_dir, created_at="2026-05-20T10:00:00+08:00",
+               prompts=None):
+    """Create a meta.json file in topic_dir."""
+    if prompts is None:
+        prompts = ["some prompt text"]
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    data = {"created_at": created_at, "prompts": prompts}
+    (topic_dir / "meta.json").write_text(
+        json.dumps(data), encoding="utf-8"
+    )
 
 
 def _make_prompt_log(topic_dir, timestamp="2026-05-20T10:00:00+08:00",
@@ -36,6 +49,43 @@ def _task(task_id, completed=True):
         "completed_at": "2026-01-01T00:00:00+08:00" if completed else "",
         "commit_title": "abc: done" if completed else "",
     }
+
+
+class TestReadMeta:
+    def test_normal_read(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        _make_meta(topic, "2026-05-24T20:00:00+08:00", ["hello world"])
+
+        result = _read_meta(topic)
+
+        assert result == ("2026-05-24T20:00:00+08:00", "hello world")
+
+    def test_missing_file(self, tmp_path):
+        assert _read_meta(tmp_path / "nonexistent") is None
+
+    def test_invalid_json(self, tmp_path):
+        topic = tmp_path / "bad"
+        topic.mkdir(parents=True)
+        (topic / "meta.json").write_text("not json", encoding="utf-8")
+
+        assert _read_meta(topic) is None
+
+    def test_empty_prompts(self, tmp_path):
+        topic = tmp_path / "empty"
+        _make_meta(topic, "2026-05-24T20:00:00+08:00", [])
+
+        result = _read_meta(topic)
+
+        assert result == ("2026-05-24T20:00:00+08:00", "")
+
+    def test_missing_fields(self, tmp_path):
+        topic = tmp_path / "minimal"
+        topic.mkdir(parents=True)
+        (topic / "meta.json").write_text("{}", encoding="utf-8")
+
+        result = _read_meta(topic)
+
+        assert result == ("", "")
 
 
 class TestParsePromptLog:
@@ -139,3 +189,26 @@ class TestCollectTopics:
         assert result[0]["n"] == 0
         assert result[0]["m"] == 1
         assert result[0]["prompt"] == "hello"
+
+    def test_prefers_meta_over_prompt_log(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "my-topic"
+        _make_meta(topic, "2026-05-24T20:00:00+08:00", ["from meta"])
+        _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "from log")
+
+        result = collect_topics([specs])
+
+        assert len(result) == 1
+        assert result[0]["timestamp"] == "2026-05-24T20:00:00+08:00"
+        assert result[0]["prompt"] == "from meta"
+
+    def test_falls_back_to_prompt_log(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "old-topic"
+        _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "legacy prompt")
+
+        result = collect_topics([specs])
+
+        assert len(result) == 1
+        assert result[0]["timestamp"] == "2026-05-20T10:00:00+08:00"
+        assert result[0]["prompt"] == "legacy prompt"
