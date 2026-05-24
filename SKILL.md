@@ -46,15 +46,3 @@ Parse the first argument as `<command>` and route to the corresponding command f
 - `install` → Read and follow `commands/install.md`
 
 If no command is given or the command is unrecognized, show this usage information to the user.
-
-## Spec Directory
-
-**Before executing any command, resolve the spec root path first.** Run:
-
-```bash
-<skill-path>/scripts/spex get --spec-root
-```
-
-The script prints the spec root path to stdout. Store this value as `$spec_root` — all subsequent operations reference paths relative to `$spec_root`.
-
-The default location is `<repo-root>/.specs`. For example, if working in `/Users/alice/projects/my-app`, then `$spec_root` is `/Users/alice/projects/my-app/.specs`.
