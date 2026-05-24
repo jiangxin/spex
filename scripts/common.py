@@ -9,6 +9,7 @@ from pathlib import Path
 PROMPT_LOG = "prompt.log"
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
+DEFAULT_SPECS_ROOT_DIR = ".specs"
 
 _spec_root_cache: dict[str | None, str] = {}
 
@@ -16,6 +17,47 @@ _spec_root_cache: dict[str | None, str] = {}
 def clear_specs_root_cache():
     """Clear the spec_root cache. Useful for testing."""
     _spec_root_cache.clear()
+
+
+def _ensure_gitignore(repo_root: Path, entry: str):
+    """Ensure entry is listed in .gitignore.
+
+    Uses git check-ignore to check if entry is already ignored.
+    If not, appends it to .gitignore.
+    """
+    # Check if entry is already ignored using git check-ignore
+    result = subprocess.run(
+        ["git", "check-ignore", "-q", entry],
+        cwd=repo_root,
+        capture_output=True
+    )
+    if result.returncode == 0:
+        # Entry is already ignored
+        return
+
+    # Entry is not ignored, add it to .gitignore
+    gitignore = repo_root / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text()
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += entry + "\n"
+        gitignore.write_text(content)
+    else:
+        gitignore.write_text(entry + "\n")
+
+
+def _ensure_repo_specs_dir(repo_root: Path, specs_dir: str):
+    """Create specs_root directory if not exists and add to .gitignore.
+
+    Called only from the fallback branch (case 3) of get_specs_root().
+    """
+    specs_path = repo_root / Path(specs_dir)
+    if not specs_path.exists():
+        specs_path.mkdir(parents=True, exist_ok=True)
+        # Add trailing slash for directory entry in .gitignore
+        gitignore_entry = specs_dir.rstrip("/") + "/"
+        _ensure_gitignore(repo_root, gitignore_entry)
 
 
 def get_specs_root(workdir=None):
@@ -63,7 +105,8 @@ def get_specs_root(workdir=None):
         raise RuntimeError("Not inside a git repository")
 
     repo_root = Path(result.stdout.strip()).resolve()
-    specs_root = str(repo_root / ".specs")
+    specs_root = str(repo_root / DEFAULT_SPECS_ROOT_DIR)
+    _ensure_repo_specs_dir(repo_root, DEFAULT_SPECS_ROOT_DIR)
     _spec_root_cache[cache_key] = specs_root
     return specs_root
 

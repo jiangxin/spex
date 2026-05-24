@@ -131,3 +131,87 @@ def test_default_fallback_when_no_config(monkeypatch, tmp_path):
 
     result = get_specs_root(str(repo))
     assert result == str(repo / ".specs")
+
+
+def test_default_creates_specs_dir(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    specs_dir = repo / ".specs"
+    assert not specs_dir.exists()
+
+    get_specs_root(str(repo))
+    assert specs_dir.is_dir()
+
+
+def test_default_creates_gitignore(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    gitignore = repo / ".gitignore"
+    assert not gitignore.exists()
+
+    get_specs_root(str(repo))
+    assert gitignore.exists()
+    assert ".specs/" in gitignore.read_text().splitlines()
+
+
+def test_default_appends_to_gitignore(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    gitignore = repo / ".gitignore"
+    gitignore.write_text("node_modules/\n")
+
+    get_specs_root(str(repo))
+    lines = gitignore.read_text().splitlines()
+    assert "node_modules/" in lines
+    assert ".specs/" in lines
+
+
+def test_default_no_duplicate_gitignore(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    gitignore = repo / ".gitignore"
+    gitignore.write_text(".specs/\n")
+
+    get_specs_root(str(repo))
+    lines = gitignore.read_text().splitlines()
+    assert lines.count(".specs/") == 1
+
+
+def test_env_var_no_auto_create(monkeypatch, tmp_path):
+    custom_specs = tmp_path / "custom-specs"
+    monkeypatch.setenv("SPECS_ROOT", str(custom_specs))
+
+    result = get_specs_root()
+    assert result == str(custom_specs)
+    assert not custom_specs.exists()
+
+
+def test_git_config_no_auto_create(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    custom_path = tmp_path / "custom-from-config"
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "specs.rootdir", str(custom_path)],
+        capture_output=True,
+        check=True,
+    )
+
+    result = get_specs_root(str(repo))
+    assert result == str(custom_path.resolve())
+    assert not custom_path.exists()
+    assert not (repo / ".gitignore").exists()
