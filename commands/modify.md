@@ -24,29 +24,30 @@ changes they want to make to the spec. The user's full input becomes
 Run:
 
 ```bash
-<skill-path>/scripts/spex get-topic "$topic_name"
+<skill-path>/scripts/spex get-topic --json "$topic_name"
 ```
 
-Read the command output to determine `$topic`:
+Read the command output:
 
-- If the output is a single line matching `YYYY-MM-DD-<name>`, set `$topic`
-  to that value.
-- If the output contains multiple lines, present a numbered list to the
-  user and ask them to choose. Set `$topic` to the selected name.
+- If the output is a single JSON line, parse it and set `$topic` to
+  `topic_name` and `$topic_path` to `topic_path`.
+- If the output contains multiple JSON lines, present a numbered list of
+  `topic_name` values to the user and ask them to choose. Set `$topic`
+  and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Step 3: Log Modification Prompt
 
-1. Read `$spec_root/specs/$topic/meta.json`.
+1. Read `$topic_path/meta.json`.
 2. Append `$prompt` to the `prompts` array.
-3. Write the updated JSON back to `$spec_root/specs/$topic/meta.json`.
+3. Write the updated JSON back to `$topic_path/meta.json`.
 
 ### Step 4: Build Context
 
 Read the following as context for the modification:
 
-- Full contents of `$spec_root/specs/$topic/spec.md` (the existing spec).
-- From `$spec_root/specs/$topic/todo.json`, extract all items where
+- Full contents of `$topic_path/spec.md` (the existing spec).
+- From `$topic_path/todo.json`, extract all items where
   `completed_at` is not empty. These are the completed steps — their `id`,
   `name`, `details`, `completed_at`, and `commit_title` fields provide
   context on what has already been implemented.
@@ -54,7 +55,7 @@ Read the following as context for the modification:
 ### Step 5: Modify spec.md
 
 Based on the existing spec and the user's modification prompt, update
-`$spec_root/specs/$topic/spec.md`:
+`$topic_path/spec.md`:
 
 - Update the **Requirement** section to reflect the new/changed
   requirements.
@@ -67,7 +68,7 @@ and existing code to ensure the updated design integrates properly.
 
 ### Step 6: Generate todo.json
 
-Based on the updated spec, regenerate `$spec_root/specs/$topic/todo.json`:
+Based on the updated spec, regenerate `$topic_path/todo.json`:
 
 - **Preserve completed steps**: Keep all items with non-empty
   `completed_at` unchanged, in their original order, at the start of the
@@ -95,7 +96,7 @@ Follow the same format and rules as the create command:
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo validate $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo validate $topic_path/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON
@@ -108,6 +109,6 @@ Display the following summary to the user:
 ```text
 **Topic**: `$topic`
 
-- Spec: `$spec_root/specs/$topic/spec.md`
-- Todo: `$spec_root/specs/$topic/todo.json`
+- Spec: `$topic_path/spec.md`
+- Todo: `$topic_path/todo.json`
 ```

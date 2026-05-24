@@ -16,24 +16,26 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$topic_name` is `--all` or `-a`:
 
-1. Run `<skill-path>/scripts/spex get-topic ""` to get all topics with
-   undone tasks.
-2. Store all output lines as `$all_topics`.
-3. For each `$topic` in `$all_topics`, execute Steps 2 through 8.
+1. Run `<skill-path>/scripts/spex get-topic --json ""` to get all topics
+   with undone tasks.
+2. Parse each JSON line to extract `topic_name` and `topic_path`.
+3. For each entry, set `$topic` and `$topic_path` and execute Steps 2
+   through 8.
 4. After completing all topics, stop.
 
 Otherwise, run:
 
 ```bash
-<skill-path>/scripts/spex get-topic "$topic_name"
+<skill-path>/scripts/spex get-topic --json "$topic_name"
 ```
 
-Read the command output to determine `$topic`:
+Read the command output:
 
-- If the output is a single line matching `YYYY-MM-DD-<name>`, set `$topic`
-  to that value.
-- If the output contains multiple lines, present a numbered list to the
-  user and ask them to choose. Set `$topic` to the selected name.
+- If the output is a single JSON line, parse it and set `$topic` to
+  `topic_name` and `$topic_path` to `topic_path`.
+- If the output contains multiple JSON lines, present a numbered list of
+  `topic_name` values to the user and ask them to choose. Set `$topic`
+  and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Step 2: Get Next Undone Task
@@ -41,7 +43,7 @@ Read the command output to determine `$topic`:
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo get-next-undone --only-id $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-next-undone --only-id $topic_path/todo.json
 ```
 
 Save the output to `$next_task_id`.
@@ -52,7 +54,7 @@ stop.
 Then run:
 
 ```bash
-<skill-path>/scripts/spex todo get-next-undone --details $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-next-undone --details $topic_path/todo.json
 ```
 
 Save the output to `$next_task_text`.
@@ -62,15 +64,14 @@ Save the output to `$next_task_text`.
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo get-done $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo get-done $topic_path/todo.json
 ```
 
 Save the output to `$completed_tasks`.
 
 ### Step 4: Build Prompt
 
-Read the full contents of `$spec_root/specs/$topic/spec.md` into
-`$spec_content`.
+Read the full contents of `$topic_path/spec.md` into `$spec_content`.
 
 Assemble `$prompt` using the following template:
 
@@ -117,9 +118,9 @@ Create a git commit for the changes:
 
 - Follow the Conventional Commits format.
 - Wrap commit message lines at 72 characters.
-- **Do NOT stage or commit any files under `$spec_root`.**
+- **Do NOT stage or commit any files under `$topic_path`.**
   If spec files were accidentally staged, unstage them before committing
-  (e.g., `git reset HEAD $spec_root`).
+  (e.g., `git reset HEAD $topic_path`).
 
 After a successful commit, run:
 
@@ -134,7 +135,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo mark-done "$next_task_id" "$commit_title" $spec_root/specs/$topic/todo.json
+<skill-path>/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
 ```
 
 ### Step 8: Loop
