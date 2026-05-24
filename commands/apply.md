@@ -117,6 +117,9 @@ Create a git commit for the changes:
 
 - Follow the Conventional Commits format.
 - Wrap commit message lines at 72 characters.
+- **Do NOT stage or commit any files under `$spec_root`.**
+  If spec files were accidentally staged, unstage them before committing
+  (e.g., `git reset HEAD $spec_root`).
 
 After a successful commit, run:
 
