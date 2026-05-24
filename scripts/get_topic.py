@@ -90,13 +90,14 @@ def main():
     specs_dir = Path(get_specs_dir())
 
     results = resolve_topic(topic_name, specs_dir)
-    for name in results:
-        if json_mode:
-            print(json.dumps({
-                "topic_name": name,
-                "topic_path": str(specs_dir / name),
-            }))
-        else:
+    if json_mode:
+        items = [
+            {"topic_name": name, "topic_path": str(specs_dir / name)}
+            for name in results
+        ]
+        print(json.dumps(items, indent=2))
+    else:
+        for name in results:
             print(name)
 
 

@@ -148,11 +148,10 @@ class TestMainJsonFlag:
         )
         main()
         out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-        assert len(lines) == 1
-        obj = json.loads(lines[0])
-        assert obj["topic_name"] == "2026-05-20-14-30-my-topic"
-        assert obj["topic_path"] == str(specs / "2026-05-20-14-30-my-topic")
+        items = json.loads(out)
+        assert len(items) == 1
+        assert items[0]["topic_name"] == "2026-05-20-14-30-my-topic"
+        assert items[0]["topic_path"] == str(specs / "2026-05-20-14-30-my-topic")
 
     def test_json_multiple_results(self, tmp_path, monkeypatch, capsys):
         specs = tmp_path / "specs"
@@ -167,14 +166,13 @@ class TestMainJsonFlag:
         )
         main()
         out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-        assert len(lines) == 2
-        objs = [json.loads(line) for line in lines]
-        assert objs[0]["topic_name"] == "2026-05-20-14-30-edit-alpha"
-        assert objs[0]["topic_path"] == str(
+        items = json.loads(out)
+        assert len(items) == 2
+        assert items[0]["topic_name"] == "2026-05-20-14-30-edit-alpha"
+        assert items[0]["topic_path"] == str(
             specs / "2026-05-20-14-30-edit-alpha"
         )
-        assert objs[1]["topic_name"] == "2026-05-20-14-30-edit-beta"
-        assert objs[1]["topic_path"] == str(
+        assert items[1]["topic_name"] == "2026-05-20-14-30-edit-beta"
+        assert items[1]["topic_path"] == str(
             specs / "2026-05-20-14-30-edit-beta"
         )
