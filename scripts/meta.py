@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Set key/value in a topic's meta.json.
+
+Usage: meta.py <topic_name> <key> [value]
+
+When value is omitted, it is read from stdin.
+When key is 'prompts', the value is appended to the prompts array.
+Otherwise the key is set (overwritten) directly.
+"""
+
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import get_specs_dir
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(
+            f"Usage: {sys.argv[0]} <topic_name> <key> [value]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    topic_name = sys.argv[1]
+    key = sys.argv[2]
+
+    if len(sys.argv) >= 4:
+        value = sys.argv[3]
+    else:
+        value = sys.stdin.read()
+
+    specs_dir = Path(get_specs_dir())
+    meta_path = specs_dir / topic_name / "meta.json"
+
+    if not meta_path.is_file():
+        print(f"Error: file not found: {meta_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if key == "prompts":
+        if not isinstance(data.get("prompts"), list):
+            data["prompts"] = []
+        data["prompts"].append(value)
+    else:
+        data[key] = value
+
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+    tmp_fd = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=meta_path.parent,
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        tmp_fd.write(content)
+        tmp_fd.close()
+        os.replace(tmp_fd.name, str(meta_path))
+    except BaseException:
+        tmp_fd.close()
+        if os.path.exists(tmp_fd.name):
+            os.unlink(tmp_fd.name)
+        raise
+
+    print(content, end="")
+
+
+if __name__ == "__main__":
+    main()
