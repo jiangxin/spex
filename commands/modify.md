@@ -24,7 +24,7 @@ changes they want to make to the spec. The user's full input becomes
 Run:
 
 ```bash
-<skill-path>/scripts/spex get-topic --json "$topic_name"
+$spex_skill_path/scripts/spex get-topic --json "$topic_name"
 ```
 
 Read the command output and parse it as a JSON array:
@@ -41,7 +41,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-echo "$prompt" | <skill-path>/scripts/spex meta $topic prompts
+echo "$prompt" | $spex_skill_path/scripts/spex meta $topic prompts
 ```
 
 If the script exits with an error, report the error and stop.
@@ -100,7 +100,7 @@ Follow the same format and rules as the create command:
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo validate $topic_path/todo.json
+$spex_skill_path/scripts/spex todo validate $topic_path/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

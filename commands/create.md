@@ -29,7 +29,7 @@ Based on `$prompt`, generate a short English name (<32 bytes) using only
 Run:
 
 ```bash
-echo "$prompt" | <skill-path>/scripts/spex create-topic --json $topic
+echo "$prompt" | $spex_skill_path/scripts/spex create-topic --json $topic
 ```
 
 Parse the JSON output. The `topic_name` field is the `$topic` parameter
@@ -53,13 +53,13 @@ Example JSON output:
 Run:
 
 ```bash
-<skill-path>/scripts/spex get --spec-template
+$spex_skill_path/scripts/spex get --spec-template
 ```
 
 The command will output the template path to stdout:
 
 - If user has `<spec_root>/templates/spec.md`, use that custom template
-- Otherwise, use the built-in template from `<skill-path>/templates/spec.md`
+- Otherwise, use the built-in template from `$spex_skill_path/templates/spec.md`
 
 Save the output as `$template_path`.
 
@@ -116,7 +116,7 @@ Create `$topic_path/todo.json` listing each step in order:
 Run:
 
 ```bash
-<skill-path>/scripts/spex todo validate $topic_path/todo.json
+$spex_skill_path/scripts/spex todo validate $topic_path/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

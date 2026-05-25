@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-<skill-path>/scripts/spex list
+$spex_skill_path/scripts/spex list
 ```
 
 ### Step 2: Report Results
