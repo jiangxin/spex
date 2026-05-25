@@ -205,3 +205,72 @@ class TestFutureTasks:
 
         expected = "- step-2: Do B\n- step-3: Do C"
         assert metadata["future_tasks"] == expected
+
+
+class TestApplyOneTaskRendering:
+    """Test rendered output of apply-one-task template."""
+
+    def test_no_constraints_section(self, tmp_path, monkeypatch):
+        """Rendered template must NOT contain a '## Constraints' section."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-one-task", "test-topic")
+        assert "## Constraints" not in rendered
+
+    def test_contains_important_emphasis(self, tmp_path, monkeypatch):
+        """Rendered template must contain the single-task emphasis block."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-one-task", "test-topic")
+        assert "Only implement THIS task" in rendered
+
+    def test_future_steps_section_present_when_nonempty(
+        self, tmp_path, monkeypatch
+    ):
+        """When future_tasks is non-empty, '## Future Steps' appears."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+            _make_task("step-2", name="Second step", completed=False),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-one-task", "test-topic")
+        assert "## Future Steps" in rendered
+        assert "- step-2: Second step" in rendered
+        assert "- step-3: Third step" in rendered
+
+    def test_future_steps_section_absent_when_empty(
+        self, tmp_path, monkeypatch
+    ):
+        """When future_tasks is empty, '## Future Steps' must NOT appear."""
+        tasks = [
+            _make_task("step-1", name="Only step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-one-task", "test-topic")
+        assert "## Future Steps" not in rendered

@@ -33,12 +33,14 @@ Implement the following task:
 {{ next_task_text }}
 </current-task>
 
-## Constraints
+> **Important**: Only implement THIS task. Do not work on future steps —
+> they will be handled in subsequent iterations.
+{% if future_tasks %}
 
-- DRY — Don't Repeat Yourself: analyze existing architecture and code,
-  reuse what exists, **never** generate duplicate code.
-- KISS — Keep It Simple, Stupid: no over-engineering; keep it simple while
-  considering performance and security.
-- Single Responsibility: each function/method does one thing; consider
-  splitting if it exceeds 30 lines.
-- Test Often: run lint and unit tests to make sure all checks pass.
+## Future Steps
+
+The following steps will be implemented in subsequent iterations.
+Do NOT implement them now.
+
+{{ future_tasks }}
+{% endif %}
