@@ -29,7 +29,7 @@ Based on `$prompt`, generate a short English name (<32 bytes) using only
 Run:
 
 ```bash
-echo "$prompt" | <skill-path>/scripts/spex create-topic $topic
+echo "$prompt" | <skill-path>/scripts/spex create-topic --json $topic
 ```
 
 Parse the JSON output. The `topic_name` field is the `$topic` parameter

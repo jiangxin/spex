@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create a topic directory under the spec root."""
 
+import argparse
 import json
 import re
 import subprocess
@@ -83,16 +84,20 @@ def _write_meta(topic_dir, git_info, prompt, timestamp):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <topic>", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Create a topic directory")
+    parser.add_argument("topic", help="Topic name")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output JSON format (topic_name and topic_path)"
+    )
+    args = parser.parse_args()
 
     specs_dir = Path(get_specs_dir())
-    topic = sys.argv[1]
     prompt = sys.stdin.read().strip()
 
     try:
-        topic_name, topic_dir = create_topic(topic, specs_dir)
+        topic_name, topic_dir = create_topic(args.topic, specs_dir)
     except (ValueError, FileExistsError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -101,11 +106,14 @@ def main():
     timestamp = local_iso_timestamp()
     _write_meta(topic_dir, git_info, prompt, timestamp)
 
-    output = json.dumps({
-        "topic_name": topic_name,
-        "topic_path": str(topic_dir),
-    })
-    print(output)
+    if args.json:
+        output = json.dumps({
+            "topic_name": topic_name,
+            "topic_path": str(topic_dir),
+        })
+        print(output)
+    else:
+        print(str(topic_dir))
 
 
 if __name__ == "__main__":

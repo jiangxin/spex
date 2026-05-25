@@ -157,14 +157,7 @@ class TestMain:
         monkeypatch.setattr(sys, "stdin", io.StringIO(""))
         with pytest.raises(SystemExit) as exc_info:
             create_topic_dir.main()
-        assert exc_info.value.code == 1
-
-    def test_too_many_arguments_exits(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", "arg1", "arg2"])
-        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-        with pytest.raises(SystemExit) as exc_info:
-            create_topic_dir.main()
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2  # argparse exits with 2
 
     def test_invalid_topic_exits(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sys, "argv", ["prog", "INVALID"])
@@ -189,9 +182,9 @@ class TestMain:
                 create_topic_dir.main()
             assert exc_info.value.code == 1
 
-    def test_success_outputs_json(self, monkeypatch, tmp_path, capsys):
+    def test_success_with_json_flag(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(
-            sys, "argv", ["prog", "2026-05-20-14-30-new-topic"]
+            sys, "argv", ["prog", "2026-05-20-14-30-new-topic", "--json"]
         )
         monkeypatch.setattr(sys, "stdin", io.StringIO("hello prompt"))
 
@@ -229,3 +222,40 @@ class TestMain:
         meta = json.loads(meta_path.read_text())
         assert meta["prompts"] == ["hello prompt"]
         assert meta["created_at"] == "2026-05-24T20:00:00+08:00"
+
+    def test_success_without_json_flag(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(
+            sys, "argv", ["prog", "2026-05-20-14-30-new-topic"]
+        )
+        monkeypatch.setattr(sys, "stdin", io.StringIO("hello prompt"))
+
+        mock_git = {
+            "workdir": "/tmp/proj",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Test",
+            "user_email": "test@test.com",
+        }
+        with (
+            patch.object(
+                create_topic_dir, "get_specs_dir",
+                return_value=str(tmp_path)
+            ),
+            patch.object(
+                create_topic_dir, "_get_git_info", return_value=mock_git
+            ),
+            patch.object(
+                create_topic_dir, "local_iso_timestamp",
+                return_value="2026-05-24T20:00:00+08:00"
+            ),
+        ):
+            create_topic_dir.main()
+
+        output = capsys.readouterr().out.strip()
+        assert output == str(tmp_path / "2026-05-20-14-30-new-topic")
+
+        # Verify meta.json was written
+        meta_path = tmp_path / "2026-05-20-14-30-new-topic" / "meta.json"
+        assert meta_path.exists()
+        meta = json.loads(meta_path.read_text())
+        assert meta["prompts"] == ["hello prompt"]
