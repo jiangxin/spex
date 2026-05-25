@@ -40,6 +40,8 @@ Internal commands (used by skill):
                 Resolve a topic directory
   create-topic [--json] [--get <keys>] <topic>
                 Create a new topic directory
+  prompt <name> [--topic <topic>] [-o <file>]
+                Render a Jinja2 template with metadata
   meta <topic_name> <key> [value]
                 Set key/value in meta.json (appends if key is "prompts")
                 Reads value from stdin if not provided
@@ -168,6 +170,14 @@ def _run_create_topic():
     mod.main()
 
 
+def _run_prompt():
+    """Render a Jinja2 template with metadata."""
+    import prompt
+
+    sys.argv = ["prompt.py"] + sys.argv[2:]
+    prompt.main()
+
+
 def _run_meta():
     """Set key/value in meta.json."""
     import meta
@@ -237,6 +247,7 @@ DIRECT_COMMANDS = {
     "get": _run_get,
     "get-topic": _run_get_topic,
     "create-topic": _run_create_topic,
+    "prompt": _run_prompt,
     "meta": _run_meta,
     "todo": _run_todo,
     "version": _run_version,

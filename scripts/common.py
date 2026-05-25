@@ -349,7 +349,7 @@ def _extract_template_version(path: Path) -> str:
     return ""
 
 
-def _strip_front_matter(content: str) -> str:
+def strip_front_matter(content: str) -> str:
     """Remove YAML front-matter from template content."""
     stripped = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, count=1, flags=re.DOTALL)
     return stripped.lstrip("\n")
@@ -384,21 +384,22 @@ def _sync_builtin_template(template_name: str, workdir=None):
 
 
 def get_template(template_name: str, workdir=None) -> str:
-    """Return template content for the given template name.
+    """Return raw template content for the given template name.
 
     Workflow:
     1. Sync built-in template to <spex_root>/templates/builtin/ if needed.
     2. If <spex_root>/templates/<name> exists (user custom), return its content.
     3. Otherwise return <spex_root>/templates/builtin/<name> content.
 
-    The returned content has YAML front-matter stripped.
+    The returned content includes YAML front-matter. Use strip_front_matter()
+    to remove it after rendering.
 
     Args:
         template_name: Template filename (e.g. "spec.md").
         workdir: Working directory for git lookup.
 
     Returns:
-        Template content as a string (without front-matter).
+        Template content as a string (with front-matter intact).
     """
     _sync_builtin_template(template_name, workdir)
 
@@ -407,19 +408,16 @@ def get_template(template_name: str, workdir=None) -> str:
     builtin = spex_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / template_name
 
     if custom.exists():
-        content = custom.read_text(encoding="utf-8")
-    else:
-        content = builtin.read_text(encoding="utf-8")
-
-    return _strip_front_matter(content)
+        return custom.read_text(encoding="utf-8")
+    return builtin.read_text(encoding="utf-8")
 
 
 def get_spec_template(workdir=None) -> str:
-    """Return spec template content.
+    """Return spec template content with front-matter stripped.
 
     Convenience wrapper around get_template() for the spec template.
     """
-    return get_template(SPEC_FILE, workdir)
+    return strip_front_matter(get_template(SPEC_FILE, workdir))
 
 
 if __name__ == "__main__":

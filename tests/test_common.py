@@ -419,7 +419,7 @@ class TestGetSpecTemplate:
         try:
             result = get_template("test-tpl.md")
             assert "# Test TPL" in result
-            assert "---" not in result
+            assert "---" in result  # front-matter preserved
             # Builtin copy synced
             synced = tmp_path / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / "test-tpl.md"
             assert synced.exists()
