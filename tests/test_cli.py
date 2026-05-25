@@ -362,34 +362,6 @@ class TestTodoCommand:
         assert "Usage:" in result.stderr
 
 
-class TestGetSpecTemplate:
-    def test_get_spec_template_returns_content(self, tmp_path, monkeypatch):
-        """Command should output template content (not a path)."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-
-        result = _run_spex("get", "--spec-template")
-
-        assert result.returncode == 0
-        output = result.stdout
-        # Should contain template content
-        assert "# Requirement" in output
-        # Front-matter should be stripped
-        assert "---" not in output
-
-    def test_get_spec_template_custom_priority(self, tmp_path, monkeypatch):
-        """Custom template content should be returned when it exists."""
-        template_path = tmp_path / "templates" / "spec-template.md"
-        template_path.parent.mkdir()
-        template_path.write_text("# My Custom Spec\n\nCustom content here")
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-
-        result = _run_spex("get", "--spec-template")
-
-        assert result.returncode == 0
-        output = result.stdout
-        assert "# My Custom Spec" in output
-        assert "Custom content here" in output
-
 
 class TestSpexRootGlobalOption:
     def test_spex_root_option_used(self, tmp_path):

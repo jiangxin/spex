@@ -33,9 +33,8 @@ Commands (require AI coding agent):
   modify      Modify an existing spec
 
 Internal commands (used by skill):
-  get --spex-root|--specs-dir|--archives-dir|--spec-template
-                Print the requested path (--spec-template outputs
-                template content with front-matter stripped)
+  get --spex-root|--specs-dir|--archives-dir
+                Print the requested path
   get-topic [name]
                 Resolve a topic directory
   create-topic [--json] [--get <keys>] [--get-prompt <names>] <topic>
@@ -138,12 +137,11 @@ def _run_get():
         "--spex-root": common.get_spex_root,
         "--specs-dir": common.get_specs_dir,
         "--archives-dir": common.get_archives_dir,
-        "--spec-template": common.get_spec_template,
     }
 
     if len(flags) != 1 or flags[0] not in flag_map:
         print(
-            "Usage: spex get --spex-root|--specs-dir|--archives-dir|--spec-template",
+            "Usage: spex get --spex-root|--specs-dir|--archives-dir",
             file=sys.stderr,
         )
         sys.exit(1)

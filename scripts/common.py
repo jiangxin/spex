@@ -9,7 +9,6 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-SPEC_FILE = "spec-template.md"
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
 DEFAULT_SPEX_ROOT_DIR = ".spex"
@@ -411,13 +410,6 @@ def get_template(template_name: str, workdir=None) -> str:
         return custom.read_text(encoding="utf-8")
     return builtin.read_text(encoding="utf-8")
 
-
-def get_spec_template(workdir=None) -> str:
-    """Return spec template content with front-matter stripped.
-
-    Convenience wrapper around get_template() for the spec template.
-    """
-    return strip_front_matter(get_template(SPEC_FILE, workdir))
 
 
 if __name__ == "__main__":
