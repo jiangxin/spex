@@ -60,6 +60,42 @@ class TestHelpFlag:
         assert result.returncode == 0
         assert "Usage:" in result.stdout
 
+    def test_list_h_exits_zero_with_usage(self):
+        result = _run_spex("list", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_list_help_exits_zero_with_usage(self):
+        result = _run_spex("list", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_archive_h_exits_zero_with_usage(self):
+        result = _run_spex("archive", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_archive_help_exits_zero_with_usage(self):
+        result = _run_spex("archive", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_open_h_exits_zero_with_usage(self):
+        result = _run_spex("open", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_open_help_exits_zero_with_usage(self):
+        result = _run_spex("open", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
     def test_install_cli_h_exits_zero_with_usage(self):
         result = _run_spex("install-cli", "-h")
 

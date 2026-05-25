@@ -11,7 +11,17 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import get_archives_dir, get_specs_dir, get_spex_root
+from common import check_help_flag, get_archives_dir, get_specs_dir, get_spex_root
+
+USAGE = """\
+Usage: spex open [topic]
+
+Open a topic directory in the system file browser.
+If no topic is given, opens the spex root directory.
+
+Options:
+  -h, --help  Show this help message and exit
+"""
 
 
 def find_topic(name, specs_dir, archives_dir):
@@ -72,6 +82,7 @@ def open_directory(path):
 
 def main():
     """CLI entry point for the open command."""
+    check_help_flag(USAGE)
     topic = sys.argv[1] if len(sys.argv) > 1 else ""
 
     if not topic:

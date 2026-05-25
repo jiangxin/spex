@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    check_help_flag,
     get_archives_dir,
     get_current_workdir,
     get_specs_dir,
@@ -14,6 +15,16 @@ from common import (
     load_meta,
     same_path,
 )
+
+USAGE = """\
+Usage: spex list [--all]
+
+List spec topics with progress.
+
+Options:
+  --all        Include archived topics
+  -h, --help   Show this help message and exit
+"""
 
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
@@ -146,6 +157,7 @@ def format_output(
 
 
 def main():
+    check_help_flag(USAGE)
     all_mode = "--all" in sys.argv
 
     dirs = [Path(get_specs_dir())]

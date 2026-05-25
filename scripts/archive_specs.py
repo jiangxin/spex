@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    check_help_flag,
     get_archives_dir,
     get_current_workdir,
     get_specs_dir,
@@ -18,6 +19,16 @@ from common import (
     is_topic_completed,
     same_path,
 )
+
+USAGE = """\
+Usage: spex archive [--dry-run | -n]
+
+Archive completed spec topics.
+
+Options:
+  --dry-run, -n  Preview without moving
+  -h, --help     Show this help message and exit
+"""
 
 
 def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:
@@ -60,6 +71,7 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def main():
+    check_help_flag(USAGE)
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
 
     specs_dir = Path(get_specs_dir())
