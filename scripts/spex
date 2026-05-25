@@ -25,7 +25,7 @@ Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
   archive [-n]  Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
-  install       Install spex symlink to ~/.local/bin
+  install-cli   Install spex symlink to ~/.local/bin
 
 Commands (require AI coding agent):
   apply       Apply a spec step-by-step
@@ -222,6 +222,7 @@ DIRECT_COMMANDS = {
     "list": _run_list,
     "archive": _run_archive,
     "open": _run_open,
+    "install-cli": _run_install,
     "install": _run_install,
     "get": _run_get,
     "get-topic": _run_get_topic,

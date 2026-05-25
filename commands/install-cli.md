@@ -1,11 +1,11 @@
-# spex install
+# spex install-cli
 
 Install the `spex` CLI tool to `~/.local/bin` via symlink.
 
 ## Usage
 
 ```text
-/spex install
+/spex install-cli
 ```
 
 ## Procedure
@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex install
+$spex_skill_dir/scripts/spex install-cli
 ```
 
 Report the output to the user.
