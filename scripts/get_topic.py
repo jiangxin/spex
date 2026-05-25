@@ -10,11 +10,23 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import get_specs_dir, has_undone_tasks
+from common import (
+    get_current_workdir,
+    get_specs_dir,
+    get_topic_workdir,
+    has_undone_tasks,
+    same_path,
+)
 
 
-def resolve_topic(topic_name, specs_dir):
+def resolve_topic(topic_name, specs_dir, filter_workdir=None):
     """Resolve topic name against specs_dir.
+
+    Args:
+        topic_name: Topic name or substring to match. Empty string lists all.
+        specs_dir: Path to the specs directory.
+        filter_workdir: When set, only return topics whose meta.json workdir
+            matches this path. Ignored when topic_name is provided.
 
     Returns a list of matching topic names.
     Raises SystemExit on error.
@@ -56,11 +68,35 @@ def resolve_topic(topic_name, specs_dir):
         if d.is_dir() and has_undone_tasks(d)
     )
 
+    if filter_workdir:
+        candidates = [
+            name for name in candidates
+            if _topic_matches_workdir(specs_dir / name, filter_workdir)
+        ]
+
     if not candidates:
-        print("Error: no topics with undone tasks found.", file=sys.stderr)
+        if filter_workdir:
+            print(
+                "Error: no topics with undone tasks found for the current"
+                " workspace. Use --all to show all topics.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Error: no topics with undone tasks found.",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     return candidates
+
+
+def _topic_matches_workdir(topic_dir, workdir):
+    """Return True if the topic's workdir matches the given workdir."""
+    topic_wd = get_topic_workdir(topic_dir)
+    if not topic_wd:
+        return False
+    return same_path(topic_wd, workdir)
 
 
 def main():
@@ -69,10 +105,28 @@ def main():
     if json_mode:
         args = [a for a in args if a != "--json"]
 
+    all_flag = "--all" in args
+    if all_flag:
+        args = [a for a in args if a != "--all"]
+
     topic_name = args[0] if args else ""
+
+    if all_flag and topic_name:
+        print(
+            "Error: --all cannot be used with a topic name.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     specs_dir = Path(get_specs_dir())
 
-    results = resolve_topic(topic_name, specs_dir)
+    # Determine workspace filter
+    if topic_name or all_flag:
+        filter_workdir = None
+    else:
+        filter_workdir = get_current_workdir()
+
+    results = resolve_topic(topic_name, specs_dir, filter_workdir=filter_workdir)
     if json_mode:
         items = [
             {"topic_name": name, "topic_path": str(specs_dir / name)}
