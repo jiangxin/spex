@@ -43,12 +43,13 @@ Run:
 echo "$requirement" | $spex_skill_path/scripts/spex create-topic --json $topic
 ```
 
-Parse the JSON output. The `topic_name` field is the `$topic` parameter
-prefixed with a date stamp in `YYYY-MM-DD-HH-mm` format (e.g., if
-`$topic` is `add-login-api`, the `topic_name` becomes
-`2026-05-24-10-30-add-login-api`). Save `topic_name` as `$topic_name`
-and `topic_path` as `$topic_path`. If the script exits with an error,
-return to Step 2 and retry with a different name.
+The script creates the topic directory and `meta.json` (with the
+requirement saved to its `prompts` field). Parse the JSON output. The
+`topic_name` field is `$topic` prefixed with a date stamp in
+`YYYY-MM-DD-HH-mm` format (e.g., `2026-05-24-10-30-add-login-api`).
+Save `topic_name` as `$topic_name` and `topic_path` as `$topic_path`.
+If the script exits with an error, return to Step 2 and retry with a
+different name.
 
 Example JSON output:
 
@@ -67,11 +68,6 @@ Run:
 $spex_skill_path/scripts/spex get --spec-template
 ```
 
-The command outputs the template content to stdout (with front-matter
-stripped). It automatically syncs the built-in template to
-`<spec_root>/templates/builtin/spec.md` and returns the user's custom
-`<spec_root>/templates/spec.md` if it exists, otherwise the builtin copy.
-
 Save the output as `$template_content`.
 
 ### Step 5: Design Specification
@@ -83,8 +79,9 @@ data models, API contracts, error handling, and edge cases.
 Using `$template_content` as the template, create `$topic_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
 Replace the placeholder sections (text enclosed in angle brackets or square
-brackets) with the analysis and design results. Keep the Constraints section
-as-is.
+brackets) with the analysis and design results. Fill the "User
+Clarification" section with clarifications gathered in Step 1. Keep the
+Constraints section as-is.
 
 ### Step 6: Plan Implementation Steps
 
@@ -119,10 +116,7 @@ Create `$topic_path/todo.json` listing each step in order:
   headings (`#`, `##`, etc.) inside the value — use lists, bold, and
   inline code instead.
 - All steps start with `completed_at: ""` and an empty `commit_title`.
-- After a step is fully implemented and committed, set `completed_at` to
-  the current local timestamp with timezone offset (ISO 8601, e.g.
-  `2026-05-20T22:30:00+08:00`) and fill `commit_title` with the actual
-  commit title.
+  These fields are updated later when each step is implemented.
 
 ### Step 7: Validate todo.json
 

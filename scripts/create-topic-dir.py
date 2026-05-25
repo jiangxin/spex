@@ -84,7 +84,10 @@ def _write_meta(topic_dir, git_info, prompt, timestamp):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create a topic directory")
+    parser = argparse.ArgumentParser(
+        description="Create a topic directory. Reads requirement from stdin "
+        "and saves it to meta.json prompts field."
+    )
     parser.add_argument("topic", help="Topic name")
     parser.add_argument(
         "--json",
