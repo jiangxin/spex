@@ -210,6 +210,11 @@ def get_current_workdir():
     return str(repo_root) if repo_root else None
 
 
+def same_path(a: str, b: str) -> bool:
+    """Return True if two path strings refer to the same filesystem location."""
+    return Path(a).resolve() == Path(b).resolve()
+
+
 def load_meta(topic_dir: Path):
     """Load meta.json from a topic directory.
 

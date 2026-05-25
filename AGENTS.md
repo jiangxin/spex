@@ -36,6 +36,7 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 | `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
 | `get_current_workdir()` | Return git toplevel of cwd, or `None` if not in a repo. |
+| `same_path(a, b)` | True if two path strings resolve to the same location (symlink-safe). |
 | `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
 | `load_meta(topic_dir)` | Load and parse `meta.json`; returns dict or `None`. |
 | `load_todo(topic_dir)` | Load and parse `todo.json`; returns list or `None`. |

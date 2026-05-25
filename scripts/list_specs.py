@@ -12,6 +12,7 @@ from common import (
     get_specs_dir,
     get_todo_progress,
     load_meta,
+    same_path,
 )
 
 PROMPT_LOG = "prompt.log"
@@ -160,7 +161,7 @@ def main():
     if current_workdir:
         topics = [
             t for t in topics
-            if not t.get("workdir") or t["workdir"] == current_workdir
+            if not t.get("workdir") or same_path(t["workdir"], current_workdir)
         ]
         show_repo = False
     else:

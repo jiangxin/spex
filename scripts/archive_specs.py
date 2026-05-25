@@ -16,6 +16,7 @@ from common import (
     get_specs_dir,
     get_topic_workdir,
     is_topic_completed,
+    same_path,
 )
 
 
@@ -33,7 +34,7 @@ def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:
             continue
         if current_workdir is not None:
             workdir = get_topic_workdir(d)
-            if workdir and workdir != current_workdir:
+            if workdir and not same_path(workdir, current_workdir):
                 continue
         results.append(d)
     return sorted(results)
