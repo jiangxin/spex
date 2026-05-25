@@ -56,6 +56,7 @@ def cmd_validate(args):
         sys.exit(1)
 
     errors = []
+    seen_ids = {}
     for i, item in enumerate(data):
         if not isinstance(item, dict):
             errors.append(f"  item[{i}]: must be an object.")
@@ -65,6 +66,14 @@ def cmd_validate(args):
             errors.append(
                 f"  item[{i}]: missing fields: {', '.join(sorted(missing))}"
             )
+        item_id = item.get("id", "")
+        if item_id in seen_ids:
+            errors.append(
+                f"  item[{i}]: duplicate id '{item_id}'"
+                f" (first seen at item[{seen_ids[item_id]}])"
+            )
+        else:
+            seen_ids[item_id] = i
 
     if errors:
         print("Error: invalid todo items:", file=sys.stderr)

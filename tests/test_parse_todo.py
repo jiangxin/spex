@@ -99,6 +99,16 @@ class TestCmdValidate:
         with pytest.raises(SystemExit):
             cmd_validate([str(path)])
 
+    def test_duplicate_ids(self, tmp_path, capsys):
+        tasks = [_make_task("1"), _make_task("1", name="Duplicate")]
+        path = _write_todo(tmp_path, tasks)
+
+        with pytest.raises(SystemExit):
+            cmd_validate([path])
+
+        err = capsys.readouterr().err
+        assert "duplicate id '1'" in err
+
 
 # ===================== cmd_get_next_undone =====================
 
