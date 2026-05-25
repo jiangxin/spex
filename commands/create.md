@@ -73,10 +73,10 @@ data models, API contracts, error handling, and edge cases.
 
 Using `$spec_template` as the template, create `$topic_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
-Replace the placeholder sections (text enclosed in angle brackets or square
-brackets) with the analysis and design results. Fill the "User
-Clarification" section with clarifications gathered in Step 1. Keep the
-Constraints section as-is.
+Replace the placeholder sections (HTML comments like
+`<!-- Replace this section with ... -->`) with the analysis and design
+results. Fill the "User Clarification" section with clarifications
+gathered in Step 1. Keep the Constraints section as-is.
 
 ### Step 5: Plan Implementation Steps
 

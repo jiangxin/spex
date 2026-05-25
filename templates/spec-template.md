@@ -4,11 +4,24 @@ version: "1.0.0"
 
 # Requirement
 
-<Requirement analysis based on the user's original prompt>
+<!-- Replace this section with requirement analysis
+     based on the user's original prompt -->
 
 # User Clarification
 
-<Clarifications from the user on ambiguous requirements>
+<!-- Replace this section with clarifications from
+     the user on ambiguous requirements -->
+
+# Detailed Design
+
+<!-- Replace this section with detailed design based on
+     analysis of the current repository architecture
+     and codebase -->
+
+# Test Plan
+
+<!-- Replace this section with a detailed test plan
+     based on the design above -->
 
 # Constraints
 
@@ -24,12 +37,3 @@ version: "1.0.0"
   Conventional Commits format; wrap commit messages at 72 characters.
 - Test Often: run lint and unit tests after each step; proceed only when
   all checks pass.
-
-# Detailed Design
-
-<Detailed design based on analysis of the current repository architecture
-and codebase>
-
-# Test Plan
-
-<Detailed test plan based on the design above>
