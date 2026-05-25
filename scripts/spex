@@ -32,7 +32,7 @@ Internal commands (used by skill):
                 template content with front-matter stripped)
   get-topic [name]
                 Resolve a topic directory
-  create-topic <topic>
+  create-topic [--json] [--get <keys>] <topic>
                 Create a new topic directory
   meta <topic_name> <key> [value]
                 Set key/value in meta.json (appends if key is "prompts")

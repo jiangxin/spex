@@ -40,14 +40,18 @@ Based on `$requirement`, generate a short English name (<32 bytes) using only
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_path/scripts/spex create-topic --json $topic
+echo "$requirement" | $spex_skill_path/scripts/spex create-topic --json --get "spec_template" $topic
 ```
 
 The script creates the topic directory and `meta.json` (with the
-requirement saved to its `prompts` field). Parse the JSON output. The
-`topic_name` field is `$topic` prefixed with a date stamp in
-`YYYY-MM-DD-HH-mm` format (e.g., `2026-05-24-10-30-add-login-api`).
-Save `topic_name` as `$topic_name` and `topic_path` as `$topic_path`.
+requirement saved to its `prompts` field). Parse the JSON output and
+save these variables:
+
+- `$topic_name` ← `topic_name` (topic with date prefix,
+  e.g., `2026-05-24-10-30-add-login-api`)
+- `$topic_path` ← `topic_path`
+- `$template_content` ← `spec_template`
+
 If the script exits with an error, return to Step 2 and retry with a
 different name.
 
@@ -56,21 +60,12 @@ Example JSON output:
 ```json
 {
   "topic_name": "2026-05-24-10-30-add-login-api",
-  "topic_path": "/path/to/.specs/specs/2026-05-24-10-30-add-login-api"
+  "topic_path": "/path/to/.specs/specs/2026-05-24-10-30-add-login-api",
+  "spec_template": "# [Title]\n\n..."
 }
 ```
 
-### Step 4: Get Spec Template
-
-Run:
-
-```bash
-$spex_skill_path/scripts/spex get --spec-template
-```
-
-Save the output as `$template_content`.
-
-### Step 5: Design Specification
+### Step 4: Design Specification
 
 Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
@@ -83,7 +78,7 @@ brackets) with the analysis and design results. Fill the "User
 Clarification" section with clarifications gathered in Step 1. Keep the
 Constraints section as-is.
 
-### Step 6: Plan Implementation Steps
+### Step 5: Plan Implementation Steps
 
 Based on the design in `$topic_path/spec.md`, break down the work into
 incremental development steps. Each step should be independently
@@ -118,7 +113,7 @@ Create `$topic_path/todo.json` listing each step in order:
 - All steps start with `completed_at: ""` and an empty `commit_title`.
   These fields are updated later when each step is implemented.
 
-### Step 7: Validate todo.json
+### Step 6: Validate todo.json
 
 Run:
 
@@ -129,7 +124,7 @@ $spex_skill_path/scripts/spex todo validate $topic_path/todo.json
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
 
-### Step 8: Output
+### Step 7: Output
 
 Display the following summary to the user:
 

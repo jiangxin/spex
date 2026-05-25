@@ -10,6 +10,8 @@ from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import common  # noqa: E402
+
 create_topic_dir = importlib.import_module("create-topic-dir")
 create_topic = create_topic_dir.create_topic
 
@@ -222,6 +224,112 @@ class TestMain:
         meta = json.loads(meta_path.read_text())
         assert meta["prompts"] == ["hello prompt"]
         assert meta["created_at"] == "2026-05-24T20:00:00+08:00"
+
+    def test_get_without_json_exits(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["prog", "2026-05-20-14-30-topic", "--get", "spec_template"]
+        )
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with patch.object(
+            create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_topic_dir.main()
+            assert exc_info.value.code == 1
+
+    def test_get_invalid_key_exits(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["prog", "2026-05-20-14-30-topic", "--json", "--get", "bad-key"]
+        )
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with patch.object(
+            create_topic_dir, "get_specs_dir", return_value=str(tmp_path)
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_topic_dir.main()
+            assert exc_info.value.code == 1
+
+    def test_get_spec_template(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["prog", "2026-05-20-14-30-topic", "--json",
+             "--get", "spec_template"]
+        )
+        monkeypatch.setattr(sys, "stdin", io.StringIO("req"))
+
+        mock_git = {
+            "workdir": "/tmp/proj",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Test",
+            "user_email": "test@test.com",
+        }
+        with (
+            patch.object(
+                create_topic_dir, "get_specs_dir",
+                return_value=str(tmp_path)
+            ),
+            patch.object(
+                create_topic_dir, "_get_git_info", return_value=mock_git
+            ),
+            patch.object(
+                create_topic_dir, "local_iso_timestamp",
+                return_value="2026-05-24T20:00:00+08:00"
+            ),
+            patch.object(
+                common, "get_spec_template",
+                return_value="# Template"
+            ),
+        ):
+            create_topic_dir.main()
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["topic_name"] == "2026-05-20-14-30-topic"
+        assert output["spec_template"] == "# Template"
+
+    def test_get_multiple_keys(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["prog", "2026-05-20-14-30-topic", "--json",
+             "--get", "spec_root,specs_dir"]
+        )
+        monkeypatch.setattr(sys, "stdin", io.StringIO("req"))
+
+        mock_git = {
+            "workdir": "/tmp/proj",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Test",
+            "user_email": "test@test.com",
+        }
+        with (
+            patch.object(
+                create_topic_dir, "get_specs_dir",
+                return_value=str(tmp_path)
+            ),
+            patch.object(
+                create_topic_dir, "_get_git_info", return_value=mock_git
+            ),
+            patch.object(
+                create_topic_dir, "local_iso_timestamp",
+                return_value="2026-05-24T20:00:00+08:00"
+            ),
+            patch.object(
+                common, "get_specs_root",
+                return_value="/mock/spec-root"
+            ),
+            patch.object(
+                common, "get_specs_dir",
+                return_value="/mock/specs-dir"
+            ),
+        ):
+            create_topic_dir.main()
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["spec_root"] == "/mock/spec-root"
+        assert output["specs_dir"] == "/mock/specs-dir"
 
     def test_success_without_json_flag(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(

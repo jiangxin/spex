@@ -10,7 +10,15 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common
 from common import get_specs_dir, local_iso_timestamp
+
+SUPPORTED_GET_KEYS = {
+    "spec_root": "get_specs_root",
+    "specs_dir": "get_specs_dir",
+    "archives_dir": "get_archives_dir",
+    "spec_template": "get_spec_template",
+}
 
 TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
@@ -94,7 +102,28 @@ def main():
         action="store_true",
         help="Output JSON format (topic_name and topic_path)"
     )
+    parser.add_argument(
+        "--get",
+        help="Comma-separated keys to include in JSON output "
+        f"(supported: {', '.join(sorted(SUPPORTED_GET_KEYS))})"
+    )
     args = parser.parse_args()
+
+    if args.get and not args.json:
+        print("Error: --get requires --json", file=sys.stderr)
+        sys.exit(1)
+
+    get_keys = []
+    if args.get:
+        get_keys = [k.strip() for k in args.get.split(",")]
+        invalid = [k for k in get_keys if k not in SUPPORTED_GET_KEYS]
+        if invalid:
+            print(
+                f"Error: unsupported --get key(s): {', '.join(invalid)}. "
+                f"Supported: {', '.join(sorted(SUPPORTED_GET_KEYS))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     specs_dir = Path(get_specs_dir())
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
@@ -110,11 +139,13 @@ def main():
     _write_meta(topic_dir, git_info, prompt, timestamp)
 
     if args.json:
-        output = json.dumps({
+        result = {
             "topic_name": topic_name,
             "topic_path": str(topic_dir),
-        }, indent=2)
-        print(output)
+        }
+        for key in get_keys:
+            result[key] = getattr(common, SUPPORTED_GET_KEYS[key])()
+        print(json.dumps(result, indent=2))
     else:
         print(str(topic_dir))
 
