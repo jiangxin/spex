@@ -115,13 +115,13 @@ Launch a subagent with `$prompt` to implement the current task.
 
 ### Step 6: Commit
 
-Create a git commit for the changes:
+Load the commit prompt:
 
-- Follow the Conventional Commits format.
-- Wrap commit message lines at 72 characters.
-- **Do NOT stage or commit any files under `$topic_path`.**
-  If spec files were accidentally staged, unstage them before committing
-  (e.g., `git reset HEAD $topic_path`).
+```bash
+$spex_skill_dir/scripts/spex prompt apply-commit
+```
+
+Follow the output instructions to create a git commit.
 
 After a successful commit, run:
 

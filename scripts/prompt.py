@@ -2,6 +2,7 @@
 """Render a Jinja2 template with metadata and output the result."""
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
     get_specs_dir,
+    get_spex_root,
     get_template,
     load_meta,
     local_iso_timestamp,
@@ -80,7 +82,7 @@ def validate_required_meta(content, metadata):
             else:
                 break
 
-    missing = [key for key in required if key not in metadata or not metadata[key]]
+    missing = [key for key in required if key not in metadata]
     if missing:
         print(
             f"Error: missing required metadata: {', '.join(missing)}",
@@ -107,8 +109,17 @@ def _build_metadata(template_name, topic_name=None):
         if meta:
             metadata.update(meta)
 
-    if template_name == "spec":
-        pass  # spec uses common + topic metadata only
+    if template_name == "apply-commit":
+        metadata["spex_root"] = ""
+        workdir = metadata.get("workdir", "")
+        if workdir:
+            try:
+                spex_root = get_spex_root()
+                rel = os.path.relpath(spex_root, workdir)
+                if not rel.startswith(".."):
+                    metadata["spex_root"] = rel
+            except (ValueError, RuntimeError):
+                pass
 
     return metadata
 
