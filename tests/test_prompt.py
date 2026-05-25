@@ -1,5 +1,6 @@
 """Tests for prompt.py: future_tasks metadata and all-done detection."""
 
+import io
 import json
 import subprocess
 import sys
@@ -320,3 +321,85 @@ class TestTaskIdStderr:
 
         captured = capsys.readouterr()
         assert "task_id=" not in captured.err
+
+
+class TestStdinPromptContext:
+    """Test --stdin flag and prompt_context behavior."""
+
+    def test_stdin_flag_reads_raw_text_as_prompt_context(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """--stdin reads raw text from stdin and sets prompt_context."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "apply-commit", "--stdin"]
+        )
+        monkeypatch.setattr("sys.stdin", io.StringIO("Fix the login bug"))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "<commit-context>" in captured.out
+        assert "Fix the login bug" in captured.out
+
+    def test_without_stdin_flag_json_behavior_preserved(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Without --stdin, valid JSON from stdin is parsed as extra_vars."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "apply-commit"]
+        )
+        json_input = json.dumps({"prompt_context": "context from json"})
+        monkeypatch.setattr("sys.stdin", io.StringIO(json_input))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "<commit-context>" in captured.out
+        assert "context from json" in captured.out
+
+    def test_render_prompt_with_nonempty_prompt_context(
+        self, tmp_path, monkeypatch
+    ):
+        """render_prompt with prompt_context renders <commit-context>."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-commit", extra_vars={"prompt_context": "some context"}
+        )
+        assert "<commit-context>" in rendered
+        assert "some context" in rendered
+
+    def test_render_prompt_with_empty_prompt_context(
+        self, tmp_path, monkeypatch
+    ):
+        """render_prompt without prompt_context does NOT render <commit-context>."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-commit")
+        assert "<commit-context>" not in rendered
