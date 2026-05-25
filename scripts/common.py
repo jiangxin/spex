@@ -122,7 +122,7 @@ def _find_spex_yaml(repo_root):
     return None
 
 
-def get_spex_root(workdir=None):
+def get_spex_root(workdir=None, require_git=False):
     """Return the spex root directory path.
 
     Resolution order:
@@ -132,19 +132,27 @@ def get_spex_root(workdir=None):
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
+        require_git: If True, raise when not inside a git worktree even if
+            spex_root was resolved via env/config. Used by commands that
+            need a git context (apply, create, modify).
 
     Returns:
         Absolute path to the spex root directory.
     """
     cache_key = workdir
     if cache_key in _spex_root_cache:
-        return _spex_root_cache[cache_key]
+        spex_root = _spex_root_cache[cache_key]
+        if require_git and _get_repo_root(workdir) is None:
+            raise RuntimeError("Not inside a git repository")
+        return spex_root
 
     # 1. Check environment variable
     env_root = os.environ.get("SPEX_ROOT")
     if env_root:
         spex_root = str(Path(env_root).resolve())
         _spex_root_cache[cache_key] = spex_root
+        if require_git and _get_repo_root(workdir) is None:
+            raise RuntimeError("Not inside a git repository")
         return spex_root
 
     # 2. Check .spex.yaml config files
@@ -152,11 +160,16 @@ def get_spex_root(workdir=None):
     yaml_root = _find_spex_yaml(repo_root)
     if yaml_root:
         _spex_root_cache[cache_key] = yaml_root
+        if require_git and repo_root is None:
+            raise RuntimeError("Not inside a git repository")
         return yaml_root
 
     # 3. Fallback: .spex inside the git toplevel
     if repo_root is None:
-        raise RuntimeError("Not inside a git repository")
+        raise RuntimeError(
+            "Cannot determine spex_root. "
+            "Set SPEX_ROOT, use --spex-root, or configure .spex.yaml."
+        )
 
     spex_root = str(repo_root / DEFAULT_SPEX_ROOT_DIR)
     _ensure_repo_spex_dir(repo_root, DEFAULT_SPEX_ROOT_DIR)

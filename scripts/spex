@@ -207,24 +207,44 @@ DIRECT_COMMANDS = {
 
 
 def _extract_global_options():
-    """Extract global options from sys.argv before command dispatch.
+    """Extract --spex-root from sys.argv at any position.
 
-    Only parses --spex-root if it appears before the command (i.e., at
-    index 0 of args). This avoids conflict with 'get --spex-root'.
+    Distinguishes the global option (which always has a value) from the
+    'get --spex-root' subcommand flag (which has no value).
     """
     import common
 
     args = sys.argv[1:]
-    if args and args[0] == "--spex-root":
-        if len(args) < 2:
+    new_args = []
+    spex_root = None
+    i = 0
+    while i < len(args):
+        if args[i].startswith("--spex-root="):
+            spex_root = args[i].split("=", 1)[1]
+            if not spex_root:
+                print("Error: --spex-root requires a path argument",
+                      file=sys.stderr)
+                sys.exit(1)
+            i += 1
+        elif args[i] == "--spex-root" and i + 1 < len(args) and not args[i + 1].startswith("-"):
+            spex_root = args[i + 1]
+            i += 2
+        else:
+            new_args.append(args[i])
+            i += 1
+
+    if spex_root is not None:
+        os.environ["SPEX_ROOT"] = spex_root
+        common.clear_spex_root_cache()
+    elif "--spex-root" in args and args[-1] == "--spex-root":
+        # Bare --spex-root at end with no value and no command context
+        if not any(a in DIRECT_COMMANDS or a in LLM_COMMANDS for a in args[:-1]):
             print("Error: --spex-root requires a path argument",
                   file=sys.stderr)
             sys.exit(1)
-        spex_root = args[1]
-        os.environ["SPEX_ROOT"] = spex_root
-        common.clear_spex_root_cache()
-        args = args[2:]
-    sys.argv = [sys.argv[0]] + args
+        new_args = args
+
+    sys.argv = [sys.argv[0]] + new_args
 
 
 def main():

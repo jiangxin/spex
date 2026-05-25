@@ -61,8 +61,27 @@ def test_not_a_git_repo(tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
 
-    with pytest.raises(RuntimeError, match="Not inside a git repository"):
+    with pytest.raises(RuntimeError, match="Cannot determine spex_root"):
         get_spex_root(str(workdir))
+
+
+def test_require_git_raises_outside_repo(monkeypatch, tmp_path):
+    workdir = tmp_path / "no-repo"
+    workdir.mkdir()
+    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "my-specs"))
+
+    with pytest.raises(RuntimeError, match="Not inside a git repository"):
+        get_spex_root(str(workdir), require_git=True)
+
+
+def test_require_git_ok_inside_repo(monkeypatch, tmp_path):
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "my-specs"))
+
+    result = get_spex_root(str(repo), require_git=True)
+    assert result == str((tmp_path / "my-specs").resolve())
 
 
 def test_naming_convention(tmp_path):

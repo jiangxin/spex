@@ -374,3 +374,58 @@ class TestSpexRootGlobalOption:
 
         assert result.returncode == 0
         assert result.stdout.strip() == str(tmp_path)
+
+    def test_spex_root_equals_syntax(self, tmp_path):
+        """--spex-root=<path> equals syntax should work."""
+        specs_dir = tmp_path / "specs"
+        specs_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT,
+             f"--spex-root={tmp_path}", "list"],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+        )
+
+        assert result.returncode == 0
+        assert "requires an AI coding agent" not in result.stderr
+
+    def test_spex_root_equals_empty_value(self):
+        """--spex-root= (empty) should error."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "--spex-root="],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        assert "requires a path" in result.stderr
+
+    def test_spex_root_after_command(self, tmp_path):
+        """--spex-root after the command should work."""
+        specs_dir = tmp_path / "specs"
+        specs_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT,
+             "list", "--spex-root", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+        )
+
+        assert result.returncode == 0
+        assert "requires an AI coding agent" not in result.stderr
+
+    def test_get_spex_root_flag_not_consumed(self):
+        """'get --spex-root' should still work as subcommand flag."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "get", "--spex-root"],
+            capture_output=True,
+            text=True,
+        )
+
+        # get --spex-root prints the spex root path (exit 0 in a git repo)
+        # or fails for other reasons — but NOT "requires a path"
+        assert "requires a path" not in result.stderr
