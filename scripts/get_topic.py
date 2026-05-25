@@ -11,12 +11,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    check_help_flag,
     get_current_workdir,
     get_specs_dir,
     get_topic_workdir,
     has_undone_tasks,
     same_path,
 )
+
+USAGE = """\
+Usage: spex get-topic [--json] [--all] [topic]
+
+Resolve a topic directory under specs.
+
+Options:
+  --json       Output in JSON format
+  --all        Show all topics (ignore workspace filter)
+  -h, --help   Show this help message and exit"""
 
 
 def resolve_topic(topic_name, specs_dir, filter_workdir=None):
@@ -100,6 +111,7 @@ def _topic_matches_workdir(topic_dir, workdir):
 
 
 def main():
+    check_help_flag(USAGE)
     args = sys.argv[1:]
     json_mode = "--json" in args
     if json_mode:

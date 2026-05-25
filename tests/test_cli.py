@@ -108,6 +108,28 @@ class TestHelpFlag:
         assert result.returncode == 0
         assert "Usage:" in result.stdout
 
+    def test_get_topic_h_exits_zero_with_usage(self):
+        result = _run_spex("get-topic", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_get_topic_help_exits_zero(self):
+        result = _run_spex("get-topic", "--help")
+
+        assert result.returncode == 0
+
+    def test_meta_h_exits_zero_with_usage(self):
+        result = _run_spex("meta", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_meta_help_exits_zero(self):
+        result = _run_spex("meta", "--help")
+
+        assert result.returncode == 0
+
 
 class TestDirectCommands:
     def test_list_exits_zero(self, tmp_path, monkeypatch):

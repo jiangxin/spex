@@ -13,10 +13,21 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import atomic_write_json, get_specs_dir
+from common import atomic_write_json, check_help_flag, get_specs_dir
+
+USAGE = """\
+Usage: spex meta <topic_name> <key> [value]
+
+Set key/value in a topic's meta.json.
+When value is omitted, it is read from stdin.
+When key is 'prompts', the value is appended to the prompts array.
+
+Options:
+  -h, --help  Show this help message and exit"""
 
 
 def main():
+    check_help_flag(USAGE)
     if len(sys.argv) < 3:
         print(
             f"Usage: {sys.argv[0]} <topic_name> <key> [value]",
