@@ -32,9 +32,21 @@ Run:
 echo "$prompt" | <skill-path>/scripts/spex create-topic $topic
 ```
 
-Parse the JSON output. Save `topic_name` as `$topic` and `topic_path`
-as `$topic_path`. If the script exits with an error, return to Step 2
-and retry with a different name.
+Parse the JSON output. The `topic_name` field is the `$topic` parameter
+prefixed with a date stamp in `YYYY-MM-DD-HH-mm` format (e.g., if
+`$topic` is `add-login-api`, the `topic_name` becomes
+`2026-05-24-10-30-add-login-api`). Save `topic_name` as `$topic_name`
+and `topic_path` as `$topic_path`. If the script exits with an error,
+return to Step 2 and retry with a different name.
+
+Example JSON output:
+
+```json
+{
+  "topic_name": "2026-05-24-10-30-add-login-api",
+  "topic_path": "/path/to/.specs/specs/2026-05-24-10-30-add-login-api"
+}
+```
 
 ### Step 4: Create spec.md
 
@@ -132,7 +144,7 @@ format in `todo.json`, and re-run until validation passes.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$topic`
+**Topic**: `$topic_name`
 
 - Spec: `$topic_path/spec.md`
 - Todo: `$topic_path/todo.json`
