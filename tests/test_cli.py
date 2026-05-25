@@ -33,6 +33,46 @@ class TestNoArgs:
         assert "archive" in result.stdout
 
 
+class TestHelpFlag:
+    """Tests for -h/--help support."""
+
+    def test_spex_h_exits_zero_with_usage(self):
+        result = _run_spex("-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_spex_help_exits_zero_with_usage(self):
+        result = _run_spex("--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_get_h_exits_zero_with_usage(self):
+        result = _run_spex("get", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_get_help_exits_zero_with_usage(self):
+        result = _run_spex("get", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_install_cli_h_exits_zero_with_usage(self):
+        result = _run_spex("install-cli", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_install_cli_help_exits_zero_with_usage(self):
+        result = _run_spex("install-cli", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+
 class TestDirectCommands:
     def test_list_exits_zero(self, tmp_path, monkeypatch):
         # Create a minimal specs dir so list_specs doesn't fail

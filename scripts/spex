@@ -74,11 +74,26 @@ def _run_open():
     open_topic.main()
 
 
+_INSTALL_USAGE = """\
+Usage: spex install-cli [path]
+
+Install spex symlink (default: ~/.local/bin).
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+
 def _run_install():
     """Install spex symlink to a directory (default ~/.local/bin)."""
     script_path = Path(__file__).resolve()
 
     args = sys.argv[2:]
+
+    if "-h" in args or "--help" in args:
+        print(_INSTALL_USAGE, end="")
+        sys.exit(0)
+
     if args:
         target = args[0].rstrip("/")
         if target.endswith("/spex"):
@@ -128,11 +143,26 @@ def _check_path(link_dir: Path):
     )
 
 
+_GET_USAGE = """\
+Usage: spex get --spex-root|--specs-dir|--archives-dir
+
+Print the requested path.
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+
 def _run_get():
     """Print a spec path based on the given flag."""
     import common
 
     flags = sys.argv[2:]
+
+    if "-h" in flags or "--help" in flags:
+        print(_GET_USAGE, end="")
+        sys.exit(0)
+
     flag_map = {
         "--spex-root": common.get_spex_root,
         "--specs-dir": common.get_specs_dir,
@@ -306,6 +336,10 @@ def main():
         sys.exit(0)
 
     command = sys.argv[1]
+
+    if command in ("-h", "--help"):
+        print(USAGE, end="")
+        sys.exit(0)
 
     if command in DIRECT_COMMANDS:
         DIRECT_COMMANDS[command]()
