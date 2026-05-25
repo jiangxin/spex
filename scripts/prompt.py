@@ -14,6 +14,7 @@ from common import (
     get_spex_root,
     get_template,
     load_meta,
+    load_todo,
     local_iso_timestamp,
     strip_front_matter,
 )
@@ -121,15 +122,47 @@ def _build_metadata(template_name, topic_name=None):
             except (ValueError, RuntimeError):
                 pass
 
+    if template_name == "apply-one-task" and topic_name:
+        topic_dir = _resolve_topic_dir(topic_name)
+        spec_path = topic_dir / "spec.md"
+        if spec_path.exists():
+            metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
+        else:
+            metadata["spec_content"] = ""
+
+        todo = load_todo(topic_dir)
+        if todo:
+            done = [item for item in todo if item.get("completed_at")]
+            metadata["completed_tasks"] = "\n".join(
+                f"{item.get('id', '')}: {item.get('name', '')}" for item in done
+            )
+            for item in todo:
+                if not item.get("completed_at"):
+                    task_id = item.get("id", "")
+                    name = item.get("name", "")
+                    details = item.get("details", "")
+                    metadata["next_task_text"] = (
+                        f"**Task**: {task_id} - {name}\n\n"
+                        f"**Implementation Details**:\n\n"
+                        f"<details>\n{details}\n\n</details>"
+                    )
+                    break
+            else:
+                metadata["next_task_text"] = ""
+        else:
+            metadata["completed_tasks"] = ""
+            metadata["next_task_text"] = ""
+
     return metadata
 
 
-def render_prompt(name, topic_name=None):
+def render_prompt(name, topic_name=None, extra_vars=None):
     """Render a template by name and return the result string.
 
     Args:
         name: Template name without .md extension (e.g. "spec-template").
         topic_name: Optional topic name for topic-specific metadata.
+        extra_vars: Optional dict of additional variables to merge into metadata.
 
     Returns:
         Rendered template content with front-matter stripped.
@@ -138,12 +171,16 @@ def render_prompt(name, topic_name=None):
 
     content = get_template(name + ".md")
     metadata = _build_metadata(name, topic_name)
+    if extra_vars:
+        metadata.update(extra_vars)
     validate_required_meta(content, metadata)
     rendered = Template(content).render(**metadata)
     return strip_front_matter(rendered)
 
 
 def main():
+    import json
+
     parser = argparse.ArgumentParser(
         description="Render a Jinja2 template with metadata."
     )
@@ -158,8 +195,18 @@ def main():
         print("Error: jinja2 is required. Install with: pip install jinja2", file=sys.stderr)
         sys.exit(1)
 
+    extra_vars = None
+    if not sys.stdin.isatty():
+        stdin_data = sys.stdin.read().strip()
+        if stdin_data:
+            try:
+                extra_vars = json.loads(stdin_data)
+            except json.JSONDecodeError:
+                print("Error: stdin must be valid JSON", file=sys.stderr)
+                sys.exit(1)
+
     try:
-        rendered = render_prompt(args.name, args.topic)
+        rendered = render_prompt(args.name, args.topic, extra_vars)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

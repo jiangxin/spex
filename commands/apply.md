@@ -52,68 +52,18 @@ Save the output to `$next_task_id`.
 If `$next_task_id` is empty, all tasks are done — report completion and
 stop.
 
-Then run:
-
-```bash
-$spex_skill_dir/scripts/spex todo get-next-undone --details $topic_path/todo.json
-```
-
-Save the output to `$next_task_text`.
-
-### Step 3: Get Completed Tasks
+### Step 3: Build Prompt and Execute
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo get-done $topic_path/todo.json
+$spex_skill_dir/scripts/spex prompt apply-one-task --topic $topic_name
 ```
 
-Save the output to `$completed_tasks`.
+Save the output to `$prompt`. Launch a subagent with `$prompt` to
+implement the current task.
 
-### Step 4: Build Prompt
-
-Read the full contents of `$topic_path/spec.md` into `$spec_content`.
-
-Assemble `$prompt` using the following template:
-
-````text
-你是一个资深软件工程师，在架构设计、代码开发有着20年的经验。下面是完整的需求分析和设计。
-
-<requirement>
-$spec_content
-</requirement>
-
-$completed_section
-
-待完成的开发步骤如下：
-
-$next_task_text
-
-# Constraints
-
-- DRY — Don't Repeat Yourself: analyze existing architecture and code,
-  reuse what exists, **never** generate duplicate code.
-- KISS — Keep It Simple, Stupid: no over-engineering; keep it simple while
-  considering performance and security.
-- Single Responsibility: each function/method does one thing; consider
-  splitting if it exceeds 30 lines.
-- Test Often: run lint and unit tests to make sure all checks pass.
-````
-
-Where `$completed_section` is included only if `$completed_tasks` is not
-empty:
-
-```text
-已经完成如下步骤的开发：
-
-- <each line of $completed_tasks as a list item>
-```
-
-### Step 5: Execute Development
-
-Launch a subagent with `$prompt` to implement the current task.
-
-### Step 6: Commit
+### Step 4: Commit
 
 Load the commit prompt:
 
@@ -131,7 +81,7 @@ git log -1 --pretty="%h: %s"
 
 Save the output to `$commit_title`.
 
-### Step 7: Mark Task Complete
+### Step 5: Mark Task Complete
 
 Run:
 
@@ -139,7 +89,7 @@ Run:
 $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
 ```
 
-### Step 8: Loop
+### Step 6: Loop
 
 Go back to Step 2. Do **not** stop while `todo.json` still has undone
 tasks.
