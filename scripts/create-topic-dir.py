@@ -113,7 +113,7 @@ def main():
         output = json.dumps({
             "topic_name": topic_name,
             "topic_path": str(topic_dir),
-        })
+        }, indent=2)
         print(output)
     else:
         print(str(topic_dir))
