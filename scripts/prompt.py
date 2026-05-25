@@ -136,22 +136,30 @@ def _build_metadata(template_name, topic_name=None):
             metadata["completed_tasks"] = "\n".join(
                 f"{item.get('id', '')}: {item.get('name', '')}" for item in done
             )
-            for item in todo:
-                if not item.get("completed_at"):
-                    task_id = item.get("id", "")
-                    name = item.get("name", "")
-                    details = item.get("details", "")
-                    metadata["next_task_text"] = (
-                        f"**Task**: {task_id} - {name}\n\n"
-                        f"**Implementation Details**:\n\n"
-                        f"<details>\n{details}\n\n</details>"
-                    )
-                    break
+            undone = [item for item in todo if not item.get("completed_at")]
+            if undone:
+                current = undone[0]
+                task_id = current.get("id", "")
+                name = current.get("name", "")
+                details = current.get("details", "")
+                metadata["next_task_text"] = (
+                    f"**Task**: {task_id} - {name}\n\n"
+                    f"**Implementation Details**:\n\n"
+                    f"<details>\n{details}\n\n</details>"
+                )
+                # Collect subsequent undone tasks
+                future = undone[1:]
+                metadata["future_tasks"] = "\n".join(
+                    f"- {item.get('id', '')}: {item.get('name', '')}"
+                    for item in future
+                ) if future else ""
             else:
                 metadata["next_task_text"] = ""
+                metadata["future_tasks"] = ""
         else:
             metadata["completed_tasks"] = ""
             metadata["next_task_text"] = ""
+            metadata["future_tasks"] = ""
 
     return metadata
 
@@ -173,6 +181,15 @@ def render_prompt(name, topic_name=None, extra_vars=None):
     metadata = _build_metadata(name, topic_name)
     if extra_vars:
         metadata.update(extra_vars)
+
+    # All-done detection for apply-one-task
+    if name == "apply-one-task" and not metadata.get("next_task_text"):
+        print(
+            "Error: all tasks are completed, nothing to apply.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     validate_required_meta(content, metadata)
     rendered = Template(content).render(**metadata)
     return strip_front_matter(rendered)
