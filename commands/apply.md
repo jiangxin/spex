@@ -16,7 +16,7 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$topic_name` is `--all` or `-a`:
 
-1. Run `$spex_skill_dir/scripts/spex get-topic --json ""` to get all topics
+1. Run `$spex_skill_dir/scripts/spex get-topic --json --all` to get all topics
    with undone tasks.
 2. Parse the output as a JSON array of objects, each containing
    `topic_name` and `topic_path`.
