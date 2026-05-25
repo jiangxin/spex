@@ -3,6 +3,7 @@
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ MAX_LINE_WIDTH = 80
 
 
 def _read_meta(topic_dir: Path):
-    """Read meta.json, return (created_at, first_prompt) or None."""
+    """Read meta.json, return (created_at, first_prompt, workdir) or None."""
     meta_path = topic_dir / META_FILE
     if not meta_path.is_file():
         return None
@@ -29,7 +30,8 @@ def _read_meta(topic_dir: Path):
     timestamp = data.get("created_at", "")
     prompts = data.get("prompts", [])
     prompt_text = prompts[0] if prompts else ""
-    return (timestamp, prompt_text)
+    workdir = data.get("workdir", "")
+    return (timestamp, prompt_text, workdir)
 
 
 def parse_prompt_log(log_path: Path) -> tuple:
@@ -82,9 +84,12 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
             if not sub.is_dir():
                 continue
             result = _read_meta(sub)
-            if result is None:
-                result = parse_prompt_log(sub / PROMPT_LOG)
-            timestamp, prompt = result
+            if result is not None:
+                timestamp, prompt, workdir = result
+            else:
+                ts_prompt = parse_prompt_log(sub / PROMPT_LOG)
+                timestamp, prompt = ts_prompt
+                workdir = ""
             n, m = get_todo_progress(sub)
             topics.append({
                 "name": sub.name,
@@ -92,6 +97,7 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
                 "n": n,
                 "m": m,
                 "prompt": prompt,
+                "workdir": workdir,
                 "archived": archived,
             })
     return topics
@@ -108,6 +114,8 @@ ICON_ARCHIVED = "\U0001f4e6"
 ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 
+MAX_REPO_WIDTH = 11
+
 
 def _get_icon(topic: dict) -> str:
     """Return status emoji for a topic."""
@@ -118,7 +126,17 @@ def _get_icon(topic: dict) -> str:
     return ICON_IN_PROGRESS
 
 
-def format_output(topics: list, max_width: int = MAX_LINE_WIDTH) -> str:
+def _repo_label(workdir: str) -> str:
+    """Return truncated basename of workdir for display."""
+    name = Path(workdir).name if workdir else "?"
+    if len(name) > MAX_REPO_WIDTH:
+        return name[:8] + "..."
+    return name
+
+
+def format_output(
+    topics: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
+) -> str:
     """Format topics into aligned columns."""
     if not topics:
         return "No specs found."
@@ -128,22 +146,44 @@ def format_output(topics: list, max_width: int = MAX_LINE_WIDTH) -> str:
     progress_strs = [f"{t['n']}/{t['m']}" for t in topics]
     progress_width = max(len(s) for s in progress_strs)
 
-    # Layout: <icon> <topic>  <progress>  <prompt>
-    # Icon takes 2 display columns + 1 space
+    repo_labels = []
+    if show_repo:
+        repo_labels = [_repo_label(t.get("workdir", "")) for t in topics]
+        max_label_width = max(len(lb) for lb in repo_labels)
+        repo_col_width = max_label_width + 3  # brackets + trailing space
+    else:
+        repo_col_width = 0
+
     icon_width = 3
-    fixed_width = icon_width + MAX_TOPIC_WIDTH + 2 + progress_width + 2
+    fixed_width = repo_col_width + icon_width + MAX_TOPIC_WIDTH + 2 + progress_width + 2
     prompt_width = max_width - fixed_width
 
     lines = []
-    for topic, prog_str in zip(topics, progress_strs):
+    for i, (topic, prog_str) in enumerate(zip(topics, progress_strs)):
         icon = _get_icon(topic)
         name = _truncate(topic["name"], MAX_TOPIC_WIDTH)
         name_col = name.ljust(MAX_TOPIC_WIDTH)
         prog_col = prog_str.rjust(progress_width)
         prompt_col = _truncate(topic["prompt"], prompt_width) if prompt_width > 3 else ""
-        lines.append(f"{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
+
+        if show_repo:
+            repo_col = f"[{repo_labels[i]}]".ljust(repo_col_width - 1) + " "
+            lines.append(f"{repo_col}{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
+        else:
+            lines.append(f"{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
 
     return "\n".join(lines)
+
+
+def _get_current_workdir():
+    """Return the current git toplevel path, or None if not in a repo."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return None
 
 
 def main():
@@ -157,7 +197,18 @@ def main():
         archive_dirs.append(archive_dir)
 
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
-    print(format_output(topics))
+
+    current_workdir = _get_current_workdir()
+    if current_workdir:
+        topics = [
+            t for t in topics
+            if not t.get("workdir") or t["workdir"] == current_workdir
+        ]
+        show_repo = False
+    else:
+        show_repo = True
+
+    print(format_output(topics, show_repo=show_repo))
 
 
 if __name__ == "__main__":

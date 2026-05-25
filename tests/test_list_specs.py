@@ -58,7 +58,7 @@ class TestReadMeta:
 
         result = _read_meta(topic)
 
-        assert result == ("2026-05-24T20:00:00+08:00", "hello world")
+        assert result == ("2026-05-24T20:00:00+08:00", "hello world", "")
 
     def test_missing_file(self, tmp_path):
         assert _read_meta(tmp_path / "nonexistent") is None
@@ -76,7 +76,7 @@ class TestReadMeta:
 
         result = _read_meta(topic)
 
-        assert result == ("2026-05-24T20:00:00+08:00", "")
+        assert result == ("2026-05-24T20:00:00+08:00", "", "")
 
     def test_missing_fields(self, tmp_path):
         topic = tmp_path / "minimal"
@@ -85,7 +85,7 @@ class TestReadMeta:
 
         result = _read_meta(topic)
 
-        assert result == ("", "")
+        assert result == ("", "", "")
 
 
 class TestParsePromptLog:
@@ -212,3 +212,62 @@ class TestCollectTopics:
         assert len(result) == 1
         assert result[0]["timestamp"] == "2026-05-20T10:00:00+08:00"
         assert result[0]["prompt"] == "legacy prompt"
+
+    def test_workdir_stored(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "my-topic"
+        topic.mkdir(parents=True)
+        data = {
+            "created_at": "2026-05-24T20:00:00+08:00",
+            "prompts": ["test"],
+            "workdir": "/home/user/project-a",
+        }
+        (topic / "meta.json").write_text(
+            json.dumps(data), encoding="utf-8"
+        )
+
+        result = collect_topics([specs])
+
+        assert result[0]["workdir"] == "/home/user/project-a"
+
+
+class TestFormatOutputRepoPrefix:
+    def test_show_repo_false(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/bar"},
+        ]
+        output = format_output(topics, show_repo=False)
+        assert "[" not in output
+
+    def test_show_repo_true_short_name(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/bar"},
+        ]
+        output = format_output(topics, show_repo=True)
+        assert "[bar]" in output
+
+    def test_show_repo_true_long_name(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "x",
+             "workdir": "/foo/my-very-long-project-name"},
+        ]
+        output = format_output(topics, show_repo=True)
+        assert "[my-very-..." in output
+
+    def test_show_repo_alignment(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-21T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/ab"},
+            {"name": "topic-b", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 1, "m": 1, "prompt": "y",
+             "workdir": "/foo/longername"},
+        ]
+        output = format_output(topics, show_repo=True)
+        lines = output.splitlines()
+        # Both lines should have the icon at the same column position
+        icon_pos_0 = lines[0].index("\U0001f527")
+        icon_pos_1 = lines[1].index("✅")
+        assert icon_pos_0 == icon_pos_1
