@@ -55,7 +55,7 @@ class TestDirectCommands:
         monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
 
         result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "list-all"],
+            [sys.executable, SPEX_SCRIPT, "list", "--all"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),

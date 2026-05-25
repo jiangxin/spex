@@ -1,11 +1,12 @@
 # spex list
 
-List active (incomplete) specifications.
+List specifications. By default shows only active (incomplete) specs.
+Use `--all` to include archived specs.
 
 ## Usage
 
 ```text
-/spex list
+/spex list [--all]
 ```
 
 ## Procedure
@@ -17,8 +18,11 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex list
+$spex_skill_path/scripts/spex list $args
 ```
+
+Where `$args` is `--all` if the user requested all specs, or empty
+otherwise.
 
 ### Step 2: Report Results
 

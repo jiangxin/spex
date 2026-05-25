@@ -1,11 +1,11 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (new), list, list-all, modify, apply (run, do, go), archive, install."
+description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (new), list, modify, apply (run, do, go), archive, install."
 arguments:
   - name: command
     required: true
-    description: "Sub-command to execute. Must be one of: create (alias: new), list, list-all, modify, apply (aliases: run, do, go), archive, install. Show usage help and exit if missing or unrecognized."
+    description: "Sub-command to execute. Must be one of: create (alias: new), list, modify, apply (aliases: run, do, go), archive, install. Show usage help and exit if missing or unrecognized."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -26,8 +26,7 @@ A skill for managing specification documents in a structured spec directory.
 | Command    | Aliases          | Description                       |
 |------------|------------------|-----------------------------------|
 | `create`   | `new`            | Create a new spec                 |
-| `list`     |                  | List active (incomplete) specs    |
-| `list-all` |                  | List all specs including archived |
+| `list`     |                  | List specs (use `--all` to include archived) |
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
 | `archive`  |                  | Archive a completed spec          |
@@ -42,7 +41,6 @@ command file:
 
 - `create` / `new` → `commands/create.md`
 - `list` → `commands/list.md`
-- `list-all` → `commands/list-all.md`
 - `modify` → `commands/modify.md`
 - `apply` / `run` / `do` / `go` → `commands/apply.md`
 - `archive` → `commands/archive.md`
