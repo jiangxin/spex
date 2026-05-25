@@ -331,7 +331,7 @@ class TestGetTemplate:
     def test_get_template_generic(self, monkeypatch, tmp_path):
         """get_template works with any template name."""
         from common import (
-            BUILTIN_TEMPLATE_DIR,
+            EXAMPLES_TEMPLATE_DIR,
             TEMPLATE_DIR,
             _get_skill_path,
             clear_spex_root_cache,
@@ -350,8 +350,8 @@ class TestGetTemplate:
             result = get_template("test-tpl.md")
             assert "# Test TPL" in result
             assert "---" in result  # front-matter preserved
-            # Builtin copy synced
-            synced = tmp_path / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / "test-tpl.md"
+            # Examples copy synced
+            synced = tmp_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR / "test-tpl.md"
             assert synced.exists()
         finally:
             # Clean up test template

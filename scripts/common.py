@@ -13,7 +13,7 @@ TODO_FILE = "todo.json"
 META_FILE = "meta.json"
 DEFAULT_SPEX_ROOT_DIR = ".spex"
 TEMPLATE_DIR = "templates"
-BUILTIN_TEMPLATE_DIR = "builtin"
+EXAMPLES_TEMPLATE_DIR = "examples"
 
 _spex_root_cache: dict[str | None, str] = {}
 
@@ -355,11 +355,11 @@ def strip_front_matter(content: str) -> str:
 
 
 def _sync_builtin_template(template_name: str, workdir=None):
-    """Sync a built-in template to spex_root/templates/builtin/ if version differs.
+    """Sync a built-in template to spex_root/templates/examples/ if version differs.
 
     Compares the version in the skill's source template against the local
-    builtin copy. If they differ (or local copy is missing), overwrites the
-    local builtin copy.
+    examples copy. If they differ (or local copy is missing), overwrites the
+    local examples copy.
     """
     skill_path = _get_skill_path()
     source = skill_path / TEMPLATE_DIR / template_name
@@ -369,8 +369,8 @@ def _sync_builtin_template(template_name: str, workdir=None):
         )
 
     spex_root = Path(get_spex_root(workdir))
-    builtin_dir = spex_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR
-    target = builtin_dir / template_name
+    examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
+    target = examples_dir / template_name
 
     source_version = _extract_template_version(source)
     target_version = _extract_template_version(target)
@@ -378,7 +378,7 @@ def _sync_builtin_template(template_name: str, workdir=None):
     if source_version and source_version == target_version:
         return  # Already up-to-date
 
-    builtin_dir.mkdir(parents=True, exist_ok=True)
+    examples_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
 
 
@@ -386,15 +386,15 @@ def get_template(template_name: str, workdir=None) -> str:
     """Return raw template content for the given template name.
 
     Workflow:
-    1. Sync built-in template to <spex_root>/templates/builtin/ if needed.
+    1. Sync built-in template to <spex_root>/templates/examples/ if needed.
     2. If <spex_root>/templates/<name> exists (user custom), return its content.
-    3. Otherwise return <spex_root>/templates/builtin/<name> content.
+    3. Otherwise return the built-in template from the skill's source.
 
     The returned content includes YAML front-matter. Use strip_front_matter()
     to remove it after rendering.
 
     Args:
-        template_name: Template filename (e.g. "spec.md").
+        template_name: Template filename (e.g. "spec-template.md").
         workdir: Working directory for git lookup.
 
     Returns:
@@ -404,11 +404,13 @@ def get_template(template_name: str, workdir=None) -> str:
 
     spex_root = Path(get_spex_root(workdir))
     custom = spex_root / TEMPLATE_DIR / template_name
-    builtin = spex_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / template_name
 
     if custom.exists():
         return custom.read_text(encoding="utf-8")
-    return builtin.read_text(encoding="utf-8")
+
+    skill_path = _get_skill_path()
+    source = skill_path / TEMPLATE_DIR / template_name
+    return source.read_text(encoding="utf-8")
 
 
 
