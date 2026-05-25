@@ -529,6 +529,19 @@ class TestTodoCommand:
         assert result.returncode == 0
         assert "Usage:" in result.stdout
 
+    def test_todo_xml2json_h_exits_zero_with_usage(self):
+        """spex todo xml2json -h exits 0 with usage."""
+        result = _run_spex("todo", "xml2json", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_xml2json_help_exits_zero(self):
+        """spex todo xml2json --help exits 0."""
+        result = _run_spex("todo", "xml2json", "--help")
+
+        assert result.returncode == 0
+
 
 
 class TestSpexRootGlobalOption:

@@ -46,7 +46,7 @@ Internal commands (used by skill):
                 Reads value from stdin if not provided
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
-                get-done, mark-done)
+                get-done, mark-done, xml2json)
 """
 
 LLM_COMMANDS = {"apply", "create", "init", "new", "modify"}
@@ -219,7 +219,8 @@ def _run_todo():
     if len(sys.argv) < 3:
         print(
             "Usage: spex todo <subcommand> ...\n"
-            "Subcommands: validate, get-next-undone, get-done, mark-done",
+            "Subcommands: validate, get-next-undone, get-done, mark-done,"
+            " xml2json",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -236,6 +237,11 @@ def _run_todo():
 
         sys.argv = ["mark_todo_complete.py"] + sys.argv[3:]
         mark_todo_complete.main()
+    elif subcmd == "xml2json":
+        import xml2json_todo
+
+        sys.argv = ["xml2json_todo.py"] + sys.argv[3:]
+        xml2json_todo.main()
     elif subcmd in ("validate", "get-next-undone", "get-done"):
         import parse_todo
 
@@ -244,7 +250,8 @@ def _run_todo():
     else:
         print(f"Error: unknown todo subcommand '{subcmd}'", file=sys.stderr)
         print(
-            "Subcommands: validate, get-next-undone, get-done, mark-done",
+            "Subcommands: validate, get-next-undone, get-done, mark-done,"
+            " xml2json",
             file=sys.stderr,
         )
         sys.exit(1)

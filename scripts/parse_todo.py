@@ -20,6 +20,7 @@ Subcommands:
   get-next-undone [--only-id|--details]  Print next undone task
   get-done [--details]                   Print completed tasks
   mark-done <task-id> <commit-title>     Mark a task as completed
+  xml2json <xml-file>                    Convert todo.xml to todo.json
 
 Options:
   -h, --help  Show this help message and exit
