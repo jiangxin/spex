@@ -133,6 +133,7 @@ class TestFutureTasks:
         metadata = _build_metadata("apply-one-task", "test-topic")
 
         # Current task should be step-2
+        assert metadata["next_task_id"] == "step-2"
         assert "step-2" in metadata["next_task_text"]
         # future_tasks should contain step-3 and step-4
         assert "- step-3: Third step" in metadata["future_tasks"]
@@ -186,6 +187,7 @@ class TestFutureTasks:
 
         metadata = _build_metadata("apply-one-task", "test-topic")
 
+        assert metadata["next_task_id"] == ""
         assert metadata["future_tasks"] == ""
 
     def test_future_tasks_format(self, tmp_path, monkeypatch):
@@ -274,3 +276,47 @@ class TestApplyOneTaskRendering:
 
         rendered = render_prompt("apply-one-task", "test-topic")
         assert "## Future Steps" not in rendered
+
+
+class TestTaskIdStderr:
+    """Test that apply-one-task emits task_id to stderr via main()."""
+
+    def test_main_emits_task_id_to_stderr(self, tmp_path, monkeypatch, capsys):
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "task_id=step-2" in captured.err
+
+    def test_main_no_task_id_for_other_templates(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "apply-commit"]
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "task_id=" not in captured.err

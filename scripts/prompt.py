@@ -142,6 +142,7 @@ def _build_metadata(template_name, topic_name=None):
                 task_id = current.get("id", "")
                 name = current.get("name", "")
                 details = current.get("details", "")
+                metadata["next_task_id"] = task_id
                 metadata["next_task_text"] = (
                     f"**Task**: {task_id} - {name}\n\n"
                     f"**Implementation Details**:\n\n"
@@ -154,23 +155,26 @@ def _build_metadata(template_name, topic_name=None):
                     for item in future
                 ) if future else ""
             else:
+                metadata["next_task_id"] = ""
                 metadata["next_task_text"] = ""
                 metadata["future_tasks"] = ""
         else:
             metadata["completed_tasks"] = ""
+            metadata["next_task_id"] = ""
             metadata["next_task_text"] = ""
             metadata["future_tasks"] = ""
 
     return metadata
 
 
-def render_prompt(name, topic_name=None, extra_vars=None):
+def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     """Render a template by name and return the result string.
 
     Args:
         name: Template name without .md extension (e.g. "spec-template").
         topic_name: Optional topic name for topic-specific metadata.
         extra_vars: Optional dict of additional variables to merge into metadata.
+        metadata: Optional pre-built metadata dict. Skips _build_metadata when provided.
 
     Returns:
         Rendered template content with front-matter stripped.
@@ -178,9 +182,10 @@ def render_prompt(name, topic_name=None, extra_vars=None):
     from jinja2 import Template
 
     content = get_template(name + ".md")
-    metadata = _build_metadata(name, topic_name)
-    if extra_vars:
-        metadata.update(extra_vars)
+    if metadata is None:
+        metadata = _build_metadata(name, topic_name)
+        if extra_vars:
+            metadata.update(extra_vars)
 
     # All-done detection for apply-one-task
     if name == "apply-one-task" and not metadata.get("next_task_text"):
@@ -223,7 +228,17 @@ def main():
                 sys.exit(1)
 
     try:
-        rendered = render_prompt(args.name, args.topic, extra_vars)
+        metadata = _build_metadata(args.name, args.topic)
+        if extra_vars:
+            metadata.update(extra_vars)
+
+        # Emit task_id to stderr for orchestrator to capture
+        if args.name == "apply-one-task":
+            next_task_id = metadata.get("next_task_id", "")
+            if next_task_id:
+                print(f"task_id={next_task_id}", file=sys.stderr)
+
+        rendered = render_prompt(args.name, args.topic, metadata=metadata)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
