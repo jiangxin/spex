@@ -11,6 +11,7 @@ and test plan.
 
 ## Procedure
 
+Execute this procedure in a dedicated sub-agent to keep the main context clean.
 Follow these steps in order. Do not skip or reorder.
 
 ### Step 1: Collect Prompt
