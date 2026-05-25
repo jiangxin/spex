@@ -59,7 +59,7 @@ completed — report completion to the user and stop.
 Load the commit prompt:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit
+echo "$prompt" | $spex_skill_dir/scripts/spex prompt apply-commit --stdin
 ```
 
 Follow the output instructions to create a git commit.
