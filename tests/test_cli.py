@@ -459,6 +459,76 @@ class TestTodoCommand:
         assert result.returncode == 1
         assert "Usage:" in result.stderr
 
+    def test_todo_h_exits_zero_with_usage(self):
+        """spex todo -h exits 0 with usage."""
+        result = _run_spex("todo", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_help_exits_zero_with_usage(self):
+        """spex todo --help exits 0 with usage."""
+        result = _run_spex("todo", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_validate_h_exits_zero_with_usage(self):
+        """spex todo validate -h exits 0 with usage."""
+        result = _run_spex("todo", "validate", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_validate_help_exits_zero_with_usage(self):
+        """spex todo validate --help exits 0 with usage."""
+        result = _run_spex("todo", "validate", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_get_next_undone_h_exits_zero_with_usage(self):
+        """spex todo get-next-undone -h exits 0 with usage."""
+        result = _run_spex("todo", "get-next-undone", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_get_next_undone_help_exits_zero_with_usage(self):
+        """spex todo get-next-undone --help exits 0 with usage."""
+        result = _run_spex("todo", "get-next-undone", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_get_done_h_exits_zero_with_usage(self):
+        """spex todo get-done -h exits 0 with usage."""
+        result = _run_spex("todo", "get-done", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_get_done_help_exits_zero_with_usage(self):
+        """spex todo get-done --help exits 0 with usage."""
+        result = _run_spex("todo", "get-done", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_mark_done_h_exits_zero_with_usage(self):
+        """spex todo mark-done -h exits 0 with usage."""
+        result = _run_spex("todo", "mark-done", "-h")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
+    def test_todo_mark_done_help_exits_zero_with_usage(self):
+        """spex todo mark-done --help exits 0 with usage."""
+        result = _run_spex("todo", "mark-done", "--help")
+
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
 
 
 class TestSpexRootGlobalOption:

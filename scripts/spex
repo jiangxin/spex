@@ -226,7 +226,12 @@ def _run_todo():
 
     subcmd = sys.argv[2]
 
-    if subcmd == "mark-done":
+    if subcmd in ("-h", "--help"):
+        import parse_todo
+
+        print(parse_todo.USAGE, end="")
+        sys.exit(0)
+    elif subcmd == "mark-done":
         import mark_todo_complete
 
         sys.argv = ["mark_todo_complete.py"] + sys.argv[3:]

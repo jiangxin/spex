@@ -9,13 +9,24 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import atomic_write_json, local_iso_timestamp
+from common import atomic_write_json, check_help_flag, local_iso_timestamp
+
+USAGE = """\
+Usage: spex todo mark-done <task-id> <commit-title> <todo.json>
+
+Mark a task as completed in todo.json.
+
+Options:
+  -h, --help  Show this help message and exit
+"""
 
 
 def main():
+    check_help_flag(USAGE)
+
     if len(sys.argv) != 4:
         print(
-            f"Usage: {sys.argv[0]} <task-id> <commit-title> <todo.json>",
+            "Usage: spex todo mark-done <task-id> <commit-title> <todo.json>",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -12,15 +12,47 @@ import sys
 
 REQUIRED_FIELDS = {"id", "name", "details", "completed_at", "commit_title"}
 
-USAGE = f"""\
-Usage: {sys.argv[0]} <command> [options] <todo.json>
+USAGE = """\
+Usage: spex todo <subcommand> [options] <todo.json>
 
-Commands:
-    validate                     Validate todo.json structure.
-    get-next-undone [--only-id|--details] <todo.json>
-                                 Print next undone task.
-    get-done [--details] <todo.json>
-                                 Print completed tasks.
+Subcommands:
+  validate                              Validate todo.json structure
+  get-next-undone [--only-id|--details]  Print next undone task
+  get-done [--details]                   Print completed tasks
+  mark-done <task-id> <commit-title>     Mark a task as completed
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+VALIDATE_USAGE = """\
+Usage: spex todo validate <todo.json>
+
+Validate todo.json structure.
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+GET_NEXT_UNDONE_USAGE = """\
+Usage: spex todo get-next-undone [--only-id|--details] <todo.json>
+
+Print the next incomplete task.
+
+Options:
+  --only-id   Print only the task ID
+  --details   Print full task details
+  -h, --help  Show this help message and exit
+"""
+
+GET_DONE_USAGE = """\
+Usage: spex todo get-done [--details] <todo.json>
+
+Print completed tasks.
+
+Options:
+  --details   Print full task details
+  -h, --help  Show this help message and exit
 """
 
 
@@ -39,9 +71,13 @@ def _load(path):
 
 def cmd_validate(args):
     """Validate todo.json structure."""
+    if "-h" in args or "--help" in args:
+        print(VALIDATE_USAGE, end="")
+        sys.exit(0)
+
     if len(args) != 1:
         print(
-            f"Usage: {sys.argv[0]} validate <todo.json>", file=sys.stderr
+            "Usage: spex todo validate <todo.json>", file=sys.stderr
         )
         sys.exit(1)
 
@@ -88,9 +124,13 @@ def cmd_validate(args):
 
 def cmd_get_next_undone(args):
     """Print the next incomplete task."""
+    if "-h" in args or "--help" in args:
+        print(GET_NEXT_UNDONE_USAGE, end="")
+        sys.exit(0)
+
     if len(args) != 2 or args[0] not in ("--only-id", "--details"):
         print(
-            f"Usage: {sys.argv[0]} get-next-undone "
+            "Usage: spex todo get-next-undone "
             "[--only-id|--details] <todo.json>",
             file=sys.stderr,
         )
@@ -180,6 +220,10 @@ MAX_OUTPUT_BYTES = 10240
 
 def cmd_get_done(args):
     """Print completed tasks."""
+    if "-h" in args or "--help" in args:
+        print(GET_DONE_USAGE, end="")
+        sys.exit(0)
+
     details_mode = False
     if args and args[0] == "--details":
         details_mode = True
@@ -187,7 +231,7 @@ def cmd_get_done(args):
 
     if len(args) != 1:
         print(
-            f"Usage: {sys.argv[0]} get-done [--details] <todo.json>",
+            "Usage: spex todo get-done [--details] <todo.json>",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -220,6 +264,11 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
+
+    if command in ("-h", "--help"):
+        print(USAGE, end="")
+        sys.exit(0)
+
     args = sys.argv[2:]
 
     commands = {
