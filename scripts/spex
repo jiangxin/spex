@@ -23,7 +23,7 @@ Global options:
 
 Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
-  archive       Archive completed spec topics
+  archive [-n]  Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
   install       Install spex symlink to ~/.local/bin
 

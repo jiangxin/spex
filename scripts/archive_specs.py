@@ -64,9 +64,10 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def main():
+    dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
+
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
-    archives_dir.mkdir(parents=True, exist_ok=True)
 
     completed = find_completed_topics(specs_dir)
 
@@ -74,6 +75,13 @@ def main():
         print("No completed topics to archive.")
         return
 
+    if dry_run:
+        print(f"Would archive {len(completed)} topic(s):")
+        for topic_dir in completed:
+            print(f"  {topic_dir.name}")
+        return
+
+    archives_dir.mkdir(parents=True, exist_ok=True)
     for topic_dir in completed:
         dest = move_topic(topic_dir, archives_dir)
         print(f"Archived: {topic_dir.name} -> {dest}")

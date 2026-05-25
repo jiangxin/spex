@@ -175,3 +175,35 @@ class TestMain:
         assert "wip-topic" not in output
         assert (archives / "done-topic").is_dir()
         assert (specs / "wip-topic").is_dir()
+
+    def test_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--dry-run"])
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Would archive 1 topic(s)" in output
+        assert "done-topic" in output
+        assert (specs / "done-topic").is_dir()
+        assert not archives.exists()
+
+    def test_dry_run_short_flag(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "-n"])
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Would archive" in output
+        assert (specs / "done-topic").is_dir()
