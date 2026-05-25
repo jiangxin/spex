@@ -6,7 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from get_topic import _has_undone_tasks, main, resolve_topic
+from common import has_undone_tasks
+from get_topic import main, resolve_topic
 
 
 def _make_topic(specs_dir, name, completed=False):
@@ -29,33 +30,33 @@ class TestHasUndoneTasks:
     def test_no_todo_file(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
-        assert _has_undone_tasks(topic_dir) is False
+        assert has_undone_tasks(topic_dir) is False
 
     def test_invalid_json(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         (topic_dir / "todo.json").write_text("{bad", encoding="utf-8")
-        assert _has_undone_tasks(topic_dir) is False
+        assert has_undone_tasks(topic_dir) is False
 
     def test_not_a_list(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         (topic_dir / "todo.json").write_text('{}', encoding="utf-8")
-        assert _has_undone_tasks(topic_dir) is False
+        assert has_undone_tasks(topic_dir) is False
 
     def test_all_completed(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         tasks = [{"id": "1", "completed_at": "2026-01-01T00:00:00Z"}]
         (topic_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
-        assert _has_undone_tasks(topic_dir) is False
+        assert has_undone_tasks(topic_dir) is False
 
     def test_has_undone(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         tasks = [{"id": "1", "completed_at": ""}]
         (topic_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
-        assert _has_undone_tasks(topic_dir) is True
+        assert has_undone_tasks(topic_dir) is True
 
 
 class TestResolveTopic:

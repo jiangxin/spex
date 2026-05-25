@@ -5,39 +5,18 @@ Moves topic directories whose todo.json items are all completed
 into the archives directory.
 """
 
-import json
 import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
-    TODO_FILE,
     get_archives_dir,
     get_current_workdir,
     get_specs_dir,
     get_topic_workdir,
+    is_topic_completed,
 )
-
-
-def is_topic_completed(topic_dir: Path) -> bool:
-    """Return True if all tasks in todo.json have non-empty completed_at.
-
-    Returns False if todo.json is missing, unreadable, or has an empty list.
-    """
-    todo_path = topic_dir / TODO_FILE
-    if not todo_path.is_file():
-        return False
-    try:
-        data = json.loads(todo_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return False
-    if not isinstance(data, list) or len(data) == 0:
-        return False
-    return all(
-        isinstance(item, dict) and item.get("completed_at")
-        for item in data
-    )
 
 
 def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:

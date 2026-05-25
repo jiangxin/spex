@@ -6,7 +6,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import archive_specs
-from archive_specs import find_completed_topics, is_topic_completed, move_topic
+from archive_specs import find_completed_topics, move_topic
+from common import is_topic_completed
 
 
 def _write_todo(topic_dir, tasks):
@@ -95,6 +96,48 @@ class TestFindCompletedTopics:
         result = find_completed_topics(specs)
 
         assert [d.name for d in result] == ["alpha-topic", "beta-topic"]
+
+    def test_filters_by_current_workdir(self, tmp_path):
+        specs = tmp_path / "specs"
+        # Topic matching current workdir
+        topic_a = specs / "topic-a"
+        _write_todo(topic_a, [_make_task("1")])
+        (topic_a / "meta.json").write_text(
+            json.dumps({"workdir": "/repo/a"}), encoding="utf-8"
+        )
+        # Topic for a different workdir
+        topic_b = specs / "topic-b"
+        _write_todo(topic_b, [_make_task("1")])
+        (topic_b / "meta.json").write_text(
+            json.dumps({"workdir": "/repo/b"}), encoding="utf-8"
+        )
+        # Topic without workdir (should be included)
+        topic_c = specs / "topic-c"
+        _write_todo(topic_c, [_make_task("1")])
+
+        result = find_completed_topics(specs, current_workdir="/repo/a")
+
+        names = [d.name for d in result]
+        assert "topic-a" in names
+        assert "topic-c" in names
+        assert "topic-b" not in names
+
+    def test_no_filter_when_workdir_is_none(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic_a = specs / "topic-a"
+        _write_todo(topic_a, [_make_task("1")])
+        (topic_a / "meta.json").write_text(
+            json.dumps({"workdir": "/repo/a"}), encoding="utf-8"
+        )
+        topic_b = specs / "topic-b"
+        _write_todo(topic_b, [_make_task("1")])
+        (topic_b / "meta.json").write_text(
+            json.dumps({"workdir": "/repo/b"}), encoding="utf-8"
+        )
+
+        result = find_completed_topics(specs, current_workdir=None)
+
+        assert len(result) == 2
 
 
 class TestMoveTopic:

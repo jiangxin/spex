@@ -4,11 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from common import get_todo_progress, load_meta
 from list_specs import (
-    _read_meta,
     collect_topics,
     format_output,
-    get_todo_progress,
     parse_prompt_log,
 )
 
@@ -51,41 +50,43 @@ def _task(task_id, completed=True):
     }
 
 
-class TestReadMeta:
+class TestLoadMeta:
     def test_normal_read(self, tmp_path):
         topic = tmp_path / "my-topic"
         _make_meta(topic, "2026-05-24T20:00:00+08:00", ["hello world"])
 
-        result = _read_meta(topic)
+        result = load_meta(topic)
 
-        assert result == ("2026-05-24T20:00:00+08:00", "hello world", "")
+        assert result["created_at"] == "2026-05-24T20:00:00+08:00"
+        assert result["prompts"] == ["hello world"]
 
     def test_missing_file(self, tmp_path):
-        assert _read_meta(tmp_path / "nonexistent") is None
+        assert load_meta(tmp_path / "nonexistent") is None
 
     def test_invalid_json(self, tmp_path):
         topic = tmp_path / "bad"
         topic.mkdir(parents=True)
         (topic / "meta.json").write_text("not json", encoding="utf-8")
 
-        assert _read_meta(topic) is None
+        assert load_meta(topic) is None
 
     def test_empty_prompts(self, tmp_path):
         topic = tmp_path / "empty"
         _make_meta(topic, "2026-05-24T20:00:00+08:00", [])
 
-        result = _read_meta(topic)
+        result = load_meta(topic)
 
-        assert result == ("2026-05-24T20:00:00+08:00", "", "")
+        assert result["created_at"] == "2026-05-24T20:00:00+08:00"
+        assert result["prompts"] == []
 
     def test_missing_fields(self, tmp_path):
         topic = tmp_path / "minimal"
         topic.mkdir(parents=True)
         (topic / "meta.json").write_text("{}", encoding="utf-8")
 
-        result = _read_meta(topic)
+        result = load_meta(topic)
 
-        assert result == ("", "", "")
+        assert result == {}
 
 
 class TestParsePromptLog:

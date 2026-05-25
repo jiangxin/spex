@@ -206,13 +206,25 @@ def get_archives_dir(workdir=None):
 
 def get_current_workdir():
     """Return the current git toplevel path, or None if not in a repo."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return None
+    repo_root = _get_repo_root()
+    return str(repo_root) if repo_root else None
+
+
+def load_meta(topic_dir: Path):
+    """Load meta.json from a topic directory.
+
+    Returns the parsed dict, or None if missing/invalid.
+    """
+    meta_path = topic_dir / META_FILE
+    if not meta_path.is_file():
+        return None
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 def get_topic_workdir(topic_dir: Path) -> str:
@@ -220,16 +232,85 @@ def get_topic_workdir(topic_dir: Path) -> str:
 
     Returns the workdir string, or empty string if not found.
     """
-    meta_path = topic_dir / META_FILE
-    if not meta_path.is_file():
+    data = load_meta(topic_dir)
+    if data is None:
         return ""
+    return data.get("workdir", "")
+
+
+def load_todo(topic_dir: Path):
+    """Load todo.json from a topic directory.
+
+    Returns the parsed list, or None if missing/invalid/empty.
+    """
+    todo_path = topic_dir / TODO_FILE
+    if not todo_path.is_file():
+        return None
     try:
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return ""
-    if isinstance(data, dict):
-        return data.get("workdir", "")
-    return ""
+        return None
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+    return data
+
+
+def is_topic_completed(topic_dir: Path) -> bool:
+    """Return True if all tasks in todo.json have non-empty completed_at."""
+    data = load_todo(topic_dir)
+    if data is None:
+        return False
+    return all(
+        isinstance(item, dict) and item.get("completed_at")
+        for item in data
+    )
+
+
+def has_undone_tasks(topic_dir: Path) -> bool:
+    """Return True if the topic's todo.json has incomplete items."""
+    data = load_todo(topic_dir)
+    if data is None:
+        return False
+    return any(
+        isinstance(item, dict) and not item.get("completed_at")
+        for item in data
+    )
+
+
+def get_todo_progress(topic_dir: Path) -> tuple:
+    """Return (completed_count, total_count) from todo.json."""
+    data = load_todo(topic_dir)
+    if data is None:
+        return (0, 0)
+    total = len(data)
+    done = sum(
+        1 for item in data
+        if isinstance(item, dict) and item.get("completed_at")
+    )
+    return (done, total)
+
+
+def atomic_write_json(path: Path, data) -> None:
+    """Atomically write JSON data to a file using tempfile + os.replace."""
+    import tempfile
+
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    tmp_fd = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        tmp_fd.write(content)
+        tmp_fd.close()
+        os.replace(tmp_fd.name, str(path))
+    except BaseException:
+        tmp_fd.close()
+        if os.path.exists(tmp_fd.name):
+            os.unlink(tmp_fd.name)
+        raise
 
 
 def local_iso_timestamp() -> str:

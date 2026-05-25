@@ -9,13 +9,11 @@ Otherwise the key is set (overwritten) directly.
 """
 
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import get_specs_dir
+from common import atomic_write_json, get_specs_dir
 
 
 def main():
@@ -54,25 +52,9 @@ def main():
     else:
         data[key] = value
 
+    atomic_write_json(meta_path, data)
+
     content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-
-    tmp_fd = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=meta_path.parent,
-        suffix=".tmp",
-        delete=False,
-    )
-    try:
-        tmp_fd.write(content)
-        tmp_fd.close()
-        os.replace(tmp_fd.name, str(meta_path))
-    except BaseException:
-        tmp_fd.close()
-        if os.path.exists(tmp_fd.name):
-            os.unlink(tmp_fd.name)
-        raise
-
     print(content, end="")
 
 

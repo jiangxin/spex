@@ -1,36 +1,22 @@
 #!/usr/bin/env python3
 """List spec topics with progress and prompt summary."""
 
-import json
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import TODO_FILE, get_archives_dir, get_current_workdir, get_specs_dir
+from common import (
+    get_archives_dir,
+    get_current_workdir,
+    get_specs_dir,
+    get_todo_progress,
+    load_meta,
+)
 
-META_FILE = "meta.json"
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
 MAX_LINE_WIDTH = 80
-
-
-def _read_meta(topic_dir: Path):
-    """Read meta.json, return (created_at, first_prompt, workdir) or None."""
-    meta_path = topic_dir / META_FILE
-    if not meta_path.is_file():
-        return None
-    try:
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    timestamp = data.get("created_at", "")
-    prompts = data.get("prompts", [])
-    prompt_text = prompts[0] if prompts else ""
-    workdir = data.get("workdir", "")
-    return (timestamp, prompt_text, workdir)
 
 
 def parse_prompt_log(log_path: Path) -> tuple:
@@ -52,25 +38,6 @@ def parse_prompt_log(log_path: Path) -> tuple:
     return (timestamp, prompt_text)
 
 
-def get_todo_progress(topic_dir: Path) -> tuple:
-    """Return (completed_count, total_count) from todo.json."""
-    todo_path = topic_dir / TODO_FILE
-    if not todo_path.is_file():
-        return (0, 0)
-    try:
-        data = json.loads(todo_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return (0, 0)
-    if not isinstance(data, list) or len(data) == 0:
-        return (0, 0)
-    total = len(data)
-    done = sum(
-        1 for item in data
-        if isinstance(item, dict) and item.get("completed_at")
-    )
-    return (done, total)
-
-
 def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
     """Collect topic info from given directories."""
     archive_dirs = set(archive_dirs or [])
@@ -82,9 +49,12 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            result = _read_meta(sub)
-            if result is not None:
-                timestamp, prompt, workdir = result
+            meta = load_meta(sub)
+            if meta is not None:
+                timestamp = meta.get("created_at", "")
+                prompts = meta.get("prompts", [])
+                prompt = prompts[0] if prompts else ""
+                workdir = meta.get("workdir", "")
             else:
                 ts_prompt = parse_prompt_log(sub / PROMPT_LOG)
                 timestamp, prompt = ts_prompt
