@@ -112,6 +112,7 @@ def _build_metadata(template_name, topic_name=None):
 
     if template_name == "apply-commit":
         metadata["spex_root"] = ""
+        metadata["prompt_context"] = ""
         workdir = metadata.get("workdir", "")
         if workdir:
             try:
@@ -208,6 +209,8 @@ def main():
     )
     parser.add_argument("name", help="Template name (without .md extension)")
     parser.add_argument("--topic", help="Topic name for topic-specific metadata")
+    parser.add_argument("--stdin", action="store_true",
+                        help="Read raw text from stdin as prompt_context")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
     args = parser.parse_args()
 
@@ -221,11 +224,14 @@ def main():
     if not sys.stdin.isatty():
         stdin_data = sys.stdin.read().strip()
         if stdin_data:
-            try:
-                extra_vars = json.loads(stdin_data)
-            except json.JSONDecodeError:
-                print("Error: stdin must be valid JSON", file=sys.stderr)
-                sys.exit(1)
+            if args.stdin:
+                extra_vars = {"prompt_context": stdin_data}
+            else:
+                try:
+                    extra_vars = json.loads(stdin_data)
+                except json.JSONDecodeError:
+                    print("Error: stdin must be valid JSON", file=sys.stderr)
+                    sys.exit(1)
 
     try:
         metadata = _build_metadata(args.name, args.topic)
