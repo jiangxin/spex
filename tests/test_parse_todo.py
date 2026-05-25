@@ -109,6 +109,16 @@ class TestCmdValidate:
         err = capsys.readouterr().err
         assert "duplicate id '1'" in err
 
+    def test_empty_id(self, tmp_path, capsys):
+        tasks = [_make_task("", name="No ID")]
+        path = _write_todo(tmp_path, tasks)
+
+        with pytest.raises(SystemExit):
+            cmd_validate([path])
+
+        err = capsys.readouterr().err
+        assert "'id' must not be empty" in err
+
 
 # ===================== cmd_get_next_undone =====================
 

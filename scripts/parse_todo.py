@@ -67,7 +67,9 @@ def cmd_validate(args):
                 f"  item[{i}]: missing fields: {', '.join(sorted(missing))}"
             )
         item_id = item.get("id", "")
-        if item_id in seen_ids:
+        if not item_id:
+            errors.append(f"  item[{i}]: 'id' must not be empty")
+        elif item_id in seen_ids:
             errors.append(
                 f"  item[{i}]: duplicate id '{item_id}'"
                 f" (first seen at item[{seen_ids[item_id]}])"
