@@ -38,7 +38,7 @@ Internal commands (used by skill):
                 template content with front-matter stripped)
   get-topic [name]
                 Resolve a topic directory
-  create-topic [--json] [--get <keys>] <topic>
+  create-topic [--json] [--get <keys>] [--get-prompt <names>] <topic>
                 Create a new topic directory
   prompt <name> [--topic <topic>] [-o <file>]
                 Render a Jinja2 template with metadata

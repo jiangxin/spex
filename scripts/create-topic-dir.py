@@ -17,7 +17,6 @@ SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
     "specs_dir": "get_specs_dir",
     "archives_dir": "get_archives_dir",
-    "spec_template": "get_spec_template",
 }
 
 TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
@@ -107,10 +106,17 @@ def main():
         help="Comma-separated keys to include in JSON output "
         f"(supported: {', '.join(sorted(SUPPORTED_GET_KEYS))})"
     )
+    parser.add_argument(
+        "--get-prompt",
+        help="Comma-separated template names to render and include in JSON output"
+    )
     args = parser.parse_args()
 
     if args.get and not args.json:
         print("Error: --get requires --json", file=sys.stderr)
+        sys.exit(1)
+    if args.get_prompt and not args.json:
+        print("Error: --get-prompt requires --json", file=sys.stderr)
         sys.exit(1)
 
     get_keys = []
@@ -124,6 +130,10 @@ def main():
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    prompt_keys = []
+    if args.get_prompt:
+        prompt_keys = [k.strip() for k in args.get_prompt.split(",")]
 
     specs_dir = Path(get_specs_dir())
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
@@ -145,6 +155,11 @@ def main():
         }
         for key in get_keys:
             result[key] = getattr(common, SUPPORTED_GET_KEYS[key])()
+        if prompt_keys:
+            import prompt as prompt_mod
+            for key in prompt_keys:
+                json_key = key.replace("-", "_")
+                result[json_key] = prompt_mod.render_prompt(key, topic_name)
         print(json.dumps(result, indent=2))
     else:
         print(str(topic_dir))

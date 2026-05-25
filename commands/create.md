@@ -40,7 +40,7 @@ Based on `$requirement`, generate a short English name (<32 bytes) using only
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --get "spec_template" $topic
+echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --get-prompt "spec-template" $topic
 ```
 
 The script creates the topic directory and `meta.json` (with the

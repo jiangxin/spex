@@ -9,7 +9,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-SPEC_FILE = "spec.md"
+SPEC_FILE = "spec-template.md"
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
 DEFAULT_SPEX_ROOT_DIR = ".spex"

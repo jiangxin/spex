@@ -378,7 +378,7 @@ class TestGetSpecTemplate:
 
     def test_get_spec_template_custom_priority(self, tmp_path, monkeypatch):
         """Custom template content should be returned when it exists."""
-        template_path = tmp_path / "templates" / "spec.md"
+        template_path = tmp_path / "templates" / "spec-template.md"
         template_path.parent.mkdir()
         template_path.write_text("# My Custom Spec\n\nCustom content here")
         monkeypatch.setenv("SPEX_ROOT", str(tmp_path))

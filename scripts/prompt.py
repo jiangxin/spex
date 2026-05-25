@@ -113,6 +113,25 @@ def _build_metadata(template_name, topic_name=None):
     return metadata
 
 
+def render_prompt(name, topic_name=None):
+    """Render a template by name and return the result string.
+
+    Args:
+        name: Template name without .md extension (e.g. "spec-template").
+        topic_name: Optional topic name for topic-specific metadata.
+
+    Returns:
+        Rendered template content with front-matter stripped.
+    """
+    from jinja2 import Template
+
+    content = get_template(name + ".md")
+    metadata = _build_metadata(name, topic_name)
+    validate_required_meta(content, metadata)
+    rendered = Template(content).render(**metadata)
+    return strip_front_matter(rendered)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Render a Jinja2 template with metadata."
@@ -123,28 +142,19 @@ def main():
     args = parser.parse_args()
 
     try:
-        from jinja2 import Template, TemplateError
+        from jinja2 import TemplateError
     except ImportError:
         print("Error: jinja2 is required. Install with: pip install jinja2", file=sys.stderr)
         sys.exit(1)
 
-    template_name = args.name + ".md"
     try:
-        content = get_template(template_name)
+        rendered = render_prompt(args.name, args.topic)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-
-    metadata = _build_metadata(args.name, args.topic)
-    validate_required_meta(content, metadata)
-
-    try:
-        rendered = Template(content).render(**metadata)
     except TemplateError as e:
         print(f"Error rendering template: {e}", file=sys.stderr)
         sys.exit(1)
-
-    rendered = strip_front_matter(rendered)
 
     if args.output:
         out_path = Path(args.output)

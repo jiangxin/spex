@@ -340,7 +340,7 @@ class TestGetSpecTemplate:
         # Front-matter should be stripped
         assert "---" not in result
         # Builtin copy should be synced
-        builtin_path = tmp_path / "templates" / "builtin" / "spec.md"
+        builtin_path = tmp_path / "templates" / "builtin" / "spec-template.md"
         assert builtin_path.exists()
 
     def test_custom_template_priority(self, monkeypatch, tmp_path):
@@ -351,7 +351,7 @@ class TestGetSpecTemplate:
 
         # Create custom template
         template_dir = tmp_path / "templates"
-        custom_template = template_dir / "spec.md"
+        custom_template = template_dir / "spec-template.md"
         custom_template.write_text("# Custom Template\n\nMy custom content")
 
         monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
@@ -366,7 +366,7 @@ class TestGetSpecTemplate:
         """Custom template with front-matter has it stripped."""
         template_dir = tmp_path / "templates"
         template_dir.mkdir(parents=True)
-        custom_template = template_dir / "spec.md"
+        custom_template = template_dir / "spec-template.md"
         custom_template.write_text(
             '---\nversion: "2.0.0"\n---\n\n# Custom V2'
         )
@@ -384,7 +384,7 @@ class TestGetSpecTemplate:
         # Create an outdated builtin copy
         builtin_dir = tmp_path / "templates" / "builtin"
         builtin_dir.mkdir(parents=True)
-        old_builtin = builtin_dir / "spec.md"
+        old_builtin = builtin_dir / "spec-template.md"
         old_builtin.write_text('---\nversion: "0.0.1"\n---\n\n# Old')
 
         monkeypatch.setenv("SPEX_ROOT", str(tmp_path))

@@ -228,7 +228,7 @@ class TestMain:
     def test_get_without_json_exits(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
             sys, "argv",
-            ["prog", "2026-05-20-14-30-topic", "--get", "spec_template"]
+            ["prog", "2026-05-20-14-30-topic", "--get", "spex_root"]
         )
         monkeypatch.setattr(sys, "stdin", io.StringIO(""))
         with patch.object(
@@ -251,11 +251,11 @@ class TestMain:
                 create_topic_dir.main()
             assert exc_info.value.code == 1
 
-    def test_get_spec_template(self, monkeypatch, tmp_path, capsys):
+    def test_get_prompt(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(
             sys, "argv",
             ["prog", "2026-05-20-14-30-topic", "--json",
-             "--get", "spec_template"]
+             "--get-prompt", "spec-template"]
         )
         monkeypatch.setattr(sys, "stdin", io.StringIO("req"))
 
@@ -266,6 +266,9 @@ class TestMain:
             "user_name": "Test",
             "user_email": "test@test.com",
         }
+
+        import prompt as prompt_mod
+
         with (
             patch.object(
                 create_topic_dir, "get_specs_dir",
@@ -279,15 +282,15 @@ class TestMain:
                 return_value="2026-05-24T20:00:00+08:00"
             ),
             patch.object(
-                common, "get_spec_template",
-                return_value="# Template"
+                prompt_mod, "render_prompt",
+                return_value="# Rendered Template"
             ),
         ):
             create_topic_dir.main()
 
         output = json.loads(capsys.readouterr().out)
         assert output["topic_name"] == "2026-05-20-14-30-topic"
-        assert output["spec_template"] == "# Template"
+        assert output["spec_template"] == "# Rendered Template"
 
     def test_get_multiple_keys(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(
