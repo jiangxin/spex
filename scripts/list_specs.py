@@ -70,12 +70,14 @@ def get_todo_progress(topic_dir: Path) -> tuple:
     return (done, total)
 
 
-def collect_topics(dirs: list) -> list:
+def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
     """Collect topic info from given directories."""
+    archive_dirs = set(archive_dirs or [])
     topics = []
     for d in dirs:
         if not d.is_dir():
             continue
+        archived = d in archive_dirs
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
@@ -90,6 +92,7 @@ def collect_topics(dirs: list) -> list:
                 "n": n,
                 "m": m,
                 "prompt": prompt,
+                "archived": archived,
             })
     return topics
 
@@ -99,6 +102,20 @@ def _truncate(text: str, width: int) -> str:
     if len(text) <= width:
         return text
     return text[: width - 3] + "..."
+
+
+ICON_ARCHIVED = "\U0001f4e6"
+ICON_COMPLETED = "✅"
+ICON_IN_PROGRESS = "\U0001f527"
+
+
+def _get_icon(topic: dict) -> str:
+    """Return status emoji for a topic."""
+    if topic.get("archived"):
+        return ICON_ARCHIVED
+    if topic["m"] > 0 and topic["n"] == topic["m"]:
+        return ICON_COMPLETED
+    return ICON_IN_PROGRESS
 
 
 def format_output(topics: list, max_width: int = MAX_LINE_WIDTH) -> str:
@@ -111,18 +128,20 @@ def format_output(topics: list, max_width: int = MAX_LINE_WIDTH) -> str:
     progress_strs = [f"{t['n']}/{t['m']}" for t in topics]
     progress_width = max(len(s) for s in progress_strs)
 
-    # Layout: <topic>  <progress>  <prompt>
-    # Gaps: 2 spaces between columns
-    fixed_width = MAX_TOPIC_WIDTH + 2 + progress_width + 2
+    # Layout: <icon> <topic>  <progress>  <prompt>
+    # Icon takes 2 display columns + 1 space
+    icon_width = 3
+    fixed_width = icon_width + MAX_TOPIC_WIDTH + 2 + progress_width + 2
     prompt_width = max_width - fixed_width
 
     lines = []
     for topic, prog_str in zip(topics, progress_strs):
+        icon = _get_icon(topic)
         name = _truncate(topic["name"], MAX_TOPIC_WIDTH)
         name_col = name.ljust(MAX_TOPIC_WIDTH)
         prog_col = prog_str.rjust(progress_width)
         prompt_col = _truncate(topic["prompt"], prompt_width) if prompt_width > 3 else ""
-        lines.append(f"{name_col}  {prog_col}  {prompt_col}".rstrip())
+        lines.append(f"{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
 
     return "\n".join(lines)
 
@@ -131,10 +150,13 @@ def main():
     all_mode = "--all" in sys.argv
 
     dirs = [Path(get_specs_dir())]
+    archive_dirs = []
     if all_mode:
-        dirs.append(Path(get_archives_dir()))
+        archive_dir = Path(get_archives_dir())
+        dirs.append(archive_dir)
+        archive_dirs.append(archive_dir)
 
-    topics = collect_topics(dirs)
+    topics = collect_topics(dirs, archive_dirs=archive_dirs)
     print(format_output(topics))
 
 

@@ -152,8 +152,8 @@ class TestFormatOutput:
         ]
         output = format_output(topics)
         lines = output.splitlines()
-        assert lines[0].startswith("newer")
-        assert lines[1].startswith("older")
+        assert "newer" in lines[0]
+        assert "older" in lines[1]
 
     def test_topic_truncation(self):
         long_name = "a" * 40
