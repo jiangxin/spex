@@ -53,6 +53,8 @@ completed — report completion to the user and stop.
 1. Save stdout to `$prompt`.
 2. Parse `$next_task_id` from stderr (format: `task_id=<id>`).
 3. Launch a subagent with `$prompt` to implement the current task.
+   If the subagent fails or produces no file changes, report the error
+   to the user and retry.
 
 ### Step 3: Commit
 
