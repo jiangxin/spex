@@ -2,6 +2,8 @@
 """Shared utilities for the Spex skill."""
 
 import os
+import re
+import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +12,7 @@ SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
 DEFAULT_SPECS_ROOT_DIR = ".specs"
 TEMPLATE_DIR = "templates"
+BUILTIN_TEMPLATE_DIR = "builtin"
 
 _spec_root_cache: dict[str | None, str] = {}
 
@@ -129,33 +132,100 @@ def local_iso_timestamp() -> str:
     return f"{base}{offset[:3]}:{offset[3:]}"
 
 
-def get_spec_template(workdir=None) -> str:
-    """Return spec template path with fallback to built-in template.
+def _get_skill_path() -> Path:
+    """Return the skill root directory (parent of scripts/)."""
+    return Path(__file__).resolve().parent.parent
 
-    Lookup order:
-    1. <spec_root>/templates/spec.md (user custom template)
-    2. <skill_path>/templates/spec.md (built-in template)
 
-    Returns:
-        Absolute path to template file.
+def _extract_template_version(path: Path) -> str:
+    """Extract version from YAML front-matter of a template file.
+
+    Returns empty string if no front-matter or no version field found.
     """
-    # 1. Check user custom template
-    specs_root = Path(get_specs_root(workdir))
-    custom_template = specs_root / TEMPLATE_DIR / SPEC_FILE
+    if not path.exists():
+        return ""
+    content = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return ""
+    for line in match.group(1).splitlines():
+        m = re.match(r'version:\s*["\']?([^"\']*)["\']?', line)
+        if m:
+            return m.group(1).strip()
+    return ""
 
-    if custom_template.exists():
-        return str(custom_template)
 
-    # 2. Fallback to built-in template
-    skill_path = Path(__file__).resolve().parent.parent
-    builtin_template = skill_path / TEMPLATE_DIR / SPEC_FILE
+def _strip_front_matter(content: str) -> str:
+    """Remove YAML front-matter from template content."""
+    stripped = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, count=1, flags=re.DOTALL)
+    return stripped.lstrip("\n")
 
-    if not builtin_template.exists():
+
+def _sync_builtin_template(template_name: str, workdir=None):
+    """Sync a built-in template to specs_path/templates/builtin/ if version differs.
+
+    Compares the version in the skill's source template against the local
+    builtin copy. If they differ (or local copy is missing), overwrites the
+    local builtin copy.
+    """
+    skill_path = _get_skill_path()
+    source = skill_path / TEMPLATE_DIR / template_name
+    if not source.exists():
         raise FileNotFoundError(
-            f"Built-in template not found at {builtin_template}"
+            f"Built-in template not found at {source}"
         )
 
-    return str(builtin_template)
+    specs_root = Path(get_specs_root(workdir))
+    builtin_dir = specs_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR
+    target = builtin_dir / template_name
+
+    source_version = _extract_template_version(source)
+    target_version = _extract_template_version(target)
+
+    if source_version and source_version == target_version:
+        return  # Already up-to-date
+
+    builtin_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+
+
+def get_template(template_name: str, workdir=None) -> str:
+    """Return template content for the given template name.
+
+    Workflow:
+    1. Sync built-in template to <specs_root>/templates/builtin/ if needed.
+    2. If <specs_root>/templates/<name> exists (user custom), return its content.
+    3. Otherwise return <specs_root>/templates/builtin/<name> content.
+
+    The returned content has YAML front-matter stripped.
+
+    Args:
+        template_name: Template filename (e.g. "spec.md").
+        workdir: Working directory for git lookup.
+
+    Returns:
+        Template content as a string (without front-matter).
+    """
+    _sync_builtin_template(template_name, workdir)
+
+    specs_root = Path(get_specs_root(workdir))
+    custom = specs_root / TEMPLATE_DIR / template_name
+    builtin = specs_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / template_name
+
+    if custom.exists():
+        content = custom.read_text(encoding="utf-8")
+    else:
+        content = builtin.read_text(encoding="utf-8")
+
+    return _strip_front_matter(content)
+
+
+def get_spec_template(workdir=None) -> str:
+    """Return spec template content.
+
+    Convenience wrapper around get_template() for the spec template.
+    """
+    return get_template(SPEC_FILE, workdir)
 
 
 if __name__ == "__main__":

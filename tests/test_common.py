@@ -12,6 +12,7 @@ from common import (
     get_archives_dir,
     get_specs_dir,
     get_specs_root,
+    get_template,
     local_iso_timestamp,
 )
 
@@ -219,28 +220,100 @@ def test_git_config_no_auto_create(monkeypatch, tmp_path):
 
 class TestGetSpecTemplate:
     def test_fallback_to_builtin_template(self, monkeypatch, tmp_path):
-        """When no custom template exists, return built-in template path."""
+        """When no custom template exists, return built-in content via builtin."""
         monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
         from common import clear_specs_root_cache, get_spec_template
         clear_specs_root_cache()
 
         result = get_spec_template()
-        # Should return built-in template path
-        assert result.endswith("templates/spec.md")
-        from pathlib import Path
-        assert Path(result).exists()
+        # Should return template content (not a path)
+        assert "# Requirement" in result
+        # Front-matter should be stripped
+        assert "---" not in result
+        # Builtin copy should be synced
+        builtin_path = tmp_path / "templates" / "builtin" / "spec.md"
+        assert builtin_path.exists()
 
     def test_custom_template_priority(self, monkeypatch, tmp_path):
         """Custom template takes priority over built-in."""
+        # Create builtin dir so sync works
+        builtin_dir = tmp_path / "templates" / "builtin"
+        builtin_dir.mkdir(parents=True)
+
         # Create custom template
         template_dir = tmp_path / "templates"
-        template_dir.mkdir(parents=True)
         custom_template = template_dir / "spec.md"
-        custom_template.write_text("# Custom Template")
+        custom_template.write_text("# Custom Template\n\nMy custom content")
 
         monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
         from common import clear_specs_root_cache, get_spec_template
         clear_specs_root_cache()
 
         result = get_spec_template()
-        assert result == str(custom_template)
+        assert "# Custom Template" in result
+        assert "My custom content" in result
+
+    def test_custom_template_strips_front_matter(self, monkeypatch, tmp_path):
+        """Custom template with front-matter has it stripped."""
+        template_dir = tmp_path / "templates"
+        template_dir.mkdir(parents=True)
+        custom_template = template_dir / "spec.md"
+        custom_template.write_text(
+            '---\nversion: "2.0.0"\n---\n\n# Custom V2'
+        )
+
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        from common import clear_specs_root_cache, get_spec_template
+        clear_specs_root_cache()
+
+        result = get_spec_template()
+        assert "---" not in result
+        assert "# Custom V2" in result
+
+    def test_sync_updates_when_version_differs(self, monkeypatch, tmp_path):
+        """Builtin copy is updated when version differs from source."""
+        # Create an outdated builtin copy
+        builtin_dir = tmp_path / "templates" / "builtin"
+        builtin_dir.mkdir(parents=True)
+        old_builtin = builtin_dir / "spec.md"
+        old_builtin.write_text('---\nversion: "0.0.1"\n---\n\n# Old')
+
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        from common import clear_specs_root_cache, get_spec_template
+        clear_specs_root_cache()
+
+        result = get_spec_template()
+        # Should have synced the new version
+        assert "# Requirement" in result
+        # Verify the builtin file was updated
+        updated_content = old_builtin.read_text()
+        assert '"1.0.0"' in updated_content
+
+    def test_get_template_generic(self, monkeypatch, tmp_path):
+        """get_template works with any template name."""
+        from common import (
+            BUILTIN_TEMPLATE_DIR,
+            TEMPLATE_DIR,
+            _get_skill_path,
+            clear_specs_root_cache,
+        )
+        clear_specs_root_cache()
+
+        # Create a test template in the skill's templates dir
+        skill_path = _get_skill_path()
+        test_template = skill_path / TEMPLATE_DIR / "test-tpl.md"
+        test_template.write_text('---\nversion: "1.0.0"\n---\n\n# Test TPL')
+
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        clear_specs_root_cache()
+
+        try:
+            result = get_template("test-tpl.md")
+            assert "# Test TPL" in result
+            assert "---" not in result
+            # Builtin copy synced
+            synced = tmp_path / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / "test-tpl.md"
+            assert synced.exists()
+        finally:
+            # Clean up test template
+            test_template.unlink()

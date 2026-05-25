@@ -1,3 +1,7 @@
+---
+version: "1.0.0"
+---
+
 # Requirement
 
 <Requirement analysis based on the user's original prompt>

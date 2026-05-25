@@ -307,26 +307,29 @@ class TestTodoCommand:
 
 
 class TestGetSpecTemplate:
-    def test_get_spec_template_always_returns_path(self, tmp_path, monkeypatch):
-        """Command should always return a path (custom or built-in)."""
+    def test_get_spec_template_returns_content(self, tmp_path, monkeypatch):
+        """Command should output template content (not a path)."""
         monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
 
         result = _run_spex("get", "--spec-template")
 
         assert result.returncode == 0
-        output = result.stdout.strip()
-        assert output.endswith("templates/spec.md")
-        assert Path(output).exists()
+        output = result.stdout
+        # Should contain template content
+        assert "# Requirement" in output
+        # Front-matter should be stripped
+        assert "---" not in output
 
     def test_get_spec_template_custom_priority(self, tmp_path, monkeypatch):
-        """Custom template should be returned when it exists."""
+        """Custom template content should be returned when it exists."""
         template_path = tmp_path / "templates" / "spec.md"
         template_path.parent.mkdir()
-        template_path.write_text("# Custom")
+        template_path.write_text("# My Custom Spec\n\nCustom content here")
         monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
 
         result = _run_spex("get", "--spec-template")
 
         assert result.returncode == 0
-        output = result.stdout.strip()
-        assert output == str(template_path)
+        output = result.stdout
+        assert "# My Custom Spec" in output
+        assert "Custom content here" in output

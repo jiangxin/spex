@@ -28,8 +28,8 @@ Commands (require AI coding agent):
 
 Internal commands (used by skill):
   get --spec-root|--specs-dir|--archives-dir|--spec-template
-                Print the requested path (--spec-template returns
-                custom template if exists, otherwise built-in)
+                Print the requested path (--spec-template outputs
+                template content with front-matter stripped)
   get-topic [name]
                 Resolve a topic directory
   create-topic <topic>
