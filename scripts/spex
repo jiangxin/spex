@@ -12,13 +12,16 @@ _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
 
 USAGE = """\
-Usage: spex <command>
+Usage: spex [--specs-root <path>] <command>
+
+Global options:
+  --specs-root <path>  Override specs root directory
 
 Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
   archive       Archive completed spec topics
-  open        Open spec directory in file browser
-  install     Install spex symlink to ~/.local/bin
+  open          Open spec directory in file browser
+  install       Install spex symlink to ~/.local/bin
 
 Commands (require AI coding agent):
   apply       Apply a spec step-by-step
@@ -203,8 +206,28 @@ DIRECT_COMMANDS = {
 }
 
 
+def _extract_global_options():
+    """Extract global options from sys.argv before command dispatch."""
+    import common
+
+    args = sys.argv[1:]
+    if "--specs-root" in args:
+        idx = args.index("--specs-root")
+        if idx + 1 >= len(args):
+            print("Error: --specs-root requires a path argument",
+                  file=sys.stderr)
+            sys.exit(1)
+        specs_root = args[idx + 1]
+        os.environ["SPECS_ROOT"] = specs_root
+        common.clear_specs_root_cache()
+        args = args[:idx] + args[idx + 2:]
+    sys.argv = [sys.argv[0]] + args
+
+
 def main():
     """CLI entry point."""
+    _extract_global_options()
+
     if len(sys.argv) < 2:
         print(USAGE, end="")
         sys.exit(0)

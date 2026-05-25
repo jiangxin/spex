@@ -23,7 +23,7 @@ class TestNoArgs:
         result = _run_spex()
 
         assert result.returncode == 0
-        assert "Usage: spex <command>" in result.stdout
+        assert "Usage: spex" in result.stdout
 
     def test_lists_commands(self):
         result = _run_spex()
@@ -117,7 +117,7 @@ class TestUnknownCommand:
 
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
-        assert "Usage: spex <command>" in result.stderr
+        assert "Usage: spex" in result.stderr
 
 
 class TestInstallCommand:
@@ -333,3 +333,44 @@ class TestGetSpecTemplate:
         output = result.stdout
         assert "# My Custom Spec" in output
         assert "Custom content here" in output
+
+
+class TestSpecsRootGlobalOption:
+    def test_specs_root_option_used(self, tmp_path):
+        """--specs-root should override default specs root."""
+        specs_dir = tmp_path / "specs"
+        specs_dir.mkdir()
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT,
+             "--specs-root", str(tmp_path), "list"],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+        )
+
+        assert result.returncode == 0
+        assert "requires an AI coding agent" not in result.stderr
+
+    def test_specs_root_missing_value(self):
+        """--specs-root without a path should error."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "--specs-root"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        assert "requires a path" in result.stderr
+
+    def test_specs_root_with_get(self, tmp_path):
+        """--specs-root should affect get --spec-root output."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT,
+             "--specs-root", str(tmp_path), "get", "--spec-root"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == str(tmp_path)
