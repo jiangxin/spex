@@ -21,7 +21,7 @@ If `$topic_name` is `--all` or `-a`:
 2. Parse the output as a JSON array of objects, each containing
    `topic_name` and `topic_path`.
 3. For each entry, set `$topic` and `$topic_path` and execute Steps 2
-   through 8.
+   through 5.
 4. After completing all topics, stop.
 
 Otherwise, run:
@@ -39,20 +39,7 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Step 2: Get Next Undone Task
-
-Run:
-
-```bash
-$spex_skill_dir/scripts/spex todo get-next-undone --only-id $topic_path/todo.json
-```
-
-Save the output to `$next_task_id`.
-
-If `$next_task_id` is empty, all tasks are done — report completion and
-stop.
-
-### Step 3: Build Prompt and Execute
+### Step 2: Build Prompt and Execute
 
 Run:
 
@@ -60,10 +47,19 @@ Run:
 $spex_skill_dir/scripts/spex prompt apply-one-task --topic $topic_name
 ```
 
-Save the output to `$prompt`. Launch a subagent with `$prompt` to
+If the command exits with a non-zero exit code, all tasks are
+completed — report completion to the user and stop.
+
+Save the output to `$prompt`. Then run:
+
+```bash
+$spex_skill_dir/scripts/spex todo get-next-undone --only-id $topic_path/todo.json
+```
+
+Save the output to `$next_task_id`. Launch a subagent with `$prompt` to
 implement the current task.
 
-### Step 4: Commit
+### Step 3: Commit
 
 Load the commit prompt:
 
@@ -81,7 +77,7 @@ git log -1 --pretty="%h: %s"
 
 Save the output to `$commit_title`.
 
-### Step 5: Mark Task Complete
+### Step 4: Mark Task Complete
 
 Run:
 
@@ -89,7 +85,7 @@ Run:
 $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
 ```
 
-### Step 6: Loop
+### Step 5: Loop
 
 Go back to Step 2. Do **not** stop while `todo.json` still has undone
 tasks.
