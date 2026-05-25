@@ -305,13 +305,15 @@ class TestTaskIdStderr:
     def test_main_no_task_id_for_other_templates(
         self, tmp_path, monkeypatch, capsys
     ):
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", details="Do something"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-commit"]
+            "sys.argv", ["prompt", "apply-commit", "--topic", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -323,20 +325,22 @@ class TestTaskIdStderr:
         assert "task_id=" not in captured.err
 
 
-class TestStdinPromptContext:
-    """Test --stdin flag and prompt_context behavior."""
+class TestStdinExtraVars:
+    """Test --stdin flag and JSON stdin behavior."""
 
     def test_stdin_flag_reads_raw_text_as_prompt_context(
         self, tmp_path, monkeypatch, capsys
     ):
         """--stdin reads raw text from stdin and sets prompt_context."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
+        tasks = [
+            _make_task("step-1", name="First step", details="Do first"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-commit", "--stdin"]
+            "sys.argv",
+            ["prompt", "apply-commit", "--topic", "test-topic", "--stdin"],
         )
         monkeypatch.setattr("sys.stdin", io.StringIO("Fix the login bug"))
 
@@ -345,10 +349,10 @@ class TestStdinPromptContext:
         main()
 
         captured = capsys.readouterr()
-        assert "<commit-context>" in captured.out
-        assert "Fix the login bug" in captured.out
+        assert "<current-task>" in captured.out
+        assert "First step" in captured.out
 
-    def test_without_stdin_flag_json_behavior_preserved(
+    def test_without_stdin_flag_json_provides_extra_vars(
         self, tmp_path, monkeypatch, capsys
     ):
         """Without --stdin, valid JSON from stdin is parsed as extra_vars."""
@@ -357,10 +361,13 @@ class TestStdinPromptContext:
         _init_git_repo(repo)
         monkeypatch.chdir(repo)
         monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        json_input = json.dumps({
+            "spec_content": "My spec",
+            "next_task_text": "Build feature X",
+        })
         monkeypatch.setattr(
             "sys.argv", ["prompt", "apply-commit"]
         )
-        json_input = json.dumps({"prompt_context": "context from json"})
         monkeypatch.setattr("sys.stdin", io.StringIO(json_input))
 
         from prompt import main
@@ -368,13 +375,57 @@ class TestStdinPromptContext:
         main()
 
         captured = capsys.readouterr()
-        assert "<commit-context>" in captured.out
-        assert "context from json" in captured.out
+        assert "<specification>" in captured.out
+        assert "My spec" in captured.out
+        assert "<current-task>" in captured.out
+        assert "Build feature X" in captured.out
 
-    def test_render_prompt_with_nonempty_prompt_context(
-        self, tmp_path, monkeypatch
-    ):
-        """render_prompt with prompt_context renders <commit-context>."""
+
+class TestApplyCommitWithTopic:
+    """Test apply-commit loads spec and task context from topic."""
+
+    def test_topic_provides_spec_and_current_task(self, tmp_path, monkeypatch):
+        """apply-commit with --topic loads spec, completed, current, future tasks."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task(
+                "step-2", name="Add login API", details="Implement /login endpoint"
+            ),
+            _make_task("step-3", name="Add tests"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-commit", "test-topic")
+        assert "<specification>" in rendered
+        assert "# Test Spec" in rendered
+        assert "<completed-steps>" in rendered
+        assert "step-1: First step" in rendered
+        assert "<current-task>" in rendered
+        assert "Add login API" in rendered
+        assert "Implement /login endpoint" in rendered
+        assert "step-3: Add tests" in rendered
+
+    def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
+        """apply-commit with --topic but all tasks done fails validation."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        with pytest.raises(SystemExit):
+            render_prompt("apply-commit", "test-topic")
+
+    def test_no_topic_fails_validation(self, tmp_path, monkeypatch):
+        """apply-commit without --topic fails because required vars are missing."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _init_git_repo(repo)
@@ -383,23 +434,5 @@ class TestStdinPromptContext:
 
         from prompt import render_prompt
 
-        rendered = render_prompt(
-            "apply-commit", extra_vars={"prompt_context": "some context"}
-        )
-        assert "<commit-context>" in rendered
-        assert "some context" in rendered
-
-    def test_render_prompt_with_empty_prompt_context(
-        self, tmp_path, monkeypatch
-    ):
-        """render_prompt without prompt_context does NOT render <commit-context>."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
-        monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
-
-        from prompt import render_prompt
-
-        rendered = render_prompt("apply-commit")
-        assert "<commit-context>" not in rendered
+        with pytest.raises(SystemExit):
+            render_prompt("apply-commit")

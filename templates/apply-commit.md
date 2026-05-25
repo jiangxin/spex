@@ -1,26 +1,60 @@
 ---
 version: "0.0.1"
 required:
-  - "spex_root"
+  - spec_content
+  - next_task_text
 ---
 
-Create a git commit for the changes:
+## Goal
 
-- Follow the Conventional Commits format.
-- Wrap commit message lines at 72 characters.
-- Use HereDoc format to run git commit commands, such as:
-  `git commit -F- <<-EOF` to create a multi-line commit message.
+Stage the relevant file changes and create a single git commit.
+
+## Commit Message Guidelines
+
+- Follow the **Conventional Commits** format.
+- Wrap lines at 72 characters.
+- Convey WHY the change was made and the core technical reasoning —
+  not an exhaustive list of HOW things were modified.
+- Derive context from the Specification below; derive scope from the
+  Current Task.
+- Use HereDoc to pass the message:
+  `git commit -F- <<-EOF`
 {% if spex_root -%}
 - **Do NOT stage or commit any files under `{{ spex_root }}/`.**
 {% endif %}
-{% if prompt_context -%}
 
-The commit is based on the following requirement — implementing the
-Current Task caused these code changes. The commit message should
-convey the background, WHY the change was made, and core technical
-reasoning — not an exhaustive description of HOW things were modified.
+## References
 
-<commit-context>
-{{ prompt_context }}
-</commit-context>
+### Specification
+
+<specification>
+{{ spec_content }}
+</specification>
+
+{% if completed_tasks -%}
+### Completed Steps
+
+<completed-steps>
+{% for task in completed_tasks.splitlines() -%}
+- {{ task }}
+{% endfor -%}
+</completed-steps>
+
 {% endif -%}
+### Current Task
+
+The commit is for implementing the following task:
+
+<current-task>
+{{ next_task_text }}
+</current-task>
+{% if future_tasks %}
+
+### Future Steps
+
+The following steps have NOT been implemented yet.
+Do NOT include them in the commit message.
+
+{{ future_tasks }}
+{% endif %}
+</output>

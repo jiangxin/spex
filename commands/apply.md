@@ -64,7 +64,7 @@ to the user and retry.
 Load the commit prompt:
 
 ```bash
-echo "$prompt" | $spex_skill_dir/scripts/spex prompt apply-commit --stdin
+$spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
 ```
 
 Follow the output instructions to create a git commit. If the commit

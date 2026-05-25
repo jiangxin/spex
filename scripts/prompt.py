@@ -112,7 +112,6 @@ def _build_metadata(template_name, topic_name=None):
 
     if template_name == "apply-commit":
         metadata["spex_root"] = ""
-        metadata["prompt_context"] = ""
         workdir = metadata.get("workdir", "")
         if workdir:
             try:
@@ -122,6 +121,43 @@ def _build_metadata(template_name, topic_name=None):
                     metadata["spex_root"] = rel
             except (ValueError, RuntimeError):
                 pass
+        if topic_name:
+            topic_dir = _resolve_topic_dir(topic_name)
+            spec_path = topic_dir / "spec.md"
+            if spec_path.exists():
+                metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
+            else:
+                metadata["spec_content"] = ""
+
+            todo = load_todo(topic_dir)
+            if todo:
+                done = [item for item in todo if item.get("completed_at")]
+                metadata["completed_tasks"] = "\n".join(
+                    f"{item.get('id', '')}: {item.get('name', '')}"
+                    for item in done
+                )
+                undone = [item for item in todo if not item.get("completed_at")]
+                if undone:
+                    current = undone[0]
+                    task_id = current.get("id", "")
+                    name = current.get("name", "")
+                    details = current.get("details", "")
+                    metadata["next_task_text"] = (
+                        f"**Task**: {task_id} - {name}\n\n"
+                        f"**Details**:\n\n{details}"
+                    )
+                    future = undone[1:]
+                    metadata["future_tasks"] = "\n".join(
+                        f"- {item.get('id', '')}: {item.get('name', '')}"
+                        for item in future
+                    ) if future else ""
+                else:
+                    metadata["next_task_text"] = ""
+                    metadata["future_tasks"] = ""
+            else:
+                metadata["completed_tasks"] = ""
+                metadata["next_task_text"] = ""
+                metadata["future_tasks"] = ""
 
     if template_name == "apply-one-task" and topic_name:
         topic_dir = _resolve_topic_dir(topic_name)
@@ -188,8 +224,10 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
         if extra_vars:
             metadata.update(extra_vars)
 
-    # All-done detection for apply-one-task
-    if name == "apply-one-task" and not metadata.get("next_task_text"):
+    # All-done detection for task-based templates
+    if name in ("apply-one-task", "apply-commit") and not metadata.get(
+        "next_task_text"
+    ):
         print(
             "Error: all tasks are completed, nothing to apply.",
             file=sys.stderr,
