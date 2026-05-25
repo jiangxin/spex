@@ -73,7 +73,21 @@ def _get_repo_root(workdir=None):
     return Path(result.stdout.strip()).resolve()
 
 
-def _read_spex_root_from_yaml(path: Path):
+def _resolve_spex_path(value: str, repo_root) -> str:
+    """Resolve a spex_root path value to an absolute path.
+
+    - ~/... paths are expanded to the user's home directory.
+    - Relative paths resolve from repo_root (if in a git repo) or cwd.
+    - Absolute paths are returned as-is.
+    """
+    p = Path(value).expanduser()
+    if not p.is_absolute():
+        base = repo_root if repo_root is not None else Path.cwd()
+        p = base / p
+    return str(p.resolve())
+
+
+def _read_spex_root_from_yaml(path: Path, repo_root=None):
     """Read spex_root value from a YAML config file. Returns None if not found.
 
     Only supports simple "key: value" lines (no nested structures).
@@ -92,7 +106,7 @@ def _read_spex_root_from_yaml(path: Path):
         if m:
             value = m.group(1).strip().strip("\"'")
             if value:
-                return str(Path(value).expanduser().resolve())
+                return _resolve_spex_path(value, repo_root)
     return None
 
 
@@ -105,17 +119,17 @@ def _find_spex_yaml(repo_root):
     3. ~/.spex.yaml
     """
     if repo_root is not None:
-        value = _read_spex_root_from_yaml(repo_root / ".spex.yaml")
+        value = _read_spex_root_from_yaml(repo_root / ".spex.yaml", repo_root)
         if value:
             return value
 
     xdg_config = Path.home() / ".config" / "spex" / "config.yaml"
-    value = _read_spex_root_from_yaml(xdg_config)
+    value = _read_spex_root_from_yaml(xdg_config, repo_root)
     if value:
         return value
 
     home_config = Path.home() / ".spex.yaml"
-    value = _read_spex_root_from_yaml(home_config)
+    value = _read_spex_root_from_yaml(home_config, repo_root)
     if value:
         return value
 
@@ -149,9 +163,10 @@ def get_spex_root(workdir=None, require_git=False):
     # 1. Check environment variable
     env_root = os.environ.get("SPEX_ROOT")
     if env_root:
-        spex_root = str(Path(env_root).resolve())
+        repo_root = _get_repo_root(workdir)
+        spex_root = _resolve_spex_path(env_root, repo_root)
         _spex_root_cache[cache_key] = spex_root
-        if require_git and _get_repo_root(workdir) is None:
+        if require_git and repo_root is None:
             raise RuntimeError("Not inside a git repository")
         return spex_root
 

@@ -127,6 +127,47 @@ def test_env_var_takes_priority(monkeypatch, tmp_path):
     assert result == str(tmp_path / "custom-specs")
 
 
+def test_env_var_relative_path_in_repo(monkeypatch, tmp_path):
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    monkeypatch.setenv("SPEX_ROOT", ".spex")
+
+    result = get_spex_root(str(repo))
+    assert result == str(repo / ".spex")
+
+
+def test_env_var_relative_path_no_repo(monkeypatch, tmp_path):
+    workdir = tmp_path / "no-repo"
+    workdir.mkdir()
+    monkeypatch.setenv("SPEX_ROOT", "my-specs")
+    monkeypatch.chdir(workdir)
+
+    result = get_spex_root(str(workdir))
+    assert result == str(workdir / "my-specs")
+
+
+def test_env_var_tilde_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("SPEX_ROOT", "~/my-specs")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    result = get_spex_root()
+    assert result == str(tmp_path / "my-specs")
+
+
+def test_yaml_relative_path_in_repo(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    (repo / ".spex.yaml").write_text(
+        "spex_root: shared/specs\n", encoding="utf-8"
+    )
+
+    result = get_spex_root(str(repo))
+    assert result == str(repo / "shared" / "specs")
+
+
 def test_repo_spex_yaml_takes_priority(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
