@@ -122,7 +122,6 @@ def _build_metadata(template_name, topic_name=None):
             except (ValueError, RuntimeError):
                 pass
         if topic_name:
-            topic_dir = _resolve_topic_dir(topic_name)
             spec_path = topic_dir / "spec.md"
             if spec_path.exists():
                 metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
@@ -160,7 +159,6 @@ def _build_metadata(template_name, topic_name=None):
                 metadata["future_tasks"] = ""
 
     if template_name == "apply-one-task" and topic_name:
-        topic_dir = _resolve_topic_dir(topic_name)
         spec_path = topic_dir / "spec.md"
         if spec_path.exists():
             metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
