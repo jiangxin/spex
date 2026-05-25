@@ -5,7 +5,7 @@ Apply a specification to implement code step by step.
 ## Usage
 
 ```text
-/spex apply [topic_name | --all | -a]
+/spex apply [topic_name | --all]
 ```
 
 ## Procedure
@@ -14,15 +14,15 @@ Follow these steps in order. Do not skip or reorder.
 
 ### Step 1: Resolve Topic
 
-If `$topic_name` is `--all` or `-a`:
+If `$topic_name` is `--all`:
 
-1. Run `$spex_skill_dir/scripts/spex get-topic --json --all` to get all topics
-   with undone tasks.
-2. Parse the output as a JSON array of objects, each containing
-   `topic_name` and `topic_path`.
-3. For each entry, set `$topic` and `$topic_path` and execute Steps 2
-   through 5.
-4. After completing all topics, stop.
+- Run `$spex_skill_dir/scripts/spex get-topic --json --all` to get all
+  topics with undone tasks.
+- Parse the output as a JSON array of objects, each containing
+  `topic_name` and `topic_path`.
+- For each entry, set `$topic_name` and `$topic_path` and execute
+  Steps 2 through 5.
+- After completing all topics, stop.
 
 Otherwise, run:
 
@@ -32,11 +32,11 @@ $spex_skill_dir/scripts/spex get-topic --json "$topic_name"
 
 Read the command output and parse it as a JSON array:
 
-- If the array contains a single element, set `$topic` to its
+- If the array contains a single element, set `$topic_name` to its
   `topic_name` and `$topic_path` to its `topic_path`.
 - If the array contains multiple elements, present a numbered list of
-  `topic_name` values to the user and ask them to choose. Set `$topic`
-  and `$topic_path` from the selected entry.
+  `topic_name` values to the user and ask them to choose. Set
+  `$topic_name` and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Step 2: Build Prompt and Execute
