@@ -108,20 +108,24 @@ def test_env_var_takes_priority(monkeypatch, tmp_path):
     assert result == str(tmp_path / "custom-specs")
 
 
-def test_git_config_fallback(monkeypatch, tmp_path):
+def test_repo_spex_yaml_takes_priority(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    custom_path = str(tmp_path / "custom-from-git-config")
-    subprocess.run(
-        ["git", "-C", str(repo), "config", "spex.root", custom_path],
-        capture_output=True,
-        check=True,
+    custom_path = tmp_path / "from-repo-yaml"
+    # Write repo-level .spex.yaml
+    (repo / ".spex.yaml").write_text(
+        f"spex_root: {custom_path}\n", encoding="utf-8"
+    )
+    # Write home-level (should be ignored)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    (tmp_path / ".spex.yaml").write_text(
+        "spex_root: /should/not/use\n", encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
-    assert result == str(Path(custom_path).resolve())
+    assert result == str(custom_path.resolve())
 
 
 def test_default_fallback_when_no_config(monkeypatch, tmp_path):
@@ -199,23 +203,68 @@ def test_env_var_no_auto_create(monkeypatch, tmp_path):
     assert not custom_specs.exists()
 
 
-def test_git_config_no_auto_create(monkeypatch, tmp_path):
+def test_xdg_config_fallback(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    custom_path = tmp_path / "from-xdg"
+    # No repo-level .spex.yaml
+    xdg_dir = tmp_path / ".config" / "spex"
+    xdg_dir.mkdir(parents=True)
+    (xdg_dir / "config.yaml").write_text(
+        f"spex_root: {custom_path}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-    custom_path = tmp_path / "custom-from-config"
-    subprocess.run(
-        ["git", "-C", str(repo), "config", "spex.root", str(custom_path)],
-        capture_output=True,
-        check=True,
+    result = get_spex_root(str(repo))
+    assert result == str(custom_path.resolve())
+
+
+def test_home_spex_yaml_fallback(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    custom_path = tmp_path / "from-home"
+    # No repo-level, no XDG
+    (tmp_path / ".spex.yaml").write_text(
+        f"spex_root: {custom_path}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    result = get_spex_root(str(repo))
+    assert result == str(custom_path.resolve())
+
+
+def test_yaml_no_auto_create(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    custom_path = tmp_path / "nonexistent-dir"
+    (repo / ".spex.yaml").write_text(
+        f"spex_root: {custom_path}\n", encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
     assert result == str(custom_path.resolve())
     assert not custom_path.exists()
     assert not (repo / ".gitignore").exists()
+
+
+def test_yaml_missing_key_skipped(monkeypatch, tmp_path):
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    # .spex.yaml exists but has no spex_root key
+    (repo / ".spex.yaml").write_text(
+        "other_key: some_value\n", encoding="utf-8"
+    )
+
+    result = get_spex_root(str(repo))
+    assert result == str(repo / ".spex")
 
 
 class TestGetSpecTemplate:

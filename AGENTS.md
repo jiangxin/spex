@@ -5,7 +5,7 @@
 | Variable | Description |
 |----------|-------------|
 | `spex_skill_dir` | The skill installation directory (where `SKILL.md` lives). The global `spex` CLI is a symlink to `<spex_skill_dir>/scripts/spex`. |
-| `spex_root` | Root directory for spec storage. Default: `.spex/` in the git worktree. Override via env `SPEX_ROOT` or git config `spex.root`. |
+| `spex_root` | Root directory for spec storage. Default: `.spex/` in the git worktree. Override via env `SPEX_ROOT` or `.spex.yaml` config file. |
 | `specs_dir` | `<spex_root>/specs/` — active spec topics. |
 | `archives_dir` | `<spex_root>/archives/` — archived spec topics. |
 

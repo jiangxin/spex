@@ -62,12 +62,72 @@ def _ensure_repo_spex_dir(repo_root: Path, spex_dir: str):
         _ensure_gitignore(repo_root, gitignore_entry)
 
 
+def _get_repo_root(workdir=None):
+    """Return the git repository root, or None if not in a repo."""
+    cmd = ["git", "rev-parse", "--show-toplevel"]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, cwd=workdir
+    )
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip()).resolve()
+
+
+def _read_spex_root_from_yaml(path: Path):
+    """Read spex_root value from a YAML config file. Returns None if not found.
+
+    Only supports simple "key: value" lines (no nested structures).
+    """
+    if not path.is_file():
+        return None
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r"spex_root\s*:\s*(.+)", line)
+        if m:
+            value = m.group(1).strip().strip("\"'")
+            if value:
+                return str(Path(value).expanduser().resolve())
+    return None
+
+
+def _find_spex_yaml(repo_root):
+    """Search for .spex.yaml config and return spex_root value or None.
+
+    Search order:
+    1. <repo_root>/.spex.yaml (if repo_root is not None)
+    2. ~/.config/spex/config.yaml
+    3. ~/.spex.yaml
+    """
+    if repo_root is not None:
+        value = _read_spex_root_from_yaml(repo_root / ".spex.yaml")
+        if value:
+            return value
+
+    xdg_config = Path.home() / ".config" / "spex" / "config.yaml"
+    value = _read_spex_root_from_yaml(xdg_config)
+    if value:
+        return value
+
+    home_config = Path.home() / ".spex.yaml"
+    value = _read_spex_root_from_yaml(home_config)
+    if value:
+        return value
+
+    return None
+
+
 def get_spex_root(workdir=None):
     """Return the spex root directory path.
 
     Resolution order:
     1. Environment variable SPEX_ROOT.
-    2. Git config key spex.root.
+    2. .spex.yaml config file (repo root, ~/.config/spex/, ~/.spex.yaml).
     3. Default: .spex inside the git toplevel.
 
     Args:
@@ -87,26 +147,17 @@ def get_spex_root(workdir=None):
         _spex_root_cache[cache_key] = spex_root
         return spex_root
 
-    # 2. Check git config
-    cmd = ["git", "config", "--get", "spex.root"]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=workdir
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        git_root = result.stdout.strip()
-        spex_root = str(Path(git_root).resolve())
-        _spex_root_cache[cache_key] = spex_root
-        return spex_root
+    # 2. Check .spex.yaml config files
+    repo_root = _get_repo_root(workdir)
+    yaml_root = _find_spex_yaml(repo_root)
+    if yaml_root:
+        _spex_root_cache[cache_key] = yaml_root
+        return yaml_root
 
-    # 3. Fallback: compute from git toplevel
-    cmd = ["git", "rev-parse", "--show-toplevel"]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=workdir
-    )
-    if result.returncode != 0:
+    # 3. Fallback: .spex inside the git toplevel
+    if repo_root is None:
         raise RuntimeError("Not inside a git repository")
 
-    repo_root = Path(result.stdout.strip()).resolve()
     spex_root = str(repo_root / DEFAULT_SPEX_ROOT_DIR)
     _ensure_repo_spex_dir(repo_root, DEFAULT_SPEX_ROOT_DIR)
     _spex_root_cache[cache_key] = spex_root
