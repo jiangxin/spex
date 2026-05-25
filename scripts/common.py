@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,13 @@ TEMPLATE_DIR = "templates"
 EXAMPLES_TEMPLATE_DIR = "examples"
 
 _spex_root_cache: dict[str | None, str] = {}
+
+
+def check_help_flag(usage_text):
+    """If -h or --help is in sys.argv, print usage and exit."""
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(usage_text, end="")
+        sys.exit(0)
 
 
 def clear_spex_root_cache():

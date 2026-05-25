@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from common import (
+    check_help_flag,
     clear_spex_root_cache,
     get_archives_dir,
     get_specs_dir,
@@ -325,6 +326,31 @@ def test_yaml_missing_key_skipped(monkeypatch, tmp_path):
 
     result = get_spex_root(str(repo))
     assert result == str(repo / ".spex")
+
+
+class TestCheckHelpFlag:
+    def test_h_flag_prints_usage_and_exits(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["script", "-h"])
+        with pytest.raises(SystemExit) as exc_info:
+            check_help_flag("Usage: script [options]\n")
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out == "Usage: script [options]\n"
+
+    def test_help_flag_prints_usage_and_exits(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["script", "--help"])
+        with pytest.raises(SystemExit) as exc_info:
+            check_help_flag("Usage: script [options]\n")
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out == "Usage: script [options]\n"
+
+    def test_no_help_flag_does_nothing(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["script", "--verbose", "file.txt"])
+        # Should return normally without raising
+        check_help_flag("Usage: script [options]\n")
+        captured = capsys.readouterr()
+        assert captured.out == ""
 
 
 class TestGetTemplate:
