@@ -50,9 +50,9 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --topic $topic_name
 If the command exits with a non-zero exit code, all tasks are
 completed — report completion to the user and stop.
 
-Save stdout to `$prompt`. Parse `$next_task_id` from stderr (format:
-`task_id=<id>`). Launch a subagent with `$prompt` to implement the
-current task.
+1. Save stdout to `$prompt`.
+2. Parse `$next_task_id` from stderr (format: `task_id=<id>`).
+3. Launch a subagent with `$prompt` to implement the current task.
 
 ### Step 3: Commit
 
