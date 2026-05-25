@@ -6,31 +6,41 @@ and test plan.
 ## Usage
 
 ```text
-/spex create [prompt]
+/spex create [input]
 ```
 
 ## Procedure
 
-Execute this procedure in a dedicated sub-agent to keep the main context clean.
+- **Execution**: Run in a dedicated sub-agent to keep the main context clean.
+- **Role**: Act as a senior software architect. Focus on requirement
+  completeness, edge cases, and testability.
+
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Collect Prompt
+### Step 1: Clarify Requirement
 
-If `$prompt` is not provided or empty, ask the user to describe the
-requirement. The user's full input becomes `$prompt`.
+If `$input` is not provided or empty, ask the user to describe the requirement.
+
+Once you have `$input`, explore the workspace to understand the current
+codebase context. Identify any ambiguities, contradictions, or cases where
+multiple implementation approaches exist. Ask the user to clarify these
+points before proceeding.
+
+After clarification, record the complete, unambiguous requirement as
+`$requirement`.
 
 ### Step 2: Generate Topic Name
 
-Based on `$prompt`, generate a short English name (<32 bytes) using only
+Based on `$requirement`, generate a short English name (<32 bytes) using only
 `[a-z0-9-]`, replacing spaces with `-`. The result is `$topic`
 (e.g., `add-login-api`). Do NOT prepend any date prefix.
 
-### Step 3: Create Topic
+### Step 3: Prepare Topic Directory
 
 Run:
 
 ```bash
-echo "$prompt" | $spex_skill_path/scripts/spex create-topic --json $topic
+echo "$requirement" | $spex_skill_path/scripts/spex create-topic --json $topic
 ```
 
 Parse the JSON output. The `topic_name` field is the `$topic` parameter
@@ -57,36 +67,38 @@ Run:
 $spex_skill_path/scripts/spex get --spec-template
 ```
 
-The command will output the template path to stdout:
+The command outputs the template content to stdout (with front-matter
+stripped). It automatically syncs the built-in template to
+`<spec_root>/templates/builtin/spec.md` and returns the user's custom
+`<spec_root>/templates/spec.md` if it exists, otherwise the builtin copy.
 
-- If user has `<spec_root>/templates/spec.md`, use that custom template
-- Otherwise, use the built-in template from `$spex_skill_path/templates/spec.md`
+Save the output as `$template_content`.
 
-Save the output as `$template_path`.
+### Step 5: Design Specification
 
-### Step 5: Create spec.md
+Perform detailed requirement analysis and solution design based on
+`$requirement`. Consider functional requirements, non-functional requirements,
+data models, API contracts, error handling, and edge cases.
 
-Read the template file at `$template_path` and create `$topic_path/spec.md`
-using the same language as the user's prompt (e.g., English or Chinese).
+Using `$template_content` as the template, create `$topic_path/spec.md`
+in the same language as the user's requirement (e.g., English or Chinese).
+Replace the placeholder sections (text enclosed in angle brackets or square
+brackets) with the analysis and design results. Keep the Constraints section
+as-is.
 
-Replace the placeholder sections in the template with actual content based
-on `$prompt`:
+### Step 6: Plan Implementation Steps
 
-- `<Requirement analysis based on the user's original prompt>` → Actual requirement analysis
-- `<Clarifications from the user on ambiguous requirements>` → User clarifications
-- `<Detailed design based on analysis...>` → Actual detailed design
-- `<Detailed test plan based on the design above>` → Actual test plan
+Based on the design in `$topic_path/spec.md`, break down the work into
+incremental development steps. Each step should be independently
+committable and verifiable.
 
-Keep the Constraints section as-is from the template.
+Principles:
 
-### Step 6: Generate todo.json
-
-Break down the work into development steps following DRY, KISS, Small
-Batches, Commit Often, and Test Often.
-
-- Group implementation code and its associated test cases in the same
-  step — do not split them into separate steps. Each step should be a
-  self-contained unit that includes both production code and its tests.
+- **Small batches**: each step delivers a minimal, working increment.
+- **Self-contained**: group production code and its tests in the same
+  step — never split them into separate steps.
+- **Ordered by dependency**: list steps so that each builds on the
+  previous one; no forward references.
 
 Create `$topic_path/todo.json` listing each step in order:
 
