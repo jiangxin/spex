@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared utilities for the Spex skill."""
 
+import json
 import os
 import re
 import shutil
@@ -10,6 +11,7 @@ from pathlib import Path
 
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
+META_FILE = "meta.json"
 DEFAULT_SPEX_ROOT_DIR = ".spex"
 TEMPLATE_DIR = "templates"
 BUILTIN_TEMPLATE_DIR = "builtin"
@@ -200,6 +202,34 @@ def get_specs_dir(workdir=None):
 def get_archives_dir(workdir=None):
     """Return the archives directory: <spex_root>/archives/."""
     return str(Path(get_spex_root(workdir)) / "archives")
+
+
+def get_current_workdir():
+    """Return the current git toplevel path, or None if not in a repo."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return None
+
+
+def get_topic_workdir(topic_dir: Path) -> str:
+    """Read workdir from meta.json in a topic directory.
+
+    Returns the workdir string, or empty string if not found.
+    """
+    meta_path = topic_dir / META_FILE
+    if not meta_path.is_file():
+        return ""
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if isinstance(data, dict):
+        return data.get("workdir", "")
+    return ""
 
 
 def local_iso_timestamp() -> str:

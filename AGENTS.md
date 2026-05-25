@@ -24,8 +24,23 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 - `SKILL.md` — Skill entry point (front-matter + instructions).
 - `commands/` — Sub-command definitions (Markdown).
 - `scripts/` — Executable helper scripts, written in Python (3.9+).
+- `scripts/common.py` — Shared library (see API below).
 - `references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
+
+## Shared Library (`scripts/common.py`)
+
+| Function | Description |
+|----------|-------------|
+| `get_spex_root(workdir, require_git)` | Resolve spex_root path (env > .spex.yaml > default). |
+| `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
+| `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
+| `get_current_workdir()` | Return git toplevel of cwd, or `None` if not in a repo. |
+| `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
+| `get_template(name, workdir)` | Return template content (front-matter stripped). |
+| `get_spec_template(workdir)` | Shortcut for `get_template("spec.md")`. |
+| `local_iso_timestamp()` | Current local time as ISO 8601 string. |
+| `clear_spex_root_cache()` | Reset the internal spex_root cache. |
 
 ## Quality Checks
 

@@ -3,12 +3,11 @@
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import TODO_FILE, get_archives_dir, get_specs_dir
+from common import TODO_FILE, get_archives_dir, get_current_workdir, get_specs_dir
 
 META_FILE = "meta.json"
 PROMPT_LOG = "prompt.log"
@@ -175,17 +174,6 @@ def format_output(
     return "\n".join(lines)
 
 
-def _get_current_workdir():
-    """Return the current git toplevel path, or None if not in a repo."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return None
-
-
 def main():
     all_mode = "--all" in sys.argv
 
@@ -198,7 +186,7 @@ def main():
 
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
-    current_workdir = _get_current_workdir()
+    current_workdir = get_current_workdir()
     if current_workdir:
         topics = [
             t for t in topics

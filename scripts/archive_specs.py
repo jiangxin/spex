@@ -11,7 +11,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import TODO_FILE, get_archives_dir, get_specs_dir
+from common import (
+    TODO_FILE,
+    get_archives_dir,
+    get_current_workdir,
+    get_specs_dir,
+    get_topic_workdir,
+)
 
 
 def is_topic_completed(topic_dir: Path) -> bool:
@@ -34,14 +40,24 @@ def is_topic_completed(topic_dir: Path) -> bool:
     )
 
 
-def find_completed_topics(specs_dir: Path) -> list:
-    """Return sorted list of topic paths where all tasks are completed."""
+def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:
+    """Return sorted list of topic paths where all tasks are completed.
+
+    If current_workdir is provided, only topics matching that workdir
+    (or topics without a workdir) are included.
+    """
     if not specs_dir.is_dir():
         return []
-    return sorted(
-        d for d in specs_dir.iterdir()
-        if d.is_dir() and is_topic_completed(d)
-    )
+    results = []
+    for d in specs_dir.iterdir():
+        if not d.is_dir() or not is_topic_completed(d):
+            continue
+        if current_workdir is not None:
+            workdir = get_topic_workdir(d)
+            if workdir and workdir != current_workdir:
+                continue
+        results.append(d)
+    return sorted(results)
 
 
 def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
@@ -69,7 +85,8 @@ def main():
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
 
-    completed = find_completed_topics(specs_dir)
+    current_workdir = get_current_workdir()
+    completed = find_completed_topics(specs_dir, current_workdir)
 
     if not completed:
         print("No completed topics to archive.")
