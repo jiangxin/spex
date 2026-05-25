@@ -92,37 +92,38 @@ Principles:
 - **Ordered by dependency**: list steps so that each builds on the
   previous one; no forward references.
 
-Create `$topic_path/todo.json` listing each step in order:
+Create `$topic_path/todo.xml` listing each step in order:
 
-```json
-[
-  {
-    "id": "<step-id>",
-    "name": "<step-name>",
-    "details": "<detailed description in markdown without headings>",
-    "completed_at": "",
-    "commit_title": ""
-  }
-]
+```xml
+<steps>
+  <step>
+    <step-id>step-1</step-id>
+    <step-name>Short name for the step</step-name>
+    <step-markdown-details>
+Markdown-formatted description of what this step does,
+including file changes, logic, and acceptance criteria.
+
+- Use lists, bold, and inline code
+- Do not use headings (`#`, `##`, etc.)
+    </step-markdown-details>
+  </step>
+</steps>
 ```
 
-- `details`: a markdown-formatted description of what this step does,
-  including file changes, logic, and acceptance criteria. Do not use
-  headings (`#`, `##`, etc.) inside the value — use lists, bold, and
-  inline code instead.
-- All steps start with `completed_at: ""` and an empty `commit_title`.
-  These fields are updated later when each step is implemented.
+- `<step-markdown-details>`: multi-line Markdown text describing the
+  step. No escaping needed — write Markdown directly inside the tag.
+- Number steps sequentially: `step-1`, `step-2`, etc.
 
-### Step 6: Validate todo.json
+### Step 6: Convert todo.xml to todo.json
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo validate $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo xml2json $topic_path/todo.xml
 ```
 
-If the script exits with an error, read the error message, fix the JSON
-format in `todo.json`, and re-run until validation passes.
+If the script exits with an error, read the error message, fix the XML
+format in `todo.xml`, and re-run until conversion succeeds.
 
 ### Step 7: Output
 
