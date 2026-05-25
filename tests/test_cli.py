@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -109,6 +110,28 @@ class TestLLMCommands:
 
         assert result.returncode == 1
         assert "requires an AI coding agent" in result.stderr
+
+
+class TestVersion:
+    _VERSION_RE = r"spex \d+\.\d+\.\d+"
+
+    def test_version_command(self):
+        result = _run_spex("version")
+
+        assert result.returncode == 0
+        assert re.search(self._VERSION_RE, result.stdout)
+
+    def test_version_flag(self):
+        result = _run_spex("--version")
+
+        assert result.returncode == 0
+        assert re.search(self._VERSION_RE, result.stdout)
+
+    def test_version_short_flag(self):
+        result = _run_spex("-V")
+
+        assert result.returncode == 0
+        assert re.search(self._VERSION_RE, result.stdout)
 
 
 class TestUnknownCommand:

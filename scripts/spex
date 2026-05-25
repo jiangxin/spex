@@ -3,6 +3,7 @@
 
 import importlib
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -11,11 +12,14 @@ from pathlib import Path
 _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
 
+_skill_dir = _scripts_dir.parent
+
 USAGE = """\
 Usage: spex [--spex-root <path>] <command>
 
 Global options:
   --spex-root <path>  Override spex root directory
+  --version, -V       Show version and exit
 
 Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
@@ -193,6 +197,27 @@ def _run_todo():
         sys.exit(1)
 
 
+def _get_version():
+    """Extract version from SKILL.md front-matter metadata."""
+    skill_md = _skill_dir / "SKILL.md"
+    if not skill_md.is_file():
+        return "unknown"
+    content = skill_md.read_text(encoding="utf-8")
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return "unknown"
+    for line in match.group(1).splitlines():
+        m = re.match(r"\s+version:\s*(.+)", line)
+        if m:
+            return m.group(1).strip().strip("\"'")
+    return "unknown"
+
+
+def _run_version():
+    """Print version and exit."""
+    print(f"spex {_get_version()}")
+
+
 DIRECT_COMMANDS = {
     "list": _run_list,
     "archive": _run_archive,
@@ -203,6 +228,7 @@ DIRECT_COMMANDS = {
     "create-topic": _run_create_topic,
     "meta": _run_meta,
     "todo": _run_todo,
+    "version": _run_version,
 }
 
 
@@ -215,6 +241,10 @@ def _extract_global_options():
     import common
 
     args = sys.argv[1:]
+    if "--version" in args or "-V" in args:
+        _run_version()
+        sys.exit(0)
+
     new_args = []
     spex_root = None
     i = 0
