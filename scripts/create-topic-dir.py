@@ -97,7 +97,7 @@ def main():
     args = parser.parse_args()
 
     specs_dir = Path(get_specs_dir())
-    prompt = sys.stdin.read().strip()
+    prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
         topic_name, topic_dir = create_topic(args.topic, specs_dir)
