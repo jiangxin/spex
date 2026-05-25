@@ -67,7 +67,8 @@ Load the commit prompt:
 echo "$prompt" | $spex_skill_dir/scripts/spex prompt apply-commit --stdin
 ```
 
-Follow the output instructions to create a git commit.
+Follow the output instructions to create a git commit. If the commit
+fails (e.g., pre-commit hook), fix the issues and retry.
 
 After a successful commit, run:
 
@@ -84,6 +85,8 @@ Run:
 ```bash
 $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
 ```
+
+If the command fails, report the error and stop.
 
 ### Step 6: Loop
 
