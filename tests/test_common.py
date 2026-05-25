@@ -215,3 +215,32 @@ def test_git_config_no_auto_create(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
     assert not custom_path.exists()
     assert not (repo / ".gitignore").exists()
+
+
+class TestGetSpecTemplate:
+    def test_fallback_to_builtin_template(self, monkeypatch, tmp_path):
+        """When no custom template exists, return built-in template path."""
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        from common import clear_specs_root_cache, get_spec_template
+        clear_specs_root_cache()
+
+        result = get_spec_template()
+        # Should return built-in template path
+        assert result.endswith("templates/spec.md")
+        from pathlib import Path
+        assert Path(result).exists()
+
+    def test_custom_template_priority(self, monkeypatch, tmp_path):
+        """Custom template takes priority over built-in."""
+        # Create custom template
+        template_dir = tmp_path / "templates"
+        template_dir.mkdir(parents=True)
+        custom_template = template_dir / "spec.md"
+        custom_template.write_text("# Custom Template")
+
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        from common import clear_specs_root_cache, get_spec_template
+        clear_specs_root_cache()
+
+        result = get_spec_template()
+        assert result == str(custom_template)

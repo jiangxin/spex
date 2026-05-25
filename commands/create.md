@@ -48,54 +48,37 @@ Example JSON output:
 }
 ```
 
-### Step 4: Create spec.md
+### Step 4: Get Spec Template
 
-Create the file `$topic_path/spec.md` using the same language as the
-user's prompt (e.g., English or Chinese). Use the following template:
+Run:
 
-```markdown
-# Requirement
-
-<Requirement analysis based on the user's original prompt>
-
-# User Clarification
-
-<Clarifications from the user on ambiguous requirements>
-
-# Constraints
-
-- DRY — Don't Repeat Yourself: analyze existing architecture and code,
-  reuse what exists, **never** generate duplicate code.
-- KISS — Keep It Simple, Stupid: no over-engineering; keep it simple while
-  considering performance and security.
-- Single Responsibility: each function/method does one thing; consider
-  splitting if it exceeds 30 lines.
-- Small Batches: break development into atomic tasks so each step is under
-  200 lines of code, easy to review, cherry-pick, and revert.
-- Commit Often: create a commit after each development task; follow the
-  Conventional Commits format; wrap commit messages at 72 characters.
-- Test Often: run lint and unit tests after each step; proceed only when
-  all checks pass.
-
-# Detailed Design
-
-<Detailed design based on analysis of the current repository architecture
-and codebase>
-
-# Test Plan
-
-<Detailed test plan based on the design above>
+```bash
+<skill-path>/scripts/spex get --spec-template
 ```
 
-Before writing the Requirement, Detailed Design, and Test Plan sections,
-analyze the current repository structure, architecture, and existing code
-to ensure the design integrates properly.
+The command will output the template path to stdout:
 
-For the User Clarification section, ask the user to clarify any ambiguities
-discovered during requirement analysis. If nothing is ambiguous, leave the
-section empty.
+- If user has `<spec_root>/templates/spec.md`, use that custom template
+- Otherwise, use the built-in template from `<skill-path>/templates/spec.md`
 
-### Step 5: Generate todo.json
+Save the output as `$template_path`.
+
+### Step 5: Create spec.md
+
+Read the template file at `$template_path` and create `$topic_path/spec.md`
+using the same language as the user's prompt (e.g., English or Chinese).
+
+Replace the placeholder sections in the template with actual content based
+on `$prompt`:
+
+- `<Requirement analysis based on the user's original prompt>` → Actual requirement analysis
+- `<Clarifications from the user on ambiguous requirements>` → User clarifications
+- `<Detailed design based on analysis...>` → Actual detailed design
+- `<Detailed test plan based on the design above>` → Actual test plan
+
+Keep the Constraints section as-is from the template.
+
+### Step 6: Generate todo.json
 
 Break down the work into development steps following DRY, KISS, Small
 Batches, Commit Often, and Test Often.
@@ -128,7 +111,7 @@ Create `$topic_path/todo.json` listing each step in order:
   `2026-05-20T22:30:00+08:00`) and fill `commit_title` with the actual
   commit title.
 
-### Step 6: Validate todo.json
+### Step 7: Validate todo.json
 
 Run:
 
@@ -139,7 +122,7 @@ Run:
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
 
-### Step 7: Output
+### Step 8: Output
 
 Display the following summary to the user:
 

@@ -9,6 +9,7 @@ from pathlib import Path
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
 DEFAULT_SPECS_ROOT_DIR = ".specs"
+TEMPLATE_DIR = "templates"
 
 _spec_root_cache: dict[str | None, str] = {}
 
@@ -126,6 +127,35 @@ def local_iso_timestamp() -> str:
     base = now.strftime("%Y-%m-%dT%H:%M:%S")
     offset = now.strftime("%z")
     return f"{base}{offset[:3]}:{offset[3:]}"
+
+
+def get_spec_template(workdir=None) -> str:
+    """Return spec template path with fallback to built-in template.
+
+    Lookup order:
+    1. <spec_root>/templates/spec.md (user custom template)
+    2. <skill_path>/templates/spec.md (built-in template)
+
+    Returns:
+        Absolute path to template file.
+    """
+    # 1. Check user custom template
+    specs_root = Path(get_specs_root(workdir))
+    custom_template = specs_root / TEMPLATE_DIR / SPEC_FILE
+
+    if custom_template.exists():
+        return str(custom_template)
+
+    # 2. Fallback to built-in template
+    skill_path = Path(__file__).resolve().parent.parent
+    builtin_template = skill_path / TEMPLATE_DIR / SPEC_FILE
+
+    if not builtin_template.exists():
+        raise FileNotFoundError(
+            f"Built-in template not found at {builtin_template}"
+        )
+
+    return str(builtin_template)
 
 
 if __name__ == "__main__":

@@ -304,3 +304,29 @@ class TestTodoCommand:
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
+
+
+class TestGetSpecTemplate:
+    def test_get_spec_template_always_returns_path(self, tmp_path, monkeypatch):
+        """Command should always return a path (custom or built-in)."""
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+
+        result = _run_spex("get", "--spec-template")
+
+        assert result.returncode == 0
+        output = result.stdout.strip()
+        assert output.endswith("templates/spec.md")
+        assert Path(output).exists()
+
+    def test_get_spec_template_custom_priority(self, tmp_path, monkeypatch):
+        """Custom template should be returned when it exists."""
+        template_path = tmp_path / "templates" / "spec.md"
+        template_path.parent.mkdir()
+        template_path.write_text("# Custom")
+        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+
+        result = _run_spex("get", "--spec-template")
+
+        assert result.returncode == 0
+        output = result.stdout.strip()
+        assert output == str(template_path)
