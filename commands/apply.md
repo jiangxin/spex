@@ -16,7 +16,7 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$topic_name` is `--all` or `-a`:
 
-1. Run `$spex_skill_path/scripts/spex get-topic --json ""` to get all topics
+1. Run `$spex_skill_dir/scripts/spex get-topic --json ""` to get all topics
    with undone tasks.
 2. Parse the output as a JSON array of objects, each containing
    `topic_name` and `topic_path`.
@@ -27,7 +27,7 @@ If `$topic_name` is `--all` or `-a`:
 Otherwise, run:
 
 ```bash
-$spex_skill_path/scripts/spex get-topic --json "$topic_name"
+$spex_skill_dir/scripts/spex get-topic --json "$topic_name"
 ```
 
 Read the command output and parse it as a JSON array:
@@ -44,7 +44,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex todo get-next-undone --only-id $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo get-next-undone --only-id $topic_path/todo.json
 ```
 
 Save the output to `$next_task_id`.
@@ -55,7 +55,7 @@ stop.
 Then run:
 
 ```bash
-$spex_skill_path/scripts/spex todo get-next-undone --details $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo get-next-undone --details $topic_path/todo.json
 ```
 
 Save the output to `$next_task_text`.
@@ -65,7 +65,7 @@ Save the output to `$next_task_text`.
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex todo get-done $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo get-done $topic_path/todo.json
 ```
 
 Save the output to `$completed_tasks`.
@@ -136,7 +136,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
 ```
 
 ### Step 8: Loop

@@ -34,7 +34,7 @@ A skill for managing specification documents in a structured spec directory.
 
 ## Command Routing
 
-`$spex_skill_path` refers to the directory where this SKILL.md resides.
+`$spex_skill_dir` refers to the directory where this SKILL.md resides.
 
 Parse the first argument as `<command>` and route to the corresponding
 command file:

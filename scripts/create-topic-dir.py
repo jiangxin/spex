@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a topic directory under the spec root."""
+"""Create a topic directory under the spex root."""
 
 import argparse
 import json
@@ -14,7 +14,7 @@ import common
 from common import get_specs_dir, local_iso_timestamp
 
 SUPPORTED_GET_KEYS = {
-    "spec_root": "get_specs_root",
+    "spex_root": "get_spex_root",
     "specs_dir": "get_specs_dir",
     "archives_dir": "get_archives_dir",
     "spec_template": "get_spec_template",

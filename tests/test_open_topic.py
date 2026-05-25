@@ -149,14 +149,14 @@ class TestOpenDirectory:
 class TestMain:
     """Tests for the main() CLI entry point."""
 
-    def test_no_topic_opens_spec_root(self, tmp_path):
-        spec_root = str(tmp_path / "root")
+    def test_no_topic_opens_spex_root(self, tmp_path):
+        spex_root = str(tmp_path / "root")
         with patch.object(sys, "argv", ["open_topic.py"]), patch.object(
-            open_topic, "get_specs_root", return_value=spec_root
+            open_topic, "get_spex_root", return_value=spex_root
         ), patch.object(open_topic, "open_directory") as mock_open:
             main()
 
-        mock_open.assert_called_once_with(spec_root)
+        mock_open.assert_called_once_with(spex_root)
 
     def test_single_match_opens_dir(self, tmp_path):
         specs = tmp_path / "specs"

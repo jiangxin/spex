@@ -8,10 +8,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from common import (
-    clear_specs_root_cache,
+    clear_spex_root_cache,
     get_archives_dir,
     get_specs_dir,
-    get_specs_root,
+    get_spex_root,
     get_template,
     local_iso_timestamp,
 )
@@ -23,7 +23,7 @@ def _init_git_repo(path):
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    clear_specs_root_cache()
+    clear_spex_root_cache()
     yield
 
 
@@ -33,8 +33,8 @@ def test_default_uses_cwd(monkeypatch, tmp_path):
     _init_git_repo(repo)
     monkeypatch.chdir(repo)
 
-    result = get_specs_root()
-    assert result == str(repo / ".specs")
+    result = get_spex_root()
+    assert result == str(repo / ".spex")
 
 
 def test_custom_workdir(tmp_path):
@@ -42,8 +42,8 @@ def test_custom_workdir(tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
 
-    result = get_specs_root(str(repo))
-    assert result == str(repo / ".specs")
+    result = get_spex_root(str(repo))
+    assert result == str(repo / ".spex")
 
 
 def test_subdirectory_resolves_to_repo_root(tmp_path):
@@ -53,8 +53,8 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     subdir = repo / "src" / "lib"
     subdir.mkdir(parents=True)
 
-    result = get_specs_root(str(subdir))
-    assert result == str(repo / ".specs")
+    result = get_spex_root(str(subdir))
+    assert result == str(repo / ".spex")
 
 
 def test_not_a_git_repo(tmp_path):
@@ -62,7 +62,7 @@ def test_not_a_git_repo(tmp_path):
     workdir.mkdir()
 
     with pytest.raises(RuntimeError, match="Not inside a git repository"):
-        get_specs_root(str(workdir))
+        get_spex_root(str(workdir))
 
 
 def test_naming_convention(tmp_path):
@@ -70,11 +70,11 @@ def test_naming_convention(tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
 
-    result = get_specs_root(str(repo))
+    result = get_spex_root(str(repo))
     spec_path = Path(result)
 
     assert spec_path.parent == repo
-    assert spec_path.name == ".specs"
+    assert spec_path.name == ".spex"
 
 
 def test_specs_dir(tmp_path):
@@ -83,7 +83,7 @@ def test_specs_dir(tmp_path):
     _init_git_repo(repo)
 
     result = get_specs_dir(str(repo))
-    assert result == str(repo / ".specs" / "specs")
+    assert result == str(repo / ".spex" / "specs")
 
 
 def test_archives_dir(tmp_path):
@@ -92,7 +92,7 @@ def test_archives_dir(tmp_path):
     _init_git_repo(repo)
 
     result = get_archives_dir(str(repo))
-    assert result == str(repo / ".specs" / "archives")
+    assert result == str(repo / ".spex" / "archives")
 
 
 def test_local_iso_timestamp_format():
@@ -102,53 +102,53 @@ def test_local_iso_timestamp_format():
 
 
 def test_env_var_takes_priority(monkeypatch, tmp_path):
-    monkeypatch.setenv("SPECS_ROOT", str(tmp_path / "custom-specs"))
+    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "custom-specs"))
 
-    result = get_specs_root()
+    result = get_spex_root()
     assert result == str(tmp_path / "custom-specs")
 
 
 def test_git_config_fallback(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = str(tmp_path / "custom-from-git-config")
     subprocess.run(
-        ["git", "-C", str(repo), "config", "specs.rootdir", custom_path],
+        ["git", "-C", str(repo), "config", "spex.root", custom_path],
         capture_output=True,
         check=True,
     )
 
-    result = get_specs_root(str(repo))
+    result = get_spex_root(str(repo))
     assert result == str(Path(custom_path).resolve())
 
 
 def test_default_fallback_when_no_config(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
-    result = get_specs_root(str(repo))
-    assert result == str(repo / ".specs")
+    result = get_spex_root(str(repo))
+    assert result == str(repo / ".spex")
 
 
 def test_default_creates_specs_dir(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
-    specs_dir = repo / ".specs"
+    specs_dir = repo / ".spex"
     assert not specs_dir.exists()
 
-    get_specs_root(str(repo))
+    get_spex_root(str(repo))
     assert specs_dir.is_dir()
 
 
 def test_default_creates_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -156,13 +156,13 @@ def test_default_creates_gitignore(monkeypatch, tmp_path):
     gitignore = repo / ".gitignore"
     assert not gitignore.exists()
 
-    get_specs_root(str(repo))
+    get_spex_root(str(repo))
     assert gitignore.exists()
-    assert ".specs/" in gitignore.read_text().splitlines()
+    assert ".spex/" in gitignore.read_text().splitlines()
 
 
 def test_default_appends_to_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -170,14 +170,14 @@ def test_default_appends_to_gitignore(monkeypatch, tmp_path):
     gitignore = repo / ".gitignore"
     gitignore.write_text("node_modules/\n")
 
-    get_specs_root(str(repo))
+    get_spex_root(str(repo))
     lines = gitignore.read_text().splitlines()
     assert "node_modules/" in lines
-    assert ".specs/" in lines
+    assert ".spex/" in lines
 
 
 def test_default_no_duplicate_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -185,34 +185,34 @@ def test_default_no_duplicate_gitignore(monkeypatch, tmp_path):
     gitignore = repo / ".gitignore"
     gitignore.write_text(".specs/\n")
 
-    get_specs_root(str(repo))
+    get_spex_root(str(repo))
     lines = gitignore.read_text().splitlines()
-    assert lines.count(".specs/") == 1
+    assert lines.count(".spex/") == 1
 
 
 def test_env_var_no_auto_create(monkeypatch, tmp_path):
     custom_specs = tmp_path / "custom-specs"
-    monkeypatch.setenv("SPECS_ROOT", str(custom_specs))
+    monkeypatch.setenv("SPEX_ROOT", str(custom_specs))
 
-    result = get_specs_root()
+    result = get_spex_root()
     assert result == str(custom_specs)
     assert not custom_specs.exists()
 
 
 def test_git_config_no_auto_create(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPECS_ROOT", raising=False)
+    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
     custom_path = tmp_path / "custom-from-config"
     subprocess.run(
-        ["git", "-C", str(repo), "config", "specs.rootdir", str(custom_path)],
+        ["git", "-C", str(repo), "config", "spex.root", str(custom_path)],
         capture_output=True,
         check=True,
     )
 
-    result = get_specs_root(str(repo))
+    result = get_spex_root(str(repo))
     assert result == str(custom_path.resolve())
     assert not custom_path.exists()
     assert not (repo / ".gitignore").exists()
@@ -221,9 +221,9 @@ def test_git_config_no_auto_create(monkeypatch, tmp_path):
 class TestGetSpecTemplate:
     def test_fallback_to_builtin_template(self, monkeypatch, tmp_path):
         """When no custom template exists, return built-in content via builtin."""
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-        from common import clear_specs_root_cache, get_spec_template
-        clear_specs_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from common import clear_spex_root_cache, get_spec_template
+        clear_spex_root_cache()
 
         result = get_spec_template()
         # Should return template content (not a path)
@@ -245,9 +245,9 @@ class TestGetSpecTemplate:
         custom_template = template_dir / "spec.md"
         custom_template.write_text("# Custom Template\n\nMy custom content")
 
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-        from common import clear_specs_root_cache, get_spec_template
-        clear_specs_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from common import clear_spex_root_cache, get_spec_template
+        clear_spex_root_cache()
 
         result = get_spec_template()
         assert "# Custom Template" in result
@@ -262,9 +262,9 @@ class TestGetSpecTemplate:
             '---\nversion: "2.0.0"\n---\n\n# Custom V2'
         )
 
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-        from common import clear_specs_root_cache, get_spec_template
-        clear_specs_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from common import clear_spex_root_cache, get_spec_template
+        clear_spex_root_cache()
 
         result = get_spec_template()
         assert "---" not in result
@@ -278,9 +278,9 @@ class TestGetSpecTemplate:
         old_builtin = builtin_dir / "spec.md"
         old_builtin.write_text('---\nversion: "0.0.1"\n---\n\n# Old')
 
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-        from common import clear_specs_root_cache, get_spec_template
-        clear_specs_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from common import clear_spex_root_cache, get_spec_template
+        clear_spex_root_cache()
 
         result = get_spec_template()
         # Should have synced the new version
@@ -295,17 +295,17 @@ class TestGetSpecTemplate:
             BUILTIN_TEMPLATE_DIR,
             TEMPLATE_DIR,
             _get_skill_path,
-            clear_specs_root_cache,
+            clear_spex_root_cache,
         )
-        clear_specs_root_cache()
+        clear_spex_root_cache()
 
         # Create a test template in the skill's templates dir
         skill_path = _get_skill_path()
         test_template = skill_path / TEMPLATE_DIR / "test-tpl.md"
         test_template.write_text('---\nversion: "1.0.0"\n---\n\n# Test TPL')
 
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
-        clear_specs_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        clear_spex_root_cache()
 
         try:
             result = get_template("test-tpl.md")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Open a topic directory in the system file browser.
 
-If no topic is given, opens the spec root directory.
+If no topic is given, opens the spex root directory.
 If a topic is given, searches specs and archives for a match.
 """
 
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import get_archives_dir, get_specs_dir, get_specs_root
+from common import get_archives_dir, get_specs_dir, get_spex_root
 
 
 def find_topic(name, specs_dir, archives_dir):
@@ -75,7 +75,7 @@ def main():
     topic = sys.argv[1] if len(sys.argv) > 1 else ""
 
     if not topic:
-        open_directory(get_specs_root())
+        open_directory(get_spex_root())
         return
 
     specs_dir = get_specs_dir()

@@ -37,7 +37,7 @@ class TestDirectCommands:
         # Create a minimal specs dir so list_specs doesn't fail
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
-        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "list"],
@@ -52,7 +52,7 @@ class TestDirectCommands:
         assert "requires an AI coding agent" not in result.stderr
 
     def test_list_all_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "list", "--all"],
@@ -64,7 +64,7 @@ class TestDirectCommands:
         assert "requires an AI coding agent" not in result.stderr
 
     def test_archive_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "archive"],
@@ -208,14 +208,14 @@ class TestInstallCommand:
 class TestGetCommand:
     """Tests for the get subcommand."""
 
-    def test_spec_root_prints_path(self, tmp_path):
-        """spex get --spec-root prints a valid path, exit 0."""
-        # Create a git repo so get_specs_root works
+    def test_spex_root_prints_path(self, tmp_path):
+        """spex get --spex-root prints a valid path, exit 0."""
+        # Create a git repo so get_spex_root works
         subprocess.run(
             ["git", "init"], cwd=str(tmp_path), capture_output=True
         )
         result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "get", "--spec-root"],
+            [sys.executable, SPEX_SCRIPT, "get", "--spex-root"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -223,7 +223,7 @@ class TestGetCommand:
 
         assert result.returncode == 0
         assert result.stdout.strip() != ""
-        assert ".specs" in result.stdout
+        assert ".spex" in result.stdout
 
     def test_no_flag_prints_usage_exit_1(self):
         """spex get (no flag) prints usage to stderr, exit 1."""
@@ -238,7 +238,7 @@ class TestGetTopicCommand:
 
     def test_no_matching_topics_exit_1(self, tmp_path, monkeypatch):
         """spex get-topic (no matching topics) exits 1."""
-        monkeypatch.setenv("SPEX_SPEC_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
@@ -309,7 +309,7 @@ class TestTodoCommand:
 class TestGetSpecTemplate:
     def test_get_spec_template_returns_content(self, tmp_path, monkeypatch):
         """Command should output template content (not a path)."""
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
 
         result = _run_spex("get", "--spec-template")
 
@@ -325,7 +325,7 @@ class TestGetSpecTemplate:
         template_path = tmp_path / "templates" / "spec.md"
         template_path.parent.mkdir()
         template_path.write_text("# My Custom Spec\n\nCustom content here")
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
 
         result = _run_spex("get", "--spec-template")
 
@@ -335,15 +335,15 @@ class TestGetSpecTemplate:
         assert "Custom content here" in output
 
 
-class TestSpecsRootGlobalOption:
-    def test_specs_root_option_used(self, tmp_path):
-        """--specs-root should override default specs root."""
+class TestSpexRootGlobalOption:
+    def test_spex_root_option_used(self, tmp_path):
+        """--spex-root should override default spex root."""
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT,
-             "--specs-root", str(tmp_path), "list"],
+             "--spex-root", str(tmp_path), "list"],
             capture_output=True,
             text=True,
             cwd="/tmp",
@@ -352,10 +352,10 @@ class TestSpecsRootGlobalOption:
         assert result.returncode == 0
         assert "requires an AI coding agent" not in result.stderr
 
-    def test_specs_root_missing_value(self):
-        """--specs-root without a path should error."""
+    def test_spex_root_missing_value(self):
+        """--spex-root without a path should error."""
         result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "--specs-root"],
+            [sys.executable, SPEX_SCRIPT, "--spex-root"],
             capture_output=True,
             text=True,
         )
@@ -363,11 +363,11 @@ class TestSpecsRootGlobalOption:
         assert result.returncode == 1
         assert "requires a path" in result.stderr
 
-    def test_specs_root_with_get(self, tmp_path):
-        """--specs-root should affect get --spec-root output."""
+    def test_spex_root_with_get(self, tmp_path):
+        """--spex-root should affect get --spex-root output."""
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT,
-             "--specs-root", str(tmp_path), "get", "--spec-root"],
+             "--spex-root", str(tmp_path), "get", "--spex-root"],
             capture_output=True,
             text=True,
         )

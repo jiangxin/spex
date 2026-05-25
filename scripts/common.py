@@ -10,16 +10,16 @@ from pathlib import Path
 
 SPEC_FILE = "spec.md"
 TODO_FILE = "todo.json"
-DEFAULT_SPECS_ROOT_DIR = ".specs"
+DEFAULT_SPEX_ROOT_DIR = ".spex"
 TEMPLATE_DIR = "templates"
 BUILTIN_TEMPLATE_DIR = "builtin"
 
-_spec_root_cache: dict[str | None, str] = {}
+_spex_root_cache: dict[str | None, str] = {}
 
 
-def clear_specs_root_cache():
-    """Clear the spec_root cache. Useful for testing."""
-    _spec_root_cache.clear()
+def clear_spex_root_cache():
+    """Clear the spex_root cache. Useful for testing."""
+    _spex_root_cache.clear()
 
 
 def _ensure_gitignore(repo_root: Path, entry: str):
@@ -50,54 +50,53 @@ def _ensure_gitignore(repo_root: Path, entry: str):
         gitignore.write_text(entry + "\n")
 
 
-def _ensure_repo_specs_dir(repo_root: Path, specs_dir: str):
-    """Create specs_root directory if not exists and add to .gitignore.
+def _ensure_repo_spex_dir(repo_root: Path, spex_dir: str):
+    """Create spex_root directory if not exists and add to .gitignore.
 
-    Called only from the fallback branch (case 3) of get_specs_root().
+    Called only from the fallback branch (case 3) of get_spex_root().
     """
-    specs_path = repo_root / Path(specs_dir)
-    if not specs_path.exists():
-        specs_path.mkdir(parents=True, exist_ok=True)
-        # Add trailing slash for directory entry in .gitignore
-        gitignore_entry = specs_dir.rstrip("/") + "/"
+    spex_path = repo_root / Path(spex_dir)
+    if not spex_path.exists():
+        spex_path.mkdir(parents=True, exist_ok=True)
+        gitignore_entry = spex_dir.rstrip("/") + "/"
         _ensure_gitignore(repo_root, gitignore_entry)
 
 
-def get_specs_root(workdir=None):
-    """Return the spec root directory path.
+def get_spex_root(workdir=None):
+    """Return the spex root directory path.
 
     Resolution order:
-    1. Environment variable SPECS_ROOT.
-    2. Git config key specs.rootdir.
-    3. Default: .specs inside the git toplevel.
+    1. Environment variable SPEX_ROOT.
+    2. Git config key spex.root.
+    3. Default: .spex inside the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
 
     Returns:
-        Absolute path to the spec root directory.
+        Absolute path to the spex root directory.
     """
     cache_key = workdir
-    if cache_key in _spec_root_cache:
-        return _spec_root_cache[cache_key]
+    if cache_key in _spex_root_cache:
+        return _spex_root_cache[cache_key]
 
     # 1. Check environment variable
-    env_root = os.environ.get("SPECS_ROOT")
+    env_root = os.environ.get("SPEX_ROOT")
     if env_root:
-        specs_root = str(Path(env_root).resolve())
-        _spec_root_cache[cache_key] = specs_root
-        return specs_root
+        spex_root = str(Path(env_root).resolve())
+        _spex_root_cache[cache_key] = spex_root
+        return spex_root
 
     # 2. Check git config
-    cmd = ["git", "config", "--get", "specs.rootdir"]
+    cmd = ["git", "config", "--get", "spex.root"]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=workdir
     )
     if result.returncode == 0 and result.stdout.strip():
         git_root = result.stdout.strip()
-        specs_root = str(Path(git_root).resolve())
-        _spec_root_cache[cache_key] = specs_root
-        return specs_root
+        spex_root = str(Path(git_root).resolve())
+        _spex_root_cache[cache_key] = spex_root
+        return spex_root
 
     # 3. Fallback: compute from git toplevel
     cmd = ["git", "rev-parse", "--show-toplevel"]
@@ -108,20 +107,20 @@ def get_specs_root(workdir=None):
         raise RuntimeError("Not inside a git repository")
 
     repo_root = Path(result.stdout.strip()).resolve()
-    specs_root = str(repo_root / DEFAULT_SPECS_ROOT_DIR)
-    _ensure_repo_specs_dir(repo_root, DEFAULT_SPECS_ROOT_DIR)
-    _spec_root_cache[cache_key] = specs_root
-    return specs_root
+    spex_root = str(repo_root / DEFAULT_SPEX_ROOT_DIR)
+    _ensure_repo_spex_dir(repo_root, DEFAULT_SPEX_ROOT_DIR)
+    _spex_root_cache[cache_key] = spex_root
+    return spex_root
 
 
 def get_specs_dir(workdir=None):
-    """Return the specs directory: <spec_root>/specs/."""
-    return str(Path(get_specs_root(workdir)) / "specs")
+    """Return the specs directory: <spex_root>/specs/."""
+    return str(Path(get_spex_root(workdir)) / "specs")
 
 
 def get_archives_dir(workdir=None):
-    """Return the archives directory: <spec_root>/archives/."""
-    return str(Path(get_specs_root(workdir)) / "archives")
+    """Return the archives directory: <spex_root>/archives/."""
+    return str(Path(get_spex_root(workdir)) / "archives")
 
 
 def local_iso_timestamp() -> str:
@@ -162,7 +161,7 @@ def _strip_front_matter(content: str) -> str:
 
 
 def _sync_builtin_template(template_name: str, workdir=None):
-    """Sync a built-in template to specs_path/templates/builtin/ if version differs.
+    """Sync a built-in template to spex_root/templates/builtin/ if version differs.
 
     Compares the version in the skill's source template against the local
     builtin copy. If they differ (or local copy is missing), overwrites the
@@ -175,8 +174,8 @@ def _sync_builtin_template(template_name: str, workdir=None):
             f"Built-in template not found at {source}"
         )
 
-    specs_root = Path(get_specs_root(workdir))
-    builtin_dir = specs_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR
+    spex_root = Path(get_spex_root(workdir))
+    builtin_dir = spex_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR
     target = builtin_dir / template_name
 
     source_version = _extract_template_version(source)
@@ -193,9 +192,9 @@ def get_template(template_name: str, workdir=None) -> str:
     """Return template content for the given template name.
 
     Workflow:
-    1. Sync built-in template to <specs_root>/templates/builtin/ if needed.
-    2. If <specs_root>/templates/<name> exists (user custom), return its content.
-    3. Otherwise return <specs_root>/templates/builtin/<name> content.
+    1. Sync built-in template to <spex_root>/templates/builtin/ if needed.
+    2. If <spex_root>/templates/<name> exists (user custom), return its content.
+    3. Otherwise return <spex_root>/templates/builtin/<name> content.
 
     The returned content has YAML front-matter stripped.
 
@@ -208,9 +207,9 @@ def get_template(template_name: str, workdir=None) -> str:
     """
     _sync_builtin_template(template_name, workdir)
 
-    specs_root = Path(get_specs_root(workdir))
-    custom = specs_root / TEMPLATE_DIR / template_name
-    builtin = specs_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / template_name
+    spex_root = Path(get_spex_root(workdir))
+    custom = spex_root / TEMPLATE_DIR / template_name
+    builtin = spex_root / TEMPLATE_DIR / BUILTIN_TEMPLATE_DIR / template_name
 
     if custom.exists():
         content = custom.read_text(encoding="utf-8")
@@ -229,4 +228,4 @@ def get_spec_template(workdir=None) -> str:
 
 
 if __name__ == "__main__":
-    print(get_specs_root())
+    print(get_spex_root())

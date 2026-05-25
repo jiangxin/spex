@@ -24,11 +24,11 @@ def _make_topic(tmp_path, topic_name, data):
 
 
 def _run_script(tmp_path, topic_name, key, value=None):
-    """Run meta.py as a subprocess with SPECS_ROOT pointing to tmp_path."""
+    """Run meta.py as a subprocess with SPEX_ROOT pointing to tmp_path."""
     args = [sys.executable, SCRIPT, topic_name, key]
     if value is not None:
         args.append(value)
-    env = {**subprocess.os.environ, "SPECS_ROOT": str(tmp_path)}
+    env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
     return subprocess.run(
         args,
         capture_output=True,
@@ -128,7 +128,7 @@ class TestReadValueFromStdin:
     def test_read_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": []})
 
-        env = {**subprocess.os.environ, "SPECS_ROOT": str(tmp_path)}
+        env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
         result = subprocess.run(
             [sys.executable, SCRIPT, "my-topic", "prompts"],
             capture_output=True,
@@ -145,7 +145,7 @@ class TestReadValueFromStdin:
     def test_read_key_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {})
 
-        env = {**subprocess.os.environ, "SPECS_ROOT": str(tmp_path)}
+        env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
         result = subprocess.run(
             [sys.executable, SCRIPT, "my-topic", "branch"],
             capture_output=True,
@@ -173,7 +173,7 @@ class TestErrorOnMissingTopic:
 
     def test_missing_topic_via_main(self, monkeypatch, tmp_path):
         (tmp_path / "specs").mkdir(parents=True)
-        monkeypatch.setenv("SPECS_ROOT", str(tmp_path))
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
         monkeypatch.setattr(
             sys, "argv", ["prog", "nonexistent", "key", "val"]
         )

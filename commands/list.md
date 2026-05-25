@@ -18,7 +18,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex list $args
+$spex_skill_dir/scripts/spex list $args
 ```
 
 Where `$args` is `--all` if the user requested all specs, or empty

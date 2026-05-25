@@ -40,7 +40,7 @@ Based on `$requirement`, generate a short English name (<32 bytes) using only
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_path/scripts/spex create-topic --json --get "spec_template" $topic
+echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --get "spec_template" $topic
 ```
 
 The script creates the topic directory and `meta.json` (with the
@@ -60,7 +60,7 @@ Example JSON output:
 ```json
 {
   "topic_name": "2026-05-24-10-30-add-login-api",
-  "topic_path": "/path/to/.specs/specs/2026-05-24-10-30-add-login-api",
+  "topic_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
   "spec_template": "# [Title]\n\n..."
 }
 ```
@@ -118,7 +118,7 @@ Create `$topic_path/todo.json` listing each step in order:
 Run:
 
 ```bash
-$spex_skill_path/scripts/spex todo validate $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo validate $topic_path/todo.json
 ```
 
 If the script exits with an error, read the error message, fix the JSON

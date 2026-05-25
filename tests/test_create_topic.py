@@ -293,7 +293,7 @@ class TestMain:
         monkeypatch.setattr(
             sys, "argv",
             ["prog", "2026-05-20-14-30-topic", "--json",
-             "--get", "spec_root,specs_dir"]
+             "--get", "spex_root,specs_dir"]
         )
         monkeypatch.setattr(sys, "stdin", io.StringIO("req"))
 
@@ -317,8 +317,8 @@ class TestMain:
                 return_value="2026-05-24T20:00:00+08:00"
             ),
             patch.object(
-                common, "get_specs_root",
-                return_value="/mock/spec-root"
+                common, "get_spex_root",
+                return_value="/mock/spex-root"
             ),
             patch.object(
                 common, "get_specs_dir",
@@ -328,7 +328,7 @@ class TestMain:
             create_topic_dir.main()
 
         output = json.loads(capsys.readouterr().out)
-        assert output["spec_root"] == "/mock/spec-root"
+        assert output["spex_root"] == "/mock/spex-root"
         assert output["specs_dir"] == "/mock/specs-dir"
 
     def test_success_without_json_flag(self, monkeypatch, tmp_path, capsys):
