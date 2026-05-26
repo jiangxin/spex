@@ -31,44 +31,41 @@ def clear_spex_root_cache():
     _spex_root_cache.clear()
 
 
-def _ensure_gitignore(repo_root: Path, entry: str):
-    """Ensure entry is listed in .gitignore.
-
-    Uses git check-ignore to check if entry is already ignored.
-    If not, appends it to .gitignore.
-    """
-    # Check if entry is already ignored using git check-ignore
-    result = subprocess.run(
-        ["git", "check-ignore", "-q", entry],
-        cwd=repo_root,
-        capture_output=True
-    )
-    if result.returncode == 0:
-        # Entry is already ignored
+def _sync_all_templates(spex_root_path: Path):
+    """Sync all built-in templates to spex_root/templates/examples/."""
+    skill_path = _get_skill_path()
+    source_dir = skill_path / TEMPLATE_DIR
+    if not source_dir.is_dir():
         return
-
-    # Entry is not ignored, add it to .gitignore
-    gitignore = repo_root / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if content and not content.endswith("\n"):
-            content += "\n"
-        content += entry + "\n"
-        gitignore.write_text(content)
-    else:
-        gitignore.write_text(entry + "\n")
+    examples_dir = spex_root_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
+    examples_dir.mkdir(parents=True, exist_ok=True)
+    for src in source_dir.iterdir():
+        if src.is_file() and src.suffix == ".md":
+            shutil.copy2(src, examples_dir / src.name)
 
 
-def _ensure_repo_spex_dir(repo_root: Path, spex_dir: str):
-    """Create spex_root directory if not exists and add to .gitignore.
+def _write_internal_gitignore(spex_root_path: Path):
+    """Create .gitignore files inside spex_root to ignore generated content."""
+    root_gi = spex_root_path / ".gitignore"
+    if not root_gi.exists():
+        root_gi.write_text("/specs/\n/archives/\n")
+    tpl_dir = spex_root_path / TEMPLATE_DIR
+    tpl_dir.mkdir(parents=True, exist_ok=True)
+    tpl_gi = tpl_dir / ".gitignore"
+    if not tpl_gi.exists():
+        tpl_gi.write_text("/examples/\n")
 
-    Called only from the fallback branch (case 3) of get_spex_root().
-    """
-    spex_path = repo_root / Path(spex_dir)
-    if not spex_path.exists():
-        spex_path.mkdir(parents=True, exist_ok=True)
-        gitignore_entry = spex_dir.rstrip("/") + "/"
-        _ensure_gitignore(repo_root, gitignore_entry)
+
+def ensure_initialized(spex_root):
+    """Ensure spex_root directory structure is initialized."""
+    spex_root_path = Path(spex_root)
+    if (spex_root_path / "specs").is_dir():
+        return
+    spex_root_path.mkdir(parents=True, exist_ok=True)
+    (spex_root_path / "specs").mkdir(exist_ok=True)
+    (spex_root_path / "archives").mkdir(exist_ok=True)
+    _sync_all_templates(spex_root_path)
+    _write_internal_gitignore(spex_root_path)
 
 
 def _get_repo_root(workdir=None):
@@ -145,7 +142,7 @@ def _find_spex_yaml(repo_root):
     return None
 
 
-def get_spex_root(workdir=None, require_git=False):
+def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
     Resolution order:
@@ -158,6 +155,7 @@ def get_spex_root(workdir=None, require_git=False):
         require_git: If True, raise when not inside a git worktree even if
             spex_root was resolved via env/config. Used by commands that
             need a git context (apply, create, modify).
+        auto_init: If True (default), auto-initialize the directory structure.
 
     Returns:
         Absolute path to the spex root directory.
@@ -174,18 +172,22 @@ def get_spex_root(workdir=None, require_git=False):
     if env_root:
         repo_root = _get_repo_root(workdir)
         spex_root = _resolve_spex_path(env_root, repo_root)
-        _spex_root_cache[cache_key] = spex_root
         if require_git and repo_root is None:
             raise RuntimeError("Not inside a git repository")
+        if auto_init:
+            ensure_initialized(spex_root)
+        _spex_root_cache[cache_key] = spex_root
         return spex_root
 
     # 2. Check .spex.yaml config files
     repo_root = _get_repo_root(workdir)
     yaml_root = _find_spex_yaml(repo_root)
     if yaml_root:
-        _spex_root_cache[cache_key] = yaml_root
         if require_git and repo_root is None:
             raise RuntimeError("Not inside a git repository")
+        if auto_init:
+            ensure_initialized(yaml_root)
+        _spex_root_cache[cache_key] = yaml_root
         return yaml_root
 
     # 3. Fallback: .spex inside the git toplevel
@@ -196,7 +198,8 @@ def get_spex_root(workdir=None, require_git=False):
         )
 
     spex_root = str(repo_root / DEFAULT_SPEX_ROOT_DIR)
-    _ensure_repo_spex_dir(repo_root, DEFAULT_SPEX_ROOT_DIR)
+    if auto_init:
+        ensure_initialized(spex_root)
     _spex_root_cache[cache_key] = spex_root
     return spex_root
 

@@ -213,56 +213,30 @@ def test_default_creates_specs_dir(monkeypatch, tmp_path):
     assert specs_dir.is_dir()
 
 
-def test_default_creates_gitignore(monkeypatch, tmp_path):
+def test_default_creates_internal_gitignore(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
-    gitignore = repo / ".gitignore"
-    assert not gitignore.exists()
-
     get_spex_root(str(repo))
+
+    spex_dir = repo / ".spex"
+    gitignore = spex_dir / ".gitignore"
     assert gitignore.exists()
-    assert ".spex/" in gitignore.read_text().splitlines()
+    content = gitignore.read_text()
+    assert "/specs/" in content
+    assert "/archives/" in content
 
 
-def test_default_appends_to_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
-    repo = tmp_path / "my-app"
-    repo.mkdir()
-    _init_git_repo(repo)
-
-    gitignore = repo / ".gitignore"
-    gitignore.write_text("node_modules/\n")
-
-    get_spex_root(str(repo))
-    lines = gitignore.read_text().splitlines()
-    assert "node_modules/" in lines
-    assert ".spex/" in lines
-
-
-def test_default_no_duplicate_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
-    repo = tmp_path / "my-app"
-    repo.mkdir()
-    _init_git_repo(repo)
-
-    gitignore = repo / ".gitignore"
-    gitignore.write_text(".specs/\n")
-
-    get_spex_root(str(repo))
-    lines = gitignore.read_text().splitlines()
-    assert lines.count(".spex/") == 1
-
-
-def test_env_var_no_auto_create(monkeypatch, tmp_path):
+def test_env_var_auto_initializes(monkeypatch, tmp_path):
     custom_specs = tmp_path / "custom-specs"
     monkeypatch.setenv("SPEX_ROOT", str(custom_specs))
 
     result = get_spex_root()
     assert result == str(custom_specs)
-    assert not custom_specs.exists()
+    assert (custom_specs / "specs").is_dir()
+    assert (custom_specs / "archives").is_dir()
 
 
 def test_xdg_config_fallback(monkeypatch, tmp_path):
@@ -299,20 +273,20 @@ def test_home_spex_yaml_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
-def test_yaml_no_auto_create(monkeypatch, tmp_path):
+def test_yaml_auto_initializes(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    custom_path = tmp_path / "nonexistent-dir"
+    custom_path = tmp_path / "custom-spex"
     (repo / ".spex.yaml").write_text(
         f"spex_root: {custom_path}\n", encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
     assert result == str(custom_path.resolve())
-    assert not custom_path.exists()
-    assert not (repo / ".gitignore").exists()
+    assert (custom_path / "specs").is_dir()
+    assert (custom_path / "archives").is_dir()
 
 
 def test_yaml_missing_key_skipped(monkeypatch, tmp_path):

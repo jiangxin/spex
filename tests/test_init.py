@@ -56,11 +56,11 @@ class TestIsInitialized:
 
 class TestSyncTemplates:
     def test_copies_markdown_files(self, tmp_path):
-        from init import _sync_templates
+        from common import _sync_all_templates
 
         spex_root = tmp_path / "spex"
         spex_root.mkdir()
-        _sync_templates(str(spex_root))
+        _sync_all_templates(spex_root)
 
         examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         assert examples_dir.is_dir()
@@ -71,11 +71,11 @@ class TestSyncTemplates:
 
 class TestEnsureGitignore:
     def test_creates_root_gitignore(self, tmp_path):
-        from init import _ensure_gitignore
+        from common import _write_internal_gitignore
 
         spex_root = tmp_path / ".spex"
         spex_root.mkdir()
-        _ensure_gitignore(str(spex_root))
+        _write_internal_gitignore(spex_root)
 
         gitignore = spex_root / ".gitignore"
         assert gitignore.exists()
@@ -84,27 +84,61 @@ class TestEnsureGitignore:
         assert "/archives/" in content
 
     def test_creates_templates_gitignore(self, tmp_path):
-        from init import _ensure_gitignore
+        from common import _write_internal_gitignore
 
         spex_root = tmp_path / ".spex"
         spex_root.mkdir()
-        _ensure_gitignore(str(spex_root))
+        _write_internal_gitignore(spex_root)
 
         tpl_gitignore = spex_root / "templates" / ".gitignore"
         assert tpl_gitignore.exists()
         assert "/examples/" in tpl_gitignore.read_text()
 
     def test_skips_when_already_exists(self, tmp_path):
-        from init import _ensure_gitignore
+        from common import _write_internal_gitignore
 
         spex_root = tmp_path / ".spex"
         spex_root.mkdir()
         gitignore = spex_root / ".gitignore"
         gitignore.write_text("custom content\n")
 
-        _ensure_gitignore(str(spex_root))
+        _write_internal_gitignore(spex_root)
 
         assert gitignore.read_text() == "custom content\n"
+
+
+class TestEnsureInitialized:
+    def test_auto_initializes_empty_dir(self, tmp_path, monkeypatch):
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        ensure_initialized(str(spex_root))
+
+        assert (spex_root / "specs").is_dir()
+        assert (spex_root / "archives").is_dir()
+        assert (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).is_dir()
+        assert (spex_root / ".gitignore").exists()
+
+    def test_idempotent(self, tmp_path):
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        ensure_initialized(str(spex_root))
+        ensure_initialized(str(spex_root))
+
+        assert (spex_root / "specs").is_dir()
+
+    def test_get_spex_root_auto_initializes(self, tmp_path, monkeypatch):
+        spex_root = tmp_path / "empty_spex"
+        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        clear_spex_root_cache()
+
+        from common import get_spex_root
+
+        result = get_spex_root()
+        assert result == str(spex_root)
+        assert (spex_root / "specs").is_dir()
+        assert (spex_root / "archives").is_dir()
 
 
 class TestRunInit:

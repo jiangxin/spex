@@ -8,13 +8,10 @@ from pathlib import Path
 from common import (
     EXAMPLES_TEMPLATE_DIR,
     TEMPLATE_DIR,
+    ensure_initialized,
     get_current_workdir,
     get_spex_root,
 )
-
-
-def _get_skill_dir():
-    return Path(__file__).resolve().parent.parent
 
 
 def is_initialized(workdir=None):
@@ -23,8 +20,8 @@ def is_initialized(workdir=None):
     Returns True if specs_dir, archives_dir, and templates/examples/ all exist.
     """
     try:
-        spex_root = Path(get_spex_root(workdir))
-    except SystemExit:
+        spex_root = Path(get_spex_root(workdir, auto_init=False))
+    except (SystemExit, RuntimeError):
         return False
     return (
         (spex_root / "specs").is_dir()
@@ -35,7 +32,9 @@ def is_initialized(workdir=None):
 
 def _install_deps():
     """Install Python dependencies from the skill's pyproject.toml."""
-    skill_dir = _get_skill_dir()
+    from common import _get_skill_path
+
+    skill_dir = _get_skill_path()
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", str(skill_dir), "--quiet"],
         capture_output=True,
@@ -49,30 +48,13 @@ def _install_deps():
     return True
 
 
-def _sync_templates(spex_root):
-    """Sync all built-in templates to spex_root/templates/examples/."""
-    import shutil
-
-    skill_dir = _get_skill_dir()
-    source_dir = skill_dir / TEMPLATE_DIR
-    if not source_dir.is_dir():
-        return
-
-    examples_dir = Path(spex_root) / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
-    examples_dir.mkdir(parents=True, exist_ok=True)
-
-    for src_file in source_dir.iterdir():
-        if src_file.is_file() and src_file.suffix == ".md":
-            shutil.copy2(src_file, examples_dir / src_file.name)
-
-    print(f"Synced templates to {examples_dir}")
-
-
 def _install_cli():
     """Install spex CLI symlink to ~/.local/bin."""
     import shutil as _shutil
 
-    script_path = _get_skill_dir() / "scripts" / "spex"
+    from common import _get_skill_path
+
+    script_path = _get_skill_path() / "scripts" / "spex"
     link_dir = Path.home() / ".local" / "bin"
     link_path = link_dir / "spex"
 
@@ -91,37 +73,14 @@ def _install_cli():
               file=sys.stderr)
 
 
-def _ensure_gitignore(spex_root):
-    """Create .gitignore files inside spex_root to ignore generated content."""
-    spex_root_path = Path(spex_root).resolve()
-
-    root_gitignore = spex_root_path / ".gitignore"
-    if not root_gitignore.exists():
-        root_gitignore.write_text("/specs/\n/archives/\n")
-
-    templates_dir = spex_root_path / TEMPLATE_DIR
-    templates_dir.mkdir(parents=True, exist_ok=True)
-    tpl_gitignore = templates_dir / ".gitignore"
-    if not tpl_gitignore.exists():
-        tpl_gitignore.write_text("/examples/\n")
-
-
 def run_init(workdir=None):
     """Run full spex initialization."""
     if workdir is None:
         workdir = get_current_workdir()
 
     _install_deps()
-
-    spex_root = get_spex_root(workdir)
-    spex_root_path = Path(spex_root)
-    spex_root_path.mkdir(parents=True, exist_ok=True)
-    (spex_root_path / "specs").mkdir(exist_ok=True)
-    (spex_root_path / "archives").mkdir(exist_ok=True)
-
-    _sync_templates(spex_root)
+    ensure_initialized(get_spex_root(workdir))
     _install_cli()
-    _ensure_gitignore(spex_root)
 
     print("Initialization complete.")
 
