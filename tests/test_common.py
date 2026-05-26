@@ -135,7 +135,7 @@ def test_env_var_relative_path_in_repo(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    monkeypatch.setenv("SPEX_ROOT", ".spex")
+    monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
 
     result = get_spex_root(str(repo))
     assert result == str(repo / ".spex")
@@ -164,8 +164,8 @@ def test_yaml_relative_path_in_repo(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.yaml").write_text(
-        "spex_root: shared/specs\n", encoding="utf-8"
+    (repo / ".spex.toml").write_text(
+        'spex_root = "shared/specs"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -178,14 +178,14 @@ def test_repo_spex_yaml_takes_priority(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-repo-yaml"
-    # Write repo-level .spex.yaml
-    (repo / ".spex.yaml").write_text(
-        f"spex_root: {custom_path}\n", encoding="utf-8"
+    # Write repo-level .spex.toml
+    (repo / ".spex.toml").write_text(
+        f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
-    # Write home-level (should be ignored)
+    # Write home-level (should be lower priority)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    (tmp_path / ".spex.yaml").write_text(
-        "spex_root: /should/not/use\n", encoding="utf-8"
+    (tmp_path / ".spex.toml").write_text(
+        'spex_root = "/should/not/use"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -247,11 +247,11 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-xdg"
-    # No repo-level .spex.yaml
+    # No repo-level .spex.toml
     xdg_dir = tmp_path / ".config" / "spex"
     xdg_dir.mkdir(parents=True)
-    (xdg_dir / "config.yaml").write_text(
-        f"spex_root: {custom_path}\n", encoding="utf-8"
+    (xdg_dir / "config.toml").write_text(
+        f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -266,8 +266,8 @@ def test_home_spex_yaml_fallback(monkeypatch, tmp_path):
     _init_git_repo(repo)
     custom_path = tmp_path / "from-home"
     # No repo-level, no XDG
-    (tmp_path / ".spex.yaml").write_text(
-        f"spex_root: {custom_path}\n", encoding="utf-8"
+    (tmp_path / ".spex.toml").write_text(
+        f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -281,8 +281,8 @@ def test_yaml_auto_initializes(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "custom-spex"
-    (repo / ".spex.yaml").write_text(
-        f"spex_root: {custom_path}\n", encoding="utf-8"
+    (repo / ".spex.toml").write_text(
+        f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -296,9 +296,9 @@ def test_yaml_missing_key_skipped(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    # .spex.yaml exists but has no spex_root key
-    (repo / ".spex.yaml").write_text(
-        "other_key: some_value\n", encoding="utf-8"
+    # .spex.toml exists but has no spex_root key
+    (repo / ".spex.toml").write_text(
+        'other_key = "some_value"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
