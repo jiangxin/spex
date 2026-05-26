@@ -78,7 +78,7 @@ Using `$todo_prompt` as the prompt, create or overwrite `$topic_path/todo.xml`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo xml2json --append $topic_path/todo.xml
+$spex_skill_dir/scripts/spex todo xml2json --append --rm $topic_path/todo.xml
 ```
 
 This converts `todo.xml` to JSON and appends the new steps to the
