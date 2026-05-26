@@ -159,7 +159,7 @@ def test_env_var_tilde_path(monkeypatch, tmp_path):
     assert result == str(tmp_path / "my-specs")
 
 
-def test_yaml_relative_path_in_repo(monkeypatch, tmp_path):
+def test_toml_relative_path_in_repo(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -172,7 +172,7 @@ def test_yaml_relative_path_in_repo(monkeypatch, tmp_path):
     assert result == str(repo / "shared" / "specs")
 
 
-def test_repo_spex_yaml_takes_priority(monkeypatch, tmp_path):
+def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -259,7 +259,7 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
-def test_home_spex_yaml_fallback(monkeypatch, tmp_path):
+def test_home_toml_fallback(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -275,7 +275,7 @@ def test_home_spex_yaml_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
-def test_yaml_auto_initializes(monkeypatch, tmp_path):
+def test_toml_auto_initializes(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -291,7 +291,7 @@ def test_yaml_auto_initializes(monkeypatch, tmp_path):
     assert (custom_path / "archives").is_dir()
 
 
-def test_yaml_missing_key_skipped(monkeypatch, tmp_path):
+def test_toml_missing_key_skipped(monkeypatch, tmp_path):
     monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
