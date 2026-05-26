@@ -143,7 +143,8 @@ def _build_metadata(template_name, topic_name=None):
                     details = current.get("details", "")
                     metadata["next_task_text"] = (
                         f"**Task**: {task_id} - {name}\n\n"
-                        f"**Details**:\n\n{details}"
+                        f"**Implementation Details**:\n\n"
+                        f"<details>\n{details}\n\n</details>"
                     )
                     future = undone[1:]
                     metadata["future_tasks"] = "\n".join(
