@@ -10,6 +10,7 @@ from common import (
     check_help_flag,
     get_archives_dir,
     get_current_workdir,
+    get_spec_description,
     get_specs_dir,
     get_todo_progress,
     load_meta,
@@ -72,12 +73,14 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
                 timestamp, prompt = ts_prompt
                 workdir = ""
             n, m = get_todo_progress(sub)
+            description = get_spec_description(sub)
             topics.append({
                 "name": sub.name,
                 "timestamp": timestamp,
                 "n": n,
                 "m": m,
                 "prompt": prompt,
+                "description": description,
                 "workdir": workdir,
                 "archived": archived,
             })
@@ -145,7 +148,8 @@ def format_output(
         name = _truncate(topic["name"], MAX_TOPIC_WIDTH)
         name_col = name.ljust(MAX_TOPIC_WIDTH)
         prog_col = prog_str.rjust(progress_width)
-        prompt_col = _truncate(topic["prompt"], prompt_width) if prompt_width > 3 else ""
+        display_text = topic.get("description") or topic["prompt"]
+        prompt_col = _truncate(display_text, prompt_width) if prompt_width > 3 else ""
 
         if show_repo:
             repo_col = f"[{repo_labels[i]}]".ljust(repo_col_width - 1) + " "

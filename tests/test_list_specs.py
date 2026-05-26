@@ -272,3 +272,45 @@ class TestFormatOutputRepoPrefix:
         icon_pos_0 = lines[0].index("\U0001f527")
         icon_pos_1 = lines[1].index("✅")
         assert icon_pos_0 == icon_pos_1
+
+
+class TestDescriptionDisplay:
+    def test_description_shown_over_prompt(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "old prompt",
+             "description": "Better description"},
+        ]
+        output = format_output(topics)
+        assert "Better description" in output
+        assert "old prompt" not in output
+
+    def test_prompt_fallback_when_no_description(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "fallback prompt",
+             "description": ""},
+        ]
+        output = format_output(topics)
+        assert "fallback prompt" in output
+
+    def test_prompt_fallback_when_description_missing(self):
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "shown prompt"},
+        ]
+        output = format_output(topics)
+        assert "shown prompt" in output
+
+    def test_collect_topics_includes_description(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "my-topic"
+        topic.mkdir(parents=True)
+        _make_meta(topic)
+        spec = topic / "spec.md"
+        spec.write_text(
+            '---\ndescription: "From spec"\n---\n\n# Spec',
+            encoding="utf-8",
+        )
+        topics = collect_topics([specs])
+        assert topics[0]["description"] == "From spec"
