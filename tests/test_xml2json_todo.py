@@ -251,6 +251,93 @@ class TestHelpFlag:
 # ===================== Missing args =====================
 
 
+class TestAppendMode:
+    def test_append_new_steps(self, tmp_path, monkeypatch, capsys):
+        # Write existing todo.json
+        existing = [{
+            "id": "step-1", "name": "Done", "details": "...",
+            "completed_at": "now", "commit_title": "",
+        }]
+        todo_path = tmp_path / "todo.json"
+        todo_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        xml = _make_xml([
+            ("step-2", "New step", "New details"),
+            ("step-3", "Another step", "More details"),
+        ])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
+        main()
+
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 3
+        assert data[0]["id"] == "step-1"
+        assert data[1]["id"] == "step-2"
+        assert data[2]["id"] == "step-3"
+        out = capsys.readouterr().out
+        assert "appended 2 step(s)" in out
+
+    def test_append_duplicate_ids_error(self, tmp_path, monkeypatch, capsys):
+        existing = [
+            {
+                "id": "step-1", "name": "Done", "details": "...",
+                "completed_at": "now", "commit_title": "",
+            },
+            {
+                "id": "step-2", "name": "In progress", "details": "...",
+                "completed_at": "", "commit_title": "",
+            },
+        ]
+        todo_path = tmp_path / "todo.json"
+        todo_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        xml = _make_xml([
+            ("step-2", "Duplicate", "This ID already exists"),
+            ("step-3", "New step", "New details"),
+        ])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
+        with pytest.raises(SystemExit):
+            main()
+
+        err = capsys.readouterr().err
+        assert "duplicate step ID(s) in append mode" in err
+        assert "step-2" in err
+
+    def test_append_no_existing_file(self, tmp_path, monkeypatch, capsys):
+        # No todo.json exists — should write fresh
+        xml = _make_xml([("step-1", "First", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
+        main()
+
+        todo_path = tmp_path / "todo.json"
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+        out = capsys.readouterr().out
+        assert "1 step(s) converted" in out
+
+    def test_append_corrupt_existing_json(self, tmp_path, monkeypatch, capsys):
+        todo_path = tmp_path / "todo.json"
+        todo_path.write_text("not valid json{{{", encoding="utf-8")
+
+        xml = _make_xml([("step-1", "First", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
+        main()
+
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+        out = capsys.readouterr().out
+        assert "written (no existing todos)" in out
+
+
 class TestMissingArgs:
     def test_no_args(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "argv", ["xml2json_todo.py"])

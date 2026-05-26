@@ -152,6 +152,23 @@ def main():
     if append_mode and output_path.exists():
         existing = load_todo(xml_path.parent)
         if existing and isinstance(existing, list):
+            existing_ids = {
+                item.get("id", "")
+                for item in existing
+                if isinstance(item, dict)
+            }
+            dupes = [
+                step.get("id")
+                for step in results
+                if step.get("id") in existing_ids
+            ]
+            if dupes:
+                print(
+                    f"Error: duplicate step ID(s) in append mode: "
+                    f"{', '.join(dupes)}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             existing.extend(results)
             atomic_write_json(output_path, existing)
             print(f"OK: appended {len(results)} step(s) to {len(existing)} existing.")
