@@ -19,7 +19,6 @@ from common import (
     resolve_topic_dir,
     strip_front_matter,
 )
-from json2xml_todo import convert_todo_to_xml as _convert_todo_to_xml
 from remove_undone_todo import filter_completed_todos as _filter_completed_todos
 
 
@@ -274,7 +273,7 @@ def main():
             topic_dir = resolve_topic_dir(args.topic)
             _log_prompt_to_meta(topic_dir, prompt_context)
 
-        # Pre-render side-effects for modify-todo: clean undone todos and sync XML
+        # Pre-render side-effects for modify-todo: clean undone todos
         if args.name == "modify-todo" and args.topic:
             topic_dir = resolve_topic_dir(args.topic)
             todo_path = topic_dir / "todo.json"
@@ -284,14 +283,10 @@ def main():
                     if isinstance(data, list):
                         completed = _filter_completed_todos(data)
                         atomic_write_json(todo_path, completed)
-                        if completed:
-                            xml_content = _convert_todo_to_xml(completed)
-                            xml_path = topic_dir / "todo.xml"
-                            xml_path.write_text(xml_content, encoding="utf-8")
                 except json.JSONDecodeError:
                     pass  # Silently skip if JSON is invalid
 
-        json_mode = args.json and args.name in ("apply-one-task", "modify-spec")
+        json_mode = args.json and args.name in ("apply-one-task", "modify-spec", "modify-todo")
 
         # Handle all-done in JSON mode before render_prompt can exit
         if json_mode and args.name == "apply-one-task" and not metadata.get("next_task_text"):
@@ -325,6 +320,8 @@ def main():
             task_id = metadata.get("next_task_id", "")
             print(json.dumps({"task_id": task_id, "prompt": rendered}))
         elif args.name == "modify-spec":
+            print(json.dumps({"prompt": rendered}))
+        elif args.name == "modify-todo":
             print(json.dumps({"prompt": rendered}))
     elif args.output:
         out_path = Path(args.output)

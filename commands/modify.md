@@ -58,38 +58,37 @@ according to the instructions rendered in the prompt.
 ### Step 5: Generate todo.json
 
 Regenerate `$topic_path/todo.json` by first producing `todo.xml` via a
-prompt, then converting it:
+prompt, then converting and appending:
 
 1. Run:
 
    ```bash
-   $spex_skill_dir/scripts/spex prompt modify-todo --topic $topic
+   $spex_skill_dir/scripts/spex prompt modify-todo --json --topic $topic
    ```
 
    This command internally:
    - Removes incomplete steps from `todo.json` (preserving completed ones)
-   - Updates `todo.xml` to reflect only completed steps
    - Renders a prompt with the updated spec and completed steps context
 
-2. Use the rendered prompt as context to write new `todo.xml`, appending
-   development steps after any preserved completed ones. Follow these rules:
-   - **Preserve completed steps**: Keep all completed items unchanged at the
-     start of the list.
-   - **Corrective steps**: If completed step implementations conflict with
-     the new spec, add corrective steps after them (do NOT modify existing
-     completed step descriptions).
-   - **Add new steps**: Append remaining development steps needed.
-   - **Discard old incomplete steps**: Do NOT carry forward previously
-     incomplete steps from the old `todo.json`.
+   Parse the JSON output and save `$modify_prompt` from the `"prompt"` field.
+
+2. Use `$modify_prompt` as context to write new `$topic_path/todo.xml`.
+   Follow these rules:
+   - **Do NOT include completed steps**: They are preserved in todo.json.
+   - **Corrective steps**: If completed steps conflict with the new spec,
+     add corrective steps.
+   - **Add new steps**: Append steps for remaining work.
 
 3. Run:
 
    ```bash
-   $spex_skill_dir/scripts/spex todo xml2json $topic_path/todo.xml
+   $spex_skill_dir/scripts/spex todo xml2json --append $topic_path/todo.xml
    ```
 
-   If the script exits with an error, read the error message, fix the XML
-   format in `todo.xml`, and re-run until conversion succeeds.
+   This converts `todo.xml` to JSON and appends the new steps to the
+   existing `todo.json`, preserving completed steps. If the script exits
+   with an error, read the error message, fix the XML format in
+   `todo.xml`, and re-run until conversion succeeds.
 
 ### Step 6: Validate todo.json
 

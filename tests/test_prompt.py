@@ -847,16 +847,17 @@ class TestModifyTodoTemplate:
         assert len(data) == 1
         assert data[0]["id"] == "step-1"
 
-    def test_modify_todo_updates_xml_before_render(
+    def test_modify_todo_cleans_undone_before_render(
         self, tmp_path, monkeypatch, capsys
     ):
-        """main() writes todo.xml with only completed tasks."""
+        """main() removes undone tasks from todo.json before rendering."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
-            _make_task("step-2", name="Second step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
         monkeypatch.setattr(
@@ -869,22 +870,18 @@ class TestModifyTodoTemplate:
 
         main()
 
-        xml_path = topic_dir / "todo.xml"
-        assert xml_path.exists()
-        xml_content = xml_path.read_text(encoding="utf-8")
-        assert "<steps>" in xml_content
-        assert "step-1" in xml_content
-        assert "step-2" in xml_content
-        assert "step-3" not in xml_content
+        # Verify todo.json only contains completed tasks
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
 
-    def test_modify_todo_no_xml_when_no_completed(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """main() does NOT write todo.xml when no completed tasks exist."""
+    def test_modify_todo_cleans_all_undone(self, tmp_path, monkeypatch, capsys):
+        """main() handles case where all tasks are undone (empty result)."""
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
         monkeypatch.setattr(
@@ -897,5 +894,6 @@ class TestModifyTodoTemplate:
 
         main()
 
-        xml_path = topic_dir / "todo.xml"
-        assert not xml_path.exists()
+        # Verify todo.json is empty list
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert data == []

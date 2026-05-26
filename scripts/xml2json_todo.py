@@ -6,15 +6,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import atomic_write_json, check_help_flag
+from common import atomic_write_json, check_help_flag, load_todo
 
 USAGE = """\
-Usage: spex todo xml2json <xml-file>
+Usage: spex todo xml2json <xml-file> [--append]
 
 Convert todo.xml to todo.json in the same directory.
 
 Options:
-  -h, --help  Show this help message and exit
+  -h, --help    Show this help message and exit
+  -a, --append  Append new steps to existing todo.json (preserving completed steps)
 """
 
 
@@ -124,7 +125,18 @@ def convert_xml_to_todo(xml_path):
 def main():
     check_help_flag(USAGE)
 
-    if len(sys.argv) != 2:
+    append_mode = False
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+    for f in flags:
+        if f in ("-a", "--append"):
+            append_mode = True
+        else:
+            print(f"Error: unknown flag: {f}", file=sys.stderr)
+            print(USAGE, file=sys.stderr)
+            sys.exit(1)
+
+    if len(args) != 1:
         print(
             "Error: expected exactly one argument (XML file path).",
             file=sys.stderr,
@@ -132,12 +144,23 @@ def main():
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
-    xml_path = Path(sys.argv[1])
+    xml_path = Path(args[0])
     results = convert_xml_to_todo(xml_path)
 
     output_path = xml_path.parent / "todo.json"
-    atomic_write_json(output_path, results)
-    print(f"OK: {len(results)} step(s) converted.")
+
+    if append_mode and output_path.exists():
+        existing = load_todo(xml_path.parent)
+        if existing and isinstance(existing, list):
+            existing.extend(results)
+            atomic_write_json(output_path, existing)
+            print(f"OK: appended {len(results)} step(s) to {len(existing)} existing.")
+        else:
+            atomic_write_json(output_path, results)
+            print(f"OK: {len(results)} step(s) written (no existing todos).")
+    else:
+        atomic_write_json(output_path, results)
+        print(f"OK: {len(results)} step(s) converted.")
 
 
 if __name__ == "__main__":
