@@ -14,17 +14,19 @@ from common import (
     get_specs_dir,
     get_todo_progress,
     load_meta,
+    load_todo,
     same_path,
 )
 
 USAGE = """\
-Usage: spex list [--all]
+Usage: spex list [--all] [-v|-vv]
 
 List spec topics with progress.
 
 Options:
-  --all        Include archived topics
-  -h, --help   Show this help message and exit
+  --all            Include archived topics
+  -v, --verbose    Increase verbosity (repeat for more detail)
+  -h, --help       Show this help message and exit
 """
 
 PROMPT_LOG = "prompt.log"
@@ -76,6 +78,7 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
             description = get_spec_description(sub)
             topics.append({
                 "name": sub.name,
+                "path": sub,
                 "timestamp": timestamp,
                 "n": n,
                 "m": m,
@@ -160,6 +163,54 @@ def format_output(
     return "\n".join(lines)
 
 
+def format_verbose_output(
+    topics: list, verbosity: int = 1, show_repo: bool = False
+) -> str:
+    """Format topics with expanded detail based on verbosity level."""
+    if not topics:
+        return "No specs found."
+
+    topics.sort(key=lambda t: t["timestamp"], reverse=True)
+
+    blocks = []
+    for topic in topics:
+        icon = _get_icon(topic)
+        prog = f"{topic['n']}/{topic['m']}"
+        line1 = f"{icon} {topic['name']}  {prog}"
+        if show_repo:
+            label = _repo_label(topic.get("workdir", ""))
+            line1 = f"[{label}] {line1}"
+
+        parts = [line1]
+        display_text = topic.get("description") or topic.get("prompt", "")
+        if display_text:
+            parts.append(f"    {display_text}")
+
+        if verbosity >= 2:
+            todo = load_todo(topic["path"]) if topic.get("path") else None
+            if todo:
+                parts.append("")
+                for item in todo:
+                    step_id = item.get("id", "")
+                    step_name = item.get("name", "")
+                    parts.append(f"    {step_id}: {step_name}")
+
+        blocks.append("\n".join(parts))
+
+    return "\n".join(blocks)
+
+
+def _parse_verbosity(argv: list) -> int:
+    """Count verbosity level from argv."""
+    count = 0
+    for arg in argv:
+        if arg == "--verbose" or arg == "-v":
+            count += 1
+        elif re.match(r"^-v+$", arg):
+            count += len(arg) - 1  # -vv = 2, -vvv = 3
+    return count
+
+
 def main():
     check_help_flag(USAGE)
     all_mode = "--all" in sys.argv
@@ -183,7 +234,11 @@ def main():
     else:
         show_repo = True
 
-    print(format_output(topics, show_repo=show_repo))
+    verbosity = _parse_verbosity(sys.argv[1:])
+    if verbosity > 0:
+        print(format_verbose_output(topics, verbosity=verbosity, show_repo=show_repo))
+    else:
+        print(format_output(topics, show_repo=show_repo))
 
 
 if __name__ == "__main__":

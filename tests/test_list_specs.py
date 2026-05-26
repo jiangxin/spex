@@ -6,8 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from common import get_todo_progress, load_meta
 from list_specs import (
+    _parse_verbosity,
     collect_topics,
     format_output,
+    format_verbose_output,
     parse_prompt_log,
 )
 
@@ -314,3 +316,84 @@ class TestDescriptionDisplay:
         )
         topics = collect_topics([specs])
         assert topics[0]["description"] == "From spec"
+
+
+class TestVerboseOutput:
+    def test_level1_description_on_second_line(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 1, "m": 3, "prompt": "old prompt", "path": topic_dir,
+             "description": "Full description text here"},
+        ]
+        output = format_verbose_output(topics, verbosity=1)
+        lines = output.splitlines()
+        assert "my-topic" in lines[0]
+        assert "1/3" in lines[0]
+        assert lines[1] == "    Full description text here"
+
+    def test_level1_prompt_fallback(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "fallback prompt", "path": topic_dir,
+             "description": ""},
+        ]
+        output = format_verbose_output(topics, verbosity=1)
+        lines = output.splitlines()
+        assert lines[1] == "    fallback prompt"
+
+    def test_level2_shows_steps(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        _make_todo(topic_dir, [
+            _task("step-1", completed=True),
+            _task("step-2", completed=False),
+        ])
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 1, "m": 2, "prompt": "some prompt", "path": topic_dir,
+             "description": "Desc"},
+        ]
+        output = format_verbose_output(topics, verbosity=2)
+        lines = output.splitlines()
+        assert lines[0].startswith("\U0001f527")
+        assert lines[1] == "    Desc"
+        assert lines[2] == ""
+        assert "    step-1:" in lines[3]
+        assert "    step-2:" in lines[4]
+
+    def test_level2_no_steps_when_no_todo(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 0, "prompt": "p", "path": topic_dir,
+             "description": "Desc"},
+        ]
+        output = format_verbose_output(topics, verbosity=2)
+        lines = output.splitlines()
+        assert len(lines) == 2
+        assert "step-" not in output
+
+
+class TestParseVerbosity:
+    def test_no_flag(self):
+        assert _parse_verbosity(["--all"]) == 0
+
+    def test_single_v(self):
+        assert _parse_verbosity(["-v"]) == 1
+
+    def test_double_v(self):
+        assert _parse_verbosity(["-vv"]) == 2
+
+    def test_verbose_flag(self):
+        assert _parse_verbosity(["--verbose"]) == 1
+
+    def test_multiple_v_flags(self):
+        assert _parse_verbosity(["-v", "-v"]) == 2
+
+    def test_combined_with_all(self):
+        assert _parse_verbosity(["--all", "-vv"]) == 2
