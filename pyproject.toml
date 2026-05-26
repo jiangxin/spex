@@ -31,6 +31,8 @@ select = ["E", "F", "W", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: marks tests as slow (skip with '-m \"not slow\"')"]
+addopts = ["-m", "not slow"]
 
 [tool.coverage.run]
 source = ["scripts"]

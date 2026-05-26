@@ -75,6 +75,7 @@ def _clear_cache():
     clear_spex_root_cache()
 
 
+@pytest.mark.slow
 class TestAllDoneDetection:
     """Test that apply-one-task exits cleanly when all tasks are done."""
 
@@ -139,6 +140,7 @@ class TestAllDoneDetection:
         assert exc_info.value.code == 0
 
 
+@pytest.mark.slow
 class TestFutureTasks:
     """Test future_tasks metadata collection."""
 
@@ -236,6 +238,7 @@ class TestFutureTasks:
         assert metadata["future_tasks"] == expected
 
 
+@pytest.mark.slow
 class TestApplyOneTaskRendering:
     """Test rendered output of apply-one-task template."""
 
@@ -305,6 +308,7 @@ class TestApplyOneTaskRendering:
         assert "## Future Steps" not in rendered
 
 
+@pytest.mark.slow
 class TestTaskIdStderr:
     """Test that apply-one-task emits task_id to stderr via main()."""
 
@@ -351,6 +355,7 @@ class TestTaskIdStderr:
         assert "task_id=" not in captured.err
 
 
+@pytest.mark.slow
 class TestJsonMode:
     """Test --json flag for apply-one-task."""
 
@@ -412,6 +417,7 @@ class TestJsonMode:
         assert "all tasks are completed" not in captured.err
 
 
+@pytest.mark.slow
 class TestStdinExtraVars:
     """Test --stdin flag and JSON stdin behavior."""
 
@@ -540,6 +546,7 @@ class TestBuildTaskContext:
         assert result["future_tasks"] == ""
 
 
+@pytest.mark.slow
 class TestApplyCommitWithTopic:
     """Test apply-commit loads spec and task context from topic."""
 
@@ -598,6 +605,7 @@ class TestApplyCommitWithTopic:
             render_prompt("apply-commit")
 
 
+@pytest.mark.slow
 class TestLogPromptToMeta:
     """Test _log_prompt_to_meta helper function."""
 
@@ -677,6 +685,7 @@ class TestLogPromptToMeta:
         assert data["prompts"][0]["text"] == "Create meta from scratch"
 
 
+@pytest.mark.slow
 class TestModifySpecTemplate:
     """Test modify-spec template and prompt logging behavior."""
 
@@ -780,6 +789,7 @@ class TestModifySpecTemplate:
         assert "prompts" not in data
 
 
+@pytest.mark.slow
 class TestModifyTodoTemplate:
     """Test modify-todo template rendering and side-effects."""
 

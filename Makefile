@@ -12,7 +12,12 @@ format:
 test:
 	pytest
 
+test-all:
+	pytest -m ""
+
 check: lint lint-md test
+
+check-all: lint lint-md test-all
 
 coverage:
 	pytest --cov=scripts --cov-report=term-missing
