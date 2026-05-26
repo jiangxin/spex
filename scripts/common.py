@@ -365,6 +365,49 @@ def strip_front_matter(content: str) -> str:
     return stripped.lstrip("\n")
 
 
+def parse_front_matter_description(content: str) -> str:
+    """Extract description from YAML front-matter.
+
+    Handles single-line, quoted, and block scalar (|, >) formats.
+    Returns the description as a single line (multi-line joined with spaces),
+    or empty string if not found.
+    """
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return ""
+
+    lines = match.group(1).splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"description:\s*(.*)", line)
+        if not m:
+            continue
+        value = m.group(1).strip()
+        if not value or value in ("|", ">"):
+            # Block scalar: collect indented continuation lines
+            parts = []
+            for cont_line in lines[i + 1:]:
+                if cont_line and (cont_line[0] == " " or cont_line[0] == "\t"):
+                    parts.append(cont_line.strip())
+                else:
+                    break
+            return " ".join(parts)
+        # Single-line value (strip surrounding quotes)
+        return value.strip("\"'")
+    return ""
+
+
+def get_spec_description(topic_dir: Path) -> str:
+    """Read spec.md and return its front-matter description, or ''."""
+    spec_path = topic_dir / "spec.md"
+    if not spec_path.is_file():
+        return ""
+    try:
+        content = spec_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    return parse_front_matter_description(content)
+
+
 def _sync_builtin_template(template_name: str, workdir=None):
     """Sync a built-in template to spex_root/templates/examples/ if version differs.
 

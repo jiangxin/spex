@@ -11,10 +11,12 @@ from common import (
     check_help_flag,
     clear_spex_root_cache,
     get_archives_dir,
+    get_spec_description,
     get_specs_dir,
     get_spex_root,
     get_template,
     local_iso_timestamp,
+    parse_front_matter_description,
     resolve_topic_dir,
 )
 
@@ -391,3 +393,73 @@ class TestGetTemplate:
         finally:
             # Clean up test template
             test_template.unlink()
+
+
+class TestParseFrontMatterDescription:
+    def test_single_line(self):
+        content = '---\nversion: "0.0.1"\ndescription: A simple description\n---\n\n# Body'
+        assert parse_front_matter_description(content) == "A simple description"
+
+    def test_quoted_description(self):
+        content = '---\ndescription: "Quoted description text"\n---\n\n# Body'
+        assert parse_front_matter_description(content) == "Quoted description text"
+
+    def test_single_quoted(self):
+        content = "---\ndescription: 'Single quoted'\n---\n\n# Body"
+        assert parse_front_matter_description(content) == "Single quoted"
+
+    def test_block_scalar_pipe(self):
+        content = (
+            '---\nversion: "0.0.1"\ndescription: |\n'
+            "  Line one of description\n"
+            "  Line two of description\n"
+            "---\n\n# Body"
+        )
+        result = parse_front_matter_description(content)
+        assert result == "Line one of description Line two of description"
+
+    def test_block_scalar_gt(self):
+        content = (
+            "---\ndescription: >\n"
+            "  Folded line one\n"
+            "  Folded line two\n"
+            "---\n\n# Body"
+        )
+        result = parse_front_matter_description(content)
+        assert result == "Folded line one Folded line two"
+
+    def test_no_description_field(self):
+        content = '---\nversion: "0.0.1"\n---\n\n# Body'
+        assert parse_front_matter_description(content) == ""
+
+    def test_no_front_matter(self):
+        content = "# Just a heading\n\nSome text."
+        assert parse_front_matter_description(content) == ""
+
+    def test_block_scalar_stops_at_next_key(self):
+        content = (
+            "---\ndescription: |\n"
+            "  Multi-line desc\n"
+            "version: 1.0\n"
+            "---\n\n# Body"
+        )
+        result = parse_front_matter_description(content)
+        assert result == "Multi-line desc"
+
+
+class TestGetSpecDescription:
+    def test_reads_spec_md(self, tmp_path):
+        spec = tmp_path / "spec.md"
+        spec.write_text(
+            '---\ndescription: "From spec file"\n---\n\n# Spec',
+            encoding="utf-8",
+        )
+        assert get_spec_description(tmp_path) == "From spec file"
+
+    def test_missing_spec_returns_empty(self, tmp_path):
+        assert get_spec_description(tmp_path) == ""
+
+    def test_no_description_returns_empty(self, tmp_path):
+        spec = tmp_path / "spec.md"
+        spec.write_text('---\nversion: "0.0.1"\n---\n\n# Spec', encoding="utf-8")
+        assert get_spec_description(tmp_path) == ""
