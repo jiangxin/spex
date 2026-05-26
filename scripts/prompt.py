@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    atomic_write_json,
     get_spex_root,
     get_template,
     load_meta,
@@ -130,6 +131,27 @@ def _build_task_context(topic_dir):
     }
 
 
+def _log_prompt_to_meta(topic_dir, prompt_text):
+    """Append prompt_text to the prompts array in meta.json.
+
+    Loads meta.json, ensures a 'prompts' list exists, appends
+    {'text': prompt_text, 'timestamp': local_iso_timestamp()},
+    and writes atomically.
+    """
+    meta = load_meta(topic_dir)
+    if meta is None:
+        meta = {}
+    prompts = meta.get("prompts", [])
+    if not isinstance(prompts, list):
+        prompts = []
+    prompts.append({
+        "text": prompt_text,
+        "timestamp": local_iso_timestamp(),
+    })
+    meta["prompts"] = prompts
+    atomic_write_json(topic_dir / "meta.json", meta)
+
+
 def _build_metadata(template_name, topic_name=None):
     """Build the metadata dict for template rendering.
 
@@ -163,6 +185,9 @@ def _build_metadata(template_name, topic_name=None):
             metadata.update(_build_task_context(topic_dir))
 
     if template_name == "apply-one-task" and topic_name:
+        metadata.update(_build_task_context(topic_dir))
+
+    if template_name == "modify-spec" and topic_name:
         metadata.update(_build_task_context(topic_dir))
 
     return metadata
@@ -237,6 +262,12 @@ def main():
         metadata = _build_metadata(args.name, args.topic)
         if extra_vars:
             metadata.update(extra_vars)
+
+        # Log prompt to meta.json for modify-spec template
+        prompt_context = metadata.get("prompt_context", "")
+        if args.name == "modify-spec" and prompt_context and args.topic:
+            topic_dir = resolve_topic_dir(args.topic)
+            _log_prompt_to_meta(topic_dir, prompt_context)
 
         json_mode = args.json and args.name == "apply-one-task"
 

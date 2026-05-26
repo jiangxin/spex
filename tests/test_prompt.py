@@ -596,3 +596,185 @@ class TestApplyCommitWithTopic:
 
         with pytest.raises(SystemExit):
             render_prompt("apply-commit")
+
+
+class TestLogPromptToMeta:
+    """Test _log_prompt_to_meta helper function."""
+
+    def test_log_prompt_creates_prompts_array(self, tmp_path):
+        """When meta.json has no prompts key, creates a new list."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        meta_path = topic_dir / "meta.json"
+        meta_path.write_text(
+            json.dumps({"workdir": str(repo)}), encoding="utf-8"
+        )
+
+        from prompt import _log_prompt_to_meta
+
+        _log_prompt_to_meta(topic_dir, "Make the API faster")
+
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert "prompts" in data
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "Make the API faster"
+        assert "timestamp" in data["prompts"][0]
+
+    def test_log_prompt_appends_to_existing(self, tmp_path):
+        """Appends to existing prompts array."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        meta_path = topic_dir / "meta.json"
+        meta_path.write_text(
+            json.dumps({
+                "workdir": str(repo),
+                "prompts": [{"text": "First prompt", "timestamp": "2026-01-01"}],
+            }),
+            encoding="utf-8",
+        )
+
+        from prompt import _log_prompt_to_meta
+
+        _log_prompt_to_meta(topic_dir, "Second prompt")
+
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 2
+        assert data["prompts"][1]["text"] == "Second prompt"
+
+    def test_log_prompt_no_meta(self, tmp_path):
+        """When meta.json does not exist, creates it with prompts."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        from prompt import _log_prompt_to_meta
+
+        _log_prompt_to_meta(topic_dir, "Create meta from scratch")
+
+        meta_path = topic_dir / "meta.json"
+        assert meta_path.exists()
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "Create meta from scratch"
+
+
+class TestModifySpecTemplate:
+    """Test modify-spec template and prompt logging behavior."""
+
+    def test_modify_spec_renders_with_prompt_context(self, tmp_path, monkeypatch):
+        """modify-spec template renders spec_content and prompt_context."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "modify-spec", "test-topic",
+            extra_vars={"prompt_context": "Add caching to the API"},
+        )
+        assert "<prompt-context>" in rendered
+        assert "Add caching to the API" in rendered
+        assert "<specification>" in rendered
+        assert "# Test Spec" in rendered
+        assert "step-1: First step" in rendered
+
+    def test_modify_spec_missing_prompt_context_fails(self, tmp_path, monkeypatch):
+        """modify-spec without prompt_context fails validation."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        with pytest.raises(SystemExit):
+            render_prompt("modify-spec", "test-topic")
+
+    def test_main_logs_prompt_to_meta_for_modify_spec(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """main() calls _log_prompt_to_meta when using modify-spec with --stdin."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "modify-spec", "--topic", "test-topic", "--stdin"],
+        )
+        monkeypatch.setattr("sys.stdin", io.StringIO("Refactor the auth module"))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        assert "<prompt-context>" in captured.out
+        assert "Refactor the auth module" in captured.out
+
+        # Verify meta.json was updated
+        meta_path = topic_dir / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert "prompts" in data
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "Refactor the auth module"
+
+    def test_main_no_prompt_context_does_not_log(self, tmp_path, monkeypatch, capsys):
+        """main() does not call _log_prompt_to_meta when prompt_context is absent."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        meta_path = topic_dir / "meta.json"
+        # Pre-write meta with no prompts
+        meta_path.write_text(
+            json.dumps({"workdir": str(repo)}), encoding="utf-8"
+        )
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        # Provide extra_vars via JSON stdin (no prompt_context key)
+        json_input = json.dumps({"spec_content": "Custom spec"})
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "modify-spec", "--topic", "test-topic"],
+        )
+        monkeypatch.setattr("sys.stdin", io.StringIO(json_input))
+
+        from prompt import main
+
+        with pytest.raises(SystemExit):
+            # Fails because prompt_context is required but not provided
+            main()
+
+        # meta.json should NOT have prompts array
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert "prompts" not in data
