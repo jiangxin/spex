@@ -73,14 +73,35 @@ def _install_cli():
               file=sys.stderr)
 
 
+_DEFAULT_TOML = 'spex_root = ".spex"\n'
+
+
+def _create_toml_config(repo_root=None):
+    """Create .spex.toml at the appropriate location."""
+    if repo_root is not None:
+        target = repo_root / ".spex.toml"
+    else:
+        target = Path.home() / ".spex.toml"
+
+    if target.exists():
+        print(f"Config already exists: {target}")
+        return
+
+    target.write_text(_DEFAULT_TOML, encoding="utf-8")
+    print(f"Created: {target}")
+
+
 def run_init(workdir=None):
     """Run full spex initialization."""
     if workdir is None:
         workdir = get_current_workdir()
 
+    repo_root = Path(get_current_workdir()) if get_current_workdir() else None
+
     _install_deps()
     ensure_initialized(get_spex_root(workdir))
     _install_cli()
+    _create_toml_config(repo_root)
 
     print("Initialization complete.")
 
