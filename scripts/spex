@@ -220,7 +220,7 @@ def _run_todo():
         print(
             "Usage: spex todo <subcommand> ...\n"
             "Subcommands: validate, get-next-undone, get-done, mark-done,"
-            " xml2json",
+            " xml2json, remove-undone",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -242,6 +242,11 @@ def _run_todo():
 
         sys.argv = ["xml2json_todo.py"] + sys.argv[3:]
         xml2json_todo.main()
+    elif subcmd == "remove-undone":
+        import remove_undone_todo
+
+        sys.argv = ["remove_undone_todo.py"] + sys.argv[3:]
+        remove_undone_todo.main()
     elif subcmd in ("validate", "get-next-undone", "get-done"):
         import parse_todo
 
@@ -251,7 +256,7 @@ def _run_todo():
         print(f"Error: unknown todo subcommand '{subcmd}'", file=sys.stderr)
         print(
             "Subcommands: validate, get-next-undone, get-done, mark-done,"
-            " xml2json",
+            " xml2json, remove-undone",
             file=sys.stderr,
         )
         sys.exit(1)
