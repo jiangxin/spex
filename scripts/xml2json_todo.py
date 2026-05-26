@@ -10,13 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import atomic_write_json, check_help_flag, load_todo
 
 USAGE = """\
-Usage: spex todo xml2json <xml-file> [--append]
+Usage: spex todo xml2json <xml-file> [--append] [--rm]
 
 Convert todo.xml to todo.json in the same directory.
 
 Options:
   -h, --help    Show this help message and exit
   -a, --append  Append new steps to existing todo.json (preserving completed steps)
+  -r, --rm      Remove XML file after successful conversion
 """
 
 
@@ -190,11 +191,14 @@ def main():
     check_help_flag(USAGE)
 
     append_mode = False
+    rm_flag = False
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     for f in flags:
         if f in ("-a", "--append"):
             append_mode = True
+        elif f in ("-r", "--rm"):
+            rm_flag = True
         else:
             print(f"Error: unknown flag: {f}", file=sys.stderr)
             print(USAGE, file=sys.stderr)
@@ -239,9 +243,13 @@ def main():
         else:
             atomic_write_json(output_path, results)
             print(f"OK: {len(results)} step(s) written (no existing todos).")
+        if rm_flag and xml_path.exists():
+            xml_path.unlink()
     else:
         atomic_write_json(output_path, results)
         print(f"OK: {len(results)} step(s) converted.")
+        if rm_flag and xml_path.exists():
+            xml_path.unlink()
 
 
 if __name__ == "__main__":
