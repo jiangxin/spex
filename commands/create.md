@@ -73,6 +73,10 @@ data models, API contracts, error handling, and edge cases.
 
 Using `$spec_template` as the template, create `$topic_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
+The template includes YAML front-matter with `version` and `description`
+fields. Replace the `description` placeholder with a brief summary of
+the requirement (under 10 lines, each line max 80 chars). Keep the
+`version` field unchanged.
 Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
 results. Fill the "User Clarification" section with clarifications

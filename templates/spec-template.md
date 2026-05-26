@@ -1,5 +1,9 @@
 ---
-version: "1.0.0"
+version: "0.0.1"
+description: |
+  [Replace this with a brief description of the topic in English.]
+  [Multiple lines (no more than 10 lines) are welcome, and each line wrapped at]
+  [80 characters.]
 ---
 
 # Requirement
