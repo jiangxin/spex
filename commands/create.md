@@ -29,13 +29,24 @@ points before proceeding.
 After clarification, record the complete, unambiguous requirement as
 `$requirement`.
 
-### Phase 2: Generate Topic Name
+### Phase 2: Validate Branch
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex create-helper --validate
+```
+
+If the script exits with an error (non-zero), the error message is already
+printed to stderr. Stop execution. On success, continue to the next phase.
+
+### Phase 3: Generate Topic Name
 
 Based on `$requirement`, generate a short English name (<32 bytes) using only
 `[a-z0-9-]`, replacing spaces with `-`. The result is `$topic`
 (e.g., `add-login-api`). Do NOT prepend any date prefix.
 
-### Phase 3: Prepare Topic Directory
+### Phase 4: Prepare Topic Directory
 
 Run:
 
@@ -52,7 +63,7 @@ save these variables:
 - `$topic_path` ← `topic_path`
 - `$spec_template` ← `spec_template`
 
-If the script exits with an error, return to Phase 2 and retry with a
+If the script exits with an error, return to Phase 3 and retry with a
 different name.
 
 Example JSON output:
@@ -65,7 +76,7 @@ Example JSON output:
 }
 ```
 
-### Phase 4: Design Specification
+### Phase 5: Design Specification
 
 Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
@@ -82,7 +93,7 @@ Replace the placeholder sections (HTML comments like
 results. Fill the "User Clarification" section with clarifications
 gathered in Phase 1. Keep the Constraints section as-is.
 
-### Phase 5: Plan Implementation Steps
+### Phase 6: Plan Implementation Steps
 
 Based on the design in `$topic_path/spec.md`, break down the work into
 incremental development steps. Each step should be independently
@@ -126,7 +137,7 @@ structure:**
 - Each `<step>` **MUST** contain exactly three children in order:
   `<step-id>`, `<step-name>`, `<step-markdown-details>`.
 
-### Phase 6: Convert todo.xml to todo.json
+### Phase 7: Convert todo.xml to todo.json
 
 Run:
 
@@ -137,7 +148,7 @@ $spex_skill_dir/scripts/spex todo xml2json --rm $topic_path/todo.xml
 If the script exits with an error, read the error message, fix the XML
 format in `todo.xml`, and re-run until conversion succeeds.
 
-### Phase 7: Output
+### Phase 8: Output
 
 Display the following summary to the user:
 
