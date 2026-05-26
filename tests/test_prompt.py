@@ -778,3 +778,124 @@ class TestModifySpecTemplate:
         # meta.json should NOT have prompts array
         data = json.loads(meta_path.read_text(encoding="utf-8"))
         assert "prompts" not in data
+
+
+class TestModifyTodoTemplate:
+    """Test modify-todo template rendering and side-effects."""
+
+    def test_modify_todo_renders_spec_and_completed_tasks(
+        self, tmp_path, monkeypatch
+    ):
+        """modify-todo renders spec_content and completed_tasks."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("modify-todo", "test-topic")
+        assert "<specification>" in rendered
+        assert "# Test Spec" in rendered
+        assert "<completed-steps>" in rendered
+        assert "step-1: First step" in rendered
+
+    def test_modify_todo_no_completed_tasks(self, tmp_path, monkeypatch):
+        """modify-todo without completed tasks omits completed-steps section."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("modify-todo", "test-topic")
+        assert "<specification>" in rendered
+        assert "<completed-steps>" not in rendered
+
+    def test_modify_todo_cleans_undone_todos_before_render(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """main() removes undone tasks before rendering for modify-todo."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "modify-todo", "--topic", "test-topic"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        # Verify todo.json only contains completed tasks
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+
+    def test_modify_todo_updates_xml_before_render(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """main() writes todo.xml with only completed tasks."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=True),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "modify-todo", "--topic", "test-topic"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        xml_path = topic_dir / "todo.xml"
+        assert xml_path.exists()
+        xml_content = xml_path.read_text(encoding="utf-8")
+        assert "<steps>" in xml_content
+        assert "step-1" in xml_content
+        assert "step-2" in xml_content
+        assert "step-3" not in xml_content
+
+    def test_modify_todo_no_xml_when_no_completed(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """main() does NOT write todo.xml when no completed tasks exist."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "modify-todo", "--topic", "test-topic"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        xml_path = topic_dir / "todo.xml"
+        assert not xml_path.exists()

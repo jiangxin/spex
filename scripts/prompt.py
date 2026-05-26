@@ -19,6 +19,8 @@ from common import (
     resolve_topic_dir,
     strip_front_matter,
 )
+from json2xml_todo import convert_todo_to_xml as _convert_todo_to_xml
+from remove_undone_todo import filter_completed_todos as _filter_completed_todos
 
 
 def _get_git_info():
@@ -190,6 +192,9 @@ def _build_metadata(template_name, topic_name=None):
     if template_name == "modify-spec" and topic_name:
         metadata.update(_build_task_context(topic_dir))
 
+    if template_name == "modify-todo" and topic_name:
+        metadata.update(_build_task_context(topic_dir))
+
     return metadata
 
 
@@ -268,6 +273,23 @@ def main():
         if args.name == "modify-spec" and prompt_context and args.topic:
             topic_dir = resolve_topic_dir(args.topic)
             _log_prompt_to_meta(topic_dir, prompt_context)
+
+        # Pre-render side-effects for modify-todo: clean undone todos and sync XML
+        if args.name == "modify-todo" and args.topic:
+            topic_dir = resolve_topic_dir(args.topic)
+            todo_path = topic_dir / "todo.json"
+            if todo_path.exists():
+                try:
+                    data = json.loads(todo_path.read_text(encoding="utf-8"))
+                    if isinstance(data, list):
+                        completed = _filter_completed_todos(data)
+                        atomic_write_json(todo_path, completed)
+                        if completed:
+                            xml_content = _convert_todo_to_xml(completed)
+                            xml_path = topic_dir / "todo.xml"
+                            xml_path.write_text(xml_content, encoding="utf-8")
+                except json.JSONDecodeError:
+                    pass  # Silently skip if JSON is invalid
 
         json_mode = args.json and args.name in ("apply-one-task", "modify-spec")
 

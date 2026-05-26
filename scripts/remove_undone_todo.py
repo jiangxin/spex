@@ -18,6 +18,21 @@ Options:
 """
 
 
+def filter_completed_todos(data):
+    """Filter a list of todo dicts, returning only completed ones.
+
+    Args:
+        data: List of todo item dicts.
+
+    Returns:
+        List of only the completed items.
+    """
+    return [
+        item for item in data
+        if isinstance(item, dict) and item.get("completed_at")
+    ]
+
+
 def main():
     check_help_flag(USAGE)
 
@@ -44,7 +59,7 @@ def main():
         print("Error: top-level value must be an array.", file=sys.stderr)
         sys.exit(1)
 
-    completed = [item for item in data if isinstance(item, dict) and item.get("completed_at")]
+    completed = filter_completed_todos(data)
     removed = len(data) - len(completed)
 
     atomic_write_json(todo_path, completed)

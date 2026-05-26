@@ -57,28 +57,39 @@ according to the instructions rendered in the prompt.
 
 ### Step 5: Generate todo.json
 
-Based on the updated spec, regenerate `$topic_path/todo.json`:
+Regenerate `$topic_path/todo.json` by first producing `todo.xml` via a
+prompt, then converting it:
 
-- **Preserve completed steps**: Keep all items with non-empty
-  `completed_at` unchanged, in their original order, at the start of the
-  list.
-- **Fix conflicts**: If any completed step's implementation conflicts with
-  the new requirements, add a new step after the completed steps to fix
-  the conflict.
-- **Discard incomplete steps**: Remove all items with empty `completed_at`
-  from the old todo.json.
-- **Add new steps**: Based on the updated spec, add remaining development
-  steps needed to fulfill the new requirements.
-- **Overwrite**: Write the new list to `todo.json`, replacing its previous
-  contents entirely.
+1. Run:
 
-Follow the same format and rules as the create command:
+   ```bash
+   $spex_skill_dir/scripts/spex prompt modify-todo --topic $topic
+   ```
 
-- Group implementation code and its associated test cases in the same
-  step.
-- Each step should be a self-contained unit (DRY, KISS, Small Batches).
-- Use the standard todo.json item format with `id`, `name`, `details`,
-  `completed_at`, and `commit_title` fields.
+   This command internally:
+   - Removes incomplete steps from `todo.json` (preserving completed ones)
+   - Updates `todo.xml` to reflect only completed steps
+   - Renders a prompt with the updated spec and completed steps context
+
+2. Use the rendered prompt as context to write new `todo.xml`, appending
+   development steps after any preserved completed ones. Follow these rules:
+   - **Preserve completed steps**: Keep all completed items unchanged at the
+     start of the list.
+   - **Corrective steps**: If completed step implementations conflict with
+     the new spec, add corrective steps after them (do NOT modify existing
+     completed step descriptions).
+   - **Add new steps**: Append remaining development steps needed.
+   - **Discard old incomplete steps**: Do NOT carry forward previously
+     incomplete steps from the old `todo.json`.
+
+3. Run:
+
+   ```bash
+   $spex_skill_dir/scripts/spex todo xml2json $topic_path/todo.xml
+   ```
+
+   If the script exits with an error, read the error message, fix the XML
+   format in `todo.xml`, and re-run until conversion succeeds.
 
 ### Step 6: Validate todo.json
 
