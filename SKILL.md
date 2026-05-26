@@ -1,13 +1,13 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (new), list, modify, apply (run, do, go), archive, install-cli (install)."
+description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (new), list, modify, apply (run, do, go), archive, init, install-cli (install)."
 metadata:
   version: 0.0.1
 arguments:
   - name: command
     required: true
-    description: "Sub-command to execute. Must be one of: create (alias: new), list, modify, apply (aliases: run, do, go), archive, install-cli (alias: install). Show usage help and exit if missing or unrecognized."
+    description: "Sub-command to execute. Must be one of: create (alias: new), list, modify, apply (aliases: run, do, go), archive, init, install-cli (alias: install). Show usage help and exit if missing or unrecognized."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -32,6 +32,7 @@ A skill for managing specification documents in a structured spec directory.
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
 | `archive`  |                  | Archive a completed spec          |
+| `init`     |                  | Initialize spex environment       |
 | `install-cli` | `install`     | Install spex CLI to ~/.local/bin  |
 
 ## Command Routing
@@ -46,6 +47,7 @@ command file:
 - `modify` → `commands/modify.md`
 - `apply` / `run` / `do` / `go` → `commands/apply.md`
 - `archive` → `commands/archive.md`
+- `init` → `commands/init.md`
 - `install-cli` / `install` → `commands/install-cli.md`
 
 ### Constraints

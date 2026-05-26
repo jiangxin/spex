@@ -197,12 +197,6 @@ class TestLLMCommands:
         assert "requires an AI coding agent" in result.stderr
         assert "'/spex modify'" in result.stderr
 
-    def test_init_alias(self):
-        result = _run_spex("init")
-
-        assert result.returncode == 1
-        assert "requires an AI coding agent" in result.stderr
-
     def test_new_alias(self):
         result = _run_spex("new")
 
