@@ -31,3 +31,18 @@ edge cases, and testability. Read the specification and completed steps
 </completed-steps>
 
 {% endif -%}
+
+## Modification Instructions
+
+Using the above context, update the specification file (`spec.md`):
+
+- Analyze the user's modification request, the current specification,
+  and completed steps from the prompt context.
+- Update the **Requirement** section to reflect the new/changed
+  requirements.
+- Update the **Detailed Design** section accordingly.
+- Update the **Test Plan** section accordingly.
+- Use the same language as the user's prompt.
+
+Before writing, analyze the current repository structure, architecture,
+and existing code to ensure the updated design integrates properly.

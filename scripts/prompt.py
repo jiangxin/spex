@@ -235,7 +235,7 @@ def main():
     parser.add_argument("--stdin", action="store_true",
                         help="Read raw text from stdin as prompt_context")
     parser.add_argument("--json", action="store_true",
-                        help="Output JSON to stdout (apply-one-task only)")
+                        help="Output JSON with rendered prompt to stdout")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
     args = parser.parse_args()
 
@@ -269,10 +269,10 @@ def main():
             topic_dir = resolve_topic_dir(args.topic)
             _log_prompt_to_meta(topic_dir, prompt_context)
 
-        json_mode = args.json and args.name == "apply-one-task"
+        json_mode = args.json and args.name in ("apply-one-task", "modify-spec")
 
         # Handle all-done in JSON mode before render_prompt can exit
-        if json_mode and not metadata.get("next_task_text"):
+        if json_mode and args.name == "apply-one-task" and not metadata.get("next_task_text"):
             print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
             sys.exit(0)
 
@@ -299,8 +299,11 @@ def main():
         sys.exit(1)
 
     if json_mode:
-        task_id = metadata.get("next_task_id", "")
-        print(json.dumps({"task_id": task_id, "prompt": rendered}))
+        if args.name == "apply-one-task":
+            task_id = metadata.get("next_task_id", "")
+            print(json.dumps({"task_id": task_id, "prompt": rendered}))
+        elif args.name == "modify-spec":
+            print(json.dumps({"prompt": rendered}))
     elif args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)

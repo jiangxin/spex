@@ -36,36 +36,24 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Step 3: Build Modification Context
+### Step 3: Build Prompt
 
 Run:
 
 ```bash
-echo "$prompt" | $spex_skill_dir/scripts/spex prompt modify-spec --topic $topic --stdin
+echo "$prompt" | $spex_skill_dir/scripts/spex prompt modify-spec --json --topic $topic --stdin
 ```
 
-This single command:
+Parse the JSON output from stdout:
 
-- Appends `$prompt` to `meta.json`'s `prompts` array (side effect)
-- Outputs the rendered context (original spec content, user's modification
-  prompt, and completed steps from `todo.json`) to stdout for use as context
-  in subsequent steps.
-
-If the script exits with an error, report the error and stop.
+- If the command exits with a non-zero exit code, report the stderr
+  message and stop.
+- Otherwise, save `$modify_prompt` from the `"prompt"` field.
 
 ### Step 4: Modify spec.md
 
-Based on the existing spec (from the context output of Step 3) and the
-user's modification prompt, update `$topic_path/spec.md`:
-
-- Update the **Requirement** section to reflect the new/changed
-  requirements.
-- Update the **Detailed Design** section accordingly.
-- Update the **Test Plan** section accordingly.
-- Use the same language as the user's prompt.
-
-Before writing, analyze the current repository structure, architecture,
-and existing code to ensure the updated design integrates properly.
+Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
+according to the instructions rendered in the prompt.
 
 ### Step 5: Generate todo.json
 
