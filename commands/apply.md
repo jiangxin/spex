@@ -44,14 +44,17 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --topic $topic_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $topic_name
 ```
 
-If the command exits with a non-zero exit code, all tasks are
-completed — report completion to the user and stop.
+Parse the JSON output from stdout:
 
-- Save stdout to `$prompt`.
-- Parse `$next_task_id` from stderr (format: `task_id=<id>`).
+- If the response contains `"all_done": true`, all tasks are
+  completed — report completion to the user and stop.
+- If the command exits with a non-zero exit code, a real error
+  occurred — report the stderr message and stop.
+- Otherwise, save `$prompt` from the `"prompt"` field and
+  `$next_task_id` from the `"task_id"` field.
 
 ### Step 3: Execute Task
 
