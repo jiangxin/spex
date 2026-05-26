@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Convert XML-formatted todo files to JSON format."""
 
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -17,6 +18,65 @@ Options:
   -h, --help    Show this help message and exit
   -a, --append  Append new steps to existing todo.json (preserving completed steps)
 """
+
+
+def _escape_xml_text(text: str) -> str:
+    """Escape unescaped XML special characters inside element text content.
+
+    Replaces &, <, > with their entity equivalents, but skips characters
+    that are already part of a valid XML entity (e.g. &lt;, &amp;).
+
+    Args:
+        text: Raw text that may contain unescaped special characters.
+
+    Returns:
+        Text with special characters properly escaped.
+    """
+    # Only escape bare &, <, > — skip already-escaped entities like &lt; &gt; &amp;
+    # Strategy: split on existing entities, escape non-entity parts, rejoin.
+    parts = re.split(r"(&(?:lt|gt|amp|quot|apos);)", text)
+    result = []
+    for part in parts:
+        if re.match(r"&(?:lt|gt|amp|quot|apos);", part):
+            result.append(part)  # Already an entity, leave as-is
+        else:
+            result.append(_escape_bare_xml_chars(part))
+    return "".join(result)
+
+
+def _escape_bare_xml_chars(text: str) -> str:
+    """Escape &, <, > in text that contains no XML entities."""
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    return text
+
+
+def _preprocess_xml(xml_text: str) -> str:
+    """Preprocess XML text to escape unescaped special characters.
+
+    Scans <step-markdown-details>...</step-markdown-details> blocks and
+    escapes any unescaped &, <, > characters inside them so that
+    xml.etree.ElementTree can parse the XML without errors.
+
+    Args:
+        xml_text: Raw XML string.
+
+    Returns:
+        XML string with special characters in details blocks escaped.
+    """
+    pattern = re.compile(
+        r"(<step-markdown-details>)(.*?)(</step-markdown-details>)",
+        re.DOTALL,
+    )
+
+    def _replacer(match):
+        open_tag = match.group(1)
+        content = match.group(2)
+        close_tag = match.group(3)
+        return open_tag + _escape_xml_text(content) + close_tag
+
+    return pattern.sub(_replacer, xml_text)
 
 
 def _strip_blank_lines(text):
@@ -49,12 +109,16 @@ def convert_xml_to_todo(xml_path):
         sys.exit(1)
 
     try:
-        tree = ET.parse(path)
+        xml_text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"Error: cannot read file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        root = ET.fromstring(_preprocess_xml(xml_text))
     except ET.ParseError as e:
         print(f"Error: invalid XML: {e}", file=sys.stderr)
         sys.exit(1)
-
-    root = tree.getroot()
     if root.tag != "steps":
         print(
             f"Error: root element must be <steps>, got <{root.tag}>",
