@@ -143,3 +143,44 @@ class TestMainJson2Xml:
         with pytest.raises(SystemExit) as exc_info:
             json2xml_todo.main()
         assert exc_info.value.code == 0
+
+
+class TestEscapeXmlText:
+    def test_escape_angle_brackets(self):
+        result = json2xml_todo._escape_xml_text("<repo_root>")
+        assert result == "&lt;repo_root&gt;"
+
+    def test_escape_ampersand(self):
+        result = json2xml_todo._escape_xml_text("a & b")
+        assert result == "a &amp; b"
+
+    def test_escape_all_special_chars(self):
+        result = json2xml_todo._escape_xml_text("x < y > z & w")
+        assert result == "x &lt; y &gt; z &amp; w"
+
+    def test_no_special_chars_unchanged(self):
+        result = json2xml_todo._escape_xml_text("plain text")
+        assert result == "plain text"
+
+    def test_already_escaped_text(self):
+        result = json2xml_todo._escape_xml_text("&lt;tag&gt;")
+        # The & in &lt; is itself escaped, so it becomes &amp;lt;
+        assert result == "&amp;lt;tag&amp;gt;"
+
+
+class TestRoundTrip:
+    def test_round_trip_with_special_chars(self):
+        import xml.etree.ElementTree as ET
+
+        data = [
+            {
+                "id": "step-1",
+                "name": "Special chars test",
+                "details": "Check <repo_root> and use & for refs",
+            },
+        ]
+        xml_str = json2xml_todo.convert_todo_to_xml(data)
+        tree = ET.fromstring(xml_str)
+        details = tree.find("step/step-markdown-details")
+        # ElementTree auto-decodes entities
+        assert details.text.strip() == "Check <repo_root> and use & for refs"
