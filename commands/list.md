@@ -13,7 +13,7 @@ Use `--all` to include archived specs.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Run List Script
+### Phase 1: Run List Script
 
 Run:
 
@@ -24,7 +24,7 @@ $spex_skill_dir/scripts/spex list $args
 Where `$args` is `--all` if the user requested all specs, or empty
 otherwise.
 
-### Step 2: Report Results
+### Phase 2: Report Results
 
 Show the script output to the user. If no specs are found, suggest
 using `/spex create` to create one.

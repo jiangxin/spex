@@ -15,7 +15,7 @@ Install the `spex` CLI tool via symlink.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Run Install Script
+### Phase 1: Run Install Script
 
 Run:
 

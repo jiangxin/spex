@@ -12,7 +12,7 @@ Apply a specification to implement code step by step.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Resolve Topic
+### Phase 1: Resolve Topic
 
 If `$topic_name` is `--all`:
 
@@ -21,7 +21,7 @@ If `$topic_name` is `--all`:
 - Parse the output as a JSON array of objects, each containing
   `topic_name` and `topic_path`.
 - For each entry, set `$topic_name` and `$topic_path` and execute
-  Steps 2 through 6.
+  Phases 2 through 6.
 - After completing all topics, stop.
 
 Otherwise, run:
@@ -39,7 +39,7 @@ Read the command output and parse it as a JSON array:
   `$topic_name` and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Step 2: Build Prompt
+### Phase 2: Build Prompt
 
 Run:
 
@@ -56,13 +56,13 @@ Parse the JSON output from stdout:
 - Otherwise, save `$prompt` from the `"prompt"` field and
   `$next_task_id` from the `"task_id"` field.
 
-### Step 3: Execute Task
+### Phase 3: Execute Task
 
 Launch a subagent with `$prompt` to implement the current task.
 If the subagent fails or produces no file changes, report the error
 to the user and retry.
 
-### Step 4: Commit
+### Phase 4: Commit
 
 Load the commit prompt:
 
@@ -81,7 +81,7 @@ git log -1 --pretty="%h: %s"
 
 Save the output to `$commit_title`.
 
-### Step 5: Mark Task Complete
+### Phase 5: Mark Task Complete
 
 Run:
 
@@ -91,7 +91,7 @@ $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $top
 
 If the command fails, report the error and stop.
 
-### Step 6: Loop
+### Phase 6: Loop
 
-Go back to Step 2. Do **not** stop while `todo.json` still has undone
+Go back to Phase 2. Do **not** stop while `todo.json` still has undone
 tasks.

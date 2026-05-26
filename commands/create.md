@@ -17,7 +17,7 @@ and test plan.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Clarify Requirement
+### Phase 1: Clarify Requirement
 
 If `$input` is not provided or empty, ask the user to describe the requirement.
 
@@ -29,13 +29,13 @@ points before proceeding.
 After clarification, record the complete, unambiguous requirement as
 `$requirement`.
 
-### Step 2: Generate Topic Name
+### Phase 2: Generate Topic Name
 
 Based on `$requirement`, generate a short English name (<32 bytes) using only
 `[a-z0-9-]`, replacing spaces with `-`. The result is `$topic`
 (e.g., `add-login-api`). Do NOT prepend any date prefix.
 
-### Step 3: Prepare Topic Directory
+### Phase 3: Prepare Topic Directory
 
 Run:
 
@@ -52,7 +52,7 @@ save these variables:
 - `$topic_path` ← `topic_path`
 - `$spec_template` ← `spec_template`
 
-If the script exits with an error, return to Step 2 and retry with a
+If the script exits with an error, return to Phase 2 and retry with a
 different name.
 
 Example JSON output:
@@ -65,7 +65,7 @@ Example JSON output:
 }
 ```
 
-### Step 4: Design Specification
+### Phase 4: Design Specification
 
 Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
@@ -80,9 +80,9 @@ the requirement (under 10 lines, each line max 80 chars). Keep the
 Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
 results. Fill the "User Clarification" section with clarifications
-gathered in Step 1. Keep the Constraints section as-is.
+gathered in Phase 1. Keep the Constraints section as-is.
 
-### Step 5: Plan Implementation Steps
+### Phase 5: Plan Implementation Steps
 
 Based on the design in `$topic_path/spec.md`, break down the work into
 incremental development steps. Each step should be independently
@@ -126,7 +126,7 @@ structure:**
 - Each `<step>` **MUST** contain exactly three children in order:
   `<step-id>`, `<step-name>`, `<step-markdown-details>`.
 
-### Step 6: Convert todo.xml to todo.json
+### Phase 6: Convert todo.xml to todo.json
 
 Run:
 
@@ -137,7 +137,7 @@ $spex_skill_dir/scripts/spex todo xml2json --rm $topic_path/todo.xml
 If the script exits with an error, read the error message, fix the XML
 format in `todo.xml`, and re-run until conversion succeeds.
 
-### Step 7: Output
+### Phase 7: Output
 
 Display the following summary to the user:
 

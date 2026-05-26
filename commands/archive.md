@@ -12,7 +12,7 @@ Archive completed specification topics.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Run Archive Script
+### Phase 1: Run Archive Script
 
 Run:
 
@@ -20,7 +20,7 @@ Run:
 $spex_skill_dir/scripts/spex archive
 ```
 
-### Step 2: Report Results
+### Phase 2: Report Results
 
 - If the script output indicates topics were archived, report the list of
   archived topics to the user.

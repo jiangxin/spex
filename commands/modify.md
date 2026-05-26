@@ -13,13 +13,13 @@ development plan.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Step 1: Collect Prompt
+### Phase 1: Collect Prompt
 
 If `$prompt` is not provided or empty, ask the user to describe what
 changes they want to make to the spec. The user's full input becomes
 `$prompt`.
 
-### Step 2: Resolve Topic
+### Phase 2: Resolve Topic
 
 Run:
 
@@ -36,7 +36,7 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Step 3: Build Prompt
+### Phase 3: Build Prompt
 
 Run:
 
@@ -50,12 +50,12 @@ Parse the JSON output from stdout:
   message and stop.
 - Otherwise, save `$modify_prompt` from the `"prompt"` field.
 
-### Step 4: Modify spec.md
+### Phase 4: Modify spec.md
 
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
 according to the instructions rendered in the prompt.
 
-### Step 5: Generate todo.xml
+### Phase 5: Generate todo.xml
 
 Run:
 
@@ -73,7 +73,7 @@ Parse the JSON output from stdout:
 
 Using `$todo_prompt` as the prompt, create or overwrite `$topic_path/todo.xml`.
 
-### Step 6: Convert todo.xml to todo.json
+### Phase 6: Convert todo.xml to todo.json
 
 Run:
 
@@ -86,7 +86,7 @@ existing `todo.json`, preserving completed steps. If the script exits
 with an error, read the error message, fix the XML format in
 `todo.xml`, and re-run until conversion succeeds.
 
-### Step 7: Output
+### Phase 7: Output
 
 Display the following summary to the user:
 
