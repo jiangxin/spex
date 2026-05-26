@@ -32,7 +32,9 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 
 | Function | Description |
 |----------|-------------|
-| `get_spex_root(workdir, require_git)` | Resolve spex_root path (env > .spex.yaml > default). |
+| `get_spex_root(workdir, require_git, auto_init)` | Resolve spex_root path (env > .spex.yaml > default). |
+| `ensure_initialized(spex_root)` | Ensure spex_root dirs, templates, and .gitignore are set up. |
+| `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
 | `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
 | `get_current_workdir()` | Return git toplevel of cwd, or `None` if not in a repo. |
