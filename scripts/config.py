@@ -14,6 +14,9 @@ class SpexConfig(TypedDict, total=False):
     """TypedDict for spex configuration keys."""
 
     spex_root: str
+    create_branch: bool
+    main_branch_name: str
+    submit_method: str
 
 
 _config_cache: dict | None = None

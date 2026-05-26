@@ -233,3 +233,35 @@ class TestLoadConfig:
 
         assert first["spex_root"] == "/v1"
         assert second["spex_root"] == "/v2"
+
+
+# ===================== Branch config keys =====================
+
+
+class TestBranchConfig:
+    def test_load_branch_config(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            'create_branch = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
+            encoding="utf-8",
+        )
+
+        result = load_config()
+
+        assert result["create_branch"] is True
+        assert result["main_branch_name"] == "main"
+        assert result["submit_method"] == "pr"
+
+    def test_default_branch_config(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        result = load_config()
+
+        assert "create_branch" not in result
+        assert "main_branch_name" not in result
+        assert "submit_method" not in result

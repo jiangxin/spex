@@ -15,6 +15,7 @@ from config import clear_config_cache, load_config
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
 DEFAULT_SPEX_ROOT_DIR = ".spex"
+DEFAULT_SPEX_BRANCH_PREFIX = "spex/"
 TEMPLATE_DIR = "templates"
 EXAMPLES_TEMPLATE_DIR = "examples"
 
