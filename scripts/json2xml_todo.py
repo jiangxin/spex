@@ -20,6 +20,24 @@ Options:
 """
 
 
+def _escape_xml_text(text: str) -> str:
+    """Escape XML special characters in text content.
+
+    Escapes &, <, > which are the only special characters needed
+    inside element text content (quotes only matter in attributes).
+
+    Args:
+        text: Raw text that may contain XML special characters.
+
+    Returns:
+        Text with XML special characters properly escaped.
+    """
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    return text
+
+
 def convert_todo_to_xml(data):
     """Convert a list of todo item dicts to XML string.
 
@@ -27,15 +45,16 @@ def convert_todo_to_xml(data):
         data: List of dicts with at least 'id', 'name', 'details' keys.
 
     Returns:
-        XML string in the canonical todo.xml format.
+        XML string in the canonical todo.xml format, with special
+        characters in element text properly escaped.
     """
     lines = ["<steps>"]
     for item in data:
         lines.append("  <step>")
-        lines.append(f"    <step-id>{item['id']}</step-id>")
-        lines.append(f"    <step-name>{item['name']}</step-name>")
+        lines.append(f"    <step-id>{_escape_xml_text(item['id'])}</step-id>")
+        lines.append(f"    <step-name>{_escape_xml_text(item['name'])}</step-name>")
         lines.append("    <step-markdown-details>")
-        lines.append(item.get("details", ""))
+        lines.append(_escape_xml_text(item.get("details", "")))
         lines.append("    </step-markdown-details>")
         lines.append("  </step>")
     lines.append("</steps>")
