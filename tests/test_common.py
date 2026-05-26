@@ -15,6 +15,7 @@ from common import (
     get_spex_root,
     get_template,
     local_iso_timestamp,
+    resolve_topic_dir,
 )
 
 
@@ -351,6 +352,40 @@ class TestCheckHelpFlag:
         check_help_flag("Usage: script [options]\n")
         captured = capsys.readouterr()
         assert captured.out == ""
+
+
+class TestResolveTopicDir:
+    def test_exact_match(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        topic = specs / "2026-01-01-my-topic"
+        topic.mkdir()
+        result = resolve_topic_dir("2026-01-01-my-topic", specs_dir=specs)
+        assert result == topic
+
+    def test_fuzzy_match(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        topic = specs / "2026-01-01-10-00-my-topic"
+        topic.mkdir()
+        result = resolve_topic_dir("my-topic", specs_dir=specs)
+        assert result == topic
+
+    def test_ambiguous_match(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        (specs / "2026-01-01-my-topic-a").mkdir()
+        (specs / "2026-01-02-my-topic-b").mkdir()
+        with pytest.raises(SystemExit) as exc_info:
+            resolve_topic_dir("my-topic", specs_dir=specs)
+        assert exc_info.value.code == 1
+
+    def test_not_found(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        with pytest.raises(SystemExit) as exc_info:
+            resolve_topic_dir("nonexistent", specs_dir=specs)
+        assert exc_info.value.code == 1
 
 
 class TestGetTemplate:

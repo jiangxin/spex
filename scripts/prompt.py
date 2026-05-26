@@ -10,12 +10,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
-    get_specs_dir,
     get_spex_root,
     get_template,
     load_meta,
     load_todo,
     local_iso_timestamp,
+    resolve_topic_dir,
     strip_front_matter,
 )
 
@@ -35,32 +35,6 @@ def _get_git_info():
         info[key] = result.stdout.strip() if result.returncode == 0 else ""
     return info
 
-
-def _resolve_topic_dir(topic_name):
-    """Resolve a topic name to its directory path."""
-    specs_dir = Path(get_specs_dir())
-    if not specs_dir.is_dir():
-        print(f"Error: specs directory does not exist: {specs_dir}", file=sys.stderr)
-        sys.exit(1)
-
-    direct = specs_dir / topic_name
-    if direct.is_dir():
-        return direct
-
-    matches = sorted(
-        d for d in specs_dir.iterdir() if d.is_dir() and topic_name in d.name
-    )
-    if not matches:
-        print(f"Error: no topic matching '{topic_name}' found.", file=sys.stderr)
-        sys.exit(1)
-    if len(matches) > 1:
-        names = "\n  ".join(m.name for m in matches)
-        print(
-            f"Error: multiple topics match '{topic_name}':\n  {names}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return matches[0]
 
 
 def validate_required_meta(content, metadata):
@@ -168,7 +142,7 @@ def _build_metadata(template_name, topic_name=None):
     }
 
     if topic_name:
-        topic_dir = _resolve_topic_dir(topic_name)
+        topic_dir = resolve_topic_dir(topic_name)
         metadata["topic_name"] = topic_dir.name
         meta = load_meta(topic_dir)
         if meta:

@@ -422,5 +422,48 @@ def get_template(template_name: str, workdir=None) -> str:
 
 
 
+def resolve_topic_dir(topic_name, specs_dir=None):
+    """Resolve a topic name to its directory path.
+
+    Tries exact match first, then fuzzy substring match against directory
+    names in specs_dir. Exits with an error if no match or multiple matches.
+
+    Args:
+        topic_name: Topic name or substring to match.
+        specs_dir: Path to the specs directory. If None, computed via
+            get_specs_dir(get_current_workdir()).
+
+    Returns:
+        Path to the resolved topic directory.
+    """
+    if specs_dir is None:
+        specs_dir = Path(get_specs_dir(get_current_workdir()))
+    else:
+        specs_dir = Path(specs_dir)
+
+    if not specs_dir.is_dir():
+        print(f"Error: specs directory does not exist: {specs_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    direct = specs_dir / topic_name
+    if direct.is_dir():
+        return direct
+
+    matches = sorted(
+        d for d in specs_dir.iterdir() if d.is_dir() and topic_name in d.name
+    )
+    if not matches:
+        print(f"Error: no topic matching '{topic_name}' found.", file=sys.stderr)
+        sys.exit(1)
+    if len(matches) > 1:
+        names = "\n  ".join(m.name for m in matches)
+        print(
+            f"Error: multiple topics match '{topic_name}':\n  {names}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return matches[0]
+
+
 if __name__ == "__main__":
     print(get_spex_root())
