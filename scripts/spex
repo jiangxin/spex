@@ -4,7 +4,6 @@
 import importlib
 import os
 import re
-import shutil
 import sys
 from pathlib import Path
 
@@ -26,7 +25,6 @@ Commands (run directly):
   show <topic>  Show detailed topic information (-v for full spec)
   archive [-n]  Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
-  install-cli [path]  Install spex symlink (default: ~/.local/bin)
 
 Commands (require AI coding agent):
   apply       Apply a spec step-by-step
@@ -81,75 +79,6 @@ def _run_open():
 
     sys.argv = ["open_topic.py"] + sys.argv[2:]
     open_topic.main()
-
-
-_INSTALL_USAGE = """\
-Usage: spex install-cli [path]
-
-Install spex symlink (default: ~/.local/bin).
-
-Options:
-  -h, --help  Show this help message and exit
-"""
-
-
-def _run_install():
-    """Install spex symlink to a directory (default ~/.local/bin)."""
-    script_path = Path(__file__).resolve()
-
-    args = sys.argv[2:]
-
-    if "-h" in args or "--help" in args:
-        print(_INSTALL_USAGE, end="")
-        sys.exit(0)
-
-    if args:
-        target = args[0].rstrip("/")
-        if target.endswith("/spex"):
-            target = target[: -len("/spex")]
-        link_dir = Path(target).expanduser().resolve()
-    else:
-        link_dir = Path.home() / ".local" / "bin"
-
-    link_path = link_dir / "spex"
-
-    try:
-        link_dir.mkdir(parents=True, exist_ok=True)
-    except PermissionError:
-        print(
-            f"Error: permission denied creating {link_dir}\n"
-            f"Try: sudo spex install-cli {link_dir}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    try:
-        if link_path.is_symlink() or link_path.exists():
-            link_path.unlink()
-        link_path.symlink_to(script_path)
-    except PermissionError:
-        print(
-            f"Error: permission denied writing {link_path}\n"
-            f"Try: sudo spex install-cli {link_dir}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"Installed: {link_path} -> {script_path}")
-
-    _check_path(link_dir)
-
-
-def _check_path(link_dir: Path):
-    """Check if spex is reachable via PATH and print hint if not."""
-    found = shutil.which("spex")
-    if found and Path(found).resolve() == (link_dir / "spex").resolve():
-        return
-    print(
-        f"\nNote: {link_dir} is not in your PATH.\n"
-        f"Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):\n"
-        f'  export PATH="$HOME/.local/bin:$PATH"',
-    )
 
 
 _GET_USAGE = """\
@@ -310,8 +239,6 @@ DIRECT_COMMANDS = {
     "archive": _run_archive,
     "open": _run_open,
     "init": _run_init,
-    "install-cli": _run_install,
-    "install": _run_install,
     "get": _run_get,
     "get-topic": _run_get_topic,
     "create-topic": _run_create_topic,

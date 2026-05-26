@@ -1,7 +1,6 @@
 """Tests for the spex CLI entry point."""
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -92,18 +91,6 @@ class TestHelpFlag:
 
     def test_open_help_exits_zero_with_usage(self):
         result = _run_spex("open", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_install_cli_h_exits_zero_with_usage(self):
-        result = _run_spex("install-cli", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_install_cli_help_exits_zero_with_usage(self):
-        result = _run_spex("install-cli", "--help")
 
         assert result.returncode == 0
         assert "Usage:" in result.stdout
@@ -233,124 +220,6 @@ class TestUnknownCommand:
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
         assert "Usage: spex" in result.stderr
-
-
-class TestInstallCommand:
-    """Tests for the install subcommand."""
-
-    def _run_install(self, tmp_path, env_override=None):
-        """Run spex install with HOME pointed to tmp_path."""
-        env = os.environ.copy()
-        env["HOME"] = str(tmp_path)
-        if env_override:
-            env.update(env_override)
-        return subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "install"],
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-    def test_successful_install_creates_symlink(self, tmp_path):
-        result = self._run_install(tmp_path)
-
-        assert result.returncode == 0
-        link = tmp_path / ".local" / "bin" / "spex"
-        assert link.is_symlink()
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
-        assert "Installed:" in result.stdout
-
-    def test_reinstall_overwrites_same_symlink(self, tmp_path):
-        # Pre-create the correct symlink — should overwrite silently
-        link_dir = tmp_path / ".local" / "bin"
-        link_dir.mkdir(parents=True)
-        link = link_dir / "spex"
-        link.symlink_to(Path(SPEX_SCRIPT).resolve())
-
-        result = self._run_install(tmp_path)
-
-        assert result.returncode == 0
-        assert "Installed:" in result.stdout
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
-
-    def test_reinstall_overwrites_different_symlink(self, tmp_path):
-        # Pre-create a symlink pointing elsewhere — should overwrite
-        link_dir = tmp_path / ".local" / "bin"
-        link_dir.mkdir(parents=True)
-        link = link_dir / "spex"
-        other_target = tmp_path / "other_spex"
-        other_target.write_text("#!/bin/sh\n")
-        link.symlink_to(other_target)
-
-        result = self._run_install(tmp_path)
-
-        assert result.returncode == 0
-        assert "Installed:" in result.stdout
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
-
-    def test_reinstall_overwrites_regular_file(self, tmp_path):
-        # Pre-create a regular file — should overwrite
-        link_dir = tmp_path / ".local" / "bin"
-        link_dir.mkdir(parents=True)
-        link = link_dir / "spex"
-        link.write_text("#!/bin/sh\n")
-
-        result = self._run_install(tmp_path)
-
-        assert result.returncode == 0
-        assert "Installed:" in result.stdout
-        assert link.is_symlink()
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
-
-    def test_path_hint_when_not_in_path(self, tmp_path):
-        # Use a PATH that does not include ~/.local/bin
-        env_override = {"PATH": "/usr/bin:/bin"}
-        result = self._run_install(tmp_path, env_override=env_override)
-
-        assert result.returncode == 0
-        assert "is not in your PATH" in result.stdout
-        assert 'export PATH="$HOME/.local/bin:$PATH"' in result.stdout
-
-    def test_no_path_hint_when_in_path(self, tmp_path):
-        # Include ~/.local/bin in PATH and place a working symlink there
-        link_dir = tmp_path / ".local" / "bin"
-        link_dir.mkdir(parents=True)
-        env_override = {"PATH": f"{link_dir}:/usr/bin:/bin"}
-
-        # First install to create the symlink
-        result = self._run_install(tmp_path, env_override=env_override)
-
-        assert result.returncode == 0
-        assert "is not in your PATH" not in result.stdout
-
-    def test_custom_path_argument(self, tmp_path):
-        """spex install-cli <path> installs to the given directory."""
-        custom_dir = tmp_path / "custom" / "bin"
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "install-cli", str(custom_dir)],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        link = custom_dir / "spex"
-        assert link.is_symlink()
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
-
-    def test_custom_path_strips_trailing_spex(self, tmp_path):
-        """spex install-cli /some/path/spex strips /spex and uses /some/path."""
-        custom_dir = tmp_path / "mybin"
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "install-cli",
-             str(custom_dir / "spex")],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        link = custom_dir / "spex"
-        assert link.is_symlink()
-        assert link.resolve() == Path(SPEX_SCRIPT).resolve()
 
 
 class TestGetCommand:
