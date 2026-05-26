@@ -59,6 +59,9 @@ Parse the JSON output from stdout:
 ### Phase 3: Execute Task
 
 Launch a subagent with `$prompt` to implement the current task.
+Ensure the subagent's working directory is set to the topic's
+workdir (read from `meta.json` via `$topic_path/meta.json` or
+`spex get-topic` output).
 If the subagent fails or produces no file changes, report the error
 to the user and retry.
 
@@ -93,5 +96,8 @@ If the command fails, report the error and stop.
 
 ### Phase 6: Loop
 
-Go back to Phase 2. Do **not** stop while `todo.json` still has undone
-tasks.
+If running in `--all` mode (Phase 1), return to Phase 1 to process
+the next topic — or stop if all topics are done.
+
+Otherwise, go back to Phase 2. Do **not** stop while `todo.json`
+still has undone tasks.
