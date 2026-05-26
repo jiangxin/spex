@@ -91,38 +91,19 @@ def _install_cli():
               file=sys.stderr)
 
 
-def _ensure_gitignore(workdir, spex_root):
-    """If spex_root is under workdir, ensure it's in .gitignore."""
-    if not workdir:
-        return
-    workdir_path = Path(workdir).resolve()
+def _ensure_gitignore(spex_root):
+    """Create .gitignore files inside spex_root to ignore generated content."""
     spex_root_path = Path(spex_root).resolve()
 
-    try:
-        spex_root_path.relative_to(workdir_path)
-    except ValueError:
-        return
+    root_gitignore = spex_root_path / ".gitignore"
+    if not root_gitignore.exists():
+        root_gitignore.write_text("/specs/\n/archives/\n")
 
-    rel_path = str(spex_root_path.relative_to(workdir_path)).rstrip("/") + "/"
-
-    result = subprocess.run(
-        ["git", "check-ignore", "-q", rel_path],
-        cwd=workdir_path,
-        capture_output=True,
-    )
-    if result.returncode == 0:
-        return
-
-    gitignore = workdir_path / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if content and not content.endswith("\n"):
-            content += "\n"
-        content += rel_path + "\n"
-        gitignore.write_text(content)
-    else:
-        gitignore.write_text(rel_path + "\n")
-    print(f"Added '{rel_path}' to .gitignore")
+    templates_dir = spex_root_path / TEMPLATE_DIR
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    tpl_gitignore = templates_dir / ".gitignore"
+    if not tpl_gitignore.exists():
+        tpl_gitignore.write_text("/examples/\n")
 
 
 def run_init(workdir=None):
@@ -140,7 +121,7 @@ def run_init(workdir=None):
 
     _sync_templates(spex_root)
     _install_cli()
-    _ensure_gitignore(workdir, spex_root)
+    _ensure_gitignore(spex_root)
 
     print("Initialization complete.")
 

@@ -70,38 +70,41 @@ class TestSyncTemplates:
 
 
 class TestEnsureGitignore:
-    def test_adds_gitignore_entry(self, mock_workdir):
+    def test_creates_root_gitignore(self, tmp_path):
         from init import _ensure_gitignore
 
-        spex_root = mock_workdir / ".spex"
+        spex_root = tmp_path / ".spex"
         spex_root.mkdir()
-        _ensure_gitignore(str(mock_workdir), str(spex_root))
+        _ensure_gitignore(str(spex_root))
 
-        gitignore = mock_workdir / ".gitignore"
+        gitignore = spex_root / ".gitignore"
         assert gitignore.exists()
-        assert ".spex/" in gitignore.read_text()
+        content = gitignore.read_text()
+        assert "/specs/" in content
+        assert "/archives/" in content
 
-    def test_skips_when_already_ignored(self, mock_workdir):
+    def test_creates_templates_gitignore(self, tmp_path):
         from init import _ensure_gitignore
 
-        gitignore = mock_workdir / ".gitignore"
-        gitignore.write_text(".spex/\n")
-
-        spex_root = mock_workdir / ".spex"
+        spex_root = tmp_path / ".spex"
         spex_root.mkdir()
-        _ensure_gitignore(str(mock_workdir), str(spex_root))
+        _ensure_gitignore(str(spex_root))
 
-        assert gitignore.read_text().count(".spex/") == 1
+        tpl_gitignore = spex_root / "templates" / ".gitignore"
+        assert tpl_gitignore.exists()
+        assert "/examples/" in tpl_gitignore.read_text()
 
-    def test_skips_when_spex_root_outside_workdir(self, mock_workdir, tmp_path):
+    def test_skips_when_already_exists(self, tmp_path):
         from init import _ensure_gitignore
 
-        spex_root = tmp_path / "external-spex"
+        spex_root = tmp_path / ".spex"
         spex_root.mkdir()
-        _ensure_gitignore(str(mock_workdir), str(spex_root))
+        gitignore = spex_root / ".gitignore"
+        gitignore.write_text("custom content\n")
 
-        gitignore = mock_workdir / ".gitignore"
-        assert not gitignore.exists()
+        _ensure_gitignore(str(spex_root))
+
+        assert gitignore.read_text() == "custom content\n"
 
 
 class TestRunInit:
