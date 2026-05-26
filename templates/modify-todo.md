@@ -66,6 +66,8 @@ structure:**
 - Each step **MUST** be wrapped in `<step>` (not `<task>`, `<item>`, etc.).
 - Each `<step>` **MUST** contain exactly three children in order:
   `<step-id>`, `<step-name>`, `<step-markdown-details>`.
-- Number steps sequentially starting from the next available step ID
-  after completed steps (e.g., if step-1 and step-2 are completed,
-  start from `step-3`).
+- Number steps sequentially: `step-N`, `step-N+1`, etc. Write ONLY new
+  steps — completed steps already exist in todo.json and must NOT be
+  included in todo.xml. Number steps from the next available ID after
+  completed ones (e.g., if step-1 and step-2 are completed, start from
+  `step-3`).
