@@ -36,30 +36,27 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Step 3: Log Modification Prompt
+### Step 3: Build Modification Context
 
 Run:
 
 ```bash
-echo "$prompt" | $spex_skill_dir/scripts/spex meta $topic prompts
+echo "$prompt" | $spex_skill_dir/scripts/spex prompt modify-spec --topic $topic --stdin
 ```
+
+This single command:
+
+- Appends `$prompt` to `meta.json`'s `prompts` array (side effect)
+- Outputs the rendered context (original spec content, user's modification
+  prompt, and completed steps from `todo.json`) to stdout for use as context
+  in subsequent steps.
 
 If the script exits with an error, report the error and stop.
 
-### Step 4: Build Context
+### Step 4: Modify spec.md
 
-Read the following as context for the modification:
-
-- Full contents of `$topic_path/spec.md` (the existing spec).
-- From `$topic_path/todo.json`, extract all items where
-  `completed_at` is not empty. These are the completed steps — their `id`,
-  `name`, `details`, `completed_at`, and `commit_title` fields provide
-  context on what has already been implemented.
-
-### Step 5: Modify spec.md
-
-Based on the existing spec and the user's modification prompt, update
-`$topic_path/spec.md`:
+Based on the existing spec (from the context output of Step 3) and the
+user's modification prompt, update `$topic_path/spec.md`:
 
 - Update the **Requirement** section to reflect the new/changed
   requirements.
@@ -70,7 +67,7 @@ Based on the existing spec and the user's modification prompt, update
 Before writing, analyze the current repository structure, architecture,
 and existing code to ensure the updated design integrates properly.
 
-### Step 6: Generate todo.json
+### Step 5: Generate todo.json
 
 Based on the updated spec, regenerate `$topic_path/todo.json`:
 
@@ -95,7 +92,7 @@ Follow the same format and rules as the create command:
 - Use the standard todo.json item format with `id`, `name`, `details`,
   `completed_at`, and `commit_title` fields.
 
-### Step 7: Validate todo.json
+### Step 6: Validate todo.json
 
 Run:
 
@@ -106,7 +103,7 @@ $spex_skill_dir/scripts/spex todo validate $topic_path/todo.json
 If the script exits with an error, read the error message, fix the JSON
 format in `todo.json`, and re-run until validation passes.
 
-### Step 8: Output
+### Step 7: Output
 
 Display the following summary to the user:
 
