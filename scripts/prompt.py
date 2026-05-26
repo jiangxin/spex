@@ -192,11 +192,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     if name in ("apply-one-task", "apply-commit") and not metadata.get(
         "next_task_text"
     ):
-        print(
-            "Error: all tasks are completed, nothing to apply.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        sys.exit(0)
 
     validate_required_meta(content, metadata)
     rendered = Template(content).render(**metadata)
@@ -244,9 +240,17 @@ def main():
 
         json_mode = args.json and args.name == "apply-one-task"
 
-        # Handle all-done in JSON mode before render_prompt can exit(1)
+        # Handle all-done in JSON mode before render_prompt can exit
         if json_mode and not metadata.get("next_task_text"):
             print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
+            sys.exit(0)
+
+        # Handle all-done in non-JSON mode: exit(0) with empty stdout
+        if (
+            not json_mode
+            and args.name in ("apply-one-task", "apply-commit")
+            and not metadata.get("next_task_text")
+        ):
             sys.exit(0)
 
         # Emit task_id to stderr for orchestrator to capture (non-JSON only)

@@ -76,9 +76,54 @@ def _clear_cache():
 
 
 class TestAllDoneDetection:
-    """Test that apply-one-task exits with error when all tasks are done."""
+    """Test that apply-one-task exits cleanly when all tasks are done."""
 
-    def test_all_tasks_completed_exits_with_error(self, tmp_path, monkeypatch):
+    def test_exit_code_all_done(self, tmp_path, monkeypatch, capsys):
+        """Non-JSON mode, all tasks done -> exit(0), empty stdout."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_exit_code_error(self, tmp_path, monkeypatch, capsys):
+        """Error scenario (missing template) -> exit(1)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv", ["prompt", "nonexistent-template"]
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert captured.err != ""
+
+    def test_all_done_render_prompt_exits_zero(self, tmp_path, monkeypatch):
+        """render_prompt() itself exits(0) when all tasks are done."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
@@ -91,26 +136,7 @@ class TestAllDoneDetection:
 
         with pytest.raises(SystemExit) as exc_info:
             render_prompt("apply-one-task", "test-topic")
-        assert exc_info.value.code == 1
-
-    def test_all_tasks_completed_stderr_message(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        tasks = [
-            _make_task("step-1", name="First step", completed=True),
-            _make_task("step-2", name="Second step", completed=True),
-        ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
-
-        from prompt import render_prompt
-
-        with pytest.raises(SystemExit):
-            render_prompt("apply-one-task", "test-topic")
-
-        captured = capsys.readouterr()
-        assert "all tasks are completed, nothing to apply" in captured.err
+        assert exc_info.value.code == 0
 
 
 class TestFutureTasks:
@@ -543,7 +569,7 @@ class TestApplyCommitWithTopic:
         assert "step-3: Add tests" in rendered
 
     def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic but all tasks done fails validation."""
+        """apply-commit with --topic but all tasks done exits(0)."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
@@ -554,8 +580,9 @@ class TestApplyCommitWithTopic:
 
         from prompt import render_prompt
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc_info:
             render_prompt("apply-commit", "test-topic")
+        assert exc_info.value.code == 0
 
     def test_no_topic_fails_validation(self, tmp_path, monkeypatch):
         """apply-commit without --topic fails because required vars are missing."""
