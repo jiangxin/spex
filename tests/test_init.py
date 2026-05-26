@@ -7,7 +7,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from common import EXAMPLES_TEMPLATE_DIR, TEMPLATE_DIR, clear_spex_root_cache
+from common import (
+    EXAMPLES_TEMPLATE_DIR,
+    TEMPLATE_DIR,
+    _sync_builtin_template,
+    clear_spex_root_cache,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +72,67 @@ class TestSyncTemplates:
         assert (examples_dir / "spec-template.md").exists()
         assert (examples_dir / "apply-one-task.md").exists()
         assert (examples_dir / "apply-commit.md").exists()
+
+
+class TestSyncBuiltinTemplate:
+    def test_copies_when_target_missing(self, tmp_path):
+        """Target does not exist → copy."""
+        spex_root = tmp_path / "spex"
+        spex_root.mkdir()
+        _sync_builtin_template("spec-template.md", spex_root=spex_root)
+
+        target = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR / "spec-template.md"
+        assert target.exists()
+
+    def test_skips_when_version_matches(self, tmp_path):
+        """Target exists with same version → skip (no copy)."""
+        spex_root = tmp_path / "spex"
+        examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
+        examples_dir.mkdir(parents=True)
+
+        # Copy the file first, then set its mtime to match source
+        src = Path(__file__).resolve().parent.parent / "templates" / "spec-template.md"
+        target = examples_dir / "spec-template.md"
+        import shutil
+        shutil.copy2(src, target)
+
+        _sync_builtin_template("spec-template.md", spex_root=spex_root)
+
+        # Verify target was not overwritten (same stat)
+        assert target.stat().st_mtime == src.stat().st_mtime
+
+    def test_overwrites_when_version_differs(self, tmp_path):
+        """Target exists with different version → overwrite."""
+        spex_root = tmp_path / "spex"
+        examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
+        examples_dir.mkdir(parents=True)
+
+        target = examples_dir / "spec-template.md"
+        # Write a target with a different version
+        target.write_text("---\nversion: \"0.0.0\"\n---\nold content\n")
+
+        _sync_builtin_template("spec-template.md", spex_root=spex_root)
+
+        # Should be overwritten (version should be >= "0.0.1")
+        content = target.read_text()
+        assert "0.0.0" not in content
+
+    def test_overwrites_when_mtime_differs(self, tmp_path):
+        """Target exists with different mtime → overwrite regardless of version."""
+        spex_root = tmp_path / "spex"
+        examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
+        examples_dir.mkdir(parents=True)
+
+        target = examples_dir / "spec-template.md"
+        src = Path(__file__).resolve().parent.parent / "templates" / "spec-template.md"
+
+        # Copy with same content but different mtime
+        target.write_text(src.read_text())
+
+        _sync_builtin_template("spec-template.md", spex_root=spex_root)
+
+        # Should be overwritten (mtime now matches source)
+        assert target.stat().st_mtime == src.stat().st_mtime
 
 
 class TestEnsureGitignore:

@@ -32,16 +32,18 @@ def clear_spex_root_cache():
 
 
 def _sync_all_templates(spex_root_path: Path):
-    """Sync all built-in templates to spex_root/templates/examples/."""
+    """Sync all built-in templates to spex_root/templates/examples/.
+
+    Iterates every .md file in the skill's templates/ directory and calls
+    _sync_builtin_template to copy (if missing) or overwrite (if outdated).
+    """
     skill_path = _get_skill_path()
     source_dir = skill_path / TEMPLATE_DIR
     if not source_dir.is_dir():
         return
-    examples_dir = spex_root_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
-    examples_dir.mkdir(parents=True, exist_ok=True)
     for src in source_dir.iterdir():
         if src.is_file() and src.suffix == ".md":
-            shutil.copy2(src, examples_dir / src.name)
+            _sync_builtin_template(src.name, spex_root=spex_root_path)
 
 
 def _write_internal_gitignore(spex_root_path: Path):
@@ -408,12 +410,13 @@ def get_spec_description(topic_dir: Path) -> str:
     return parse_front_matter_description(content)
 
 
-def _sync_builtin_template(template_name: str, workdir=None):
+def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
     """Sync a built-in template to spex_root/templates/examples/ if version differs.
 
-    Compares the version in the skill's source template against the local
-    examples copy. If they differ (or local copy is missing), overwrites the
-    local examples copy.
+    If the target file does not exist, copy it directly.
+    If it exists:
+    - mtime+size differ → overwrite
+    - mtime+size match → compare versions; same version skip, else overwrite
     """
     skill_path = _get_skill_path()
     source = skill_path / TEMPLATE_DIR / template_name
@@ -422,21 +425,30 @@ def _sync_builtin_template(template_name: str, workdir=None):
             f"Built-in template not found at {source}"
         )
 
-    spex_root = Path(get_spex_root(workdir))
+    if spex_root is None:
+        spex_root = Path(get_spex_root(workdir))
+    else:
+        spex_root = Path(spex_root)
     examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
     target = examples_dir / template_name
 
-    if target.exists():
-        src_stat = source.stat()
-        tgt_stat = target.stat()
-        if (tgt_stat.st_mtime >= src_stat.st_mtime
-                and tgt_stat.st_size == src_stat.st_size):
-            source_version = _extract_template_version(source)
-            target_version = _extract_template_version(target)
-            if source_version and source_version == target_version:
-                return  # Already up-to-date
+    if not target.exists():
+        examples_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        return
 
-    examples_dir.mkdir(parents=True, exist_ok=True)
+    src_stat = source.stat()
+    tgt_stat = target.stat()
+    if (tgt_stat.st_mtime != src_stat.st_mtime
+            or tgt_stat.st_size != src_stat.st_size):
+        shutil.copy2(source, target)
+        return
+
+    source_version = _extract_template_version(source)
+    target_version = _extract_template_version(target)
+    if source_version and source_version == target_version:
+        return  # Already up-to-date
+
     shutil.copy2(source, target)
 
 
