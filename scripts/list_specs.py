@@ -163,6 +163,33 @@ def format_output(
     return "\n".join(lines)
 
 
+def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
+    """Wrap text at word boundaries with indentation.
+
+    Returns multi-line string where each line (including the first) is
+    prefixed with `indent` spaces and does not exceed `width` characters.
+    """
+    prefix = " " * indent
+    max_content = width - indent
+    if max_content <= 0:
+        return prefix + text
+
+    words = text.split()
+    lines = []
+    current = ""
+    for word in words:
+        if not current:
+            current = word
+        elif len(current) + 1 + len(word) <= max_content:
+            current += " " + word
+        else:
+            lines.append(prefix + current)
+            current = word
+    if current:
+        lines.append(prefix + current)
+    return "\n".join(lines) if lines else prefix
+
+
 def format_verbose_output(
     topics: list, verbosity: int = 1, show_repo: bool = False
 ) -> str:
@@ -170,13 +197,16 @@ def format_verbose_output(
     if not topics:
         return "No specs found."
 
+    if verbosity >= 3:
+        return "Use 'spex show <topic>' for detailed view."
+
     topics.sort(key=lambda t: t["timestamp"], reverse=True)
 
     blocks = []
     for topic in topics:
         icon = _get_icon(topic)
-        prog = f"{topic['n']}/{topic['m']}"
-        line1 = f"{icon} {topic['name']}  {prog}"
+        prog = f"[{topic['n']}/{topic['m']}]"
+        line1 = f"{icon} {prog} {topic['name']}"
         if show_repo:
             label = _repo_label(topic.get("workdir", ""))
             line1 = f"[{label}] {line1}"
@@ -184,7 +214,7 @@ def format_verbose_output(
         parts = [line1]
         display_text = topic.get("description") or topic.get("prompt", "")
         if display_text:
-            parts.append(f"    {display_text}")
+            parts.append(_wrap_text(display_text))
 
         if verbosity >= 2:
             todo = load_todo(topic["path"]) if topic.get("path") else None
@@ -197,7 +227,7 @@ def format_verbose_output(
 
         blocks.append("\n".join(parts))
 
-    return "\n".join(blocks)
+    return "\n\n".join(blocks)
 
 
 def _parse_verbosity(argv: list) -> int:

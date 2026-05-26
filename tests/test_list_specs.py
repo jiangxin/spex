@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from common import get_todo_progress, load_meta
 from list_specs import (
     _parse_verbosity,
+    _wrap_text,
     collect_topics,
     format_output,
     format_verbose_output,
@@ -319,7 +320,7 @@ class TestDescriptionDisplay:
 
 
 class TestVerboseOutput:
-    def test_level1_description_on_second_line(self, tmp_path):
+    def test_level1_brackets_and_description(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         topics = [
@@ -329,8 +330,8 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
+        assert "[1/3]" in lines[0]
         assert "my-topic" in lines[0]
-        assert "1/3" in lines[0]
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
@@ -344,6 +345,34 @@ class TestVerboseOutput:
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
         assert lines[1] == "    fallback prompt"
+
+    def test_level1_blank_line_between_topics(self, tmp_path):
+        dir1 = tmp_path / "t1"
+        dir1.mkdir()
+        dir2 = tmp_path / "t2"
+        dir2.mkdir()
+        topics = [
+            {"name": "topic-a", "timestamp": "2026-05-21T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "p1", "path": dir1, "description": "D1"},
+            {"name": "topic-b", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 1, "m": 1, "prompt": "p2", "path": dir2, "description": "D2"},
+        ]
+        output = format_verbose_output(topics, verbosity=1)
+        assert "\n\n" in output
+
+    def test_level1_word_wrap(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        long_desc = "word " * 20  # 100 chars
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "", "path": topic_dir,
+             "description": long_desc.strip()},
+        ]
+        output = format_verbose_output(topics, verbosity=1)
+        lines = output.splitlines()
+        for line in lines[1:]:
+            assert len(line) <= 80
 
     def test_level2_shows_steps(self, tmp_path):
         topic_dir = tmp_path / "topic"
@@ -359,7 +388,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
-        assert lines[0].startswith("\U0001f527")
+        assert "[1/2]" in lines[0]
         assert lines[1] == "    Desc"
         assert lines[2] == ""
         assert "    step-1:" in lines[3]
@@ -377,6 +406,18 @@ class TestVerboseOutput:
         lines = output.splitlines()
         assert len(lines) == 2
         assert "step-" not in output
+
+    def test_level3_hint_message(self, tmp_path):
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        topics = [
+            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
+             "n": 0, "m": 1, "prompt": "p", "path": topic_dir,
+             "description": "D"},
+        ]
+        output = format_verbose_output(topics, verbosity=3)
+        assert "spex show" in output
+        assert "my-topic" not in output
 
 
 class TestParseVerbosity:
@@ -397,3 +438,23 @@ class TestParseVerbosity:
 
     def test_combined_with_all(self):
         assert _parse_verbosity(["--all", "-vv"]) == 2
+
+
+class TestWrapText:
+    def test_short_text_no_wrap(self):
+        result = _wrap_text("short text", width=80, indent=4)
+        assert result == "    short text"
+
+    def test_long_text_wraps(self):
+        text = "word " * 20  # 100 chars
+        result = _wrap_text(text.strip(), width=80, indent=4)
+        lines = result.splitlines()
+        assert len(lines) > 1
+        for line in lines:
+            assert len(line) <= 80
+            assert line.startswith("    ")
+
+    def test_exact_boundary(self):
+        text = "a" * 76  # exactly 76 + 4 indent = 80
+        result = _wrap_text(text, width=80, indent=4)
+        assert result == "    " + text
