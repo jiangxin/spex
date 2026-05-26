@@ -348,3 +348,94 @@ class TestMissingArgs:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "expected exactly one argument" in err
+
+
+# ===================== Special character handling =====================
+
+
+class TestSpecialCharacters:
+    def test_unescaped_angle_brackets_in_details(self, tmp_path):
+        xml = (
+            "<steps>\n"
+            "  <step>\n"
+            "    <step-id>step-1</step-id>\n"
+            "    <step-name>Unescaped</step-name>\n"
+            "    <step-markdown-details>\n"
+            "Check <repo_root> for config\n"
+            "    </step-markdown-details>\n"
+            "  </step>\n"
+            "</steps>"
+        )
+        path = _write_xml(tmp_path, xml)
+
+        result = convert_xml_to_todo(path)
+
+        assert result[0]["details"] == "Check <repo_root> for config"
+
+    def test_escaped_entities_in_details(self, tmp_path):
+        xml = _make_xml([("ent-1", "Escaped", "Check &lt;tag&gt; entity")])
+        path = _write_xml(tmp_path, xml)
+
+        result = convert_xml_to_todo(path)
+
+        # ElementTree decodes &lt; → < and &gt; → >
+        assert result[0]["details"] == "Check <tag> entity"
+
+    def test_ampersand_in_details(self, tmp_path):
+        xml = (
+            "<steps>\n"
+            "  <step>\n"
+            "    <step-id>step-1</step-id>\n"
+            "    <step-name>Ampersand</step-name>\n"
+            "    <step-markdown-details>\n"
+            "Use foo &amp; bar\n"
+            "    </step-markdown-details>\n"
+            "  </step>\n"
+            "</steps>"
+        )
+        path = _write_xml(tmp_path, xml)
+
+        result = convert_xml_to_todo(path)
+
+        assert result[0]["details"] == "Use foo & bar"
+
+    def test_mixed_escaped_and_unescaped(self, tmp_path):
+        xml = (
+            "<steps>\n"
+            "  <step>\n"
+            "    <step-id>step-1</step-id>\n"
+            "    <step-name>Mixed</step-name>\n"
+            "    <step-markdown-details>\n"
+            "Bare &lt;foo&gt; and escaped &amp;lt;bar&amp;gt; and bare &amp;\n"
+            "    </step-markdown-details>\n"
+            "  </step>\n"
+            "</steps>"
+        )
+        path = _write_xml(tmp_path, xml)
+
+        result = convert_xml_to_todo(path)
+
+        expected = "Bare <foo> and escaped &lt;bar&gt; and bare &"
+        assert result[0]["details"] == expected
+
+    def test_round_trip_from_xml(self, tmp_path):
+        import json2xml_todo
+
+        data = [
+            {
+                "id": "step-1",
+                "name": "Special",
+                "details": "Use <repo_root> & check &lt;old&gt;",
+            },
+        ]
+        xml_str = json2xml_todo.convert_todo_to_xml(data)
+        xml_path = _write_xml(tmp_path, xml_str)
+
+        result = convert_xml_to_todo(xml_path)
+
+        assert len(result) == 1
+        assert result[0]["id"] == "step-1"
+        assert result[0]["name"] == "Special"
+        # json2xml escapes <repo_root> to &lt;repo_root&gt;
+        # convert_xml_to_todo decodes entities back
+        assert result[0]["details"] == data[0]["details"]
