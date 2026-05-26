@@ -213,6 +213,8 @@ def main():
     parser.add_argument("--topic", help="Topic name for topic-specific metadata")
     parser.add_argument("--stdin", action="store_true",
                         help="Read raw text from stdin as prompt_context")
+    parser.add_argument("--json", action="store_true",
+                        help="Output JSON to stdout (apply-one-task only)")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
     args = parser.parse_args()
 
@@ -240,8 +242,15 @@ def main():
         if extra_vars:
             metadata.update(extra_vars)
 
-        # Emit task_id to stderr for orchestrator to capture
-        if args.name == "apply-one-task":
+        json_mode = args.json and args.name == "apply-one-task"
+
+        # Handle all-done in JSON mode before render_prompt can exit(1)
+        if json_mode and not metadata.get("next_task_text"):
+            print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
+            sys.exit(0)
+
+        # Emit task_id to stderr for orchestrator to capture (non-JSON only)
+        if args.name == "apply-one-task" and not json_mode:
             next_task_id = metadata.get("next_task_id", "")
             if next_task_id:
                 print(f"task_id={next_task_id}", file=sys.stderr)
@@ -254,7 +263,10 @@ def main():
         print(f"Error rendering template: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if args.output:
+    if json_mode:
+        task_id = metadata.get("next_task_id", "")
+        print(json.dumps({"task_id": task_id, "prompt": rendered}))
+    elif args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(rendered, encoding="utf-8")

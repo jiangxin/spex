@@ -325,6 +325,67 @@ class TestTaskIdStderr:
         assert "task_id=" not in captured.err
 
 
+class TestJsonMode:
+    """Test --json flag for apply-one-task."""
+
+    def test_prompt_json_mode(self, tmp_path, monkeypatch, capsys):
+        """--json outputs JSON with task_id and prompt keys."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        captured = capsys.readouterr()
+        # stderr must NOT contain task_id= in JSON mode
+        assert "task_id=" not in captured.err
+        # stdout must be valid JSON with expected keys
+        data = json.loads(captured.out)
+        assert data["task_id"] == "step-2"
+        assert "step-2" in data["prompt"]
+        assert "all_done" not in data
+
+    def test_prompt_json_all_done(self, tmp_path, monkeypatch, capsys):
+        """--json all-done outputs JSON with all_done=true and exits 0."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["task_id"] == ""
+        assert data["prompt"] == ""
+        assert data["all_done"] is True
+        # stderr must NOT contain error message in JSON mode
+        assert "all tasks are completed" not in captured.err
+
+
 class TestStdinExtraVars:
     """Test --stdin flag and JSON stdin behavior."""
 
