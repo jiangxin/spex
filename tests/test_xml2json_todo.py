@@ -338,6 +338,84 @@ class TestAppendMode:
         assert "written (no existing todos)" in out
 
 
+class TestRmFlag:
+    def test_rm_flag_deletes_xml(self, tmp_path, monkeypatch, capsys):
+        xml = _make_xml([("step-1", "First", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+        assert xml_path.exists()
+
+        monkeypatch.setattr(
+            sys, "argv", ["xml2json_todo.py", str(xml_path), "--rm"]
+        )
+        main()
+
+        assert not xml_path.exists()
+        out = capsys.readouterr().out
+        assert "1 step(s) converted." in out
+
+    def test_rm_flag_short(self, tmp_path, monkeypatch, capsys):
+        xml = _make_xml([("step-1", "First", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(
+            sys, "argv", ["xml2json_todo.py", "-r", str(xml_path)]
+        )
+        main()
+
+        assert not xml_path.exists()
+
+    def test_rm_flag_in_append_mode(self, tmp_path, monkeypatch, capsys):
+        existing = [{
+            "id": "step-1", "name": "Done", "details": "...",
+            "completed_at": "now", "commit_title": "",
+        }]
+        todo_path = tmp_path / "todo.json"
+        todo_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        xml = _make_xml([("step-2", "New step", "New details")])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["xml2json_todo.py", "--append", "--rm", str(xml_path)],
+        )
+        main()
+
+        assert not xml_path.exists()
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 2
+        out = capsys.readouterr().out
+        assert "appended 1 step(s)" in out
+
+    def test_rm_flag_append_short_flags(self, tmp_path, monkeypatch, capsys):
+        existing = [{
+            "id": "step-1", "name": "Done", "details": "...",
+            "completed_at": "now", "commit_title": "",
+        }]
+        todo_path = tmp_path / "todo.json"
+        todo_path.write_text(json.dumps(existing), encoding="utf-8")
+
+        xml = _make_xml([("step-2", "New", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["xml2json_todo.py", "-a", "-r", str(xml_path)],
+        )
+        main()
+
+        assert not xml_path.exists()
+
+    def test_rm_not_added_to_json2xml(self, monkeypatch, capsys):
+        import json2xml_todo
+
+        # Verify json2xml USAGE does not mention --rm
+        assert "--rm" not in json2xml_todo.USAGE
+        assert "-r" not in json2xml_todo.USAGE
+
+
 class TestMissingArgs:
     def test_no_args(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "argv", ["xml2json_todo.py"])
