@@ -118,6 +118,14 @@ including file changes, logic, and acceptance criteria.
   step. No escaping needed — write Markdown directly inside the tag.
 - Number steps sequentially: `step-1`, `step-2`, etc.
 
+**CRITICAL — the xml2json parser will reject any deviation from this
+structure:**
+
+- Root element **MUST** be `<steps>` (not `<tasks>`, `<todo>`, etc.).
+- Each step **MUST** be wrapped in `<step>` (not `<task>`, `<item>`, etc.).
+- Each `<step>` **MUST** contain exactly three children in order:
+  `<step-id>`, `<step-name>`, `<step-markdown-details>`.
+
 ### Step 6: Convert todo.xml to todo.json
 
 Run:
