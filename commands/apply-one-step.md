@@ -29,7 +29,18 @@ Read the command output and parse it as a JSON array:
   `$topic_name` and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
-### Phase 2: Build Prompt
+### Phase 2: Validate Branch
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex apply-helper --validate --topic $topic_name
+```
+
+If the script exits with an error (non-zero), the error message is already
+printed to stderr. Stop execution. On success, continue to the next phase.
+
+### Phase 3: Build Prompt
 
 Run:
 
@@ -46,7 +57,7 @@ Parse the JSON output from stdout:
 - Otherwise, save `$prompt` from the `"prompt"` field and
   `$next_task_id` from the `"task_id"` field.
 
-### Phase 3: Execute Task
+### Phase 4: Execute Task
 
 Launch a subagent with `$prompt` to implement the current task.
 Ensure the subagent's working directory is set to the topic's
@@ -55,7 +66,7 @@ workdir (read from `meta.json` via `$topic_path/meta.json` or
 If the subagent fails or produces no file changes, report the error
 to the user and retry.
 
-### Phase 4: Commit
+### Phase 5: Commit
 
 Load the commit prompt:
 
@@ -74,7 +85,7 @@ git log -1 --pretty="%h: %s"
 
 Save the output to `$commit_title`.
 
-### Phase 5: Mark Task Complete
+### Phase 6: Mark Task Complete
 
 Run:
 
@@ -84,11 +95,21 @@ $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $top
 
 If the command fails, report the error and stop.
 
-### Phase 6: Report and Stop
+### Phase 7: Report and Stop
 
 Display a summary to the user:
 
 - The completed step name and `$commit_title`
 - The number of remaining undone tasks in `todo.json`
 
-Then stop. Do **not** loop back to Phase 2.
+Then stop. Do **not** loop back to Phase 3.
+
+### Phase 8: Post Action
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex apply-helper --post-action --topic $topic_name
+```
+
+Display the output to the user.
