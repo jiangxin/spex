@@ -23,6 +23,7 @@ Global options:
 
 Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
+  show <topic>  Show detailed topic information (-v for full spec)
   archive [-n]  Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
   install-cli [path]  Install spex symlink (default: ~/.local/bin)
@@ -64,6 +65,14 @@ def _run_archive():
     import archive_specs
 
     archive_specs.main()
+
+
+def _run_show():
+    """Show detailed topic information."""
+    import show_topic
+
+    sys.argv = ["show_topic.py"] + sys.argv[2:]
+    show_topic.main()
 
 
 def _run_open():
@@ -297,6 +306,7 @@ def _run_version():
 
 DIRECT_COMMANDS = {
     "list": _run_list,
+    "show": _run_show,
     "archive": _run_archive,
     "open": _run_open,
     "init": _run_init,
