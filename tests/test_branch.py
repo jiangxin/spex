@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -5,7 +6,18 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from branch import branch_exists, get_current_branch, strip_date_prefix
+from branch import (
+    branch_exists,
+    cli_apply_post_action,
+    cli_apply_validate,
+    cli_create_validate,
+    cli_submit,
+    get_current_branch,
+    merge_branch,
+    strip_date_prefix,
+    validate_apply_branch,
+    validate_create_branch,
+)
 
 
 class TestStripDatePrefix:
@@ -49,3 +61,317 @@ class TestBranchExists:
             args=[], returncode=128, stdout="", stderr="fatal: not a valid ref"
         )
         assert branch_exists("spex/nonexistent") is False
+
+
+class TestMergeBranch:
+    @patch("branch.subprocess.run")
+    def test_merge_calls_switch_and_merge(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        merge_branch("main", "spex/feature")
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(
+            ["git", "switch", "main"],
+            capture_output=True, text=True, check=True,
+        )
+        mock_run.assert_any_call(
+                ["git", "-c", "merge.branchdesc=true", "-c", "merge.log=true",
+                 "merge", "spex/feature", "--no-ff", "--no-edit"],
+            capture_output=True, text=True, check=True,
+        )
+
+    @patch("branch.subprocess.run")
+    def test_merge_raises_on_conflict(self, mock_run):
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="",
+                                       stderr=""),
+            subprocess.CalledProcessError(1, "git merge",
+                                          stderr="CONFLICT"),
+        ]
+        try:
+            merge_branch("main", "spex/feature")
+            assert False, "Should have raised"
+        except subprocess.CalledProcessError:
+            pass
+
+
+class TestValidateCreateBranch:
+    @patch("branch.get_current_branch", return_value="main")
+    def test_returns_current_branch(self, _mock):
+        result = validate_create_branch({"create_branch": True})
+        assert result == "main"
+
+    @patch("branch.get_current_branch", return_value="main")
+    def test_disabled_exits(self, _mock):
+        try:
+            validate_create_branch({})
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+    @patch("branch.get_current_branch",
+           side_effect=subprocess.CalledProcessError(1, "git"))
+    def test_git_error_exits(self, _mock):
+        try:
+            validate_create_branch({"create_branch": True})
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+    @patch("branch.get_current_branch", return_value="develop")
+    def test_wrong_main_branch_exits(self, _mock):
+        try:
+            validate_create_branch({"create_branch": True,
+                                    "main_branch_name": "main"})
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+    @patch("branch.get_current_branch", return_value="spex/feature")
+    def test_spex_prefix_exits(self, _mock):
+        try:
+            validate_create_branch({"create_branch": True})
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+
+class TestValidateApplyBranch:
+    def test_disabled_returns_immediately(self, tmp_path):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps({}), encoding="utf-8")
+        # Should return without error when create_branch is False
+        validate_apply_branch({"create_branch": False}, tmp_path)
+
+    @patch("common.is_topic_completed", return_value=True)
+    def test_completed_topic_exits(self, _mock, tmp_path, capsys):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps({}), encoding="utf-8")
+        try:
+            validate_apply_branch({"create_branch": True}, tmp_path)
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+    @patch("branch.get_current_branch", return_value="spex/feat")
+    @patch("branch.branch_exists", return_value=True)
+    def test_spex_branch_matches_current_noop(self, _exists, _curr, tmp_path):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
+        )
+        validate_apply_branch({"create_branch": True}, tmp_path)
+        # Should not call switch_branch since current already matches
+
+    @patch("branch.switch_branch")
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.branch_exists", return_value=True)
+    @patch("common.is_topic_completed", return_value=False)
+    def test_spex_branch_switches(self, _completed, _exists, _curr, mock_switch, tmp_path):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
+        )
+        validate_apply_branch({"create_branch": True}, tmp_path)
+        mock_switch.assert_called_once_with("spex/feat")
+
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.branch_exists", return_value=False)
+    @patch("common.is_topic_completed", return_value=False)
+    def test_spex_branch_missing_exits(self, _completed, _exists, _curr, tmp_path):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/missing"}), encoding="utf-8"
+        )
+        try:
+            validate_apply_branch({"create_branch": True}, tmp_path)
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+    @patch("branch.switch_branch")
+    @patch("branch.set_branch_description")
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.branch_exists", return_value=False)
+    @patch("branch.create_branch")
+    @patch("common.is_topic_completed", return_value=False)
+    def test_creates_branch_with_short_name(
+        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        tmp_path,
+    ):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            encoding="utf-8",
+        )
+        validate_apply_branch({"create_branch": True}, tmp_path)
+        mock_create.assert_called_once_with("spex/add-feature")
+        mock_switch.assert_called_once_with("spex/add-feature")
+
+    @patch("branch.switch_branch")
+    @patch("branch.set_branch_description")
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.branch_exists", return_value=False)
+    @patch("branch.create_branch", side_effect=[
+        subprocess.CalledProcessError(1, "git"),
+        None,
+    ])
+    @patch("common.is_topic_completed", return_value=False)
+    def test_fallback_to_long_name(
+        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        tmp_path,
+    ):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            encoding="utf-8",
+        )
+        validate_apply_branch({"create_branch": True}, tmp_path)
+        # First call with short name fails, second with long name succeeds
+        assert mock_create.call_count == 2
+        mock_create.assert_any_call("spex/add-feature")
+        mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature")
+        mock_switch.assert_called_once_with(
+            "spex/2026-05-27-10-00-add-feature"
+        )
+
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.branch_exists", return_value=False)
+    @patch("branch.create_branch", side_effect=subprocess.CalledProcessError(1, "git"))
+    @patch("common.is_topic_completed", return_value=False)
+    def test_both_candidates_fail_exits(
+        self, _completed, _create, _exists, _curr, tmp_path,
+    ):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"topic": "add-feature"}), encoding="utf-8"
+        )
+        try:
+            validate_apply_branch({"create_branch": True}, tmp_path)
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+
+
+class TestCliCreateValidate:
+    @patch("branch.get_current_branch", return_value="develop")
+    @patch("config.load_config", return_value={"create_branch": True})
+    def test_outputs_success(self, _cfg, _branch, capsys):
+        cli_create_validate()
+        out = capsys.readouterr().out
+        assert "develop" in out
+        assert "Valid" in out
+
+
+class TestCliApplyValidate:
+    @patch("common.resolve_topic_dir")
+    @patch("config.load_config", return_value={"create_branch": False})
+    def test_disabled_no_output(self, _cfg, mock_resolve, tmp_path,
+                                capsys, monkeypatch):
+        mock_resolve.return_value = tmp_path
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps({}), encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["spex", "--topic", "test-topic"])
+        cli_apply_validate()
+        # When create_branch is False, function returns early with no output
+        out = capsys.readouterr().out
+        assert out == ""
+
+
+class TestCliApplyPostAction:
+    @patch("common.resolve_topic_dir")
+    def test_outputs_text_with_branch(self, mock_resolve, tmp_path, capsys,
+                                      monkeypatch):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
+        )
+        mock_resolve.return_value = tmp_path
+        monkeypatch.setattr("sys.argv", ["spex", "--topic", "my-feat"])
+        cli_apply_post_action()
+        out = capsys.readouterr().out
+        assert "spex/my-feat" in out
+        assert "Development completed" in out
+        assert "main" in out
+
+    @patch("common.resolve_topic_dir")
+    @patch("common.load_meta", return_value={})
+    def test_no_branch_no_output(self, _meta, _resolve, capsys, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["spex", "--topic", "no-branch"])
+        cli_apply_post_action()
+        out = capsys.readouterr().out
+        assert out == ""
+
+
+class TestCliSubmit:
+    @patch("branch.merge_branch")
+    @patch("config.load_config", return_value={"submit_method": "merge"})
+    @patch("common.resolve_topic_dir")
+    def test_merge_success(self, mock_resolve, _cfg, mock_merge, tmp_path,
+                           capsys, monkeypatch):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/done", "branch": "main"}),
+            encoding="utf-8",
+        )
+        mock_resolve.return_value = tmp_path
+        monkeypatch.setattr("sys.argv", ["spex", "--topic", "done-topic"])
+        cli_submit()
+        out = json.loads(capsys.readouterr().out)
+        assert out["action"] == "merge"
+        assert out["source"] == "spex/done"
+        assert out["target"] == "main"
+        assert out["errors"] == []
+        mock_merge.assert_called_once_with("main", "spex/done")
+
+    @patch("branch.merge_branch",
+           side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
+    @patch("config.load_config", return_value={"submit_method": "merge"})
+    @patch("common.resolve_topic_dir")
+    def test_merge_failure_exits_nonzero(self, mock_resolve, _cfg, _merge,
+                                         tmp_path, capsys, monkeypatch):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
+            encoding="utf-8",
+        )
+        mock_resolve.return_value = tmp_path
+        monkeypatch.setattr("sys.argv", ["spex", "--topic", "conflict"])
+        try:
+            cli_submit()
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+        out = json.loads(capsys.readouterr().out)
+        assert "Merge failed" in out["errors"][0]
+
+
+class TestCliRouting:
+    """Test that the spex CLI routes to branch handlers."""
+
+    SPEX_SCRIPT = str(
+        Path(__file__).resolve().parent.parent / "scripts" / "spex"
+    )
+
+    def _run_spex(self, *args):
+        return subprocess.run(
+            [sys.executable, self.SPEX_SCRIPT, *args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_create_helper_no_flag_exits_1(self):
+        result = self._run_spex("create-helper")
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+    def test_apply_helper_no_flag_exits_1(self):
+        result = self._run_spex("apply-helper")
+        assert result.returncode == 1
+        assert "Usage:" in result.stderr
+
+    def test_submit_no_topic_exits_1(self):
+        result = self._run_spex("submit")
+        assert result.returncode == 1
+        assert "--topic" in result.stderr

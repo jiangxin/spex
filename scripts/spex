@@ -46,6 +46,12 @@ Internal commands (used by skill):
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done, xml2json, json2xml)
+  create-helper --validate
+                Validate branch creation feasibility (JSON output)
+  apply-helper --validate|--post-action --topic <name>
+                Validate or report apply-branch status (JSON/text)
+  submit --topic <name>
+                Submit (merge) a spex branch back to target
 """
 
 LLM_COMMANDS = {"apply", "create", "new", "modify"}
@@ -152,6 +158,45 @@ def _run_meta():
     meta.main()
 
 
+def _run_create_helper():
+    """Route create-helper subcommand."""
+    import branch
+
+    flags = sys.argv[2:]
+    if "--validate" in flags:
+        branch.cli_create_validate()
+    else:
+        print("Usage: spex create-helper --validate", file=sys.stderr)
+        sys.exit(1)
+
+
+def _run_apply_helper():
+    """Route apply-helper subcommand."""
+    import branch
+
+    flags = sys.argv[2:]
+    if "--validate" in flags:
+        sys.argv = [sys.argv[0]] + [a for a in flags if a != "--validate"]
+        branch.cli_apply_validate()
+    elif "--post-action" in flags:
+        sys.argv = [sys.argv[0]] + [a for a in flags if a != "--post-action"]
+        branch.cli_apply_post_action()
+    else:
+        print(
+            "Usage: spex apply-helper --validate|--post-action --topic <name>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _run_submit():
+    """Route submit subcommand."""
+    import branch
+
+    sys.argv = [sys.argv[0]] + sys.argv[2:]
+    branch.cli_submit()
+
+
 def _run_todo():
     """Route todo subcommands."""
     if len(sys.argv) < 3:
@@ -245,6 +290,9 @@ DIRECT_COMMANDS = {
     "prompt": _run_prompt,
     "meta": _run_meta,
     "todo": _run_todo,
+    "create-helper": _run_create_helper,
+    "apply-helper": _run_apply_helper,
+    "submit": _run_submit,
     "version": _run_version,
 }
 
