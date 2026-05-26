@@ -383,11 +383,15 @@ def _sync_builtin_template(template_name: str, workdir=None):
     examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
     target = examples_dir / template_name
 
-    source_version = _extract_template_version(source)
-    target_version = _extract_template_version(target)
-
-    if source_version and source_version == target_version:
-        return  # Already up-to-date
+    if target.exists():
+        src_stat = source.stat()
+        tgt_stat = target.stat()
+        if (tgt_stat.st_mtime >= src_stat.st_mtime
+                and tgt_stat.st_size == src_stat.st_size):
+            source_version = _extract_template_version(source)
+            target_version = _extract_template_version(target)
+            if source_version and source_version == target_version:
+                return  # Already up-to-date
 
     examples_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
