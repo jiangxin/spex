@@ -60,3 +60,24 @@ Before committing, `make check` runs automatically via a husky pre-commit hook. 
 3. `pytest` — unit tests
 
 If the pre-commit hook does not fire (e.g., hooks are not installed), run `make check` manually before creating a commit. Fix any failures before retrying.
+
+## Test Suite
+
+The test suite is split into two tiers:
+
+| Target | Command | Tests | Duration |
+|--------|---------|-------|----------|
+| Fast (pre-commit) | `make check` | 372 (default) | ~4s |
+| Full | `make check-all` | 404 (all) | ~32s |
+
+Tests in `tests/test_prompt.py` (except `TestBuildTaskContext`) are marked
+`@pytest.mark.slow` because each one spawns `git init` subprocesses (~0.5–2s
+per test). These are skipped by default via `addopts = ["-m", "not slow"]`
+in `pyproject.toml`.
+
+- `make check` / `pytest` — fast tier only (husky pre-commit hook)
+- `make check-all` / `pytest -m ""` — runs all tests including slow
+- `pytest -m slow` — runs slow tests only
+
+New tests that involve git subprocess or other heavy I/O should be marked
+`@pytest.mark.slow` to keep pre-commit feedback fast.
