@@ -328,8 +328,6 @@ def _extract_global_options():
     Distinguishes the global option (which always has a value) from the
     'get --spex-root' subcommand flag (which has no value).
     """
-    import common
-
     args = sys.argv[1:]
     if "--version" in args or "-V" in args:
         _run_version()
@@ -355,7 +353,9 @@ def _extract_global_options():
 
     if spex_root is not None:
         os.environ["SPEX_ROOT"] = spex_root
-        common.clear_spex_root_cache()
+        import config
+
+        config.clear_config_cache()
     elif "--spex-root" in args and args[-1] == "--spex-root":
         # Bare --spex-root at end with no value and no command context
         if not any(a in DIRECT_COMMANDS or a in LLM_COMMANDS for a in args[:-1]):
