@@ -92,6 +92,70 @@ def validate_required_meta(content, metadata):
         sys.exit(1)
 
 
+def _build_task_context(topic_dir):
+    """Extract task context from a topic directory.
+
+    Reads spec.md and todo.json, computes completed/current/future task info.
+
+    Args:
+        topic_dir: Path to the topic directory.
+
+    Returns:
+        Dict with keys: spec_content, completed_tasks, next_task_id,
+        next_task_text, future_tasks.
+    """
+    spec_path = topic_dir / "spec.md"
+    if spec_path.exists():
+        spec_content = spec_path.read_text(encoding="utf-8")
+    else:
+        spec_content = ""
+
+    todo = load_todo(topic_dir)
+    if todo:
+        done = [item for item in todo if item.get("completed_at")]
+        completed_tasks = "\n".join(
+            f"{item.get('id', '')}: {item.get('name', '')}" for item in done
+        )
+        undone = [item for item in todo if not item.get("completed_at")]
+        if undone:
+            current = undone[0]
+            task_id = current.get("id", "")
+            name = current.get("name", "")
+            details = current.get("details", "")
+            next_task_id = task_id
+            next_task_text = (
+                f"**Task**: {task_id} - {name}\n\n"
+                f"**Implementation Details**:\n\n"
+                f"<details>\n{details}\n\n</details>"
+            )
+            future = undone[1:]
+            future_tasks = (
+                "\n".join(
+                    f"- {item.get('id', '')}: {item.get('name', '')}"
+                    for item in future
+                )
+                if future
+                else ""
+            )
+        else:
+            next_task_id = ""
+            next_task_text = ""
+            future_tasks = ""
+    else:
+        completed_tasks = ""
+        next_task_id = ""
+        next_task_text = ""
+        future_tasks = ""
+
+    return {
+        "spec_content": spec_content,
+        "completed_tasks": completed_tasks,
+        "next_task_id": next_task_id,
+        "next_task_text": next_task_text,
+        "future_tasks": future_tasks,
+    }
+
+
 def _build_metadata(template_name, topic_name=None):
     """Build the metadata dict for template rendering.
 
@@ -122,83 +186,10 @@ def _build_metadata(template_name, topic_name=None):
             except (ValueError, RuntimeError):
                 pass
         if topic_name:
-            spec_path = topic_dir / "spec.md"
-            if spec_path.exists():
-                metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
-            else:
-                metadata["spec_content"] = ""
-
-            todo = load_todo(topic_dir)
-            if todo:
-                done = [item for item in todo if item.get("completed_at")]
-                metadata["completed_tasks"] = "\n".join(
-                    f"{item.get('id', '')}: {item.get('name', '')}"
-                    for item in done
-                )
-                undone = [item for item in todo if not item.get("completed_at")]
-                if undone:
-                    current = undone[0]
-                    task_id = current.get("id", "")
-                    name = current.get("name", "")
-                    details = current.get("details", "")
-                    metadata["next_task_text"] = (
-                        f"**Task**: {task_id} - {name}\n\n"
-                        f"**Implementation Details**:\n\n"
-                        f"<details>\n{details}\n\n</details>"
-                    )
-                    future = undone[1:]
-                    metadata["future_tasks"] = "\n".join(
-                        f"- {item.get('id', '')}: {item.get('name', '')}"
-                        for item in future
-                    ) if future else ""
-                else:
-                    metadata["next_task_text"] = ""
-                    metadata["future_tasks"] = ""
-            else:
-                metadata["completed_tasks"] = ""
-                metadata["next_task_text"] = ""
-                metadata["future_tasks"] = ""
+            metadata.update(_build_task_context(topic_dir))
 
     if template_name == "apply-one-task" and topic_name:
-        spec_path = topic_dir / "spec.md"
-        if spec_path.exists():
-            metadata["spec_content"] = spec_path.read_text(encoding="utf-8")
-        else:
-            metadata["spec_content"] = ""
-
-        todo = load_todo(topic_dir)
-        if todo:
-            done = [item for item in todo if item.get("completed_at")]
-            metadata["completed_tasks"] = "\n".join(
-                f"{item.get('id', '')}: {item.get('name', '')}" for item in done
-            )
-            undone = [item for item in todo if not item.get("completed_at")]
-            if undone:
-                current = undone[0]
-                task_id = current.get("id", "")
-                name = current.get("name", "")
-                details = current.get("details", "")
-                metadata["next_task_id"] = task_id
-                metadata["next_task_text"] = (
-                    f"**Task**: {task_id} - {name}\n\n"
-                    f"**Implementation Details**:\n\n"
-                    f"<details>\n{details}\n\n</details>"
-                )
-                # Collect subsequent undone tasks
-                future = undone[1:]
-                metadata["future_tasks"] = "\n".join(
-                    f"- {item.get('id', '')}: {item.get('name', '')}"
-                    for item in future
-                ) if future else ""
-            else:
-                metadata["next_task_id"] = ""
-                metadata["next_task_text"] = ""
-                metadata["future_tasks"] = ""
-        else:
-            metadata["completed_tasks"] = ""
-            metadata["next_task_id"] = ""
-            metadata["next_task_text"] = ""
-            metadata["future_tasks"] = ""
+        metadata.update(_build_task_context(topic_dir))
 
     return metadata
 

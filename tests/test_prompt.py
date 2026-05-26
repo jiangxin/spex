@@ -381,6 +381,78 @@ class TestStdinExtraVars:
         assert "Build feature X" in captured.out
 
 
+class TestBuildTaskContext:
+    """Test _build_task_context helper function."""
+
+    def test_build_task_context(self, tmp_path):
+        """Verifies correct return with sample topic data."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", details="Do second thing"),
+            _make_task("step-3", name="Third step"),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(json.dumps(tasks), encoding="utf-8")
+
+        spec_path = topic_dir / "spec.md"
+        spec_path.write_text("# My Spec\n\nSpec body.", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(topic_dir)
+
+        assert result["spec_content"] == "# My Spec\n\nSpec body."
+        assert "step-1: First step" in result["completed_tasks"]
+        assert result["next_task_id"] == "step-2"
+        assert "**Task**: step-2 - Second step" in result["next_task_text"]
+        assert "Do second thing" in result["next_task_text"]
+        assert "<details>" in result["next_task_text"]
+        assert "- step-3: Third step" in result["future_tasks"]
+        # Current task should NOT appear in future_tasks
+        assert "step-2" not in result["future_tasks"]
+
+    def test_build_task_context_all_done(self, tmp_path):
+        """Verifies behavior when all tasks are completed."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=True),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(json.dumps(tasks), encoding="utf-8")
+
+        spec_path = topic_dir / "spec.md"
+        spec_path.write_text("# Done Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(topic_dir)
+
+        assert result["spec_content"] == "# Done Spec\n"
+        assert "step-1: First step" in result["completed_tasks"]
+        assert "step-2: Second step" in result["completed_tasks"]
+        assert result["next_task_id"] == ""
+        assert result["next_task_text"] == ""
+        assert result["future_tasks"] == ""
+
+
 class TestApplyCommitWithTopic:
     """Test apply-commit loads spec and task context from topic."""
 
