@@ -46,6 +46,13 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
 
     if topic_name:
         if (specs_dir / topic_name).is_dir():
+            topic_path = specs_dir / topic_name
+            if not has_undone_tasks(topic_path):
+                print(
+                    f"Warning: topic '{topic_name}' has no undone tasks.",
+                    file=sys.stderr,
+                )
+                return []
             return [topic_name]
 
         matches = sorted(

@@ -72,6 +72,15 @@ class TestResolveTopic:
         result = resolve_topic("2026-05-20-14-30-my-topic", specs)
         assert result == ["2026-05-20-14-30-my-topic"]
 
+    def test_exact_match_no_undone_tasks(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+
+        result = resolve_topic("2026-05-20-14-30-done-topic", specs)
+        assert result == []
+        err = capsys.readouterr().err
+        assert "Warning: topic '2026-05-20-14-30-done-topic' has no undone tasks." in err
+
     def test_fuzzy_single_match(self, tmp_path):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-fuzzy-topic")
