@@ -65,6 +65,9 @@ class TestFormatVerbose:
             ],
         )
         output = show_topic._format_verbose(topic_dir)
+        lines = output.splitlines()
+        assert "[0/1]" in lines[0]
+        assert "my-topic" in lines[0]
         assert "# **Specification**" in output
         assert "# My Spec" in output
         assert "Content here." in output

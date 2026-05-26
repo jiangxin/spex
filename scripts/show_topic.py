@@ -51,9 +51,16 @@ def _format_default(topic_dir):
 
 def _format_verbose(topic_dir):
     """Format topic with full spec and structured todo."""
+    name = topic_dir.name
+    n, m = get_todo_progress(topic_dir)
+    topic = {"n": n, "m": m, "archived": False}
+    icon = _get_icon(topic)
+
     spec_path = topic_dir / "spec.md"
     parts = []
 
+    parts.append(f"{icon} [{n}/{m}] {name}")
+    parts.append("")
     parts.append("# **Specification**")
     parts.append("")
     if spec_path.is_file():
