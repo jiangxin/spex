@@ -258,9 +258,9 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
 # --- CLI handler functions ---
 
 
-def _parse_topic_arg() -> str:
-    """Parse --topic <name> from sys.argv. Exit 1 if missing."""
-    args = sys.argv[1:]
+def _parse_topic_arg(argv) -> str:
+    """Parse --topic <name> from argv. Exit 1 if missing."""
+    args = argv or []
     for i, arg in enumerate(args):
         if arg == "--topic" and i + 1 < len(args):
             return args[i + 1]
@@ -277,22 +277,22 @@ def cli_create_validate() -> None:
     print(f"Valid: currently on branch '{current}'")
 
 
-def cli_apply_validate() -> None:
+def cli_apply_validate(argv=None) -> None:
     """CLI: perform branch setup for applying a topic."""
     import common
     import config as cfg
 
     conf = cfg.load_config()
-    topic_dir = common.resolve_topic_dir(_parse_topic_arg())
+    topic_dir = common.resolve_topic_dir(_parse_topic_arg(argv))
     validate_apply_branch(conf, topic_dir)
 
 
-def cli_apply_post_action() -> None:
+def cli_apply_post_action(argv=None) -> None:
     """CLI: run post-action hook, and show hint."""
     import common
     import hooks
 
-    topic_dir = common.resolve_topic_dir(_parse_topic_arg())
+    topic_dir = common.resolve_topic_dir(_parse_topic_arg(argv))
     topic_name = strip_date_prefix(topic_dir.name)
     meta = common.load_meta(topic_dir)
     spex_branch = meta.get("spex_branch", "") if meta else ""
@@ -323,13 +323,13 @@ def cli_apply_post_action() -> None:
         )
 
 
-def cli_submit() -> None:
+def cli_submit(argv=None) -> None:
     """CLI: submit (merge) a spex branch back to target. Output JSON."""
     import common
     import config as cfg
     import hooks
 
-    topic_name = _parse_topic_arg()
+    topic_name = _parse_topic_arg(argv)
     conf = cfg.load_config()
     topic_dir = common.resolve_topic_dir(topic_name)
     meta = common.load_meta(topic_dir)

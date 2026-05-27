@@ -26,20 +26,21 @@ Options:
   -h, --help  Show this help message and exit"""
 
 
-def main():
-    check_help_flag(USAGE)
-    if len(sys.argv) < 3:
+def main(argv=None):
+    check_help_flag(USAGE, argv)
+    args = argv if argv is not None else sys.argv[1:]
+    if len(args) < 2:
         print(
             f"Usage: {sys.argv[0]} <topic_name> <key> [value]",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    topic_name = sys.argv[1]
-    key = sys.argv[2]
+    topic_name = args[0]
+    key = args[1]
 
-    if len(sys.argv) >= 4:
-        value = sys.argv[3]
+    if len(args) >= 3:
+        value = args[2]
     else:
         value = sys.stdin.read()
 

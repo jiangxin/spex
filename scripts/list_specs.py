@@ -239,9 +239,10 @@ def _parse_verbosity(argv: list) -> int:
     return count
 
 
-def main():
-    check_help_flag(USAGE)
-    all_mode = "--all" in sys.argv
+def main(argv=None):
+    check_help_flag(USAGE, argv)
+    full_argv = argv if argv is not None else sys.argv[1:]
+    all_mode = "--all" in full_argv
 
     dirs = [Path(get_specs_dir())]
     archive_dirs = []
@@ -262,7 +263,7 @@ def main():
     else:
         show_repo = True
 
-    verbosity = _parse_verbosity(sys.argv[1:])
+    verbosity = _parse_verbosity(full_argv)
     if verbosity > 0:
         print(format_verbose_output(topics, verbosity=verbosity, show_repo=show_repo))
     else:

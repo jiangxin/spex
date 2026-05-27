@@ -243,10 +243,10 @@ class TestGetCommand:
         assert ".spex" in result.stdout
 
     def test_no_flag_prints_usage_exit_1(self):
-        """spex get (no flag) prints usage to stderr, exit 1."""
+        """spex get (no flag) prints usage to stderr, exit 2."""
         result = _run_spex("get")
 
-        assert result.returncode == 1
+        assert result.returncode == 2
         assert "Usage:" in result.stderr
 
 

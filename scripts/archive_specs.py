@@ -115,20 +115,21 @@ def archive_single_topic(
     return dest
 
 
-def main():
-    check_help_flag(USAGE)
-    dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
-    force = "--force" in sys.argv or "-f" in sys.argv
+def main(argv=None):
+    check_help_flag(USAGE, argv)
+    full_argv = argv if argv is not None else sys.argv[1:]
+    dry_run = "--dry-run" in full_argv or "-n" in full_argv
+    force = "--force" in full_argv or "-f" in full_argv
 
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
 
-    if "--topic" in sys.argv:
-        idx = sys.argv.index("--topic")
-        if idx + 1 >= len(sys.argv):
+    if "--topic" in full_argv:
+        idx = full_argv.index("--topic")
+        if idx + 1 >= len(full_argv):
             print("Error: --topic requires a value", file=sys.stderr)
             sys.exit(1)
-        topic_name = sys.argv[idx + 1]
+        topic_name = full_argv[idx + 1]
         archive_single_topic(topic_name, specs_dir, archives_dir, force)
         return
 
