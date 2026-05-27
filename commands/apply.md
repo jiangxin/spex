@@ -84,8 +84,13 @@ Load the commit prompt:
 $spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
 ```
 
-Follow the output instructions to create a git commit. If the commit
-fails (e.g., pre-commit hook), fix the issues and retry.
+The prompt output will contain explicit instructions for creating the git
+commit. Read the output and follow it exactly:
+
+- Stage the relevant file changes (do NOT stage any files under
+  `$spex_root/`).
+- Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
+- If the commit fails (e.g., pre-commit hook), fix the issues and retry.
 
 After a successful commit, run:
 
@@ -108,7 +113,7 @@ If the command fails, report the error and stop.
 ### Phase 7: Loop
 
 If running in `--all` mode (Phase 1), return to Phase 3 to process
-the next topic — or stop if all topics are done.
+the next topic in the current batch — or stop if all topics are done.
 
 Otherwise, go back to Phase 3. Do **not** stop while `todo.json`
 still has undone tasks.
@@ -122,3 +127,7 @@ $spex_skill_dir/scripts/spex apply-helper --post-action --topic $topic_name
 ```
 
 Display the output to the user.
+
+> **STOP.** All topics and steps in this run are complete. Do NOT start
+> implementing additional steps or modifying project files beyond what
+> was already committed.

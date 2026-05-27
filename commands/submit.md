@@ -72,3 +72,6 @@ Display the following summary to the user:
 - Target branch: $target
 - Archived: yes
 ```
+
+> **STOP.** The submit is complete. Do NOT start implementing any
+> further changes.

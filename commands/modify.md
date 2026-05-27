@@ -97,3 +97,13 @@ Display the following summary to the user:
 - Todo: `$topic_path/todo.json`
 - Meta: `$topic_path/meta.json`
 ```
+
+### Phase 8: STOP — Do NOT Implement
+
+**This is a hard stop. Do NOT write any application code, modify any
+project files, or begin implementing the updated plan.**
+
+The `/spex modify` command's sole responsibility was to update the spec
+documents. Implementation is handled by `/spex apply` or
+`/spex apply-one-step`. Wait for the user to review the updated spec and
+invoke those commands when ready.

@@ -74,8 +74,13 @@ Load the commit prompt:
 $spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
 ```
 
-Follow the output instructions to create a git commit. If the commit
-fails (e.g., pre-commit hook), fix the issues and retry.
+The prompt output will contain explicit instructions for creating the git
+commit. Read the output and follow it exactly:
+
+- Stage the relevant file changes (do NOT stage any files under
+  `$spex_root/`).
+- Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
+- If the commit fails (e.g., pre-commit hook), fix the issues and retry.
 
 After a successful commit, run:
 
@@ -95,14 +100,16 @@ $spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $top
 
 If the command fails, report the error and stop.
 
-### Phase 7: Report and Stop
+### Phase 7: STOP — One Step Only
 
 Display a summary to the user:
 
 - The completed step name and `$commit_title`
 - The number of remaining undone tasks in `todo.json`
 
-Then stop. Do **not** loop back to Phase 3.
+> **This command implements exactly one step. Stop here.**
+> Do NOT loop back to Phase 3 or implement additional steps.
+> The user must invoke `/spex apply-one-step` again to continue.
 
 ### Phase 8: Post Action
 
