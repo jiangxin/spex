@@ -135,6 +135,57 @@ class TestResolveTopic:
             resolve_topic("", specs)
 
 
+class TestResolveTopicMustDone:
+    def test_exact_match_must_done(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic", completed=True)
+
+        result = resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
+        assert result == ["2026-05-20-14-30-my-topic"]
+
+    def test_exact_match_must_done_not_completed(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        with pytest.raises(SystemExit):
+            resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
+        err = capsys.readouterr().err
+        assert "Error: topic '2026-05-20-14-30-my-topic' is not completed." in err
+
+    def test_fuzzy_match_must_done(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+
+        result = resolve_topic("topic", specs, must_done=True)
+        assert result == ["2026-05-20-14-30-done-topic"]
+
+    def test_fuzzy_match_must_done_no_match(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+
+        with pytest.raises(SystemExit):
+            resolve_topic("topic", specs, must_done=True)
+
+    def test_no_name_must_done(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-alpha", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-beta", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-active")
+
+        result = resolve_topic("", specs, must_done=True)
+        assert result == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
+
+    def test_no_name_must_done_none_completed(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-active")
+
+        with pytest.raises(SystemExit):
+            resolve_topic("", specs, must_done=True)
+        err = capsys.readouterr().err
+        assert "no completed topics found" in err
+
+
 class TestResolveTopicWorkdirFilter:
     def test_filter_by_workdir(self, tmp_path):
         specs = tmp_path / "specs"

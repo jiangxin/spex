@@ -16,6 +16,7 @@ from common import (
     get_specs_dir,
     get_topic_workdir,
     has_undone_tasks,
+    is_topic_completed,
     same_path,
 )
 
@@ -30,7 +31,7 @@ Options:
   -h, --help   Show this help message and exit"""
 
 
-def resolve_topic(topic_name, specs_dir, filter_workdir=None):
+def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
     """Resolve topic name against specs_dir.
 
     Args:
@@ -38,6 +39,7 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
         specs_dir: Path to the specs directory.
         filter_workdir: When set, only return topics whose meta.json workdir
             matches this path. Ignored when topic_name is provided.
+        must_done: When True, only return completed topics.
 
     Returns a list of matching topic names.
     Raises SystemExit on error.
@@ -47,6 +49,14 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
     if topic_name:
         if (specs_dir / topic_name).is_dir():
             topic_path = specs_dir / topic_name
+            if must_done:
+                if not is_topic_completed(topic_path):
+                    print(
+                        f"Error: topic '{topic_name}' is not completed.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                return [topic_name]
             if not has_undone_tasks(topic_path):
                 print(
                     f"Warning: topic '{topic_name}' has no undone tasks.",
@@ -55,12 +65,17 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
                 return []
             return [topic_name]
 
+        if must_done:
+            topic_filter = is_topic_completed
+        else:
+            topic_filter = has_undone_tasks
+
         matches = sorted(
             d.name
             for d in specs_dir.iterdir()
             if d.is_dir()
             and topic_name in d.name
-            and has_undone_tasks(d)
+            and topic_filter(d)
         )
 
         if not matches:
@@ -80,10 +95,15 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
         )
         sys.exit(1)
 
+    if must_done:
+        topic_filter = is_topic_completed
+    else:
+        topic_filter = has_undone_tasks
+
     candidates = sorted(
         d.name
         for d in specs_dir.iterdir()
-        if d.is_dir() and has_undone_tasks(d)
+        if d.is_dir() and topic_filter(d)
     )
 
     if filter_workdir:
@@ -93,17 +113,30 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None):
         ]
 
     if not candidates:
-        if filter_workdir:
-            print(
-                "Error: no topics with undone tasks found for the current"
-                " workspace. Use --all to show all topics.",
-                file=sys.stderr,
-            )
+        if must_done:
+            if filter_workdir:
+                print(
+                    "Error: no completed topics found for the current"
+                    " workspace. Use --all to show all topics.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "Error: no completed topics found.",
+                    file=sys.stderr,
+                )
         else:
-            print(
-                "Error: no topics with undone tasks found.",
-                file=sys.stderr,
-            )
+            if filter_workdir:
+                print(
+                    "Error: no topics with undone tasks found for the current"
+                    " workspace. Use --all to show all topics.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "Error: no topics with undone tasks found.",
+                    file=sys.stderr,
+                )
         sys.exit(1)
 
     return candidates
