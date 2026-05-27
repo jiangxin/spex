@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from common import (
+    _resolve_template_roots,
     check_help_flag,
     clear_spex_root_cache,
     format_topic,
@@ -398,6 +399,90 @@ class TestGetTemplate:
         finally:
             # Clean up test template
             test_template.unlink()
+
+    def test_resolve_template_roots_order(self, monkeypatch, tmp_path):
+        """_resolve_template_roots returns 3 paths in correct order."""
+        from common import TEMPLATE_DIR, _get_skill_path, get_spex_root
+        clear_spex_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        clear_spex_root_cache()
+
+        roots = _resolve_template_roots()
+
+        assert len(roots) == 3
+        spex_root = Path(get_spex_root(auto_init=False))
+        assert roots[0] == spex_root / TEMPLATE_DIR
+        assert roots[1] == Path.home() / ".spex" / TEMPLATE_DIR
+        assert roots[2] == _get_skill_path() / TEMPLATE_DIR
+
+    def test_get_template_spex_root_wins(self, monkeypatch, tmp_path):
+        """spex_root template takes priority over ~/.spex and skill_path."""
+        from common import TEMPLATE_DIR, _get_skill_path, get_spex_root
+        clear_spex_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        monkeypatch.setattr("common.Path.home", lambda: tmp_path)
+        clear_spex_root_cache()
+
+        # Place different content at all three levels
+        spex_root = Path(get_spex_root(auto_init=False))
+        (spex_root / TEMPLATE_DIR).mkdir(parents=True, exist_ok=True)
+        (spex_root / TEMPLATE_DIR / "prio-tpl.md").write_text("spex_root content")
+
+        home_spex = tmp_path / ".spex" / TEMPLATE_DIR
+        home_spex.mkdir(parents=True)
+        (home_spex / "prio-tpl.md").write_text("home content")
+
+        skill_path = _get_skill_path()
+        (skill_path / TEMPLATE_DIR / "prio-tpl.md").write_text("skill content")
+
+        result = get_template("prio-tpl.md")
+        assert result == "spex_root content"
+
+        # Clean up
+        (spex_root / TEMPLATE_DIR / "prio-tpl.md").unlink()
+        (skill_path / TEMPLATE_DIR / "prio-tpl.md").unlink()
+
+    def test_get_template_home_spex_fallback(self, monkeypatch, tmp_path):
+        """~/.spex template wins when spex_root has none."""
+        from common import TEMPLATE_DIR, _get_skill_path
+        clear_spex_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        monkeypatch.setattr("common.Path.home", lambda: tmp_path)
+        clear_spex_root_cache()
+
+        # _sync_builtin_template requires source to exist, so create a dummy
+        skill_path = _get_skill_path()
+        test_src = skill_path / TEMPLATE_DIR / "fallback-tpl.md"
+        test_src.write_text("skill fallback content")
+
+        home_spex = tmp_path / ".spex" / TEMPLATE_DIR
+        home_spex.mkdir(parents=True)
+        (home_spex / "fallback-tpl.md").write_text("home content")
+
+        result = get_template("fallback-tpl.md")
+        assert result == "home content"
+
+        # Clean up
+        (home_spex / "fallback-tpl.md").unlink()
+        test_src.unlink()
+
+    def test_get_template_raises_when_missing(self, monkeypatch, tmp_path):
+        """FileNotFoundError raised when template not found in any root."""
+        from common import TEMPLATE_DIR, _get_skill_path
+        clear_spex_root_cache()
+        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        clear_spex_root_cache()
+
+        # Ensure no template exists at any root
+        skill_path = _get_skill_path()
+        unlikely = "__nonexistent-template-xyz__"
+
+        with pytest.raises(FileNotFoundError, match=unlikely):
+            get_template(f"{unlikely}.md")
+
+        # Clean up any test files (there shouldn't be any)
+        if (skill_path / TEMPLATE_DIR / f"{unlikely}.md").exists():
+            (skill_path / TEMPLATE_DIR / f"{unlikely}.md").unlink()
 
 
 class TestParseFrontMatterDescription:
