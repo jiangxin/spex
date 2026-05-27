@@ -92,16 +92,24 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def archive_single_topic(
-    topic_name: str, specs_dir: Path, archives_dir: Path
-) -> Path:
+    topic_name: str, specs_dir: Path, archives_dir: Path, force: bool = False
+) -> Path | None:
     """Archive a single topic by name.
 
-    Returns the destination path.
+    Returns the destination path, or None if skipped due to active branch.
     """
     topic_dir = specs_dir / topic_name
     if not topic_dir.is_dir():
         print(f"Error: topic '{topic_name}' not found in {specs_dir}", file=sys.stderr)
         sys.exit(1)
+    if not force and has_active_branch(topic_dir):
+        meta = load_meta(topic_dir)
+        spex_branch = meta.get("spex_branch", "") if meta else ""
+        print(
+            f"Skipping: spex branch '{spex_branch}' still exists"
+            f" (use --force to archive)"
+        )
+        return None
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
     print(f"Archived: {topic_name} -> {dest}")
