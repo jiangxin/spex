@@ -8,7 +8,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import archive_specs
-from archive_specs import archive_single_topic, find_completed_topics, move_topic
+from archive_specs import (
+    archive_single_topic,
+    find_completed_topics,
+    has_active_branch,
+    move_topic,
+)
 from common import is_topic_completed
 
 
@@ -330,3 +335,254 @@ class TestArchiveSingleTopic:
         assert dest == archives / "my-topic-2"
         assert dest.is_dir()
         assert not (specs / "my-topic").exists()
+
+
+class TestHasActiveBranch:
+    """Tests for has_active_branch."""
+
+    def test_returns_true_when_branch_exists(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        topic.mkdir()
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/some-branch"}), encoding="utf-8"
+        )
+        with patch("archive_specs.branch_exists", return_value=True):
+            assert has_active_branch(topic) is True
+
+    def test_returns_false_when_branch_missing(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        topic.mkdir()
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/gone-branch"}), encoding="utf-8"
+        )
+        with patch("archive_specs.branch_exists", return_value=False):
+            assert has_active_branch(topic) is False
+
+    def test_returns_false_when_no_spex_branch(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        topic.mkdir()
+        (topic / "meta.json").write_text(
+            json.dumps({"workdir": "/repo"}), encoding="utf-8"
+        )
+        assert has_active_branch(topic) is False
+
+    def test_returns_false_when_no_meta_json(self, tmp_path):
+        topic = tmp_path / "my-topic"
+        topic.mkdir()
+        assert has_active_branch(topic) is False
+
+
+class TestFindCompletedTopicsWithBranchGuard:
+    """Tests for find_completed_topics with force parameter."""
+
+    def test_excludes_active_branch_when_force_false(self, tmp_path):
+        specs = tmp_path / "specs"
+        # Topic with active branch
+        topic_a = specs / "active-topic"
+        _write_todo(topic_a, [_make_task("1")])
+        (topic_a / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
+        )
+        # Topic without spex_branch
+        topic_b = specs / "no-branch-topic"
+        _write_todo(topic_b, [_make_task("1")])
+
+        with patch("archive_specs.branch_exists", return_value=True):
+            result = find_completed_topics(specs, force=False)
+
+        names = [d.name for d in result]
+        assert "no-branch-topic" in names
+        assert "active-topic" not in names
+
+    def test_includes_active_branch_when_force_true(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
+        )
+
+        with patch("archive_specs.branch_exists", return_value=True):
+            result = find_completed_topics(specs, force=True)
+
+        assert len(result) == 1
+        assert result[0].name == "active-topic"
+
+    def test_includes_when_spex_branch_missing_from_git(self, tmp_path):
+        specs = tmp_path / "specs"
+        topic = specs / "merged-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/merged"}), encoding="utf-8"
+        )
+
+        with patch("archive_specs.branch_exists", return_value=False):
+            result = find_completed_topics(specs, force=False)
+
+        assert len(result) == 1
+        assert result[0].name == "merged-topic"
+
+
+class TestArchiveSingleWithBranchGuard:
+    """Tests for archive_single_topic with force parameter."""
+
+    def test_skips_when_branch_exists_no_force(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        archives = tmp_path / "archives"
+
+        with patch("archive_specs.branch_exists", return_value=True):
+            result = archive_single_topic("active-topic", specs, archives)
+
+        assert result is None
+        assert not (archives / "active-topic").exists()
+        output = capsys.readouterr().out
+        assert "spex/active" in output
+        assert "Skipping" in output
+
+    def test_archives_when_branch_missing_no_force(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "merged-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+
+        with patch("archive_specs.branch_exists", return_value=False):
+            result = archive_single_topic("merged-topic", specs, archives)
+
+        assert result == archives / "merged-topic"
+        assert (archives / "merged-topic").is_dir()
+
+    def test_archives_with_force_despite_branch(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        archives = tmp_path / "archives"
+
+        with patch("archive_specs.branch_exists", return_value=True):
+            result = archive_single_topic(
+                "active-topic", specs, archives, force=True
+            )
+
+        assert result == archives / "active-topic"
+        assert (archives / "active-topic").is_dir()
+        assert not (specs / "active-topic").exists()
+
+
+class TestMainWithBranchGuard:
+    """Integration tests for main() with branch guard."""
+
+    def test_force_flag_archives_active_branch(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(
+            sys, "argv", ["archive_specs.py", "--force"]
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ), patch(
+            "archive_specs.branch_exists", return_value=True
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "active-topic" in output
+        assert (archives / "active-topic").is_dir()
+
+    def test_short_f_flag_works(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(
+            sys, "argv", ["archive_specs.py", "-f"]
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ), patch(
+            "archive_specs.branch_exists", return_value=True
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "active-topic" in output
+
+    def test_dry_run_shows_skipped(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        # Topic with active branch
+        topic_active = specs / "active-topic"
+        _write_todo(topic_active, [_make_task("1")])
+        (topic_active / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        # Topic without branch
+        topic_merged = specs / "merged-topic"
+        _write_todo(topic_merged, [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(
+            sys, "argv", ["archive_specs.py", "--dry-run"]
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ), patch(
+            "archive_specs.branch_exists",
+            side_effect=lambda name: name == "spex/active",
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Would archive 1 topic(s)" in output
+        assert "merged-topic" in output
+        assert "Would skip 1 topic(s)" in output
+        assert "active-topic" in output
+        assert "spex/active" in output
+        # Nothing actually moved
+        assert not archives.exists()
+
+    def test_bulk_excludes_active_branch(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        topic_active = specs / "active-topic"
+        _write_todo(topic_active, [_make_task("1")])
+        (topic_active / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}),
+            encoding="utf-8",
+        )
+        topic_merged = specs / "merged-topic"
+        _write_todo(topic_merged, [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(sys, "argv", ["archive_specs.py"])
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ), patch(
+            "archive_specs.branch_exists",
+            side_effect=lambda name: name == "spex/active",
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "merged-topic" in output
+        assert "active-topic" not in output
+        assert (archives / "merged-topic").is_dir()
+        assert (specs / "active-topic").is_dir()
