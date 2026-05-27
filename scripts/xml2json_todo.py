@@ -196,24 +196,28 @@ def main():
     rm_flag = False
     post_action = False
     event_type = None
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+    raw_args = sys.argv[1:]
+
+    # Parse flags that may have following values (e.g. --event-type <value>)
+    positional = []
     i = 0
-    while i < len(flags):
-        f = flags[i]
-        if f in ("-a", "--append"):
+    while i < len(raw_args):
+        a = raw_args[i]
+        if a in ("-a", "--append"):
             append_mode = True
-        elif f in ("-r", "--rm"):
+        elif a in ("-r", "--rm"):
             rm_flag = True
-        elif f == "--post-action":
+        elif a == "--post-action":
             post_action = True
-        elif f == "--event-type" and i + 1 < len(flags):
-            event_type = flags[i + 1]
+        elif a == "--event-type" and i + 1 < len(raw_args):
+            event_type = raw_args[i + 1]
             i += 1
-        else:
-            print(f"Error: unknown flag: {f}", file=sys.stderr)
+        elif a.startswith("-"):
+            print(f"Error: unknown flag: {a}", file=sys.stderr)
             print(USAGE, file=sys.stderr)
             sys.exit(1)
+        else:
+            positional.append(a)
         i += 1
 
     if post_action and not event_type:
@@ -221,7 +225,7 @@ def main():
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
-    if len(args) != 1:
+    if len(positional) != 1:
         print(
             "Error: expected exactly one argument (XML file path).",
             file=sys.stderr,
@@ -229,7 +233,7 @@ def main():
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
-    xml_path = Path(args[0])
+    xml_path = Path(positional[0])
     results = convert_xml_to_todo(xml_path)
 
     output_path = xml_path.parent / "todo.json"
