@@ -184,6 +184,28 @@ class TestFindSpexToml:
         result = _find_spex_toml(repo)
         assert result["extra"] is True
 
+    def test_old_home_toml_not_loaded(self, tmp_path, monkeypatch):
+        # ~/.spex.toml (old path) should NOT be loaded
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = "/old/home"\n', encoding="utf-8"
+        )
+
+        result = _find_spex_toml(None)
+        assert "spex_root" not in result
+
+    def test_old_xdg_config_not_loaded(self, tmp_path, monkeypatch):
+        # ~/.config/spex/config.toml (old XDG path) should NOT be loaded
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
+        xdg = tmp_path / ".config" / "spex"
+        xdg.mkdir(parents=True)
+        (xdg / "config.toml").write_text(
+            'spex_root = "/old/xdg"\n', encoding="utf-8"
+        )
+
+        result = _find_spex_toml(None)
+        assert "spex_root" not in result
+
 
 # ===================== load_config =====================
 
