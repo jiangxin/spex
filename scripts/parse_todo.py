@@ -10,6 +10,8 @@ Subcommands:
 import json
 import sys
 
+from cli import ArgumentParser
+
 REQUIRED_FIELDS = {"id", "name", "details", "completed_at", "commit_title"}
 
 USAGE = """\
@@ -70,19 +72,44 @@ def _load(path):
         sys.exit(1)
 
 
-def cmd_validate(args):
-    """Validate todo.json structure."""
-    if "-h" in args or "--help" in args:
-        print(VALIDATE_USAGE, end="")
-        sys.exit(0)
+def main(argv=None):
+    parser = ArgumentParser(prog="spex todo", usage=USAGE)
+    subparsers = parser.add_subparsers(dest="command")
 
-    if len(args) != 1:
-        print(
-            "Usage: spex todo validate <todo.json>", file=sys.stderr
-        )
+    # validate
+    p_validate = subparsers.add_parser("validate", help="Validate todo.json")
+    p_validate.add_argument("todo_json", help="Path to todo.json")
+
+    # get-next-undone
+    p_next = subparsers.add_parser(
+        "get-next-undone", help="Print next undone task"
+    )
+    next_mode = p_next.add_mutually_exclusive_group()
+    next_mode.add_argument("--only-id", action="store_true")
+    next_mode.add_argument("--details", action="store_true")
+    p_next.add_argument("todo_json", help="Path to todo.json")
+
+    # get-done
+    p_done = subparsers.add_parser("get-done", help="Print completed tasks")
+    p_done.add_argument("--details", action="store_true")
+    p_done.add_argument("todo_json", help="Path to todo.json")
+
+    args = parser.parse(argv)
+
+    if args.command == "validate":
+        cmd_validate(args)
+    elif args.command == "get-next-undone":
+        cmd_get_next_undone(args)
+    elif args.command == "get-done":
+        cmd_get_done(args)
+    else:
+        parser.print_usage(file=sys.stderr)
         sys.exit(1)
 
-    data = _load(args[0])
+
+def cmd_validate(args):
+    """Validate todo.json structure."""
+    data = _load(args.todo_json)
 
     if not isinstance(data, list):
         print("Error: top-level value must be an array.", file=sys.stderr)
@@ -125,20 +152,8 @@ def cmd_validate(args):
 
 def cmd_get_next_undone(args):
     """Print the next incomplete task."""
-    if "-h" in args or "--help" in args:
-        print(GET_NEXT_UNDONE_USAGE, end="")
-        sys.exit(0)
-
-    if len(args) != 2 or args[0] not in ("--only-id", "--details"):
-        print(
-            "Usage: spex todo get-next-undone "
-            "[--only-id|--details] <todo.json>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    mode = args[0]
-    data = _load(args[1])
+    mode = "--only-id" if args.only_id else "--details" if args.details else ""
+    data = _load(args.todo_json)
 
     if not isinstance(data, list):
         print("Error: top-level value must be an array.", file=sys.stderr)
@@ -221,23 +236,7 @@ MAX_OUTPUT_BYTES = 10240
 
 def cmd_get_done(args):
     """Print completed tasks."""
-    if "-h" in args or "--help" in args:
-        print(GET_DONE_USAGE, end="")
-        sys.exit(0)
-
-    details_mode = False
-    if args and args[0] == "--details":
-        details_mode = True
-        args = args[1:]
-
-    if len(args) != 1:
-        print(
-            "Usage: spex todo get-done [--details] <todo.json>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    data = _load(args[0])
+    data = _load(args.todo_json)
 
     if not isinstance(data, list):
         print("Error: top-level value must be an array.", file=sys.stderr)
@@ -251,39 +250,13 @@ def cmd_get_done(args):
     if not done_items:
         return
 
+    details_mode = args.details
     full_output = _format_done_output(done_items, details_mode)
 
     if len(full_output.encode("utf-8")) <= MAX_OUTPUT_BYTES:
         print(full_output)
     else:
         print(_format_truncated_output(done_items, details_mode))
-
-
-def main():
-    if len(sys.argv) < 2:
-        print(USAGE, file=sys.stderr)
-        sys.exit(1)
-
-    command = sys.argv[1]
-
-    if command in ("-h", "--help"):
-        print(USAGE, end="")
-        sys.exit(0)
-
-    args = sys.argv[2:]
-
-    commands = {
-        "validate": cmd_validate,
-        "get-next-undone": cmd_get_next_undone,
-        "get-done": cmd_get_done,
-    }
-
-    if command not in commands:
-        print(f"Error: unknown command '{command}'", file=sys.stderr)
-        print(USAGE, file=sys.stderr)
-        sys.exit(1)
-
-    commands[command](args)
 
 
 if __name__ == "__main__":
