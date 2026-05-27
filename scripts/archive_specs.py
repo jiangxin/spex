@@ -46,17 +46,23 @@ Options:
 """
 
 
-def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:
+def find_completed_topics(
+    specs_dir: Path, current_workdir=None, force: bool = False
+) -> list:
     """Return sorted list of topic paths where all tasks are completed.
 
     If current_workdir is provided, only topics matching that workdir
     (or topics without a workdir) are included.
+
+    If force is False, topics with an active spex_branch are excluded.
     """
     if not specs_dir.is_dir():
         return []
     results = []
     for d in specs_dir.iterdir():
         if not d.is_dir() or not is_topic_completed(d):
+            continue
+        if not force and has_active_branch(d):
             continue
         if current_workdir is not None:
             workdir = get_topic_workdir(d)
