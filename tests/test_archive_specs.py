@@ -322,7 +322,7 @@ class TestArchiveSingleTopic:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "no-such-topic" in err
-        assert "not found" in err
+        assert "no topic matching" in err
 
     def test_archive_single_topic_conflict(self, tmp_path, capsys):
         specs = tmp_path / "specs"
@@ -475,6 +475,33 @@ class TestArchiveSingleWithBranchGuard:
         assert (archives / "active-topic").is_dir()
         assert not (specs / "active-topic").exists()
 
+    def test_partial_match_archives_topic(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        topic = specs / "2026-05-27-14-11-archive-branch-guard"
+        _write_todo(topic, [_make_task("1")])
+        archives = tmp_path / "archives"
+
+        with patch("archive_specs.branch_exists", return_value=False):
+            result = archive_single_topic("branch-guard", specs, archives)
+
+        assert result == archives / "2026-05-27-14-11-archive-branch-guard"
+        assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
+        assert not (specs / "2026-05-27-14-11-archive-branch-guard").exists()
+
+    def test_partial_match_multiple_error(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        (specs / "2026-05-27-14-11-topic-a").mkdir(parents=True)
+        (specs / "2026-05-27-14-22-topic-b").mkdir(parents=True)
+        archives = tmp_path / "archives"
+
+        with pytest.raises(SystemExit) as exc_info:
+            archive_single_topic("topic", specs, archives)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "multiple topics match" in err
+        assert "topic-a" in err
+        assert "topic-b" in err
+
 
 class TestMainWithBranchGuard:
     """Integration tests for main() with branch guard."""
@@ -586,3 +613,25 @@ class TestMainWithBranchGuard:
         assert "active-topic" not in output
         assert (archives / "merged-topic").is_dir()
         assert (specs / "active-topic").is_dir()
+
+    def test_topic_flag_partial_match(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        topic = specs / "2026-05-27-14-11-archive-branch-guard"
+        _write_todo(topic, [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["archive_specs.py", "--topic", "branch-guard"],
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=str(specs)
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=str(archives)
+        ), patch(
+            "archive_specs.branch_exists", return_value=False
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "2026-05-27-14-11-archive-branch-guard" in output
+        assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()

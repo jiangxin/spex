@@ -19,6 +19,7 @@ from common import (
     get_topic_workdir,
     is_topic_completed,
     load_meta,
+    resolve_topic_dir,
     same_path,
 )
 
@@ -95,14 +96,11 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 def archive_single_topic(
     topic_name: str, specs_dir: Path, archives_dir: Path, force: bool = False
 ) -> Path | None:
-    """Archive a single topic by name.
+    """Archive a single topic by name. Supports partial topic name matching.
 
     Returns the destination path, or None if skipped due to active branch.
     """
-    topic_dir = specs_dir / topic_name
-    if not topic_dir.is_dir():
-        print(f"Error: topic '{topic_name}' not found in {specs_dir}", file=sys.stderr)
-        sys.exit(1)
+    topic_dir = resolve_topic_dir(topic_name, specs_dir)
     if not force and has_active_branch(topic_dir):
         meta = load_meta(topic_dir)
         spex_branch = meta.get("spex_branch", "") if meta else ""
@@ -113,7 +111,7 @@ def archive_single_topic(
         return None
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
-    print(f"Archived: {topic_name} -> {dest}")
+    print(f"Archived: {topic_dir.name} -> {dest}")
     return dest
 
 
