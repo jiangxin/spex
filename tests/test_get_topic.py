@@ -355,6 +355,77 @@ class TestMainAllFlag:
         assert lines == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
 
 
+class TestMainMustDoneFlag:
+    def test_must_done_and_must_undone_mutual_exclusion(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["get_topic", "--must-done", "--must-undone", "my-topic"],
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "--must-done and --must-undone are mutually exclusive" in err
+
+    def test_must_done_flag_passes_to_resolve(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic", completed=True)
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["get_topic", "--must-done", "2026-05-20-14-30-my-topic"],
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+
+        captured_kwargs = {}
+        original_resolve = resolve_topic
+
+        def mock_resolve(topic_name, specs_dir, **kwargs):
+            captured_kwargs.update(kwargs)
+            return original_resolve(topic_name, specs_dir, **kwargs)
+
+        monkeypatch.setattr("get_topic.resolve_topic", mock_resolve)
+        main()
+        assert captured_kwargs.get("must_done") is True
+
+    def test_must_undone_is_default(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["get_topic", "2026-05-20-14-30-my-topic"],
+        )
+        monkeypatch.setattr(
+            "get_topic.get_specs_dir", lambda: str(specs)
+        )
+
+        captured_kwargs = {}
+        original_resolve = resolve_topic
+
+        def mock_resolve(topic_name, specs_dir, **kwargs):
+            captured_kwargs.update(kwargs)
+            return original_resolve(topic_name, specs_dir, **kwargs)
+
+        monkeypatch.setattr("get_topic.resolve_topic", mock_resolve)
+        main()
+        assert captured_kwargs.get("must_done") is False
+
+
 class TestMainJsonFlag:
     def test_plain_output(self, tmp_path, monkeypatch, capsys):
         specs = tmp_path / "specs"

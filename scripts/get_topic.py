@@ -21,14 +21,16 @@ from common import (
 )
 
 USAGE = """\
-Usage: spex get-topic [--json] [--all] [topic]
+Usage: spex get-topic [--json] [--all] [--must-done | --must-undone] [topic]
 
 Resolve a topic directory under specs.
 
 Options:
-  --json       Output in JSON format
-  --all        Show all topics (ignore workspace filter)
-  -h, --help   Show this help message and exit"""
+  --json         Output in JSON format
+  --all          Show all topics (ignore workspace filter)
+  --must-done    Only show completed topics
+  --must-undone  Only show topics with undone tasks (default)
+  -h, --help     Show this help message and exit"""
 
 
 def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
@@ -161,6 +163,16 @@ def main():
     if all_flag:
         args = [a for a in args if a != "--all"]
 
+    must_done_flag = "--must-done" in args
+    must_undone_flag = "--must-undone" in args
+    if must_done_flag and must_undone_flag:
+        print(
+            "Error: --must-done and --must-undone are mutually exclusive.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    args = [a for a in args if a not in ("--must-done", "--must-undone")]
+
     topic_name = args[0] if args else ""
 
     if all_flag and topic_name:
@@ -178,7 +190,10 @@ def main():
     else:
         filter_workdir = get_current_workdir()
 
-    results = resolve_topic(topic_name, specs_dir, filter_workdir=filter_workdir)
+    results = resolve_topic(
+        topic_name, specs_dir, filter_workdir=filter_workdir,
+        must_done=must_done_flag,
+    )
     if json_mode:
         items = [
             {"topic_name": name, "topic_path": str(specs_dir / name)}
