@@ -288,29 +288,45 @@ def cli_apply_validate() -> None:
     import common
     import config as cfg
 
-    topic_name = _parse_topic_arg()
     conf = cfg.load_config()
-    topic_dir = common.resolve_topic_dir(topic_name)
+    topic_dir = common.resolve_topic_dir(_parse_topic_arg())
     validate_apply_branch(conf, topic_dir)
 
 
 def cli_apply_post_action() -> None:
-    """CLI: show post-apply branch status info."""
+    """CLI: run post-action hook, and show hint."""
     import common
+    import hooks
 
-    topic_name = _parse_topic_arg()
-    topic_dir = common.resolve_topic_dir(topic_name)
+    topic_dir = common.resolve_topic_dir(_parse_topic_arg())
+    topic_name = strip_date_prefix(topic_dir.name)
     meta = common.load_meta(topic_dir)
     spex_branch = meta.get("spex_branch", "") if meta else ""
     if not spex_branch:
         return
 
     target = meta.get("branch", "main")
-    print(
-        f"Development completed on topic branch {spex_branch}.\n"
-        f"After local code review, run /spex merge to merge into\n"
-        f"branch {target}, or create a pull request."
+    workdir = common.get_current_workdir()
+
+    # Try to run the post-action hook first
+    hooks.run_post_action(
+        "apply",
+        {
+            "topic": topic_name,
+            "source_branch": spex_branch,
+            "target_branch": target
+        },
+        workdir,
+        topic_name,
     )
+
+    # Fall back to static message if no hook was found
+    if hooks.find_hook("post-action", workdir) is None:
+        print(
+            f"Development completed on topic branch {spex_branch}.\n"
+            f"After local code review, run /spex merge to merge into\n"
+            f"branch {target}, or create a pull request."
+        )
 
 
 def cli_submit() -> None:
