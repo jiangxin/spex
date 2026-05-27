@@ -66,14 +66,12 @@ def _find_spex_toml(repo_root: Path | None) -> dict:
     """Search and merge all TOML configs in priority order.
 
     Priority (lowest to highest):
-      1. ~/.spex.toml
-      2. ~/.config/spex/config.toml
-      3. <repo_root>/.spex.toml
+      1. ~/.spex/config.toml
+      2. <repo_root>/.spex.toml
     """
     candidates: list[Path] = []
 
-    candidates.append(Path.home() / ".spex.toml")
-    candidates.append(Path.home() / ".config" / "spex" / "config.toml")
+    candidates.append(Path.home() / ".spex" / "config.toml")
 
     if repo_root is not None:
         candidates.append(repo_root / ".spex.toml")
