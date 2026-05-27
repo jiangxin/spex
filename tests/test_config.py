@@ -111,7 +111,9 @@ class TestFindSpexToml:
 
     def test_home_only(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = "/home/spex"\n', encoding="utf-8"
         )
 
@@ -122,8 +124,9 @@ class TestFindSpexToml:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         repo = tmp_path / "repo"
         repo.mkdir()
-
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = "/home/spex"\n', encoding="utf-8"
         )
         (repo / ".spex.toml").write_text(
@@ -134,32 +137,28 @@ class TestFindSpexToml:
         assert result["spex_root"] == "/repo/spex"
 
     def test_xdg_overrides_home(self, tmp_path, monkeypatch):
+        # Renamed: tests that ~/.spex/config.toml is loaded as user-level config
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        xdg = tmp_path / ".config" / "spex"
-        xdg.mkdir(parents=True)
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir(parents=True)
 
-        (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/home/spex"\n', encoding="utf-8"
-        )
-        (xdg / "config.toml").write_text(
-            'spex_root = "/xdg/spex"\n', encoding="utf-8"
+        (home_spex / "config.toml").write_text(
+            'spex_root = "/user/spex"\n', encoding="utf-8"
         )
 
         result = _find_spex_toml(None)
-        assert result["spex_root"] == "/xdg/spex"
+        assert result["spex_root"] == "/user/spex"
 
     def test_repo_overrides_xdg_overrides_home(self, tmp_path, monkeypatch):
+        # Renamed: tests repo overrides user-level config
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         repo = tmp_path / "repo"
         repo.mkdir()
-        xdg = tmp_path / ".config" / "spex"
-        xdg.mkdir(parents=True)
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir(parents=True)
 
-        (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/home"\n', encoding="utf-8"
-        )
-        (xdg / "config.toml").write_text(
-            'spex_root = "/xdg"\n', encoding="utf-8"
+        (home_spex / "config.toml").write_text(
+            'spex_root = "/user"\n', encoding="utf-8"
         )
         (repo / ".spex.toml").write_text(
             'spex_root = "/repo"\n', encoding="utf-8"
@@ -172,8 +171,10 @@ class TestFindSpexToml:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         repo = tmp_path / "repo"
         repo.mkdir()
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
 
-        (tmp_path / ".spex.toml").write_text(
+        (home_spex / "config.toml").write_text(
             'spex_root = "/home"\nextra = true\n', encoding="utf-8"
         )
         (repo / ".spex.toml").write_text(
@@ -191,7 +192,9 @@ class TestLoadConfig:
     def test_env_var_overrides_files(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = "/from/file"\n', encoding="utf-8"
         )
         monkeypatch.setenv("SPEX_ROOT", "/from/env")
@@ -203,13 +206,15 @@ class TestLoadConfig:
     def test_caching(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = "/original"\n', encoding="utf-8"
         )
 
         first = load_config()
         # Change file after first load
-        (tmp_path / ".spex.toml").write_text(
+        (home_spex / "config.toml").write_text(
             'spex_root = "/changed"\n', encoding="utf-8"
         )
         second = load_config()
@@ -220,12 +225,14 @@ class TestLoadConfig:
     def test_cache_clear_then_reload(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = "/v1"\n', encoding="utf-8"
         )
 
         first = load_config()
-        (tmp_path / ".spex.toml").write_text(
+        (home_spex / "config.toml").write_text(
             'spex_root = "/v2"\n', encoding="utf-8"
         )
         clear_config_cache()
@@ -242,7 +249,9 @@ class TestBranchConfig:
     def test_load_branch_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'create_branch = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
             encoding="utf-8",
         )
@@ -256,7 +265,9 @@ class TestBranchConfig:
     def test_default_branch_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
-        (tmp_path / ".spex.toml").write_text(
+        home_spex = tmp_path / ".spex"
+        home_spex.mkdir()
+        (home_spex / "config.toml").write_text(
             'spex_root = ".spex"\n', encoding="utf-8"
         )
 

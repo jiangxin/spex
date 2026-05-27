@@ -185,7 +185,9 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     )
     # Write home-level (should be lower priority)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    (tmp_path / ".spex.toml").write_text(
+    home_spex = tmp_path / ".spex"
+    home_spex.mkdir()
+    (home_spex / "config.toml").write_text(
         'spex_root = "/should/not/use"\n', encoding="utf-8"
     )
 
@@ -247,11 +249,11 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    custom_path = tmp_path / "from-xdg"
+    custom_path = tmp_path / "from-user"
     # No repo-level .spex.toml
-    xdg_dir = tmp_path / ".config" / "spex"
-    xdg_dir.mkdir(parents=True)
-    (xdg_dir / "config.toml").write_text(
+    user_config_dir = tmp_path / ".spex"
+    user_config_dir.mkdir(parents=True)
+    (user_config_dir / "config.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -266,8 +268,10 @@ def test_home_toml_fallback(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-home"
-    # No repo-level, no XDG
-    (tmp_path / ".spex.toml").write_text(
+    # No repo-level config
+    user_config_dir = tmp_path / ".spex"
+    user_config_dir.mkdir(parents=True)
+    (user_config_dir / "config.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
