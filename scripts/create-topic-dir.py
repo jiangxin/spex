@@ -73,7 +73,7 @@ def _get_git_info():
     return info
 
 
-def _write_meta(topic_dir, git_info, prompt, timestamp):
+def _write_meta(topic_dir, git_info, prompt, timestamp, description=""):
     """Write meta.json into topic_dir with git info and prompt."""
     meta = {
         "workdir": git_info.get("workdir", ""),
@@ -84,6 +84,8 @@ def _write_meta(topic_dir, git_info, prompt, timestamp):
         "created_at": timestamp,
         "prompts": [prompt] if prompt else [],
     }
+    if description:
+        meta["description"] = description
     meta_path = Path(topic_dir) / "meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -109,6 +111,11 @@ def main():
     parser.add_argument(
         "--get-prompt",
         help="Comma-separated template names to render and include in JSON output"
+    )
+    parser.add_argument(
+        "--description",
+        default="",
+        help="Brief description of the topic (saved to meta.json)"
     )
     args = parser.parse_args()
 
@@ -146,7 +153,7 @@ def main():
 
     git_info = _get_git_info()
     timestamp = local_iso_timestamp()
-    _write_meta(topic_dir, git_info, prompt, timestamp)
+    _write_meta(topic_dir, git_info, prompt, timestamp, args.description)
 
     if args.json:
         result = {

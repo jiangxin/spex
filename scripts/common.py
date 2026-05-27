@@ -334,7 +334,15 @@ def parse_front_matter_description(content: str) -> str:
 
 
 def get_spec_description(topic_dir: Path) -> str:
-    """Read spec.md and return its front-matter description, or ''."""
+    """Return the topic's description.
+
+    Reads from meta.json first (authoritative source). Falls back to
+    spec.md front-matter description for backwards compatibility.
+    """
+    meta = load_meta(topic_dir)
+    if meta and meta.get("description"):
+        return meta["description"]
+
     spec_path = topic_dir / "spec.md"
     if not spec_path.is_file():
         return ""

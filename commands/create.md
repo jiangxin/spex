@@ -17,7 +17,18 @@ and test plan.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Clarify Requirement
+### Phase 1: Validate Branch
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex create-helper --validate
+```
+
+If the script exits with an error (non-zero), the error message is already
+printed to stderr. Stop execution. On success, continue to the next phase.
+
+### Phase 2: Clarify Requirement
 
 If `$input` is not provided or empty, ask the user to describe the requirement.
 
@@ -29,33 +40,30 @@ points before proceeding.
 After clarification, record the complete, unambiguous requirement as
 `$requirement`.
 
-### Phase 2: Validate Branch
+### Phase 3: Generate Topic and Description
 
-Run:
+Based on `$requirement`, generate a JSON object with two fields:
 
-```bash
-$spex_skill_dir/scripts/spex create-helper --validate
-```
+- `topic`: a short English name (<32 bytes) using only `[a-z0-9-]`,
+  replacing spaces with `-`. Do NOT prepend any date prefix.
+- `description`: a brief English summary of the requirement, ideally
+  under 100 characters.
 
-If the script exits with an error (non-zero), the error message is already
-printed to stderr. Stop execution. On success, continue to the next phase.
+Example: `{"topic": "add-login-api", "description": "Add user login API with JWT authentication"}`
 
-### Phase 3: Generate Topic Name
-
-Based on `$requirement`, generate a short English name (<32 bytes) using only
-`[a-z0-9-]`, replacing spaces with `-`. The result is `$topic`
-(e.g., `add-login-api`). Do NOT prepend any date prefix.
+Parse this JSON and save the values as `$topic` and `$description`.
 
 ### Phase 4: Prepare Topic Directory
 
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --get-prompt "spec-template" $topic
+echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --description "$description" --get-prompt "spec-template" $topic
 ```
 
 The script creates the topic directory and `meta.json` (with the
-requirement saved to its `prompts` field). Parse the JSON output and
+requirement saved to its `prompts` field and the description saved to
+its `description` field). Parse the JSON output and
 save these variables:
 
 - `$topic_name` ← `topic_name` (topic with date prefix,
@@ -72,7 +80,7 @@ Example JSON output:
 {
   "topic_name": "2026-05-24-10-30-add-login-api",
   "topic_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
-  "spec_template": "# [Title]\n\n..."
+  "spec_template": "# [Title]\n..."
 }
 ```
 
@@ -84,14 +92,10 @@ data models, API contracts, error handling, and edge cases.
 
 Using `$spec_template` as the template, create `$topic_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
-The template includes YAML front-matter with `version` and `description`
-fields. Replace the `description` placeholder with a brief summary of
-the requirement (under 10 lines, each line max 80 chars). Keep the
-`version` field unchanged.
 Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
 results. Fill the "User Clarification" section with clarifications
-gathered in Phase 1. Keep the Constraints section as-is.
+gathered in Phase 2. Keep the Constraints section as-is.
 
 ### Phase 6: Plan Implementation Steps
 
