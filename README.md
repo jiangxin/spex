@@ -19,17 +19,12 @@ This skill is invoked manually — it does **not** auto-trigger via LLM detectio
 | Command   | Description                              |
 |-----------|------------------------------------------|
 | `create`  | Create a new spec document               |
-| `list`    | List specs with status and metadata      |
 | `apply`   | Apply a spec to generate implementation  |
 | `archive` | Archive a completed spec                 |
 
 ### `/spex create <spec-name> [description]`
 
 Creates a new spec file with structured frontmatter (title, status, created date) and standard sections (Overview, Requirements, Design, Implementation Notes).
-
-### `/spex list [--status <status>]`
-
-Lists all specs in a formatted table showing name, status (`draft` / `active` / `completed` / `archived`), and created date. Supports filtering by status.
 
 ### `/spex apply <spec-name>`
 
