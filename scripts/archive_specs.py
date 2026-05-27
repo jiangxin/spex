@@ -21,13 +21,14 @@ from common import (
 )
 
 USAGE = """\
-Usage: spex archive [--dry-run | -n]
+Usage: spex archive [--topic <topic>] [--dry-run | -n]
 
 Archive completed spec topics.
 
 Options:
-  --dry-run, -n  Preview without moving
-  -h, --help     Show this help message and exit
+  --topic <topic>  Archive a single topic by name
+  --dry-run, -n    Preview without moving
+  -h, --help       Show this help message and exit
 """
 
 
@@ -70,12 +71,38 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
         counter += 1
 
 
+def archive_single_topic(
+    topic_name: str, specs_dir: Path, archives_dir: Path
+) -> Path:
+    """Archive a single topic by name.
+
+    Returns the destination path.
+    """
+    topic_dir = specs_dir / topic_name
+    if not topic_dir.is_dir():
+        print(f"Error: topic '{topic_name}' not found in {specs_dir}", file=sys.stderr)
+        sys.exit(1)
+    archives_dir.mkdir(parents=True, exist_ok=True)
+    dest = move_topic(topic_dir, archives_dir)
+    print(f"Archived: {topic_name} -> {dest}")
+    return dest
+
+
 def main():
     check_help_flag(USAGE)
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
 
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
+
+    if "--topic" in sys.argv:
+        idx = sys.argv.index("--topic")
+        if idx + 1 >= len(sys.argv):
+            print("Error: --topic requires a value", file=sys.stderr)
+            sys.exit(1)
+        topic_name = sys.argv[idx + 1]
+        archive_single_topic(topic_name, specs_dir, archives_dir)
+        return
 
     current_workdir = get_current_workdir()
     completed = find_completed_topics(specs_dir, current_workdir)
