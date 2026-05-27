@@ -41,6 +41,7 @@ class TestIsInitialized:
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
         (spex_root / "archives").mkdir(parents=True)
+        (spex_root / "hooks").mkdir(parents=True)
         (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
         monkeypatch.setenv("SPEX_ROOT", str(spex_root))
         clear_spex_root_cache()
@@ -253,6 +254,7 @@ class TestMainCheckFlag:
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
         (spex_root / "archives").mkdir(parents=True)
+        (spex_root / "hooks").mkdir(parents=True)
         (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
         monkeypatch.setenv("SPEX_ROOT", str(spex_root))
         clear_spex_root_cache()
