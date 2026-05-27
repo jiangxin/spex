@@ -1,13 +1,13 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill for creating and managing specification documents. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit, archive, init."
+description: "Spec-Driven Development (Spex) skill for creating and managing specification documents. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit (merge), archive, init."
 metadata:
   version: 0.0.1
 arguments:
   - name: command
     required: true
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit, archive, init. Show usage help and exit if missing or unrecognized."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. Show usage help and exit if missing or unrecognized."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -31,7 +31,7 @@ A skill for managing specification documents in a structured spec directory.
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
 | `apply-one-step` | `step`    | Apply one step from a spec's todo list |
-| `submit`   |                  | Submit completed work (merge or PR) |
+| `submit`   | `merge`          | Submit completed work (merge or PR) |
 | `archive`  |                  | Archive a completed spec          |
 | `init`     |                  | Initialize spex environment       |
 
@@ -46,7 +46,7 @@ command file:
 - `modify` → `commands/modify.md`
 - `apply` / `run` / `do` / `go` → `commands/apply.md`
 - `apply-one-step` / `step` → `commands/apply-one-step.md`
-- `submit` → `commands/submit.md`
+- `submit` / `merge` → `commands/submit.md`
 - `archive` → `commands/archive.md`
 - `init` → `commands/init.md`
 
