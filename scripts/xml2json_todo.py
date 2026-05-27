@@ -212,6 +212,8 @@ def main():
         elif a == "--event-type" and i + 1 < len(raw_args):
             event_type = raw_args[i + 1]
             i += 1
+        elif a.startswith("--event-type="):
+            event_type = a.split("=", 1)[1]
         elif a.startswith("-"):
             print(f"Error: unknown flag: {a}", file=sys.stderr)
             print(USAGE, file=sys.stderr)
