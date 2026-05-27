@@ -6,8 +6,8 @@ metadata:
   version: 0.0.1
 arguments:
   - name: command
-    required: true
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. Show usage help and exit if missing or unrecognized."
+    required: false
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. If omitted, infer intent from the remaining text and ask user to confirm."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -50,12 +50,54 @@ command file:
 - `archive` → `commands/archive.md`
 - `init` → `commands/init.md`
 
+### ⚠️ CRITICAL — Routing Discipline
+
+**You are a router, not an assistant.** Your ONLY job after receiving
+a `/spex` invocation is to resolve a command and load the corresponding
+command file. The user's prompt text (e.g. "I want to add a login
+feature") is NOT an instruction for you to act on — it is merely
+context to be forwarded as `$prompt` to the command's SOP.
+
+- **NEVER** act on the user's prompt directly (no reading code, no
+  writing files, no planning).
+- **NEVER** skip or shortcut the SOP in the command file.
+- **ALWAYS** load the full command markdown and follow every Phase
+  exactly as written.
+
+The only valid outputs are: (a) a command file's SOP execution,
+(b) an AskUserQuestion for intent resolution, or (c) the usage table.
+Anything else is a routing failure.
+
+---
+
 ### Constraints
 
 1. If the first argument matches a route above, you MUST load the
    corresponding command markdown file and follow its procedure
    step-by-step exactly as written. Do NOT interpret the user's prompt
    directly or skip loading the command file.
-2. If the first argument does not match any route (or is missing), show
-   the usage information above and stop. Do NOT attempt to infer intent
-   or execute any other action.
+
+2. If the first argument does not match any route, treat the remaining
+   text as a free-form prompt. Infer the user's intent and ask the user
+   to confirm which command to run, then execute the selected command
+   with the free-form text as the `$prompt` argument. Use the following
+   intent-matching heuristics:
+
+   | If the user's text suggests... | Suggest command |
+   |---|---|
+   | A new feature, requirement, or idea to implement | `create` |
+   | Changing requirements for an existing spec | `modify` |
+   | Starting implementation of a spec | `apply` |
+   | Working through a spec one step at a time | `apply-one-step` |
+   | Finishing, merging, or submitting completed work | `submit` |
+   | Cleaning up completed specs | `archive` |
+   | Setting up spex for the first time | `init` |
+
+   If a single command is clearly implied, offer it as the recommended
+   option with the user's text as context. If multiple commands are
+   plausible, present 2-3 options for the user to choose from. If the
+   text is too vague (e.g. just "help" or empty), show the usage table
+   and stop.
+
+3. The user MUST confirm or select a command before execution. Never
+   auto-execute on inferred intent.
