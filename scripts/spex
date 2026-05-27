@@ -23,7 +23,8 @@ Global options:
 Commands (run directly):
   list [--all]  List spec topics with progress (--all includes archived)
   show <topic>  Show detailed topic information (-v for full spec)
-  archive [-n]  Archive completed spec topics (--dry-run to preview)
+  archive [-n] [--topic <topic>]
+              Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
 
 Commands (require AI coding agent):

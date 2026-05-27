@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex get-topic --json "$topic_name"
+$spex_skill_dir/scripts/spex get-topic --json --must-done "$topic_name"
 ```
 
 Read the command output and parse it as a JSON array:
@@ -35,9 +35,6 @@ Read `$topic_path/meta.json` and check:
 
 - If `spex_branch` is not set, report that branch management is not
   active for this topic and stop.
-- If the topic still has undone tasks (check `$topic_path/todo.json`),
-  warn the user that the spec is not fully implemented and ask whether
-  to continue. If the user aborts, stop.
 
 ### Phase 3: Submit
 
@@ -52,7 +49,18 @@ Parse the JSON output:
 - If `errors` is non-empty, report the errors to the user and stop.
 - Otherwise, note the `action`, `source`, and `target` fields.
 
-### Phase 4: Output
+### Phase 4: Archive
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex archive --topic $topic_name
+```
+
+Display the output to the user. If the command fails, report
+the error but do not stop — the merge was already successful.
+
+### Phase 5: Output
 
 Display the following summary to the user:
 
@@ -62,4 +70,5 @@ Display the following summary to the user:
 - Action: $action
 - Source branch: $source
 - Target branch: $target
+- Archived: yes
 ```
