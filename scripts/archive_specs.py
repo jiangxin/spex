@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from branch import branch_exists
 from common import (
     check_help_flag,
     get_archives_dir,
@@ -17,32 +18,53 @@ from common import (
     get_specs_dir,
     get_topic_workdir,
     is_topic_completed,
+    load_meta,
+    resolve_topic_dir,
     same_path,
 )
 
+
+def has_active_branch(topic_dir: Path) -> bool:
+    """Return True if meta.json has spex_branch and that git branch exists."""
+    meta = load_meta(topic_dir)
+    if not meta:
+        return False
+    spex_branch = meta.get("spex_branch", "")
+    if not spex_branch:
+        return False
+    return branch_exists(spex_branch)
+
+
 USAGE = """\
-Usage: spex archive [--topic <topic>] [--dry-run | -n]
+Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f]
 
 Archive completed spec topics.
 
 Options:
   --topic <topic>  Archive a single topic by name
   --dry-run, -n    Preview without moving
+  --force, -f      Bypass spex_branch existence check
   -h, --help       Show this help message and exit
 """
 
 
-def find_completed_topics(specs_dir: Path, current_workdir=None) -> list:
+def find_completed_topics(
+    specs_dir: Path, current_workdir=None, force: bool = False
+) -> list:
     """Return sorted list of topic paths where all tasks are completed.
 
     If current_workdir is provided, only topics matching that workdir
     (or topics without a workdir) are included.
+
+    If force is False, topics with an active spex_branch are excluded.
     """
     if not specs_dir.is_dir():
         return []
     results = []
     for d in specs_dir.iterdir():
         if not d.is_dir() or not is_topic_completed(d):
+            continue
+        if not force and has_active_branch(d):
             continue
         if current_workdir is not None:
             workdir = get_topic_workdir(d)
@@ -72,25 +94,31 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def archive_single_topic(
-    topic_name: str, specs_dir: Path, archives_dir: Path
-) -> Path:
-    """Archive a single topic by name.
+    topic_name: str, specs_dir: Path, archives_dir: Path, force: bool = False
+) -> Path | None:
+    """Archive a single topic by name. Supports partial topic name matching.
 
-    Returns the destination path.
+    Returns the destination path, or None if skipped due to active branch.
     """
-    topic_dir = specs_dir / topic_name
-    if not topic_dir.is_dir():
-        print(f"Error: topic '{topic_name}' not found in {specs_dir}", file=sys.stderr)
-        sys.exit(1)
+    topic_dir = resolve_topic_dir(topic_name, specs_dir)
+    if not force and has_active_branch(topic_dir):
+        meta = load_meta(topic_dir)
+        spex_branch = meta.get("spex_branch", "") if meta else ""
+        print(
+            f"Skipping: spex branch '{spex_branch}' still exists"
+            f" (use --force to archive)"
+        )
+        return None
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
-    print(f"Archived: {topic_name} -> {dest}")
+    print(f"Archived: {topic_dir.name} -> {dest}")
     return dest
 
 
 def main():
     check_help_flag(USAGE)
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
+    force = "--force" in sys.argv or "-f" in sys.argv
 
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
@@ -101,20 +129,31 @@ def main():
             print("Error: --topic requires a value", file=sys.stderr)
             sys.exit(1)
         topic_name = sys.argv[idx + 1]
-        archive_single_topic(topic_name, specs_dir, archives_dir)
+        archive_single_topic(topic_name, specs_dir, archives_dir, force)
         return
 
     current_workdir = get_current_workdir()
-    completed = find_completed_topics(specs_dir, current_workdir)
+    completed = find_completed_topics(specs_dir, current_workdir, force)
 
     if not completed:
         print("No completed topics to archive.")
         return
 
     if dry_run:
+        # Show topics that would be skipped due to active branches
+        skipped = [
+            d for d in sorted(specs_dir.iterdir())
+            if d.is_dir() and is_topic_completed(d) and has_active_branch(d)
+        ]
         print(f"Would archive {len(completed)} topic(s):")
         for topic_dir in completed:
             print(f"  {topic_dir.name}")
+        if skipped:
+            print(f"Would skip {len(skipped)} topic(s) (active spex_branch):")
+            for topic_dir in skipped:
+                meta = load_meta(topic_dir)
+                branch = meta.get("spex_branch", "") if meta else ""
+                print(f"  {topic_dir.name} ({branch})")
         return
 
     archives_dir.mkdir(parents=True, exist_ok=True)
