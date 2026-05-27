@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-from common import DEFAULT_SPEX_BRANCH_PREFIX
+from common import DEFAULT_SPEX_BRANCH_PREFIX, strip_date_prefix
 
 
 def _strip_refs_prefix(name: str) -> str:
@@ -32,11 +31,6 @@ def get_current_branch() -> str:
     if branch_name == "HEAD":
         raise RuntimeError("Currently in detached HEAD state, no branch name.")
     return branch_name
-
-
-def strip_date_prefix(topic_name: str) -> str:
-    """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a topic name."""
-    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", topic_name)
 
 
 def branch_exists(branch_name: str) -> bool:

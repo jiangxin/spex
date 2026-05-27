@@ -14,10 +14,10 @@ from branch import (
     cli_submit,
     get_current_branch,
     merge_branch,
-    strip_date_prefix,
     validate_apply_branch,
     validate_create_branch,
 )
+from common import strip_date_prefix
 
 
 class TestStripDatePrefix:

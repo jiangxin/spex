@@ -288,6 +288,11 @@ def local_iso_timestamp() -> str:
     return f"{base}{offset[:3]}:{offset[3:]}"
 
 
+def strip_date_prefix(topic_name: str) -> str:
+    """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a topic name."""
+    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", topic_name)
+
+
 def _get_skill_path() -> Path:
     """Return the skill root directory (parent of scripts/)."""
     return Path(__file__).resolve().parent.parent

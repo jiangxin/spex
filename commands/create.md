@@ -156,7 +156,7 @@ structure:**
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo xml2json --rm $topic_path/todo.xml
+$spex_skill_dir/scripts/spex todo xml2json --rm --post-action --event-type create $topic_path/todo.xml
 ```
 
 If the script exits with an error, read the error message, fix the XML
