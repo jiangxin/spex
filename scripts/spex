@@ -276,6 +276,54 @@ def _run_init():
     init.main()
 
 
+def _run_hook():
+    """Execute a hook script with event data.
+
+    Usage: spex run-hook <hook_name> --event-type <type> --topic <name>
+           --json-payload '{"key": "value"}'
+    """
+    import json
+
+    import hooks
+
+    args = sys.argv[2:]
+    if not args:
+        print("Error: run-hook requires <hook_name>", file=sys.stderr)
+        sys.exit(1)
+
+    hook_name = args[0]
+    event_type = None
+    topic_name = None
+    payload_json = None
+    workdir = None
+
+    i = 1
+    while i < len(args):
+        if args[i] == "--event-type" and i + 1 < len(args):
+            event_type = args[i + 1]
+            i += 2
+        elif args[i] == "--topic" and i + 1 < len(args):
+            topic_name = args[i + 1]
+            i += 2
+        elif args[i] == "--json-payload" and i + 1 < len(args):
+            payload_json = args[i + 1]
+            i += 2
+        elif args[i] == "--workdir" and i + 1 < len(args):
+            workdir = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    if not event_type:
+        print("Error: --event-type is required", file=sys.stderr)
+        sys.exit(1)
+
+    payload = json.loads(payload_json or "{}")
+    payload = {**payload, "topic_name": topic_name} if topic_name else payload
+    event_data = hooks._build_event_data(event_type, payload, workdir)
+    hooks.run_hook(hook_name, event_data, workdir)
+
+
 def _run_version():
     """Print version and exit."""
     print(f"spex {_get_version()}")
@@ -296,6 +344,7 @@ DIRECT_COMMANDS = {
     "create-helper": _run_create_helper,
     "apply-helper": _run_apply_helper,
     "submit": _run_submit,
+    "run-hook": _run_hook,
     "version": _run_version,
 }
 

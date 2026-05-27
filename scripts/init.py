@@ -17,7 +17,8 @@ from common import (
 def is_initialized(workdir=None):
     """Check if spex environment is initialized.
 
-    Returns True if specs_dir, archives_dir, and templates/examples/ all exist.
+    Returns True if specs_dir, archives_dir, hooks_dir, and
+    templates/examples/ all exist.
     """
     try:
         spex_root = Path(get_spex_root(workdir, auto_init=False))
@@ -26,6 +27,7 @@ def is_initialized(workdir=None):
     return (
         (spex_root / "specs").is_dir()
         and (spex_root / "archives").is_dir()
+        and (spex_root / "hooks").is_dir()
         and (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).is_dir()
     )
 

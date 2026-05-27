@@ -7,17 +7,19 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import atomic_write_json, check_help_flag, load_todo
+from common import atomic_write_json, check_help_flag, load_todo, strip_date_prefix
 
 USAGE = """\
-Usage: spex todo xml2json <xml-file> [--append] [--rm]
+Usage: spex todo xml2json <xml-file> [--append] [--rm] [--post-action --event-type <type>]
 
 Convert todo.xml to todo.json in the same directory.
 
 Options:
-  -h, --help    Show this help message and exit
-  -a, --append  Append new steps to existing todo.json (preserving completed steps)
-  -r, --rm      Remove XML file after successful conversion
+  -h, --help              Show this help message and exit
+  -a, --append            Append new steps to existing todo.json (preserving completed steps)
+  -r, --rm                Remove XML file after successful conversion
+  --post-action           Run post-action hook after successful conversion
+  --event-type <type>     Event type for the post-action hook (required with --post-action)
 """
 
 
@@ -192,17 +194,32 @@ def main():
 
     append_mode = False
     rm_flag = False
+    post_action = False
+    event_type = None
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
-    for f in flags:
+    i = 0
+    while i < len(flags):
+        f = flags[i]
         if f in ("-a", "--append"):
             append_mode = True
         elif f in ("-r", "--rm"):
             rm_flag = True
+        elif f == "--post-action":
+            post_action = True
+        elif f == "--event-type" and i + 1 < len(flags):
+            event_type = flags[i + 1]
+            i += 1
         else:
             print(f"Error: unknown flag: {f}", file=sys.stderr)
             print(USAGE, file=sys.stderr)
             sys.exit(1)
+        i += 1
+
+    if post_action and not event_type:
+        print("Error: --post-action requires --event-type", file=sys.stderr)
+        print(USAGE, file=sys.stderr)
+        sys.exit(1)
 
     if len(args) != 1:
         print(
@@ -243,6 +260,7 @@ def main():
         else:
             atomic_write_json(output_path, results)
             print(f"OK: {len(results)} step(s) written (no existing todos).")
+            existing = results
         if rm_flag and xml_path.exists():
             xml_path.unlink()
     else:
@@ -250,6 +268,32 @@ def main():
         print(f"OK: {len(results)} step(s) converted.")
         if rm_flag and xml_path.exists():
             xml_path.unlink()
+        existing = results
+
+    if post_action:
+        import common
+        import hooks
+
+        topic_dir = xml_path.parent
+        meta = common.load_meta(topic_dir)
+        topic_name = meta.get("topic", "") if meta else ""
+        topic_name = topic_name or strip_date_prefix(topic_dir.name)
+        workdir = meta.get("workdir", "") if meta else ""
+        if not workdir:
+            workdir = common.get_current_workdir()
+
+        done = sum(
+            1 for item in (existing or [])
+            if isinstance(item, dict) and item.get("completed_at")
+        )
+        undone = len(existing or []) - done
+
+        hooks.run_post_action(
+            event_type,
+            {"topic": topic_name, "done": done, "undone": undone},
+            workdir or None,
+            topic_name,
+        )
 
 
 if __name__ == "__main__":

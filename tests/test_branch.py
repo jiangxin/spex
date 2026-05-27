@@ -14,10 +14,10 @@ from branch import (
     cli_submit,
     get_current_branch,
     merge_branch,
-    strip_date_prefix,
     validate_apply_branch,
     validate_create_branch,
 )
+from common import strip_date_prefix
 
 
 class TestStripDatePrefix:
@@ -297,7 +297,9 @@ class TestCliApplyPostAction:
 
     @patch("common.resolve_topic_dir")
     @patch("common.load_meta", return_value={})
-    def test_no_branch_no_output(self, _meta, _resolve, capsys, monkeypatch):
+    def test_no_branch_no_output(self, _meta, _resolve, capsys, monkeypatch,
+                                 tmp_path):
+        _resolve.return_value = tmp_path
         monkeypatch.setattr("sys.argv", ["spex", "--topic", "no-branch"])
         cli_apply_post_action()
         out = capsys.readouterr().out

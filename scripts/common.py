@@ -65,6 +65,20 @@ def _write_internal_gitignore(spex_root_path: Path):
         tpl_gi.write_text("/examples/\n")
 
 
+def _resolve_hook_roots(workdir=None):
+    """Return hook root paths in priority order (highest first).
+
+    Order:
+      1. <spex_root>/hooks/
+      2. ~/.spex/hooks/
+    """
+    roots = []
+    spex_root = Path(get_spex_root(workdir, auto_init=False))
+    roots.append(spex_root / "hooks")
+    roots.append(Path.home() / ".spex" / "hooks")
+    return roots
+
+
 def ensure_initialized(spex_root):
     """Ensure spex_root directory structure is initialized."""
     spex_root_path = Path(spex_root)
@@ -73,6 +87,7 @@ def ensure_initialized(spex_root):
     spex_root_path.mkdir(parents=True, exist_ok=True)
     (spex_root_path / "specs").mkdir(exist_ok=True)
     (spex_root_path / "archives").mkdir(exist_ok=True)
+    (spex_root_path / "hooks").mkdir(exist_ok=True)
     _sync_all_templates(spex_root_path)
     _write_internal_gitignore(spex_root_path)
 
@@ -271,6 +286,11 @@ def local_iso_timestamp() -> str:
     base = now.strftime("%Y-%m-%dT%H:%M:%S")
     offset = now.strftime("%z")
     return f"{base}{offset[:3]}:{offset[3:]}"
+
+
+def strip_date_prefix(topic_name: str) -> str:
+    """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a topic name."""
+    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", topic_name)
 
 
 def _get_skill_path() -> Path:
