@@ -35,13 +35,14 @@ def has_active_branch(topic_dir: Path) -> bool:
 
 
 USAGE = """\
-Usage: spex archive [--topic <topic>] [--dry-run | -n]
+Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f]
 
 Archive completed spec topics.
 
 Options:
   --topic <topic>  Archive a single topic by name
   --dry-run, -n    Preview without moving
+  --force, -f      Bypass spex_branch existence check
   -h, --help       Show this help message and exit
 """
 
@@ -119,6 +120,7 @@ def archive_single_topic(
 def main():
     check_help_flag(USAGE)
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
+    force = "--force" in sys.argv or "-f" in sys.argv
 
     specs_dir = Path(get_specs_dir())
     archives_dir = Path(get_archives_dir())
@@ -129,20 +131,31 @@ def main():
             print("Error: --topic requires a value", file=sys.stderr)
             sys.exit(1)
         topic_name = sys.argv[idx + 1]
-        archive_single_topic(topic_name, specs_dir, archives_dir)
+        archive_single_topic(topic_name, specs_dir, archives_dir, force)
         return
 
     current_workdir = get_current_workdir()
-    completed = find_completed_topics(specs_dir, current_workdir)
+    completed = find_completed_topics(specs_dir, current_workdir, force)
 
     if not completed:
         print("No completed topics to archive.")
         return
 
     if dry_run:
+        # Show topics that would be skipped due to active branches
+        skipped = [
+            d for d in sorted(specs_dir.iterdir())
+            if d.is_dir() and is_topic_completed(d) and has_active_branch(d)
+        ]
         print(f"Would archive {len(completed)} topic(s):")
         for topic_dir in completed:
             print(f"  {topic_dir.name}")
+        if skipped:
+            print(f"Would skip {len(skipped)} topic(s) (active spex_branch):")
+            for topic_dir in skipped:
+                meta = load_meta(topic_dir)
+                branch = meta.get("spex_branch", "") if meta else ""
+                print(f"  {topic_dir.name} ({branch})")
         return
 
     archives_dir.mkdir(parents=True, exist_ok=True)
