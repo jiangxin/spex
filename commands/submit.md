@@ -54,7 +54,7 @@ Parse the JSON output:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex archive --topic $topic_name
+$spex_skill_dir/scripts/spex archive --force --topic $topic_name
 ```
 
 Display the output to the user. If the command fails, report
