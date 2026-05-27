@@ -81,7 +81,8 @@ def _create_toml_config(repo_root=None):
     if repo_root is not None:
         target = repo_root / ".spex.toml"
     else:
-        target = Path.home() / ".spex.toml"
+        target = Path.home() / ".spex" / "config.toml"
+        target.parent.mkdir(parents=True, exist_ok=True)
 
     if target.exists():
         print(f"Config already exists: {target}")
