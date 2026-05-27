@@ -316,10 +316,10 @@ class TestTodoCommand:
         assert "OK:" in result.stdout
 
     def test_mark_done_wrong_args_exit_1(self):
-        """spex todo mark-done (wrong args) exits 1."""
+        """spex todo mark-done (wrong args) exits non-zero."""
         result = _run_spex("todo", "mark-done")
 
-        assert result.returncode == 1
+        assert result.returncode in (1, 2)
         assert "Usage:" in result.stderr
 
     def test_todo_h_exits_zero_with_usage(self):

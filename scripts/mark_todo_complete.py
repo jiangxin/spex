@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import atomic_write_json, check_help_flag, local_iso_timestamp
 
 USAGE = """\
@@ -21,19 +22,18 @@ Options:
 """
 
 
-def main():
+def main(argv=None):
     check_help_flag(USAGE)
 
-    if len(sys.argv) != 4:
-        print(
-            "Usage: spex todo mark-done <task-id> <commit-title> <todo.json>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    parser = ArgumentParser(prog="spex todo mark-done", usage=USAGE)
+    parser.add_argument("task_id", help="Task ID to mark as done")
+    parser.add_argument("commit_title", help="Commit title")
+    parser.add_argument("todo_path", help="Path to todo.json")
+    args = parser.parse(argv)
 
-    task_id = sys.argv[1]
-    commit_title = sys.argv[2]
-    todo_path = Path(sys.argv[3])
+    task_id = args.task_id
+    commit_title = args.commit_title
+    todo_path = Path(args.todo_path)
 
     if not todo_path.is_file():
         print(f"Error: file not found: {todo_path}", file=sys.stderr)

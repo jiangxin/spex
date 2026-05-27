@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import atomic_write_json, check_help_flag
 
 USAGE = """\
@@ -33,17 +34,14 @@ def filter_completed_todos(data):
     ]
 
 
-def main():
+def main(argv=None):
     check_help_flag(USAGE)
 
-    if len(sys.argv) != 2:
-        print(
-            "Usage: spex todo remove-undone <todo.json>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    parser = ArgumentParser(prog="spex todo remove-undone", usage=USAGE)
+    parser.add_argument("todo_path", help="Path to todo.json")
+    args = parser.parse(argv)
 
-    todo_path = Path(sys.argv[1])
+    todo_path = Path(args.todo_path)
 
     if not todo_path.is_file():
         print(f"Error: file not found: {todo_path}", file=sys.stderr)
