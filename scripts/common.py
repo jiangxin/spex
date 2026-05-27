@@ -19,6 +19,10 @@ DEFAULT_SPEX_BRANCH_PREFIX = "spex/"
 TEMPLATE_DIR = "templates"
 EXAMPLES_TEMPLATE_DIR = "examples"
 
+ICON_COMPLETED = "✅"
+ICON_IN_PROGRESS = "\U0001f527"
+ICON_ARCHIVED = "\U0001f4e6"
+
 
 
 
@@ -456,6 +460,36 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         )
         sys.exit(1)
     return matches[0]
+
+
+def format_topic(topic_dir: Path, verbose: int = 0) -> str:
+    """Format a single topic with progress, description, and optional todo steps.
+
+    Verbosity levels:
+        0: Icon + progress + name only.
+        1: + description line.
+        2: + todo step list (id + name).
+    """
+    done, total = get_todo_progress(topic_dir)
+    icon = ICON_COMPLETED if done > 0 and done == total else ICON_IN_PROGRESS
+
+    lines = [f"{icon} [{done}/{total}] {topic_dir.name}"]
+
+    if verbose >= 1:
+        description = get_spec_description(topic_dir)
+        if description:
+            lines.append(f"    {description}")
+
+    if verbose >= 2:
+        todo = load_todo(topic_dir)
+        if todo:
+            lines.append("")
+            for item in todo:
+                step_id = item.get("id", "")
+                step_name = item.get("name", "")
+                lines.append(f"    {step_id}: {step_name}")
+
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

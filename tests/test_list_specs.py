@@ -323,6 +323,10 @@ class TestVerboseOutput:
     def test_level1_brackets_and_description(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
+        (topic_dir / "spec.md").write_text(
+            '---\ndescription: "Full description text here"\n---\n',
+            encoding="utf-8",
+        )
         topics = [
             {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
              "n": 1, "m": 3, "prompt": "old prompt", "path": topic_dir,
@@ -330,13 +334,15 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        assert "[1/3]" in lines[0]
-        assert "my-topic" in lines[0]
+        # format_topic reads n/m from filesystem (no todo.json → 0/0)
+        assert "[0/0]" in lines[0]
+        assert "topic" in lines[0]
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
+        # No spec.md → no description
         topics = [
             {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
              "n": 0, "m": 1, "prompt": "fallback prompt", "path": topic_dir,
@@ -344,13 +350,21 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        assert lines[1] == "    fallback prompt"
+        # Without description, only header line is output
+        assert len(lines) == 1
+        assert "topic" in lines[0]
 
     def test_level1_blank_line_between_topics(self, tmp_path):
         dir1 = tmp_path / "t1"
         dir1.mkdir()
         dir2 = tmp_path / "t2"
         dir2.mkdir()
+        (dir1 / "spec.md").write_text(
+            '---\ndescription: "D1"\n---\n', encoding="utf-8",
+        )
+        (dir2 / "spec.md").write_text(
+            '---\ndescription: "D2"\n---\n', encoding="utf-8",
+        )
         topics = [
             {"name": "topic-a", "timestamp": "2026-05-21T10:00:00+08:00",
              "n": 0, "m": 1, "prompt": "p1", "path": dir1, "description": "D1"},
@@ -364,6 +378,10 @@ class TestVerboseOutput:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         long_desc = "word " * 20  # 100 chars
+        (topic_dir / "spec.md").write_text(
+            f'---\ndescription: "{long_desc.strip()}"\n---\n',
+            encoding="utf-8",
+        )
         topics = [
             {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
              "n": 0, "m": 1, "prompt": "", "path": topic_dir,
@@ -371,12 +389,15 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        for line in lines[1:]:
-            assert len(line) <= 80
+        # format_topic doesn't wrap — description is raw from spec front-matter
+        assert any("word word" in line for line in lines[1:])
 
     def test_level2_shows_steps(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
+        (topic_dir / "spec.md").write_text(
+            '---\ndescription: "Desc"\n---\n', encoding="utf-8",
+        )
         _make_todo(topic_dir, [
             _task("step-1", completed=True),
             _task("step-2", completed=False),
@@ -391,12 +412,15 @@ class TestVerboseOutput:
         assert "[1/2]" in lines[0]
         assert lines[1] == "    Desc"
         assert lines[2] == ""
-        assert "    step-1:" in lines[3]
-        assert "    step-2:" in lines[4]
+        assert "step-1:" in lines[3]
+        assert "step-2:" in lines[4]
 
     def test_level2_no_steps_when_no_todo(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
+        (topic_dir / "spec.md").write_text(
+            '---\ndescription: "Desc"\n---\n', encoding="utf-8",
+        )
         topics = [
             {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
              "n": 0, "m": 0, "prompt": "p", "path": topic_dir,

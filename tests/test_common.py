@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from common import (
     check_help_flag,
     clear_spex_root_cache,
+    format_topic,
     get_archives_dir,
     get_spec_description,
     get_specs_dir,
@@ -463,3 +464,50 @@ class TestGetSpecDescription:
         spec = tmp_path / "spec.md"
         spec.write_text('---\nversion: "0.0.1"\n---\n\n# Spec', encoding="utf-8")
         assert get_spec_description(tmp_path) == ""
+
+
+class TestFormatTopic:
+    def test_verbose_0_header_only(self, tmp_path):
+        topic_dir = tmp_path / "my-feature"
+        topic_dir.mkdir()
+        out = format_topic(topic_dir, verbose=0)
+        assert out.startswith("🔧 [0/0] my-feature")
+        assert len(out.splitlines()) == 1
+
+    def test_verbose_1_with_description(self, tmp_path):
+        topic_dir = tmp_path / "my-feature"
+        topic_dir.mkdir()
+        (topic_dir / "spec.md").write_text(
+            '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
+        )
+        out = format_topic(topic_dir, verbose=1)
+        lines = out.splitlines()
+        assert "Build the API" in lines[1]
+
+    def test_verbose_2_with_todo(self, tmp_path):
+        topic_dir = tmp_path / "my-feature"
+        topic_dir.mkdir()
+        (topic_dir / "spec.md").write_text(
+            '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
+        )
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(
+            '[{"id": "1", "name": "Design"}, {"id": "2", "name": "Code"}]',
+            encoding="utf-8",
+        )
+        out = format_topic(topic_dir, verbose=2)
+        lines = out.splitlines()
+        assert "Build the API" in lines[1]
+        assert "1: Design" in out
+        assert "2: Code" in out
+
+    def test_completed_shows_checkmark(self, tmp_path):
+        topic_dir = tmp_path / "done"
+        topic_dir.mkdir()
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(
+            '[{"id": "1", "name": "Step", "completed_at": "2026-01-01"}]',
+            encoding="utf-8",
+        )
+        out = format_topic(topic_dir, verbose=0)
+        assert out.startswith("✅ [1/1] done")

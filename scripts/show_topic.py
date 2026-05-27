@@ -7,13 +7,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
     check_help_flag,
-    get_spec_description,
+    format_topic,
     get_todo_progress,
     load_todo,
     resolve_topic_dir,
     strip_front_matter,
 )
-from list_specs import _get_icon, _wrap_text
+from list_specs import _get_icon
 
 USAGE = """\
 Usage: spex show <topic> [-v]
@@ -27,26 +27,8 @@ Options:
 
 
 def _format_default(topic_dir):
-    """Format topic in list -vv style."""
-    name = topic_dir.name
-    n, m = get_todo_progress(topic_dir)
-    topic = {"n": n, "m": m, "archived": False}
-    icon = _get_icon(topic)
-    description = get_spec_description(topic_dir)
-
-    parts = [f"{icon} [{n}/{m}] {name}"]
-    if description:
-        parts.append(_wrap_text(description))
-
-    todo = load_todo(topic_dir)
-    if todo:
-        parts.append("")
-        for item in todo:
-            step_id = item.get("id", "")
-            step_name = item.get("name", "")
-            parts.append(f"    {step_id}: {step_name}")
-
-    return "\n".join(parts)
+    """Format topic in list -vv style, reused from common."""
+    return format_topic(topic_dir, verbose=2)
 
 
 def _format_verbose(topic_dir):

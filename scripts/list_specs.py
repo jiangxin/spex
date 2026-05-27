@@ -7,7 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    ICON_ARCHIVED,
+    ICON_COMPLETED,
+    ICON_IN_PROGRESS,
     check_help_flag,
+    format_topic,
     get_archives_dir,
     get_current_workdir,
     get_spec_description,
@@ -96,10 +100,6 @@ def _truncate(text: str, width: int) -> str:
         return text
     return text[: width - 3] + "..."
 
-
-ICON_ARCHIVED = "\U0001f4e6"
-ICON_COMPLETED = "✅"
-ICON_IN_PROGRESS = "\U0001f527"
 
 MAX_REPO_WIDTH = 11
 
@@ -204,28 +204,26 @@ def format_verbose_output(
 
     blocks = []
     for topic in topics:
-        icon = _get_icon(topic)
-        prog = f"[{topic['n']}/{topic['m']}]"
-        line1 = f"{icon} {prog} {topic['name']}"
         if show_repo:
             label = _repo_label(topic.get("workdir", ""))
-            line1 = f"[{label}] {line1}"
-
-        parts = [line1]
-        display_text = topic.get("description") or topic.get("prompt", "")
-        if display_text:
-            parts.append(_wrap_text(display_text))
-
-        if verbosity >= 2:
-            todo = load_todo(topic["path"]) if topic.get("path") else None
-            if todo:
-                parts.append("")
-                for item in todo:
-                    step_id = item.get("id", "")
-                    step_name = item.get("name", "")
-                    parts.append(f"    {step_id}: {step_name}")
-
-        blocks.append("\n".join(parts))
+            icon = _get_icon(topic)
+            prog = f"[{topic['n']}/{topic['m']}]"
+            line1 = f"[{label}] {icon} {prog} {topic['name']}"
+            display_text = topic.get("description") or topic.get("prompt", "")
+            parts = [line1]
+            if display_text:
+                parts.append(_wrap_text(display_text))
+            if verbosity >= 2:
+                todo = load_todo(topic["path"]) if topic.get("path") else None
+                if todo:
+                    parts.append("")
+                    for item in todo:
+                        step_id = item.get("id", "")
+                        step_name = item.get("name", "")
+                        parts.append(f"    {step_id}: {step_name}")
+            blocks.append("\n".join(parts))
+        else:
+            blocks.append(format_topic(topic["path"], verbose=verbosity))
 
     return "\n\n".join(blocks)
 
