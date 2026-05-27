@@ -395,13 +395,33 @@ def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
     shutil.copy2(source, target)
 
 
+def _resolve_template_roots(workdir=None):
+    """Return template root paths in priority order (highest first).
+
+    Order:
+      1. <spex_root>/templates/
+      2. ~/.spex/templates/
+      3. <skill_path>/templates/
+    """
+    roots = []
+    spex_root = Path(get_spex_root(workdir, auto_init=False))
+    roots.append(spex_root / TEMPLATE_DIR)
+    roots.append(Path.home() / ".spex" / TEMPLATE_DIR)
+    skill_path = _get_skill_path()
+    roots.append(skill_path / TEMPLATE_DIR)
+    return roots
+
+
 def get_template(template_name: str, workdir=None) -> str:
     """Return raw template content for the given template name.
 
     Workflow:
     1. Sync built-in template to <spex_root>/templates/examples/ if needed.
-    2. If <spex_root>/templates/<name> exists (user custom), return its content.
-    3. Otherwise return the built-in template from the skill's source.
+    2. Search template roots in priority order:
+       a. <spex_root>/templates/ (user custom)
+       b. ~/.spex/templates/ (home-level user config)
+       c. <skill_path>/templates/ (built-in)
+    3. Return content of the first matching file.
 
     The returned content includes YAML front-matter. Use strip_front_matter()
     to remove it after rendering.
@@ -412,18 +432,20 @@ def get_template(template_name: str, workdir=None) -> str:
 
     Returns:
         Template content as a string (with front-matter intact).
+
+    Raises:
+        FileNotFoundError: If the template is not found in any root.
     """
     _sync_builtin_template(template_name, workdir)
 
-    spex_root = Path(get_spex_root(workdir))
-    custom = spex_root / TEMPLATE_DIR / template_name
+    for root in _resolve_template_roots(workdir):
+        candidate = root / template_name
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
 
-    if custom.exists():
-        return custom.read_text(encoding="utf-8")
-
-    skill_path = _get_skill_path()
-    source = skill_path / TEMPLATE_DIR / template_name
-    return source.read_text(encoding="utf-8")
+    raise FileNotFoundError(
+        f"Template '{template_name}' not found in any template root"
+    )
 
 
 
