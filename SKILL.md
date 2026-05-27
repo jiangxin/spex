@@ -1,7 +1,7 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill for managing specification documents, and generating code. Invoked manually via /spex <command>. Supports commands: create (new), list, modify, apply (run, do, go), apply-one-step (step), submit, archive, init."
+description: "Spec-Driven Development (Spex) skill for creating and managing specification documents. Invoked manually via /spex <command>. Supports commands: create (new), list, modify, apply (run, do, go), apply-one-step (step), submit, archive, init."
 metadata:
   version: 0.0.1
 arguments:
@@ -27,7 +27,7 @@ A skill for managing specification documents in a structured spec directory.
 
 | Command    | Aliases          | Description                       |
 |------------|------------------|-----------------------------------|
-| `create`   | `new`            | Create a new spec                 |
+| `create`   | `new`            | Create a spec document (no code changes) |
 | `list`     |                  | List specs (use `--all` to include archived) |
 | `modify`   |                  | Modify a spec's requirements      |
 | `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |

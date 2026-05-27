@@ -27,10 +27,12 @@ Commands (run directly):
               Archive completed spec topics (--dry-run to preview)
   open          Open spec directory in file browser
 
-Commands (require AI coding agent):
-  apply       Apply a spec step-by-step
+Commands (planning — documents only, no code changes):
   create      Create a new spec (aliases: init, new)
   modify      Modify an existing spec
+
+Commands (implementation — modifies code):
+  apply       Apply a spec step-by-step
 
 Internal commands (used by skill):
   get --spex-root|--specs-dir|--archives-dir

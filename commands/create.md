@@ -1,5 +1,8 @@
 # spex create
 
+**PLAN only** — this command produces spec documents and a todo list.
+It does NOT write any application code.
+
 Create a new specification topic with requirement analysis, detailed design,
 and test plan.
 
@@ -14,6 +17,11 @@ and test plan.
 - **Execution**: Run in a dedicated sub-agent to keep the main context clean.
 - **Role**: Act as a senior software architect. Focus on requirement
   completeness, edge cases, and testability.
+
+> **SCOPE: This command creates documents only — `spec.md`, `todo.json`,
+> `meta.json` inside the topic directory. NO application code is written.
+> NO existing project files are modified. Implementation happens later
+> via `/spex apply` or `/spex apply-one-step`.**
 
 Follow these steps in order. Do not skip or reorder.
 
@@ -32,10 +40,12 @@ printed to stderr. Stop execution. On success, continue to the next phase.
 
 If `$input` is not provided or empty, ask the user to describe the requirement.
 
-Once you have `$input`, explore the workspace to understand the current
-codebase context. Identify any ambiguities, contradictions, or cases where
+Once you have `$input`, explore the workspace **only enough to understand
+where the relevant code lives and what existing patterns to reference in the
+spec**. Identify any ambiguities, contradictions, or cases where
 multiple implementation approaches exist. Ask the user to clarify these
-points before proceeding.
+points before proceeding. **Do NOT read full implementation details or start
+modifying any files — those are handled by `/spex apply`.**
 
 After clarification, record the complete, unambiguous requirement as
 `$requirement`.
@@ -163,3 +173,15 @@ Display the following summary to the user:
 - Todo: `$topic_path/todo.json`
 - Meta: `$topic_path/meta.json`
 ```
+
+### Phase 9: STOP — Do NOT Implement
+
+**This is a hard stop. Do NOT write any application code, modify any
+project files, or begin implementing the steps planned in `todo.json`.**
+
+Planning is complete. The `/spex create` command's sole responsibility
+was to produce the spec documents (`spec.md`, `todo.json`, `meta.json`)
+inside the topic directory.
+
+Wait for the user to review the spec and invoke `/spex apply` or
+`/spex apply-one-step` when ready.
