@@ -327,6 +327,7 @@ def cli_submit() -> None:
     """CLI: submit (merge) a spex branch back to target. Output JSON."""
     import common
     import config as cfg
+    import hooks
 
     topic_name = _parse_topic_arg()
     conf = cfg.load_config()
@@ -351,6 +352,24 @@ def cli_submit() -> None:
             print(json.dumps({"action": method, "source": source,
                               "target": target, "errors": errors}))
             sys.exit(1)
+
+    # Run post-action hook on success
+    short_name = strip_date_prefix(topic_dir.name)
+    done, total = common.get_todo_progress(topic_dir)
+    workdir = common.get_current_workdir()
+    hooks.run_post_action(
+        "submit",
+        {
+            "topic": short_name,
+            "source_branch": source,
+            "target_branch": target,
+            "action": method,
+            "done": done,
+            "undone": total - done,
+        },
+        workdir,
+        short_name,
+    )
 
     print(json.dumps({"action": method, "source": source,
                       "target": target, "errors": errors}))
