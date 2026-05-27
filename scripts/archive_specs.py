@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from branch import branch_exists
 from common import (
     check_help_flag,
     get_archives_dir,
@@ -17,8 +18,21 @@ from common import (
     get_specs_dir,
     get_topic_workdir,
     is_topic_completed,
+    load_meta,
     same_path,
 )
+
+
+def has_active_branch(topic_dir: Path) -> bool:
+    """Return True if meta.json has spex_branch and that git branch exists."""
+    meta = load_meta(topic_dir)
+    if not meta:
+        return False
+    spex_branch = meta.get("spex_branch", "")
+    if not spex_branch:
+        return False
+    return branch_exists(spex_branch)
+
 
 USAGE = """\
 Usage: spex archive [--topic <topic>] [--dry-run | -n]
