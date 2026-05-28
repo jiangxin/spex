@@ -144,6 +144,115 @@ def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     return _find_spex_tomls(worktree_root, workdir)
 
 
+def _resolve_spex_roots(
+    spex_tomls: list[Path],
+    worktree_root: Path | None,
+    workdir: str | Path | None = None,
+) -> list[str]:
+    """Resolve spex_root to a list of directory paths using per-level configs.
+
+    Each .spex.toml that sets spex_root governs its own directory and all
+    child directories below it. When walking upward from start, the effective
+    spex_root at each level is determined by the nearest .spex.toml at or
+    above that level.
+
+    Same-level rule: if the directory being checked is the same directory
+    where the governing .spex.toml lives, the candidate path is added
+    unconditionally (even if it doesn't exist yet).
+    """
+    if worktree_root is not None:
+        start = worktree_root.resolve()
+    else:
+        start = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+
+    # Build list of directories from start to filesystem root
+    path_dirs: list[Path] = []
+    current = start
+    while True:
+        path_dirs.append(current)
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    # Map toml directories to their index in path_dirs (only if they set spex_root)
+    path_set = {d: i for i, d in enumerate(path_dirs)}
+    toml_at: dict[int, str] = {}  # index -> spex_root value
+    unmapped_tomls: list[tuple[Path, str]] = []  # (toml_dir, spex_root) for off-path tomls
+
+    for toml_path in spex_tomls:
+        toml_dir = toml_path.parent.resolve()
+        data = _load_toml_config(toml_path)
+        sr = (data or {}).get("spex_root")
+        if sr is None:
+            continue
+        if toml_dir in path_set:
+            toml_at[path_set[toml_dir]] = sr
+        else:
+            unmapped_tomls.append((toml_dir, sr))
+
+    # Sweep from root-end to start-end computing (effective_spex_root, same_level)
+    n = len(path_dirs)
+    governing: list[tuple[str, bool]] = [("", False)] * n
+    current_effective = _DEFAULTS["spex_root"]
+    for i in range(n - 1, -1, -1):
+        if i in toml_at:
+            current_effective = toml_at[i]
+            governing[i] = (current_effective, True)
+        else:
+            governing[i] = (current_effective, False)
+
+    # Build results
+    results: list[str] = []
+    visited: set[str] = set()
+
+    for i, d in enumerate(path_dirs):
+        spex_root_val, same_level = governing[i]
+        expanded = Path(spex_root_val).expanduser()
+
+        if expanded.is_absolute():
+            candidate = expanded
+        else:
+            candidate = d / spex_root_val
+
+        resolved_str = str(candidate.resolve())
+        if resolved_str not in visited:
+            if same_level or candidate.is_dir():
+                results.append(resolved_str)
+                visited.add(resolved_str)
+
+    # Handle tomls not on the path (e.g. home fallback when ~ is not an ancestor)
+    for toml_dir, sr in unmapped_tomls:
+        expanded = Path(sr).expanduser()
+        candidate = expanded if expanded.is_absolute() else toml_dir / sr
+        resolved_str = str(candidate.resolve())
+        if resolved_str not in visited:
+            results.append(resolved_str)
+            visited.add(resolved_str)
+
+    # Always append ~/<default_spex_root> as final fallback
+    home_default = str((Path.home() / _DEFAULTS["spex_root"]).resolve())
+    if home_default not in visited:
+        results.append(home_default)
+
+    return results
+
+
+def resolve_spex_root_and_roots(
+    workdir: str | Path | None = None,
+) -> tuple[str, list[str]]:
+    """Return (primary_spex_root, all_spex_roots) based on per-level config.
+
+    The primary root is the first (highest-priority) entry in the roots list.
+    """
+    worktree_root = get_worktree_root(workdir)
+    spex_tomls = _find_spex_tomls(worktree_root, workdir)
+    roots = _resolve_spex_roots(spex_tomls, worktree_root, workdir)
+    if roots:
+        return (roots[0], roots)
+    return ("", [])
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _config_cache, _worktree_root_cache

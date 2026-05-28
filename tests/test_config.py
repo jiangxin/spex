@@ -13,8 +13,10 @@ from config import (
     _get_worktree_root,
     _load_toml_config,
     _merge_configs,
+    _resolve_spex_roots,
     clear_config_cache,
     load_config,
+    resolve_spex_root_and_roots,
 )
 
 
@@ -308,3 +310,246 @@ class TestBranchConfig:
         assert result["create_branch"] is False
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
+
+
+# ===================== _resolve_spex_roots =====================
+
+
+class TestResolveSpexRoots:
+    def test_same_level_added_unconditionally(self, tmp_path, monkeypatch):
+        """Directory with .spex.toml setting spex_root is added even without dir."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+        toml = worktree / ".spex.toml"
+        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        # .spex/ does NOT exist
+
+        result = _resolve_spex_roots([toml], worktree)
+
+        assert result[0] == str((worktree / ".spex").resolve())
+
+    def test_non_same_level_requires_existence(self, tmp_path, monkeypatch):
+        """Child governed by parent's .spex.toml — only added if dir exists."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        parent = tmp_path / "parent"
+        child = parent / "child"
+        child.mkdir(parents=True)
+        toml = parent / ".spex.toml"
+        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        # child/.spex does NOT exist, parent/.spex exists
+        (parent / ".spex").mkdir()
+
+        result = _resolve_spex_roots([toml], child)
+
+        # child/.spex missing (not same-level) → skipped
+        # parent/.spex exists AND is same-level → first
+        assert result[0] == str((parent / ".spex").resolve())
+
+    def test_per_level_different_spex_root(self, tmp_path, monkeypatch):
+        """Different .spex.toml files set different spex_root values."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        grandparent = tmp_path / "gp"
+        parent = grandparent / "parent"
+        child = parent / "child"
+        child.mkdir(parents=True)
+
+        # Parent sets .spex, grandparent sets .specs
+        parent_toml = parent / ".spex.toml"
+        parent_toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        gp_toml = grandparent / ".spex.toml"
+        gp_toml.write_text('spex_root = ".specs"\n', encoding="utf-8")
+
+        # child/.spex exists (governed by parent's config)
+        (child / ".spex").mkdir()
+        # grandparent/.specs added unconditionally (same-level)
+
+        result = _resolve_spex_roots([parent_toml, gp_toml], child)
+
+        assert result[0] == str((child / ".spex").resolve())
+        assert result[1] == str((parent / ".spex").resolve())
+        assert result[2] == str((grandparent / ".specs").resolve())
+
+    def test_toml_without_spex_root_is_transparent(self, tmp_path, monkeypatch):
+        """A .spex.toml without spex_root key doesn't affect resolution."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        parent = tmp_path / "parent"
+        child = parent / "child"
+        child.mkdir(parents=True)
+
+        # Child has .spex.toml but without spex_root
+        child_toml = child / ".spex.toml"
+        child_toml.write_text('create_branch = true\n', encoding="utf-8")
+        # Parent has .spex.toml with spex_root
+        parent_toml = parent / ".spex.toml"
+        parent_toml.write_text('spex_root = ".my-spex"\n', encoding="utf-8")
+
+        # child/.my-spex exists (governed by parent's config, since child's toml is transparent)
+        (child / ".my-spex").mkdir()
+
+        result = _resolve_spex_roots([child_toml, parent_toml], child)
+
+        assert result[0] == str((child / ".my-spex").resolve())
+        assert result[1] == str((parent / ".my-spex").resolve())
+
+    def test_absolute_path_in_toml(self, tmp_path, monkeypatch):
+        """Absolute spex_root is added unconditionally at same level."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+        abs_path = tmp_path / "absolute-spex"
+        toml = worktree / ".spex.toml"
+        toml.write_text(f'spex_root = "{abs_path}"\n', encoding="utf-8")
+
+        result = _resolve_spex_roots([toml], worktree)
+
+        assert result[0] == str(abs_path.resolve())
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert home_default in result
+
+    def test_tilde_path_in_toml(self, monkeypatch, tmp_path):
+        """~/path is expanded and treated as absolute."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+        toml = worktree / ".spex.toml"
+        toml.write_text('spex_root = "~/my-specs"\n', encoding="utf-8")
+
+        result = _resolve_spex_roots([toml], worktree)
+
+        assert result[0] == str(home / "my-specs")
+        home_default = str((home / ".spex").resolve())
+        assert home_default in result
+
+    def test_no_tomls_uses_default(self, tmp_path, monkeypatch):
+        """No .spex.toml anywhere — default .spex, only if dir exists."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+        (worktree / ".spex").mkdir()
+
+        result = _resolve_spex_roots([], worktree)
+
+        assert result[0] == str((worktree / ".spex").resolve())
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert home_default in result
+
+    def test_no_tomls_no_dirs_has_home_default(self, tmp_path, monkeypatch):
+        """No .spex.toml, no .spex/ dirs — only home default in result."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+
+        result = _resolve_spex_roots([], worktree)
+
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert result == [home_default]
+
+    def test_none_worktree_walks_from_workdir(self, tmp_path, monkeypatch):
+        """When worktree_root is None, walk from workdir."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        parent = tmp_path / "projects"
+        parent.mkdir()
+        (parent / ".spex").mkdir()
+        toml = parent / ".spex.toml"
+        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        workdir = parent / "myapp"
+        workdir.mkdir()
+
+        result = _resolve_spex_roots([toml], None, workdir)
+
+        assert result[0] == str((parent / ".spex").resolve())
+
+    def test_home_fallback_off_path(self, tmp_path, monkeypatch):
+        """Home .spex.toml used when home is not on the upward path."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        home_toml = home / ".spex.toml"
+        home_toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+
+        # worktree is NOT under home
+        worktree = tmp_path / "other" / "repo"
+        worktree.mkdir(parents=True)
+
+        result = _resolve_spex_roots([home_toml], worktree)
+
+        # Home toml is off-path, added unconditionally
+        assert result == [str((home / ".spex").resolve())]
+
+
+# ===================== resolve_spex_root_and_roots =====================
+
+
+class TestResolveSpexRootAndRoots:
+    def test_basic(self, tmp_path, monkeypatch):
+        """With .spex/ and .spex.toml, returns correct tuple."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        (tmp_path / ".spex").mkdir()
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        primary, roots = resolve_spex_root_and_roots()
+
+        expected = str((tmp_path / ".spex").resolve())
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert primary == expected
+        assert roots[0] == expected
+        assert home_default in roots
+
+    def test_same_level_no_dir(self, tmp_path, monkeypatch):
+        """Same-level rule: primary returned even if dir doesn't exist."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".my-spex"\n', encoding="utf-8"
+        )
+
+        primary, roots = resolve_spex_root_and_roots()
+
+        expected = str((tmp_path / ".my-spex").resolve())
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert primary == expected
+        assert roots[0] == expected
+        assert home_default in roots
+
+    def test_home_default_always_in_roots(self, tmp_path, monkeypatch):
+        """~/.<default> is always in roots even without any .spex.toml."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+
+        primary, roots = resolve_spex_root_and_roots()
+
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert primary == home_default
+        assert roots == [home_default]
+
+    def test_home_default_not_duplicated(self, tmp_path, monkeypatch):
+        """If ~/.spex already in roots, it's not added again."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: home
+        )
+        (home / ".spex").mkdir()
+        (home / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        primary, roots = resolve_spex_root_and_roots()
+
+        home_spex = str((home / ".spex").resolve())
+        assert primary == home_spex
+        assert roots.count(home_spex) == 1
