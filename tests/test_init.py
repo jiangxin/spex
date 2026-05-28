@@ -332,7 +332,7 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_not_called()
+        mock_ensure.assert_called_once_with(str(spex_root))
         mock_sync.assert_called_once_with(spex_root)
 
     def test_initializes_spex_root_when_missing(self, tmp_path):

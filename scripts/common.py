@@ -27,6 +27,14 @@ ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 ICON_ARCHIVED = "\U0001f4e6"
 
+_DEFAULT_TOML = '# spex_root = ".spex"\n'
+
+
+def _create_default_toml():
+    """Create ~/.spex.toml with default content."""
+    target = Path.home() / ".spex.toml"
+    target.write_text(_DEFAULT_TOML, encoding="utf-8")
+
 
 
 
@@ -113,6 +121,11 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
         Absolute path to the spex root directory.
     """
     ctx = get_context(workdir)
+
+    if auto_init and not ctx.spex_tomls:
+        _create_default_toml()
+        clear_config_cache()
+        ctx = get_context(workdir)
 
     if not ctx.spex_root:
         raise RuntimeError(
