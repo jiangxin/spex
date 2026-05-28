@@ -204,14 +204,13 @@ class TestFileNotFound:
 
 
 class TestOutputPath:
-    def test_output_in_same_dir(self, tmp_path, monkeypatch, capsys):
+    def test_output_in_same_dir(self, tmp_path, capsys):
         xml = _make_xml([("out-1", "Output step", "Some details")])
         subdir = tmp_path / "subdir"
         subdir.mkdir()
         path = _write_xml(subdir, xml)
 
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(path)])
-        main()
+        main([str(path)])
 
         output_file = subdir / "todo.json"
         assert output_file.is_file()
@@ -227,21 +226,17 @@ class TestOutputPath:
 
 
 class TestHelpFlag:
-    def test_help_short(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", "-h"])
-
+    def test_help_short(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main(["-h"])
 
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
         assert "Usage:" in out
 
-    def test_help_long(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", "--help"])
-
+    def test_help_long(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main(["--help"])
 
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
@@ -252,7 +247,7 @@ class TestHelpFlag:
 
 
 class TestAppendMode:
-    def test_append_new_steps(self, tmp_path, monkeypatch, capsys):
+    def test_append_new_steps(self, tmp_path, capsys):
         # Write existing todo.json
         existing = [{
             "id": "step-1", "name": "Done", "details": "...",
@@ -267,8 +262,7 @@ class TestAppendMode:
         ])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
-        main()
+        main([str(xml_path), "--append"])
 
         data = json.loads(todo_path.read_text(encoding="utf-8"))
         assert len(data) == 3
@@ -278,7 +272,7 @@ class TestAppendMode:
         out = capsys.readouterr().out
         assert "appended 2 step(s)" in out
 
-    def test_append_duplicate_ids_error(self, tmp_path, monkeypatch, capsys):
+    def test_append_duplicate_ids_error(self, tmp_path, capsys):
         existing = [
             {
                 "id": "step-1", "name": "Done", "details": "...",
@@ -298,21 +292,19 @@ class TestAppendMode:
         ])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
         with pytest.raises(SystemExit):
-            main()
+            main([str(xml_path), "--append"])
 
         err = capsys.readouterr().err
         assert "duplicate step ID(s) in append mode" in err
         assert "step-2" in err
 
-    def test_append_no_existing_file(self, tmp_path, monkeypatch, capsys):
+    def test_append_no_existing_file(self, tmp_path, capsys):
         # No todo.json exists — should write fresh
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
-        main()
+        main([str(xml_path), "--append"])
 
         todo_path = tmp_path / "todo.json"
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -321,15 +313,14 @@ class TestAppendMode:
         out = capsys.readouterr().out
         assert "1 step(s) converted" in out
 
-    def test_append_corrupt_existing_json(self, tmp_path, monkeypatch, capsys):
+    def test_append_corrupt_existing_json(self, tmp_path, capsys):
         todo_path = tmp_path / "todo.json"
         todo_path.write_text("not valid json{{{", encoding="utf-8")
 
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py", str(xml_path), "--append"])
-        main()
+        main([str(xml_path), "--append"])
 
         data = json.loads(todo_path.read_text(encoding="utf-8"))
         assert len(data) == 1
@@ -339,32 +330,26 @@ class TestAppendMode:
 
 
 class TestRmFlag:
-    def test_rm_flag_deletes_xml(self, tmp_path, monkeypatch, capsys):
+    def test_rm_flag_deletes_xml(self, tmp_path, capsys):
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
         assert xml_path.exists()
 
-        monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", str(xml_path), "--rm"]
-        )
-        main()
+        main([str(xml_path), "--rm"])
 
         assert not xml_path.exists()
         out = capsys.readouterr().out
         assert "1 step(s) converted." in out
 
-    def test_rm_flag_short(self, tmp_path, monkeypatch, capsys):
+    def test_rm_flag_short(self, tmp_path):
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", "-r", str(xml_path)]
-        )
-        main()
+        main(["-r", str(xml_path)])
 
         assert not xml_path.exists()
 
-    def test_rm_flag_in_append_mode(self, tmp_path, monkeypatch, capsys):
+    def test_rm_flag_in_append_mode(self, tmp_path, capsys):
         existing = [{
             "id": "step-1", "name": "Done", "details": "...",
             "completed_at": "now", "commit_title": "",
@@ -375,12 +360,7 @@ class TestRmFlag:
         xml = _make_xml([("step-2", "New step", "New details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["xml2json_todo.py", "--append", "--rm", str(xml_path)],
-        )
-        main()
+        main(["--append", "--rm", str(xml_path)])
 
         assert not xml_path.exists()
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -388,7 +368,7 @@ class TestRmFlag:
         out = capsys.readouterr().out
         assert "appended 1 step(s)" in out
 
-    def test_rm_flag_append_short_flags(self, tmp_path, monkeypatch, capsys):
+    def test_rm_flag_append_short_flags(self, tmp_path):
         existing = [{
             "id": "step-1", "name": "Done", "details": "...",
             "completed_at": "now", "commit_title": "",
@@ -399,16 +379,11 @@ class TestRmFlag:
         xml = _make_xml([("step-2", "New", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["xml2json_todo.py", "-a", "-r", str(xml_path)],
-        )
-        main()
+        main(["-a", "-r", str(xml_path)])
 
         assert not xml_path.exists()
 
-    def test_rm_not_added_to_json2xml(self, monkeypatch, capsys):
+    def test_rm_not_added_to_json2xml(self):
         import json2xml_todo
 
         # Verify json2xml USAGE does not mention --rm
@@ -417,11 +392,9 @@ class TestRmFlag:
 
 
 class TestMissingArgs:
-    def test_no_args(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["xml2json_todo.py"])
-
+    def test_no_args(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main([])
 
         assert exc_info.value.code == 2
         err = capsys.readouterr().err
@@ -523,16 +496,12 @@ class TestSpecialCharacters:
 
 
 class TestPostActionFlag:
-    def test_post_action_without_event_type_error(self, tmp_path, monkeypatch, capsys):
+    def test_post_action_without_event_type_error(self, tmp_path, capsys):
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", str(xml_path), "--post-action"]
-        )
-
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main([str(xml_path), "--post-action"])
 
         assert exc_info.value.code == 1
         err = capsys.readouterr().err

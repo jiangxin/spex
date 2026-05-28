@@ -47,15 +47,14 @@ class TestConvertTodoToXml:
 
 
 class TestMainJson2Xml:
-    def test_converts_and_writes_xml(self, todo_file, monkeypatch, capsys):
+    def test_converts_and_writes_xml(self, todo_file, capsys):
         data = [
             {"id": "step-1", "name": "First", "details": "Do first thing"},
             {"id": "step-2", "name": "Second", "details": "Do second thing"},
         ]
         _write(todo_file, data)
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
-        json2xml_todo.main()
+        json2xml_todo.main([str(todo_file)])
 
         xml_path = todo_file.parent / "todo.xml"
         assert xml_path.exists()
@@ -66,82 +65,71 @@ class TestMainJson2Xml:
         out = capsys.readouterr().out
         assert "2 step(s)" in out
 
-    def test_file_not_found_exits(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", str(tmp_path / "nope.json")])
-
+    def test_file_not_found_exits(self, tmp_path):
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(tmp_path / "nope.json")])
         assert exc_info.value.code == 1
 
-    def test_invalid_json_exits(self, todo_file, monkeypatch):
+    def test_invalid_json_exits(self, todo_file):
         todo_file.write_text("{bad json", encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_non_list_json_exits(self, todo_file, monkeypatch):
+    def test_non_list_json_exits(self, todo_file):
         todo_file.write_text('{"key": "value"}', encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_empty_array_exits(self, todo_file, monkeypatch):
+    def test_empty_array_exits(self, todo_file):
         _write(todo_file, [])
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_duplicate_id_exits(self, todo_file, monkeypatch):
+    def test_duplicate_id_exits(self, todo_file):
         data = [
             {"id": "step-1", "name": "A", "details": ""},
             {"id": "step-1", "name": "B", "details": ""},
         ]
         _write(todo_file, data)
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_missing_id_exits(self, todo_file, monkeypatch):
+    def test_missing_id_exits(self, todo_file):
         data = [{"name": "No ID", "details": ""}]
         _write(todo_file, data)
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_missing_name_exits(self, todo_file, monkeypatch):
+    def test_missing_name_exits(self, todo_file):
         data = [{"id": "step-1", "details": ""}]
         _write(todo_file, data)
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main([str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_no_tmp_files_after_success(self, todo_file, monkeypatch):
+    def test_no_tmp_files_after_success(self, todo_file):
         data = [{"id": "s1", "name": "X", "details": "content"}]
         _write(todo_file, data)
-        monkeypatch.setattr(sys, "argv", ["prog", str(todo_file)])
 
-        json2xml_todo.main()
+        json2xml_todo.main([str(todo_file)])
 
         tmp_files = list(todo_file.parent.glob("*.tmp"))
         assert tmp_files == []
 
-    def test_help_flag(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", "-h"])
-
+    def test_help_flag(self):
         with pytest.raises(SystemExit) as exc_info:
-            json2xml_todo.main()
+            json2xml_todo.main(["-h"])
         assert exc_info.value.code == 0
 
 

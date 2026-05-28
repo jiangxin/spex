@@ -74,14 +74,10 @@ class TestOriginalFileIntactOnError:
         todo_path = _make_todo(tmp_path, tasks)
         original_content = todo_path.read_text(encoding="utf-8")
 
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-        import mark_todo_complete
-
-        monkeypatch.setattr(sys, "argv", ["prog", "1", "msg", str(todo_path)])
         monkeypatch.setattr(os, "replace", _raise_os_error)
 
         with pytest.raises(OSError, match="simulated"):
-            mark_todo_complete.main()
+            mark_todo_complete.main(["1", "msg", str(todo_path)])
 
         assert todo_path.read_text(encoding="utf-8") == original_content
 
@@ -89,14 +85,10 @@ class TestOriginalFileIntactOnError:
         tasks = [{"id": "1", "name": "Task A"}]
         todo_path = _make_todo(tmp_path, tasks)
 
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-        import mark_todo_complete
-
-        monkeypatch.setattr(sys, "argv", ["prog", "1", "msg", str(todo_path)])
         monkeypatch.setattr(os, "replace", _raise_os_error)
 
         with pytest.raises(OSError, match="simulated"):
-            mark_todo_complete.main()
+            mark_todo_complete.main(["1", "msg", str(todo_path)])
 
         tmp_files = list(tmp_path.glob("*.tmp"))
         assert tmp_files == []
@@ -109,59 +101,47 @@ def _raise_os_error(*_args, **_kwargs):
 class TestMainErrors:
     """Tests for main() error handling paths."""
 
-    def test_wrong_arg_count_exits(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", "only-one"])
+    def test_wrong_arg_count_exits(self):
         with pytest.raises(SystemExit) as exc_info:
-            mark_todo_complete.main()
+            mark_todo_complete.main(["only-one"])
         assert exc_info.value.code in (1, 2)
 
-    def test_file_not_found_exits(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(
-            sys, "argv", ["prog", "1", "msg", str(tmp_path / "missing.json")]
-        )
+    def test_file_not_found_exits(self, tmp_path):
         with pytest.raises(SystemExit) as exc_info:
-            mark_todo_complete.main()
+            mark_todo_complete.main(["1", "msg", str(tmp_path / "missing.json")])
         assert exc_info.value.code == 1
 
-    def test_invalid_json_exits(self, monkeypatch, tmp_path):
+    def test_invalid_json_exits(self, tmp_path):
         bad_file = tmp_path / "todo.json"
         bad_file.write_text("not valid json", encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["prog", "1", "msg", str(bad_file)])
         with pytest.raises(SystemExit) as exc_info:
-            mark_todo_complete.main()
+            mark_todo_complete.main(["1", "msg", str(bad_file)])
         assert exc_info.value.code == 1
 
-    def test_non_list_json_exits(self, monkeypatch, tmp_path):
+    def test_non_list_json_exits(self, tmp_path):
         bad_file = tmp_path / "todo.json"
         bad_file.write_text('{"not": "a list"}', encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["prog", "1", "msg", str(bad_file)])
         with pytest.raises(SystemExit) as exc_info:
-            mark_todo_complete.main()
+            mark_todo_complete.main(["1", "msg", str(bad_file)])
         assert exc_info.value.code == 1
 
-    def test_task_not_found_exits(self, monkeypatch, tmp_path):
+    def test_task_not_found_exits(self, tmp_path):
         todo_file = tmp_path / "todo.json"
         todo_file.write_text(
             json.dumps([{"id": "other", "name": "Other task"}]),
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            sys, "argv", ["prog", "missing-id", "msg", str(todo_file)]
-        )
         with pytest.raises(SystemExit) as exc_info:
-            mark_todo_complete.main()
+            mark_todo_complete.main(["missing-id", "msg", str(todo_file)])
         assert exc_info.value.code == 1
 
-    def test_success_prints_message(self, monkeypatch, tmp_path, capsys):
+    def test_success_prints_message(self, tmp_path, capsys):
         todo_file = tmp_path / "todo.json"
         todo_file.write_text(
             json.dumps([{"id": "1", "name": "Task"}]),
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            sys, "argv", ["prog", "1", "feat: done", str(todo_file)]
-        )
-        mark_todo_complete.main()
+        mark_todo_complete.main(["1", "feat: done", str(todo_file)])
         output = capsys.readouterr().out
         assert "Marked '1' as completed" in output
         data = json.loads(todo_file.read_text(encoding="utf-8"))
