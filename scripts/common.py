@@ -139,7 +139,8 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
         Absolute path to the spex root directory.
     """
     cfg = load_config(workdir)
-    spex_root = cfg["spex_root"]
+    repo_root = _get_repo_root(workdir)
+    spex_root = _resolve_spex_path(cfg["spex_root"], repo_root)
     if require_git and _get_repo_root(workdir) is None:
         raise RuntimeError("Not inside a git repository")
     if auto_init:

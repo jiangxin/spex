@@ -26,25 +26,58 @@ _DEFAULTS: SpexConfig = {
     "submit_method": "merge",
 }
 
+_SENTINEL = object()
+_worktree_root_cache: dict = {}
 _config_cache: dict | None = None
 
 
-def _get_repo_root(workdir: str | Path | None = None) -> Path | None:
-    """Return the git repository root, or None if not inside a repo."""
+def _get_worktree_root(workdir: str | Path | None = None) -> Path | None:
+    """Return the git worktree root, or None if not inside a repo. Cached."""
+    key = str(Path(workdir).resolve()) if workdir else None
+    cached = _worktree_root_cache.get(key, _SENTINEL)
+    if cached is not _SENTINEL:
+        return cached
     cmd = ["git", "rev-parse", "--show-toplevel"]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
-    if result.returncode != 0:
-        return None
-    return Path(result.stdout.strip()).resolve()
+    value = Path(result.stdout.strip()).resolve() if result.returncode == 0 else None
+    _worktree_root_cache[key] = value
+    return value
 
 
-def _resolve_spex_path(value: str, repo_root: Path | None = None) -> str:
-    """Resolve a path value, expanding ~ and making relative paths absolute."""
-    p = Path(value).expanduser()
-    if not p.is_absolute():
-        base = repo_root if repo_root is not None else Path.cwd()
-        p = base / p
-    return str(p.resolve())
+def _find_spex_tomls(
+    worktree_root: Path | None, workdir: str | Path | None = None
+) -> list[Path]:
+    """Discover .spex.toml files in priority order (highest first).
+
+    Walk from a starting directory upward to filesystem root, collecting
+    existing .spex.toml files. When inside a git repo, start from
+    worktree_root; otherwise start from workdir (or cwd).
+    Then check ~/.spex.toml as a fallback.
+    """
+    candidates: list[Path] = []
+    visited: set[Path] = set()
+
+    if worktree_root is not None:
+        start = worktree_root.resolve()
+    else:
+        start = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+
+    current = start
+    while True:
+        toml_path = current / ".spex.toml"
+        if toml_path.is_file():
+            candidates.append(toml_path)
+            visited.add(toml_path.resolve())
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    home_toml = (Path.home() / ".spex.toml").resolve()
+    if home_toml.is_file() and home_toml not in visited:
+        candidates.append(home_toml)
+
+    return candidates
 
 
 def _load_toml_config(path: Path) -> dict | None:
@@ -69,58 +102,50 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return merged
 
 
-def _find_spex_toml(repo_root: Path | None) -> dict:
-    """Search and merge all TOML configs in priority order.
-
-    Priority (lowest to highest):
-      1. ~/.spex/config.toml
-      2. <repo_root>/.spex.toml
-    """
-    candidates: list[Path] = []
-
-    candidates.append(Path.home() / ".spex" / "config.toml")
-
-    if repo_root is not None:
-        candidates.append(repo_root / ".spex.toml")
-
+def _merge_configs(spex_tomls: list[Path]) -> dict:
+    """Merge TOML configs. spex_tomls is highest-priority-first."""
     merged: dict = {}
-    for path in candidates:
+    for path in reversed(spex_tomls):
         data = _load_toml_config(path)
         if data is not None:
             merged = _deep_merge(merged, data)
-
     return merged
 
 
 def load_config(workdir: str | Path | None = None) -> dict:
-    """Main entry point: resolve spex configuration with caching.
-
-    Precedence:
-      1. SPEX_ROOT env var (overrides everything for spex_root)
-      2. Merged TOML files found by _find_spex_toml
-      3. Built-in _DEFAULTS
-    """
+    """Main entry point: resolve spex configuration with caching."""
     global _config_cache
 
     if _config_cache is not None:
         return _config_cache
 
-    repo_root = _get_repo_root(workdir)
-    raw = _find_spex_toml(repo_root)
+    worktree_root = _get_worktree_root(workdir)
+    spex_tomls = _find_spex_tomls(worktree_root, workdir)
+    merged = _merge_configs(spex_tomls)
 
-    result: dict = {**_DEFAULTS, **raw}
-
-    result["spex_root"] = _resolve_spex_path(result["spex_root"], repo_root)
+    result: dict = {**_DEFAULTS, **merged}
 
     env_spex_root = os.environ.get("SPEX_ROOT")
     if env_spex_root:
-        result["spex_root"] = _resolve_spex_path(env_spex_root)
+        result["spex_root"] = env_spex_root
 
     _config_cache = result
     return _config_cache
 
 
+def get_worktree_root(workdir: str | Path | None = None) -> Path | None:
+    """Public wrapper for _get_worktree_root."""
+    return _get_worktree_root(workdir)
+
+
+def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
+    """Return the discovered TOML config paths (highest priority first)."""
+    worktree_root = _get_worktree_root(workdir)
+    return _find_spex_tomls(worktree_root, workdir)
+
+
 def clear_config_cache() -> None:
-    """Clear the module-level configuration cache."""
-    global _config_cache
+    """Clear the module-level configuration and worktree root caches."""
+    global _config_cache, _worktree_root_cache
     _config_cache = None
+    _worktree_root_cache = {}

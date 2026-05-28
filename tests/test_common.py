@@ -252,10 +252,8 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-user"
-    # No repo-level .spex.toml
-    user_config_dir = tmp_path / ".spex"
-    user_config_dir.mkdir(parents=True)
-    (user_config_dir / "config.toml").write_text(
+    # No repo-level .spex.toml; use ~/.spex.toml as fallback
+    (tmp_path / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -270,10 +268,8 @@ def test_home_toml_fallback(monkeypatch, tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-home"
-    # No repo-level config
-    user_config_dir = tmp_path / ".spex"
-    user_config_dir.mkdir(parents=True)
-    (user_config_dir / "config.toml").write_text(
+    # No repo-level config; use ~/.spex.toml as fallback
+    (tmp_path / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)

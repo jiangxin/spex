@@ -1,4 +1,4 @@
-"""Tests for config.py: TOML loading, merging, and caching."""
+"""Tests for config.py: hierarchical TOML discovery, merging, and caching."""
 
 import sys
 from pathlib import Path
@@ -9,8 +9,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from config import (
     _deep_merge,
-    _find_spex_toml,
+    _find_spex_tomls,
+    _get_worktree_root,
     _load_toml_config,
+    _merge_configs,
     clear_config_cache,
     load_config,
 )
@@ -68,143 +70,141 @@ class TestDeepMerge:
         assert result["spex_root"] == "/override"
         assert result["other"] == 1
 
-    def test_base_extra_key_preserved(self):
-        base = {"spex_root": "/base", "extra": True}
-        override = {"spex_root": "/new"}
-
-        result = _deep_merge(base, override)
-
-        assert result["extra"] is True
-
-    def test_override_extra_key_preserved(self):
-        base = {"spex_root": "/base"}
-        override = {"new_key": "value"}
-
-        result = _deep_merge(base, override)
-
-        assert result["new_key"] == "value"
-
-    def test_empty_override_no_change(self):
-        base = {"spex_root": "/base", "x": 1}
-        result = _deep_merge(base, {})
-        assert result == base
-
     def test_nested_merge(self):
         base = {"nested": {"a": 1, "b": 2}}
         override = {"nested": {"b": 99, "c": 3}}
 
         result = _deep_merge(base, override)
 
-        assert result["nested"]["a"] == 1
-        assert result["nested"]["b"] == 99
-        assert result["nested"]["c"] == 3
+        assert result["nested"] == {"a": 1, "b": 99, "c": 3}
+
+    def test_empty_override_no_change(self):
+        base = {"spex_root": "/base", "x": 1}
+        result = _deep_merge(base, {})
+        assert result == base
 
 
-# ===================== _find_spex_toml =====================
+# ===================== _find_spex_tomls =====================
 
 
-class TestFindSpexToml:
-    def test_no_configs_empty(self, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: Path("/nonexistent"))
-        result = _find_spex_toml(None)
-        assert result == {}
+class TestFindSpexTomls:
+    def test_single_file_at_worktree_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        (tmp_path / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
-    def test_home_only(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
-            'spex_root = "/home/spex"\n', encoding="utf-8"
+        result = _find_spex_tomls(tmp_path)
+
+        assert len(result) == 1
+        assert result[0] == tmp_path / ".spex.toml"
+
+    def test_hierarchy_worktree_and_parent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        # Parent has .spex.toml
+        (tmp_path / ".spex.toml").write_text(
+            'submit_method = "pr"\n', encoding="utf-8"
         )
+        # Worktree root (child) also has .spex.toml
+        child = tmp_path / "projects" / "myrepo"
+        child.mkdir(parents=True)
+        (child / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
-        result = _find_spex_toml(None)
-        assert result["spex_root"] == "/home/spex"
+        result = _find_spex_tomls(child)
 
-    def test_repo_overrides_home(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
-            'spex_root = "/home/spex"\n', encoding="utf-8"
+        # Highest priority first: child, then parent
+        assert len(result) == 2
+        assert result[0] == child / ".spex.toml"
+        assert result[1] == tmp_path / ".spex.toml"
+
+    def test_home_fallback(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        (home / ".spex.toml").write_text(
+            'create_branch = true\n', encoding="utf-8"
         )
-        (repo / ".spex.toml").write_text(
-            'spex_root = "/repo/spex"\n', encoding="utf-8"
-        )
+        # worktree_root is somewhere else with no .spex.toml
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
 
-        result = _find_spex_toml(repo)
-        assert result["spex_root"] == "/repo/spex"
+        result = _find_spex_tomls(worktree)
 
-    def test_xdg_overrides_home(self, tmp_path, monkeypatch):
-        # Renamed: tests that ~/.spex/config.toml is loaded as user-level config
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir(parents=True)
+        assert len(result) == 1
+        assert result[0] == home / ".spex.toml"
 
-        (home_spex / "config.toml").write_text(
-            'spex_root = "/user/spex"\n', encoding="utf-8"
-        )
+    def test_no_files_found(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        worktree = tmp_path / "empty_repo"
+        worktree.mkdir()
 
-        result = _find_spex_toml(None)
-        assert result["spex_root"] == "/user/spex"
+        result = _find_spex_tomls(worktree)
 
-    def test_repo_overrides_xdg_overrides_home(self, tmp_path, monkeypatch):
-        # Renamed: tests repo overrides user-level config
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir(parents=True)
+        assert result == []
 
-        (home_spex / "config.toml").write_text(
-            'spex_root = "/user"\n', encoding="utf-8"
-        )
-        (repo / ".spex.toml").write_text(
-            'spex_root = "/repo"\n', encoding="utf-8"
-        )
+    def test_home_not_duplicated_when_in_walk(self, tmp_path, monkeypatch):
+        """If ~/.spex.toml is found during upward walk, don't append again."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        (home / ".spex.toml").write_text('x = 1\n', encoding="utf-8")
+        # worktree_root is under home, so walk passes through home
+        worktree = home / "projects" / "repo"
+        worktree.mkdir(parents=True)
 
-        result = _find_spex_toml(repo)
-        assert result["spex_root"] == "/repo"
+        result = _find_spex_tomls(worktree)
 
-    def test_repo_key_preserves_home_extra(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
+        # Should only appear once
+        resolved_paths = [p.resolve() for p in result]
+        assert resolved_paths.count((home / ".spex.toml").resolve()) == 1
 
-        (home_spex / "config.toml").write_text(
-            'spex_root = "/home"\nextra = true\n', encoding="utf-8"
-        )
-        (repo / ".spex.toml").write_text(
-            'spex_root = "/repo"\n', encoding="utf-8"
-        )
+    def test_none_worktree_root_walks_from_workdir(self, tmp_path, monkeypatch):
+        """When worktree_root is None, walk upward from workdir."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        # Place .spex.toml in a parent of workdir
+        parent = tmp_path / "projects"
+        parent.mkdir()
+        (parent / ".spex.toml").write_text('x = 1\n', encoding="utf-8")
+        workdir = parent / "myapp"
+        workdir.mkdir()
 
-        result = _find_spex_toml(repo)
+        result = _find_spex_tomls(None, workdir)
+
+        assert any(p.resolve() == (parent / ".spex.toml").resolve() for p in result)
+
+    def test_none_worktree_root_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        """When worktree_root and workdir are both None, walk from cwd."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        (home / ".spex.toml").write_text('x = 1\n', encoding="utf-8")
+        monkeypatch.chdir(home)
+
+        result = _find_spex_tomls(None)
+
+        assert len(result) == 1
+        assert result[0].resolve() == (home / ".spex.toml").resolve()
+
+
+# ===================== _merge_configs =====================
+
+
+class TestMergeConfigs:
+    def test_higher_priority_overrides(self, tmp_path):
+        low = tmp_path / "low.toml"
+        high = tmp_path / "high.toml"
+        low.write_text('spex_root = "/low"\nextra = true\n', encoding="utf-8")
+        high.write_text('spex_root = "/high"\n', encoding="utf-8")
+
+        # highest priority first in list
+        result = _merge_configs([high, low])
+
+        assert result["spex_root"] == "/high"
         assert result["extra"] is True
 
-    def test_old_home_toml_not_loaded(self, tmp_path, monkeypatch):
-        # ~/.spex.toml (old path) should NOT be loaded
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/old/home"\n', encoding="utf-8"
-        )
-
-        result = _find_spex_toml(None)
-        assert "spex_root" not in result
-
-    def test_old_xdg_config_not_loaded(self, tmp_path, monkeypatch):
-        # ~/.config/spex/config.toml (old XDG path) should NOT be loaded
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        xdg = tmp_path / ".config" / "spex"
-        xdg.mkdir(parents=True)
-        (xdg / "config.toml").write_text(
-            'spex_root = "/old/xdg"\n', encoding="utf-8"
-        )
-
-        result = _find_spex_toml(None)
-        assert "spex_root" not in result
+    def test_empty_list(self):
+        result = _merge_configs([])
+        assert result == {}
 
 
 # ===================== load_config =====================
@@ -213,10 +213,8 @@ class TestFindSpexToml:
 class TestLoadConfig:
     def test_env_var_overrides_files(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
+        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = "/from/file"\n', encoding="utf-8"
         )
         monkeypatch.setenv("SPEX_ROOT", "/from/env")
@@ -227,16 +225,13 @@ class TestLoadConfig:
 
     def test_caching(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
+        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = "/original"\n', encoding="utf-8"
         )
 
         first = load_config()
-        # Change file after first load
-        (home_spex / "config.toml").write_text(
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = "/changed"\n', encoding="utf-8"
         )
         second = load_config()
@@ -246,15 +241,13 @@ class TestLoadConfig:
 
     def test_cache_clear_then_reload(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_repo_root", lambda w=None: None)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
+        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = "/v1"\n', encoding="utf-8"
         )
 
         first = load_config()
-        (home_spex / "config.toml").write_text(
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = "/v2"\n', encoding="utf-8"
         )
         clear_config_cache()
@@ -264,16 +257,35 @@ class TestLoadConfig:
         assert second["spex_root"] == "/v2"
 
 
+# ===================== Worktree root caching =====================
+
+
+class TestWorktreeRootCaching:
+    def test_second_call_uses_cache(self, monkeypatch):
+        call_count = {"n": 0}
+        original_run = __import__("subprocess").run
+
+        def mock_run(cmd, **kwargs):
+            if cmd[:3] == ["git", "rev-parse", "--show-toplevel"]:
+                call_count["n"] += 1
+            return original_run(cmd, **kwargs)
+
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        _get_worktree_root()
+        _get_worktree_root()
+
+        assert call_count["n"] == 1
+
+
 # ===================== Branch config keys =====================
 
 
 class TestBranchConfig:
     def test_load_branch_config(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
             'create_branch = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
             encoding="utf-8",
         )
@@ -285,11 +297,9 @@ class TestBranchConfig:
         assert result["submit_method"] == "pr"
 
     def test_default_branch_config(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_repo_root", lambda w=None: tmp_path)
-        home_spex = tmp_path / ".spex"
-        home_spex.mkdir()
-        (home_spex / "config.toml").write_text(
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
             'spex_root = ".spex"\n', encoding="utf-8"
         )
 
