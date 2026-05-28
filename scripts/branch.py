@@ -104,7 +104,7 @@ def validate_create_branch(config: dict) -> str:
     Prints errors to stderr and exits on failure.
     Returns the current branch name on success.
     """
-    enabled = bool(config.get("create_branch", False))
+    enabled = bool(config["create_branch"])
     if not enabled:
         print("Error: branch creation is not enabled in config.", file=sys.stderr)
         sys.exit(1)
@@ -119,7 +119,7 @@ def validate_create_branch(config: dict) -> str:
         sys.exit(1)
 
     # 1. If main_branch_name is set, current branch must match it.
-    main_branch = config.get("main_branch_name", "")
+    main_branch = config["main_branch_name"]
     if main_branch and current != main_branch:
         print(
             f"Error: current branch '{current}' does not match main_branch_name '{main_branch}'.",
@@ -171,7 +171,7 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
         sys.exit(1)
 
     # Step 2
-    if not config.get("create_branch", False):
+    if not config["create_branch"]:
         return
 
     meta = common.load_meta(topic_dir) or {}
@@ -335,7 +335,7 @@ def cli_submit(argv=None) -> None:
     meta = common.load_meta(topic_dir)
     source = meta.get("spex_branch", "") if meta else ""
     target = meta.get("branch", "main") if meta else "main"
-    method = conf.get("submit_method", "merge")
+    method = conf["submit_method"]
     errors: list[str] = []
 
     if not source:

@@ -13,12 +13,14 @@ from common import (
     _sync_builtin_template,
     clear_spex_root_cache,
 )
+from config import SpexContext
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
     clear_spex_root_cache()
     yield
+    clear_spex_root_cache()
 
 
 @pytest.fixture()
@@ -29,35 +31,55 @@ def mock_workdir(tmp_path):
     return repo
 
 
+def _make_context(
+    spex_root="",
+    spex_roots=None,
+    spex_tomls=None,
+    config=None,
+    worktree_root=None,
+):
+    """Helper to build a SpexContext for mocking."""
+    return SpexContext(
+        spex_tomls=spex_tomls or [],
+        config=config or {},
+        spex_root=spex_root,
+        spex_roots=spex_roots or [],
+        worktree_root=worktree_root,
+    )
+
+
 class TestIsInitialized:
-    def test_not_initialized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "spex"))
-        clear_spex_root_cache()
-        from init import is_initialized
+    def test_not_initialized_no_roots(self, tmp_path):
+        """Returns False when no spex_roots are resolved."""
+        ctx = _make_context(spex_root="", spex_roots=[])
+        with patch("init.get_context", return_value=ctx):
+            from init import is_initialized
 
-        assert is_initialized() is False
+            assert is_initialized() is False
 
-    def test_initialized(self, tmp_path, monkeypatch):
+    def test_not_initialized_no_specs_dir(self, tmp_path):
+        """Returns False when spex_root exists but specs/ is missing."""
+        spex_root = tmp_path / "spex"
+        spex_root.mkdir()
+        ctx = _make_context(
+            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+        )
+        with patch("init.get_context", return_value=ctx):
+            from init import is_initialized
+
+            assert is_initialized() is False
+
+    def test_initialized(self, tmp_path):
+        """Returns True when spex_roots is non-empty and specs/ exists."""
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
-        (spex_root / "archives").mkdir(parents=True)
-        (spex_root / "hooks").mkdir(parents=True)
-        (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
-        from init import is_initialized
+        ctx = _make_context(
+            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+        )
+        with patch("init.get_context", return_value=ctx):
+            from init import is_initialized
 
-        assert is_initialized() is True
-
-    def test_missing_specs_dir(self, tmp_path, monkeypatch):
-        spex_root = tmp_path / "spex"
-        (spex_root / "archives").mkdir(parents=True)
-        (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
-        from init import is_initialized
-
-        assert is_initialized() is False
+            assert is_initialized() is True
 
 
 class TestSyncTemplates:
@@ -77,7 +99,7 @@ class TestSyncTemplates:
 
 class TestSyncBuiltinTemplate:
     def test_copies_when_target_missing(self, tmp_path):
-        """Target does not exist → copy."""
+        """Target does not exist -> copy."""
         spex_root = tmp_path / "spex"
         spex_root.mkdir()
         _sync_builtin_template("spec-template.md", spex_root=spex_root)
@@ -86,7 +108,7 @@ class TestSyncBuiltinTemplate:
         assert target.exists()
 
     def test_skips_when_version_matches(self, tmp_path):
-        """Target exists with same version → skip (no copy)."""
+        """Target exists with same version -> skip (no copy)."""
         spex_root = tmp_path / "spex"
         examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         examples_dir.mkdir(parents=True)
@@ -103,7 +125,7 @@ class TestSyncBuiltinTemplate:
         assert target.stat().st_mtime == src.stat().st_mtime
 
     def test_overwrites_when_version_differs(self, tmp_path):
-        """Target exists with different version → overwrite."""
+        """Target exists with different version -> overwrite."""
         spex_root = tmp_path / "spex"
         examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         examples_dir.mkdir(parents=True)
@@ -119,7 +141,7 @@ class TestSyncBuiltinTemplate:
         assert "0.0.0" not in content
 
     def test_overwrites_when_mtime_differs(self, tmp_path):
-        """Target exists with different mtime → overwrite regardless of version."""
+        """Target exists with different mtime -> overwrite regardless of version."""
         spex_root = tmp_path / "spex"
         examples_dir = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         examples_dir.mkdir(parents=True)
@@ -197,7 +219,10 @@ class TestEnsureInitialized:
 
     def test_get_spex_root_auto_initializes(self, tmp_path, monkeypatch):
         spex_root = tmp_path / "empty_spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        ctx = _make_context(
+            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+        )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         clear_spex_root_cache()
 
         from common import get_spex_root
@@ -208,60 +233,155 @@ class TestEnsureInitialized:
         assert (spex_root / "archives").is_dir()
 
 
+class TestCreateTomlConfig:
+    def test_creates_home_toml_when_no_config(self, tmp_path):
+        """Creates ~/.spex.toml when no config exists."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+
+        ctx = _make_context(spex_tomls=[])
+        with (
+            patch("init.get_context", return_value=ctx),
+            patch("init.Path.home", return_value=fake_home),
+            patch("init.clear_config_cache"),
+        ):
+            from init import _create_toml_config
+
+            _create_toml_config()
+
+        toml_file = fake_home / ".spex.toml"
+        assert toml_file.exists()
+        assert toml_file.read_text() == '# spex_root = ".spex"\n'
+
+    def test_preserves_existing_config(self, tmp_path):
+        """Does not overwrite when config already exists."""
+        existing_toml = tmp_path / ".spex.toml"
+        existing_toml.write_text('spex_root = "custom"\n')
+
+        ctx = _make_context(spex_tomls=[existing_toml])
+        with patch("init.get_context", return_value=ctx):
+            from init import _create_toml_config
+
+            _create_toml_config()
+
+        # File should be unchanged
+        assert existing_toml.read_text() == 'spex_root = "custom"\n'
+
+
 class TestRunInit:
+    def test_creates_spex_dir_when_no_roots(self, tmp_path):
+        """Creates ~/.spex/ when no roots exist."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+
+        # First call (from _create_toml_config): no tomls
+        ctx_no_roots = _make_context(
+            spex_root="",
+            spex_roots=[],
+            spex_tomls=[],
+            config={"spex_root": ".spex"},
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init._create_toml_config"),
+            patch("init.clear_config_cache"),
+            patch("init.get_context", return_value=ctx_no_roots),
+            patch("init.Path.home", return_value=fake_home),
+            patch("init.ensure_initialized") as mock_ensure,
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path))
+
+        mock_ensure.assert_called_once_with(str(fake_home / ".spex"))
+
+    def test_uses_existing_root(self, tmp_path):
+        """Uses existing spex_root when roots are already resolved."""
+        spex_root = tmp_path / ".spex"
+        (spex_root / "specs").mkdir(parents=True)
+
+        ctx_with_roots = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+            config={"spex_root": ".spex"},
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init._create_toml_config"),
+            patch("init.clear_config_cache"),
+            patch("init.get_context", return_value=ctx_with_roots),
+            patch("init.ensure_initialized") as mock_ensure,
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path))
+
+        mock_ensure.assert_called_once_with(str(spex_root))
+
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
+        """Integration: templates are created during init."""
         from init import run_init
 
-        spex_root = mock_workdir / ".spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        (mock_workdir / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
         clear_spex_root_cache()
 
         with patch("init._install_deps"), patch("init._install_cli"):
             run_init(workdir=str(mock_workdir))
 
+        spex_root = mock_workdir / ".spex"
         examples = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         assert examples.is_dir()
         assert (examples / "spec-template.md").exists()
 
     def test_idempotent(self, tmp_path, monkeypatch, mock_workdir):
+        """Running init twice works without errors."""
         from init import run_init
 
-        spex_root = mock_workdir / ".spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        (mock_workdir / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
         clear_spex_root_cache()
 
         with patch("init._install_deps"), patch("init._install_cli"):
             run_init(workdir=str(mock_workdir))
+            clear_spex_root_cache()
             run_init(workdir=str(mock_workdir))
 
+        spex_root = mock_workdir / ".spex"
         examples = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         assert examples.is_dir()
 
 
 class TestMainCheckFlag:
     def test_check_not_initialized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "missing"))
-        clear_spex_root_cache()
+        ctx = _make_context(spex_root="", spex_roots=[])
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
-        from init import main
+        with patch("init.get_context", return_value=ctx):
+            from init import main
 
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 1
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 1
 
     def test_check_initialized(self, tmp_path, monkeypatch):
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
-        (spex_root / "archives").mkdir(parents=True)
-        (spex_root / "hooks").mkdir(parents=True)
-        (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
+        ctx = _make_context(
+            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+        )
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
-        from init import main
+        with patch("init.get_context", return_value=ctx):
+            from init import main
 
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 0
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0

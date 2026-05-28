@@ -6,30 +6,21 @@ import sys
 from pathlib import Path
 
 from common import (
-    EXAMPLES_TEMPLATE_DIR,
-    TEMPLATE_DIR,
     ensure_initialized,
     get_current_workdir,
-    get_spex_root,
 )
+from config import clear_config_cache, get_context
 
 
 def is_initialized(workdir=None):
     """Check if spex environment is initialized.
 
-    Returns True if specs_dir, archives_dir, hooks_dir, and
-    templates/examples/ all exist.
+    Returns True if a spex_root is resolved and its specs/ directory exists.
     """
-    try:
-        spex_root = Path(get_spex_root(workdir, auto_init=False))
-    except (SystemExit, RuntimeError):
+    ctx = get_context(workdir)
+    if not ctx.spex_roots:
         return False
-    return (
-        (spex_root / "specs").is_dir()
-        and (spex_root / "archives").is_dir()
-        and (spex_root / "hooks").is_dir()
-        and (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).is_dir()
-    )
+    return (Path(ctx.spex_root) / "specs").is_dir()
 
 
 def _install_deps():
@@ -75,23 +66,19 @@ def _install_cli():
               file=sys.stderr)
 
 
-_DEFAULT_TOML = 'spex_root = ".spex"\n'
+_DEFAULT_TOML = '# spex_root = ".spex"\n'
 
 
-def _create_toml_config(repo_root=None):
-    """Create .spex.toml at the appropriate location."""
-    if repo_root is not None:
-        target = repo_root / ".spex.toml"
-    else:
-        target = Path.home() / ".spex" / "config.toml"
-        target.parent.mkdir(parents=True, exist_ok=True)
-
-    if target.exists():
-        print(f"Config already exists: {target}")
+def _create_toml_config():
+    """Create ~/.spex.toml if no config exists yet."""
+    ctx = get_context()
+    if ctx.spex_tomls:
         return
 
+    target = Path.home() / ".spex.toml"
     target.write_text(_DEFAULT_TOML, encoding="utf-8")
     print(f"Created: {target}")
+    clear_config_cache()
 
 
 def run_init(workdir=None):
@@ -99,13 +86,18 @@ def run_init(workdir=None):
     if workdir is None:
         workdir = get_current_workdir()
 
-    repo_root = Path(get_current_workdir()) if get_current_workdir() else None
-
     _install_deps()
-    ensure_initialized(get_spex_root(workdir))
-    _install_cli()
-    _create_toml_config(repo_root)
+    _create_toml_config()
+    clear_config_cache()
 
+    ctx = get_context(workdir)
+    if not ctx.spex_roots:
+        target = Path.home() / ctx.config.get("spex_root", ".spex")
+        ensure_initialized(str(target))
+    else:
+        ensure_initialized(ctx.spex_root)
+
+    _install_cli()
     print("Initialization complete.")
 
 

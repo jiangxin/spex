@@ -2,7 +2,6 @@
 """Spex - Spec-Driven Development CLI tool."""
 
 import importlib
-import os
 import re
 import sys
 from pathlib import Path
@@ -16,10 +15,9 @@ from cli import ArgumentParser  # noqa: E402
 _skill_dir = _scripts_dir.parent
 
 USAGE = """\
-Usage: spex [--spex-root <path>] <command>
+Usage: spex <command>
 
 Global options:
-  --spex-root <path>  Override spex root directory
   --version, -V       Show version and exit
 
 Commands (run directly):
@@ -37,7 +35,7 @@ Commands (implementation — modifies code):
   apply       Apply a spec step-by-step
 
 Internal commands (used by skill):
-  get --spex-root|--specs-dir|--archives-dir
+  get --specs-dir|--archives-dir
                 Print the requested path
   get-topic [name]
                 Resolve a topic directory
@@ -63,53 +61,21 @@ LLM_COMMANDS = {"apply", "create", "new", "modify"}
 
 
 def _extract_global_options(argv):
-    """Extract --version, -V, and --spex-root <path> from argv.
+    """Extract --version and -V from argv.
 
-    Returns (spex_root_or_None, cleaned_argv) where cleaned_argv has
-    global options removed.
+    Returns cleaned_argv with global options removed.
     """
-    spex_root = None
     cleaned = []
     i = 0
     while i < len(argv):
         if argv[i] in ("--version", "-V"):
             _run_version()
             sys.exit(0)
-        elif argv[i].startswith("--spex-root="):
-            spex_root = argv[i].split("=", 1)[1]
-            if not spex_root:
-                print("Error: --spex-root requires a path argument",
-                      file=sys.stderr)
-                sys.exit(1)
-            i += 1
-        elif argv[i] == "--spex-root":
-            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
-                spex_root = argv[i + 1]
-                i += 2
-            else:
-                # No value — check if there's any command in the full argv.
-                # If so, this is a subcommand flag; if not, it's an error.
-                has_command = any(
-                    a in DIRECT_COMMANDS or a in LLM_COMMANDS
-                    for a in argv
-                )
-                if not has_command:
-                    print("Error: --spex-root requires a path argument",
-                          file=sys.stderr)
-                    sys.exit(1)
-                # Otherwise pass through for subcommand to handle
-                cleaned.append(argv[i])
-                i += 1
         else:
             cleaned.append(argv[i])
             i += 1
 
-    if spex_root is not None:
-        os.environ["SPEX_ROOT"] = spex_root
-        import config
-        config.clear_config_cache()
-
-    return spex_root, cleaned
+    return cleaned
 
 
 def _run_list(argv=None):
@@ -141,7 +107,7 @@ def _run_open(argv=None):
 
 
 _GET_USAGE = """\
-Usage: spex get --spex-root|--specs-dir|--archives-dir
+Usage: spex get --specs-dir|--archives-dir
 
 Print the requested path.
 
@@ -155,20 +121,18 @@ def _run_get(argv=None):
     import common
 
     parser = ArgumentParser(prog="spex get", usage=_GET_USAGE)
-    parser.add_argument("--spex-root", action="store_true")
     parser.add_argument("--specs-dir", action="store_true")
     parser.add_argument("--archives-dir", action="store_true")
     args = parser.parse(argv)
 
     flag_map = {
-        "spex_root": common.get_spex_root,
         "specs_dir": common.get_specs_dir,
         "archives_dir": common.get_archives_dir,
     }
 
     matched = [k for k in flag_map if getattr(args, k, False)]
     if len(matched) != 1:
-        parser.error("exactly one of --spex-root, --specs-dir, --archives-dir is required")
+        parser.error("exactly one of --specs-dir, --archives-dir is required")
 
     print(flag_map[matched[0]]())
 
@@ -442,7 +406,7 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
-    _, argv = _extract_global_options(argv)
+    argv = _extract_global_options(argv)
 
     if not argv:
         print(USAGE, end="")

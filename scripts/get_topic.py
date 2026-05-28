@@ -10,26 +10,36 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import (
     check_help_flag,
     get_current_workdir,
     get_specs_dir,
+    get_spex_roots,
+    get_spex_tomls,
     get_topic_workdir,
     has_undone_tasks,
     is_topic_completed,
     same_path,
 )
+from config import set_spex_config_file
 
 USAGE = """\
 Usage: spex get-topic [--json] [--all] [--must-done | --must-undone] [topic]
+       spex get-topic --spex-roots | --spex-toml | --spex-tomls
 
 Resolve a topic directory under specs.
 
 Options:
   --json         Output in JSON format
   --all          Show all topics (ignore workspace filter)
+  --spex-config-file <path>
+                 Use specified config file (overrides SPEX_CONFIG_FILE env var)
   --must-done    Only show completed topics
   --must-undone  Only show topics with undone tasks (default)
+  --spex-roots   Print all spex root directories (one per line)
+  --spex-toml    Print the highest-priority .spex.toml path
+  --spex-tomls   Print all discovered .spex.toml paths (one per line)
   -h, --help     Show this help message and exit"""
 
 
@@ -155,6 +165,45 @@ def _topic_matches_workdir(topic_dir, workdir):
 def main(argv=None):
     check_help_flag(USAGE, argv)
     args = argv if argv is not None else sys.argv[1:]
+
+    # --- Introspection flags (handled early, before topic resolution) ---
+    parser = ArgumentParser(
+        prog="spex get-topic", usage=USAGE, add_help=False,
+    )
+    parser.add_argument("--spex-config-file", default=None)
+    parser.add_argument("--spex-roots", action="store_true")
+    parser.add_argument("--spex-toml", action="store_true")
+    parser.add_argument("--spex-tomls", action="store_true")
+    parsed, remaining = parser.parse_known(args)
+
+    if parsed.spex_config_file:
+        set_spex_config_file(parsed.spex_config_file)
+
+    if parsed.spex_roots:
+        roots = get_spex_roots()
+        if not roots:
+            sys.exit(1)
+        for p in roots:
+            print(p)
+        return
+
+    if parsed.spex_toml:
+        tomls = get_spex_tomls()
+        if not tomls:
+            sys.exit(1)
+        print(tomls[0])
+        return
+
+    if parsed.spex_tomls:
+        tomls = get_spex_tomls()
+        if not tomls:
+            sys.exit(1)
+        for p in tomls:
+            print(p)
+        return
+
+    # --- Normal topic resolution ---
+    args = remaining
     json_mode = "--json" in args
     if json_mode:
         args = [a for a in args if a != "--json"]

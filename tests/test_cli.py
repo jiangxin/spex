@@ -119,11 +119,12 @@ class TestHelpFlag:
 
 
 class TestDirectCommands:
-    def test_list_exits_zero(self, tmp_path, monkeypatch):
-        # Create a minimal specs dir so list_specs doesn't fail
-        specs_dir = tmp_path / "specs"
-        specs_dir.mkdir()
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+    def test_list_exits_zero(self, tmp_path):
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        (tmp_path / ".spex" / "specs").mkdir(parents=True)
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "list"],
@@ -132,13 +133,15 @@ class TestDirectCommands:
             cwd=str(tmp_path),
         )
 
-        # list_specs calls get_specs_dir which needs git; test via mock
-        # Instead, just test that the script dispatches correctly
-        # by checking it doesn't print the LLM error or usage
         assert "requires an AI coding agent" not in result.stderr
 
-    def test_list_all_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+    def test_list_all_exits_zero(self, tmp_path):
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        (tmp_path / ".spex" / "specs").mkdir(parents=True)
+        (tmp_path / ".spex" / "archives").mkdir(parents=True)
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "list", "--all"],
@@ -149,8 +152,13 @@ class TestDirectCommands:
 
         assert "requires an AI coding agent" not in result.stderr
 
-    def test_archive_exits_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+    def test_archive_exits_zero(self, tmp_path):
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        (tmp_path / ".spex" / "specs").mkdir(parents=True)
+        (tmp_path / ".spex" / "archives").mkdir(parents=True)
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "archive"],
@@ -225,23 +233,6 @@ class TestUnknownCommand:
 class TestGetCommand:
     """Tests for the get subcommand."""
 
-    def test_spex_root_prints_path(self, tmp_path):
-        """spex get --spex-root prints a valid path, exit 0."""
-        # Create a git repo so get_spex_root works
-        subprocess.run(
-            ["git", "init"], cwd=str(tmp_path), capture_output=True
-        )
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "get", "--spex-root"],
-            capture_output=True,
-            text=True,
-            cwd=str(tmp_path),
-        )
-
-        assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        assert ".spex" in result.stdout
-
     def test_no_flag_prints_usage_exit_1(self):
         """spex get (no flag) prints usage to stderr, exit 2."""
         result = _run_spex("get")
@@ -253,11 +244,14 @@ class TestGetCommand:
 class TestGetTopicCommand:
     """Tests for the get-topic subcommand."""
 
-    def test_no_matching_topics_exit_1(self, tmp_path, monkeypatch):
+    def test_no_matching_topics_exit_1(self, tmp_path):
         """spex get-topic (no matching topics) exits 1."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        specs_dir = tmp_path / "specs"
-        specs_dir.mkdir()
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        specs_dir = tmp_path / ".spex" / "specs"
+        specs_dir.mkdir(parents=True)
 
         result = subprocess.run(
             [sys.executable, SPEX_SCRIPT, "get-topic"],
@@ -407,97 +401,3 @@ class TestTodoCommand:
 
 
 
-class TestSpexRootGlobalOption:
-    def test_spex_root_option_used(self, tmp_path):
-        """--spex-root should override default spex root."""
-        specs_dir = tmp_path / "specs"
-        specs_dir.mkdir()
-
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT,
-             "--spex-root", str(tmp_path), "list"],
-            capture_output=True,
-            text=True,
-            cwd="/tmp",
-        )
-
-        assert result.returncode == 0
-        assert "requires an AI coding agent" not in result.stderr
-
-    def test_spex_root_missing_value(self):
-        """--spex-root without a path should error."""
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "--spex-root"],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 1
-        assert "requires a path" in result.stderr
-
-    def test_spex_root_with_get(self, tmp_path):
-        """--spex-root should affect get --spex-root output."""
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT,
-             "--spex-root", str(tmp_path), "get", "--spex-root"],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        assert result.stdout.strip() == str(tmp_path)
-
-    def test_spex_root_equals_syntax(self, tmp_path):
-        """--spex-root=<path> equals syntax should work."""
-        specs_dir = tmp_path / "specs"
-        specs_dir.mkdir()
-
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT,
-             f"--spex-root={tmp_path}", "list"],
-            capture_output=True,
-            text=True,
-            cwd="/tmp",
-        )
-
-        assert result.returncode == 0
-        assert "requires an AI coding agent" not in result.stderr
-
-    def test_spex_root_equals_empty_value(self):
-        """--spex-root= (empty) should error."""
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "--spex-root="],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 1
-        assert "requires a path" in result.stderr
-
-    def test_spex_root_after_command(self, tmp_path):
-        """--spex-root after the command should work."""
-        specs_dir = tmp_path / "specs"
-        specs_dir.mkdir()
-
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT,
-             "list", "--spex-root", str(tmp_path)],
-            capture_output=True,
-            text=True,
-            cwd="/tmp",
-        )
-
-        assert result.returncode == 0
-        assert "requires an AI coding agent" not in result.stderr
-
-    def test_get_spex_root_flag_not_consumed(self):
-        """'get --spex-root' should still work as subcommand flag."""
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "get", "--spex-root"],
-            capture_output=True,
-            text=True,
-        )
-
-        # get --spex-root prints the spex root path (exit 0 in a git repo)
-        # or fails for other reasons — but NOT "requires a path"
-        assert "requires a path" not in result.stderr

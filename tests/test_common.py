@@ -16,6 +16,8 @@ from common import (
     get_spec_description,
     get_specs_dir,
     get_spex_root,
+    get_spex_roots,
+    get_spex_tomls,
     get_template,
     local_iso_timestamp,
     parse_front_matter_description,
@@ -37,6 +39,7 @@ def test_default_uses_cwd(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
     monkeypatch.chdir(repo)
 
     result = get_spex_root()
@@ -47,6 +50,7 @@ def test_custom_workdir(tmp_path):
     repo = tmp_path / "project-x"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     result = get_spex_root(str(repo))
     assert result == str(repo / ".spex")
@@ -56,6 +60,7 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
     subdir = repo / "src" / "lib"
     subdir.mkdir(parents=True)
 
@@ -63,18 +68,22 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     assert result == str(repo / ".spex")
 
 
-def test_not_a_git_repo(tmp_path):
+def test_not_a_git_repo(monkeypatch, tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
+    (workdir / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
+    monkeypatch.chdir(workdir)
 
-    with pytest.raises(RuntimeError, match="Cannot determine spex_root"):
-        get_spex_root(str(workdir))
+    result = get_spex_root(str(workdir))
+    assert result == str((workdir / ".spex").resolve())
 
 
 def test_require_git_raises_outside_repo(monkeypatch, tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
-    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "my-specs"))
+    (workdir / ".spex.toml").write_text(
+        'spex_root = ".spex"\n', encoding="utf-8"
+    )
 
     with pytest.raises(RuntimeError, match="Not inside a git repository"):
         get_spex_root(str(workdir), require_git=True)
@@ -84,16 +93,20 @@ def test_require_git_ok_inside_repo(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "my-specs"))
+    custom_path = tmp_path / "my-specs"
+    (repo / ".spex.toml").write_text(
+        f'spex_root = "{custom_path}"\n', encoding="utf-8"
+    )
 
     result = get_spex_root(str(repo), require_git=True)
-    assert result == str((tmp_path / "my-specs").resolve())
+    assert result == str(custom_path.resolve())
 
 
 def test_naming_convention(tmp_path):
     repo = tmp_path / "hello-world"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     result = get_spex_root(str(repo))
     spec_path = Path(result)
@@ -106,6 +119,7 @@ def test_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     result = get_specs_dir(str(repo))
     assert result == str(repo / ".spex" / "specs")
@@ -115,6 +129,7 @@ def test_archives_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     result = get_archives_dir(str(repo))
     assert result == str(repo / ".spex" / "archives")
@@ -126,43 +141,7 @@ def test_local_iso_timestamp_format():
     assert re.match(pattern, ts), f"Unexpected format: {ts}"
 
 
-def test_env_var_takes_priority(monkeypatch, tmp_path):
-    monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "custom-specs"))
-
-    result = get_spex_root()
-    assert result == str(tmp_path / "custom-specs")
-
-
-def test_env_var_relative_path_in_repo(monkeypatch, tmp_path):
-    repo = tmp_path / "my-app"
-    repo.mkdir()
-    _init_git_repo(repo)
-    monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
-
-    result = get_spex_root(str(repo))
-    assert result == str(repo / ".spex")
-
-
-def test_env_var_relative_path_no_repo(monkeypatch, tmp_path):
-    workdir = tmp_path / "no-repo"
-    workdir.mkdir()
-    monkeypatch.setenv("SPEX_ROOT", "my-specs")
-    monkeypatch.chdir(workdir)
-
-    result = get_spex_root(str(workdir))
-    assert result == str(workdir / "my-specs")
-
-
-def test_env_var_tilde_path(monkeypatch, tmp_path):
-    monkeypatch.setenv("SPEX_ROOT", "~/my-specs")
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    result = get_spex_root()
-    assert result == str(tmp_path / "my-specs")
-
-
-def test_toml_relative_path_in_repo(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+def test_toml_relative_path_in_repo(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -175,7 +154,6 @@ def test_toml_relative_path_in_repo(monkeypatch, tmp_path):
 
 
 def test_repo_toml_takes_priority(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -184,11 +162,9 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     (repo / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
-    # Write home-level (should be lower priority)
+    # Write home-level ~/.spex.toml (should be lower priority)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    home_spex = tmp_path / ".spex"
-    home_spex.mkdir()
-    (home_spex / "config.toml").write_text(
+    (tmp_path / ".spex.toml").write_text(
         'spex_root = "/should/not/use"\n', encoding="utf-8"
     )
 
@@ -197,20 +173,20 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
 
 
 def test_default_fallback_when_no_config(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
     result = get_spex_root(str(repo))
-    assert result == str(repo / ".spex")
+    assert result == str((tmp_path / "fakehome" / ".spex").resolve())
 
 
-def test_default_creates_specs_dir(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+def test_default_creates_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     specs_dir = repo / ".spex"
     assert not specs_dir.exists()
@@ -219,11 +195,11 @@ def test_default_creates_specs_dir(monkeypatch, tmp_path):
     assert specs_dir.is_dir()
 
 
-def test_default_creates_internal_gitignore(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+def test_default_creates_internal_gitignore(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
 
     get_spex_root(str(repo))
 
@@ -235,26 +211,13 @@ def test_default_creates_internal_gitignore(monkeypatch, tmp_path):
     assert "/archives/" in content
 
 
-def test_env_var_auto_initializes(monkeypatch, tmp_path):
-    custom_specs = tmp_path / "custom-specs"
-    monkeypatch.setenv("SPEX_ROOT", str(custom_specs))
-
-    result = get_spex_root()
-    assert result == str(custom_specs)
-    assert (custom_specs / "specs").is_dir()
-    assert (custom_specs / "archives").is_dir()
-
-
 def test_xdg_config_fallback(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-user"
-    # No repo-level .spex.toml
-    user_config_dir = tmp_path / ".spex"
-    user_config_dir.mkdir(parents=True)
-    (user_config_dir / "config.toml").write_text(
+    # No repo-level .spex.toml; use ~/.spex.toml as fallback
+    (tmp_path / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -264,15 +227,12 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
 
 
 def test_home_toml_fallback(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
     custom_path = tmp_path / "from-home"
-    # No repo-level config
-    user_config_dir = tmp_path / ".spex"
-    user_config_dir.mkdir(parents=True)
-    (user_config_dir / "config.toml").write_text(
+    # No repo-level config; use ~/.spex.toml as fallback
+    (tmp_path / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -281,8 +241,7 @@ def test_home_toml_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
-def test_toml_auto_initializes(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+def test_toml_auto_initializes(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
@@ -298,17 +257,16 @@ def test_toml_auto_initializes(monkeypatch, tmp_path):
 
 
 def test_toml_missing_key_skipped(monkeypatch, tmp_path):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+    monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    # .spex.toml exists but has no spex_root key
     (repo / ".spex.toml").write_text(
         'other_key = "some_value"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
-    assert result == str(repo / ".spex")
+    assert result == str((tmp_path / "fakehome" / ".spex").resolve())
 
 
 class TestCheckHelpFlag:
@@ -373,114 +331,143 @@ class TestResolveTopicDir:
 class TestGetTemplate:
     def test_get_template_generic(self, monkeypatch, tmp_path):
         """get_template works with any template name."""
+        from unittest.mock import patch
+
         from common import (
             EXAMPLES_TEMPLATE_DIR,
             TEMPLATE_DIR,
             _get_skill_path,
             clear_spex_root_cache,
         )
+        from config import SpexContext
+
         clear_spex_root_cache()
 
-        # Create a test template in the skill's templates dir
         skill_path = _get_skill_path()
         test_template = skill_path / TEMPLATE_DIR / "test-tpl.md"
         test_template.write_text('---\nversion: "1.0.0"\n---\n\n# Test TPL')
 
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
-
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
         try:
-            result = get_template("test-tpl.md")
+            with patch("common.get_context", return_value=ctx):
+                result = get_template("test-tpl.md")
             assert "# Test TPL" in result
-            assert "---" in result  # front-matter preserved
-            # Examples copy synced
+            assert "---" in result
             synced = tmp_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR / "test-tpl.md"
             assert synced.exists()
         finally:
-            # Clean up test template
             test_template.unlink()
 
     def test_resolve_template_roots_order(self, monkeypatch, tmp_path):
-        """_resolve_template_roots returns 3 paths in correct order."""
-        from common import TEMPLATE_DIR, _get_skill_path, get_spex_root
-        clear_spex_root_cache()
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        """_resolve_template_roots returns spex_roots/templates + skill/templates."""
+        from unittest.mock import patch
+
+        from common import TEMPLATE_DIR, _get_skill_path
+        from config import SpexContext
+
         clear_spex_root_cache()
 
-        roots = _resolve_template_roots()
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            roots = _resolve_template_roots()
 
-        assert len(roots) == 3
-        spex_root = Path(get_spex_root(auto_init=False))
-        assert roots[0] == spex_root / TEMPLATE_DIR
-        assert roots[1] == Path.home() / ".spex" / TEMPLATE_DIR
-        assert roots[2] == _get_skill_path() / TEMPLATE_DIR
+        assert len(roots) == 2
+        assert roots[0] == Path(str(tmp_path)) / TEMPLATE_DIR
+        assert roots[-1] == _get_skill_path() / TEMPLATE_DIR
 
     def test_get_template_spex_root_wins(self, monkeypatch, tmp_path):
-        """spex_root template takes priority over ~/.spex and skill_path."""
-        from common import TEMPLATE_DIR, _get_skill_path, get_spex_root
-        clear_spex_root_cache()
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        monkeypatch.setattr("common.Path.home", lambda: tmp_path)
+        """spex_root template takes priority over skill_path."""
+        from unittest.mock import patch
+
+        from common import TEMPLATE_DIR, _get_skill_path
+        from config import SpexContext
+
         clear_spex_root_cache()
 
-        # Place different content at all three levels
-        spex_root = Path(get_spex_root(auto_init=False))
-        (spex_root / TEMPLATE_DIR).mkdir(parents=True, exist_ok=True)
-        (spex_root / TEMPLATE_DIR / "prio-tpl.md").write_text("spex_root content")
-
-        home_spex = tmp_path / ".spex" / TEMPLATE_DIR
-        home_spex.mkdir(parents=True)
-        (home_spex / "prio-tpl.md").write_text("home content")
+        # Place different content at two levels
+        (tmp_path / TEMPLATE_DIR).mkdir(parents=True, exist_ok=True)
+        (tmp_path / TEMPLATE_DIR / "prio-tpl.md").write_text("spex_root content")
 
         skill_path = _get_skill_path()
         (skill_path / TEMPLATE_DIR / "prio-tpl.md").write_text("skill content")
 
-        result = get_template("prio-tpl.md")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            result = get_template("prio-tpl.md")
         assert result == "spex_root content"
 
         # Clean up
-        (spex_root / TEMPLATE_DIR / "prio-tpl.md").unlink()
+        (tmp_path / TEMPLATE_DIR / "prio-tpl.md").unlink()
         (skill_path / TEMPLATE_DIR / "prio-tpl.md").unlink()
 
-    def test_get_template_home_spex_fallback(self, monkeypatch, tmp_path):
-        """~/.spex template wins when spex_root has none."""
+    def test_get_template_skill_fallback(self, tmp_path):
+        """Skill template used when spex_root templates/ has no match."""
+        from unittest.mock import patch
+
         from common import TEMPLATE_DIR, _get_skill_path
-        clear_spex_root_cache()
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        monkeypatch.setattr("common.Path.home", lambda: tmp_path)
+        from config import SpexContext
+
         clear_spex_root_cache()
 
-        # _sync_builtin_template requires source to exist, so create a dummy
         skill_path = _get_skill_path()
         test_src = skill_path / TEMPLATE_DIR / "fallback-tpl.md"
         test_src.write_text("skill fallback content")
 
-        home_spex = tmp_path / ".spex" / TEMPLATE_DIR
-        home_spex.mkdir(parents=True)
-        (home_spex / "fallback-tpl.md").write_text("home content")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        try:
+            with patch("common.get_context", return_value=ctx):
+                result = get_template("fallback-tpl.md")
+            assert result == "skill fallback content"
+        finally:
+            test_src.unlink()
 
-        result = get_template("fallback-tpl.md")
-        assert result == "home content"
-
-        # Clean up
-        (home_spex / "fallback-tpl.md").unlink()
-        test_src.unlink()
-
-    def test_get_template_raises_when_missing(self, monkeypatch, tmp_path):
+    def test_get_template_raises_when_missing(self, tmp_path):
         """FileNotFoundError raised when template not found in any root."""
+        from unittest.mock import patch
+
         from common import TEMPLATE_DIR, _get_skill_path
-        clear_spex_root_cache()
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from config import SpexContext
+
         clear_spex_root_cache()
 
-        # Ensure no template exists at any root
         skill_path = _get_skill_path()
         unlikely = "__nonexistent-template-xyz__"
 
-        with pytest.raises(FileNotFoundError, match=unlikely):
-            get_template(f"{unlikely}.md")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            with pytest.raises(FileNotFoundError, match=unlikely):
+                get_template(f"{unlikely}.md")
 
-        # Clean up any test files (there shouldn't be any)
         if (skill_path / TEMPLATE_DIR / f"{unlikely}.md").exists():
             (skill_path / TEMPLATE_DIR / f"{unlikely}.md").unlink()
 
@@ -600,3 +587,89 @@ class TestFormatTopic:
         )
         out = format_topic(topic_dir, verbose=0)
         assert out.startswith("✅ [1/1] done")
+
+
+class TestGetSpexRoots:
+    def test_returns_list(self, monkeypatch, tmp_path):
+        """get_spex_roots returns a list of strings."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        (repo / ".spex").mkdir()
+        (repo / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        clear_spex_root_cache()
+
+        result = get_spex_roots(str(repo))
+
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert str((repo / ".spex").resolve()) in result
+
+    def test_home_default_always_present(self, monkeypatch, tmp_path):
+        """get_spex_roots always includes ~/.spex as fallback."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        clear_spex_root_cache()
+
+        result = get_spex_roots(str(repo))
+
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert home_default in result
+
+    def test_multiple_roots_when_nested(self, monkeypatch, tmp_path):
+        """get_spex_roots returns multiple roots for nested directories."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        # Create parent with .spex
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        (parent / ".spex").mkdir()
+        # Create child with .spex
+        child = parent / "child"
+        child.mkdir()
+        (child / ".spex").mkdir()
+        _init_git_repo(child)
+        clear_spex_root_cache()
+
+        result = get_spex_roots(str(child))
+
+        assert str((child / ".spex").resolve()) in result
+        assert str((parent / ".spex").resolve()) in result
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert home_default in result
+
+
+class TestGetSpexTomls:
+    def test_returns_list_of_strings(self, monkeypatch, tmp_path):
+        """get_spex_tomls returns a list of string paths."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        (repo / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+        clear_spex_root_cache()
+
+        result = get_spex_tomls(str(repo))
+
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert all(isinstance(p, str) for p in result)
+        assert str(repo / ".spex.toml") in result
+
+    def test_empty_when_no_tomls(self, monkeypatch, tmp_path):
+        """get_spex_tomls returns empty list when no .spex.toml exists."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        clear_spex_root_cache()
+
+        result = get_spex_tomls(str(repo))
+
+        assert result == []
