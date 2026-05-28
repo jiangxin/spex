@@ -100,6 +100,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
       1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
          ~/.spex.toml).
       2. Default: .spex inside the git toplevel.
+      3. Default: .spex inside the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.

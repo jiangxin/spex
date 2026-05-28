@@ -162,11 +162,9 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     (repo / ".spex.toml").write_text(
         f'spex_root = "{custom_path}"\n', encoding="utf-8"
     )
-    # Write home-level (should be lower priority)
+    # Write home-level ~/.spex.toml (should be lower priority)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    home_spex = tmp_path / ".spex"
-    home_spex.mkdir()
-    (home_spex / "config.toml").write_text(
+    (tmp_path / ".spex.toml").write_text(
         'spex_root = "/should/not/use"\n', encoding="utf-8"
     )
 
