@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from config import (
-     SpexContext,
+    SpexContext,
     _deep_merge,
     _find_spex_tomls,
     _get_worktree_root,
@@ -19,6 +19,7 @@ from config import (
     get_context,
     load_config,
     resolve_spex_root_and_roots,
+    set_spex_config_file,
 )
 
 
@@ -34,7 +35,7 @@ def _clear_cache():
 
 class TestLoadTomlConfig:
     def test_valid_toml(self, tmp_path):
-        p = tmp_path / "config.toml"
+        p = tmp_path / "sample.toml"
         p.write_text('spex_root = "/my/spex"\n', encoding="utf-8")
 
         result = _load_toml_config(p)
@@ -617,4 +618,98 @@ class TestGetContext:
         home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert ctx.spex_root == home_default
         assert ctx.spex_roots == [home_default]
+
+
+# ===================== SPEX_CONFIG_FILE override =====================
+
+
+class TestSpexConfigFileOverride:
+    def test_env_var_overrides_discovery(self, tmp_path, monkeypatch):
+        """SPEX_CONFIG_FILE env var bypasses normal .spex.toml discovery."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        # Normal .spex.toml that should be ignored
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+        (worktree / ".spex.toml").write_text(
+            'spex_root = "/ignored"\n', encoding="utf-8"
+        )
+        # Explicit config file
+        custom = tmp_path / "custom.toml"
+        custom.write_text('spex_root = "/custom"\n', encoding="utf-8")
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(custom))
+
+        result = _find_spex_tomls(worktree)
+
+        assert result == [custom.resolve()]
+
+    def test_cli_override_takes_priority_over_env(self, tmp_path, monkeypatch):
+        """set_spex_config_file (CLI) takes priority over SPEX_CONFIG_FILE env."""
+        cli_file = tmp_path / "cli.toml"
+        cli_file.write_text('spex_root = "/from-cli"\n', encoding="utf-8")
+        env_file = tmp_path / "env.toml"
+        env_file.write_text('spex_root = "/from-env"\n', encoding="utf-8")
+
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(env_file))
+        set_spex_config_file(str(cli_file))
+
+        result = _find_spex_tomls(None)
+
+        assert result == [cli_file.resolve()]
+
+    def test_nonexistent_file_raises(self, tmp_path, monkeypatch):
+        """Pointing at a missing file raises FileNotFoundError."""
+        missing = tmp_path / "does-not-exist.toml"
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(missing))
+
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            _find_spex_tomls(None)
+
+    def test_nonexistent_cli_override_raises(self, tmp_path):
+        """CLI override pointing at a missing file raises FileNotFoundError."""
+        missing = tmp_path / "missing.toml"
+        set_spex_config_file(str(missing))
+
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            _find_spex_tomls(None)
+
+    def test_spex_root_from_config_file(self, tmp_path, monkeypatch):
+        """Config file overrides spex_root in get_context."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        # Normal .spex.toml in worktree (should be ignored)
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = "/normal"\n', encoding="utf-8"
+        )
+        # Custom config file with different spex_root
+        custom = tmp_path / "override.toml"
+        custom.write_text('spex_root = "/custom-root"\n', encoding="utf-8")
+        set_spex_config_file(str(custom))
+
+        ctx = get_context()
+
+        assert ctx.spex_root == "/custom-root"
+        assert ctx.spex_tomls == [custom.resolve()]
+
+    def test_clear_cache_resets_override(self, tmp_path):
+        """clear_config_cache resets the CLI override."""
+        config_file = tmp_path / "test.toml"
+        config_file.write_text('spex_root = "/x"\n', encoding="utf-8")
+        set_spex_config_file(str(config_file))
+
+        clear_config_cache()
+
+        # After clearing, should fall back to normal discovery (no override)
+        # Without any .spex.toml in tree, returns empty
+        import config
+
+        monkeypatch_home = tmp_path / "fakehome"
+        original_home = config.Path.home
+        config.Path.home = lambda: monkeypatch_home
+        try:
+            result = _find_spex_tomls(tmp_path)
+            assert result == []
+        finally:
+            config.Path.home = original_home
 

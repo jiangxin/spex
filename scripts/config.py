@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,13 @@ _SENTINEL = object()
 _worktree_root_cache: dict = {}
 _config_cache: dict | None = None
 _context_cache: SpexContext | None = None
+_spex_config_file_override: str | None = None
+
+
+def set_spex_config_file(path: str | None) -> None:
+    """Set an explicit config file path (from --spex-config-file CLI flag)."""
+    global _spex_config_file_override
+    _spex_config_file_override = path
 
 
 def _get_worktree_root(workdir: str | Path | None = None) -> Path | None:
@@ -63,7 +71,19 @@ def _find_spex_tomls(
     existing .spex.toml files. When inside a git repo, start from
     worktree_root; otherwise start from workdir (or cwd).
     Then check ~/.spex.toml as a fallback.
+
+    If --spex-config-file or SPEX_CONFIG_FILE is set, skip discovery and
+    return only that file. Raises FileNotFoundError if it doesn't exist.
     """
+    config_file = _spex_config_file_override or os.environ.get("SPEX_CONFIG_FILE")
+    if config_file:
+        p = Path(config_file).expanduser().resolve()
+        if not p.is_file():
+            raise FileNotFoundError(
+                f"Specified spex config file does not exist: {config_file}"
+            )
+        return [p]
+
     candidates: list[Path] = []
     visited: set[Path] = set()
 
@@ -287,7 +307,8 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
-    global _config_cache, _worktree_root_cache, _context_cache
+    global _config_cache, _worktree_root_cache, _context_cache, _spex_config_file_override
     _config_cache = None
     _worktree_root_cache = {}
     _context_cache = None
+    _spex_config_file_override = None

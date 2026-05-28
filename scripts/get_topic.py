@@ -22,6 +22,7 @@ from common import (
     is_topic_completed,
     same_path,
 )
+from config import set_spex_config_file
 
 USAGE = """\
 Usage: spex get-topic [--json] [--all] [--must-done | --must-undone] [topic]
@@ -32,6 +33,8 @@ Resolve a topic directory under specs.
 Options:
   --json         Output in JSON format
   --all          Show all topics (ignore workspace filter)
+  --spex-config-file <path>
+                 Use specified config file (overrides SPEX_CONFIG_FILE env var)
   --must-done    Only show completed topics
   --must-undone  Only show topics with undone tasks (default)
   --spex-roots   Print all spex root directories (one per line)
@@ -167,10 +170,14 @@ def main(argv=None):
     parser = ArgumentParser(
         prog="spex get-topic", usage=USAGE, add_help=False,
     )
+    parser.add_argument("--spex-config-file", default=None)
     parser.add_argument("--spex-roots", action="store_true")
     parser.add_argument("--spex-toml", action="store_true")
     parser.add_argument("--spex-tomls", action="store_true")
     parsed, remaining = parser.parse_known(args)
+
+    if parsed.spex_config_file:
+        set_spex_config_file(parsed.spex_config_file)
 
     if parsed.spex_roots:
         roots = get_spex_roots()
