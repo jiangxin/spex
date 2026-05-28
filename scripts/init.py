@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from common import (
+    _create_default_toml,
     _sync_all_templates,
     ensure_initialized,
     get_current_workdir,
@@ -69,18 +70,14 @@ def _install_cli():
               file=sys.stderr)
 
 
-_DEFAULT_TOML = '# spex_root = ".spex"\n'
-
-
 def _create_toml_config():
     """Create ~/.spex.toml if no config exists yet."""
     ctx = get_context()
     if ctx.spex_tomls:
         return
 
-    target = Path.home() / ".spex.toml"
-    target.write_text(_DEFAULT_TOML, encoding="utf-8")
-    print(f"Created: {target}")
+    _create_default_toml()
+    print(f"Created: {Path.home() / '.spex.toml'}")
     clear_config_cache()
 
 
@@ -99,10 +96,8 @@ def run_init(workdir=None):
         ctx = get_context(workdir)
 
     spex_root = Path(ctx.spex_root)
-    if not (spex_root / "specs").is_dir():
-        ensure_initialized(str(spex_root))
-    else:
-        _sync_all_templates(spex_root)
+    ensure_initialized(str(spex_root))
+    _sync_all_templates(spex_root)
 
     _install_cli()
     print("Initialization complete.")

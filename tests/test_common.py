@@ -173,13 +173,17 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
 
 
 def test_default_fallback_when_no_config(monkeypatch, tmp_path):
-    monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+    monkeypatch.setattr("config.Path.home", lambda: fakehome)
+    monkeypatch.setattr("common.Path.home", lambda: fakehome)
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
 
     result = get_spex_root(str(repo))
-    assert result == str((tmp_path / "fakehome" / ".spex").resolve())
+    assert result == str((fakehome / ".spex").resolve())
+    assert (fakehome / ".spex.toml").exists()
 
 
 def test_default_creates_specs_dir(tmp_path):
@@ -267,6 +271,37 @@ def test_toml_missing_key_skipped(monkeypatch, tmp_path):
 
     result = get_spex_root(str(repo))
     assert result == str((tmp_path / "fakehome" / ".spex").resolve())
+
+
+def test_auto_init_creates_home_toml(monkeypatch, tmp_path):
+    """get_spex_root creates ~/.spex.toml when no config exists."""
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+    monkeypatch.setattr("config.Path.home", lambda: fakehome)
+    monkeypatch.setattr("common.Path.home", lambda: fakehome)
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    toml_path = fakehome / ".spex.toml"
+    assert not toml_path.exists()
+
+    get_spex_root(str(repo))
+
+    assert toml_path.exists()
+    assert "spex_root" in toml_path.read_text()
+
+
+def test_auto_init_skips_toml_when_exists(monkeypatch, tmp_path):
+    """get_spex_root does not overwrite existing .spex.toml."""
+    repo = tmp_path / "my-app"
+    repo.mkdir()
+    _init_git_repo(repo)
+    (repo / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
+
+    get_spex_root(str(repo))
+
+    assert (repo / ".spex.toml").read_text() == 'spex_root = ".spex"\n'
 
 
 class TestCheckHelpFlag:
