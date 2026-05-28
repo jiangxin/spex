@@ -35,8 +35,8 @@ Commands (implementation — modifies code):
   apply       Apply a spec step-by-step
 
 Internal commands (used by skill):
-  get --specs-dir|--archives-dir
-                Print the requested path
+  config [get] [--all] [var ...]
+                Show spex configuration variables
   get-topic [name]
                 Resolve a topic directory
   create-topic [--json] [--get <keys>] [--get-prompt <names>] <topic>
@@ -106,35 +106,96 @@ def _run_open(argv=None):
     open_topic.main(argv)
 
 
-_GET_USAGE = """\
-Usage: spex get --specs-dir|--archives-dir
+_CONFIG_USAGE = """\
+Usage: spex config [get] [--all] [var ...]
 
-Print the requested path.
+Show spex configuration variables.
 
 Options:
-  -h, --help  Show this help message and exit
+  --all         Show all variables (default when no names given)
+  -h, --help    Show this help message and exit
 """
 
 
-def _run_get(argv=None):
-    """Print a spec path based on the given flag."""
-    import common
+def _build_config_vars(ctx):
+    """Build ordered dict of (value, is_list) tuples from SpexContext."""
+    all_vars = {}
+    # Scalar fields
+    all_vars["top_workdir"] = (ctx.top_workdir, False)
+    all_vars["main_worktree"] = (ctx.main_worktree, False)
+    all_vars["spex_root"] = (ctx.spex_root, False)
+    # Expand config dict entries
+    for key, val in ctx.config.items():
+        all_vars[f"config.{key}"] = (val, False)
+    # List fields (displayed last)
+    all_vars["spex_tomls"] = (ctx.spex_tomls, True)
+    all_vars["spex_roots"] = (ctx.spex_roots, True)
+    return all_vars
 
-    parser = ArgumentParser(prog="spex get", usage=_GET_USAGE)
-    parser.add_argument("--specs-dir", action="store_true")
-    parser.add_argument("--archives-dir", action="store_true")
+
+def _print_config_vars(all_vars, requested):
+    """Print config variables in formatted output.
+
+    Args:
+        all_vars: Ordered dict of (value, is_list) tuples.
+        requested: List of variable names to show, or None for all.
+    """
+    if requested:
+        unknown = [n for n in requested if n not in all_vars]
+        if unknown:
+            for name in unknown:
+                print(f"Error: unknown variable '{name}'",
+                      file=sys.stderr)
+            sys.exit(1)
+        requested_set = set(requested)
+        items = [(k, all_vars[k]) for k in all_vars
+                 if k in requested_set]
+    else:
+        items = list(all_vars.items())
+
+    non_list = [(k, v) for k, (v, is_list) in items if not is_list]
+    list_items = [(k, v) for k, (v, is_list) in items if is_list]
+
+    for k, v in non_list:
+        if v is None:
+            print(f"{k}: (none)")
+        else:
+            print(f"{k}: {v}")
+
+    for k, v in list_items:
+        if not v:
+            print(f"{k}: (empty)")
+        else:
+            print(f"{k}:")
+            for item in v:
+                print(f"- {item}")
+
+
+def _run_config(argv=None):
+    """Show spex configuration variables."""
+    import config as spex_config
+
+    if argv is None:
+        argv = []
+
+    # Strip "get" subcommand if present
+    if argv and argv[0] == "get":
+        argv = argv[1:]
+
+    parser = ArgumentParser(prog="spex config", usage=_CONFIG_USAGE)
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("names", nargs="*")
     args = parser.parse(argv)
 
-    flag_map = {
-        "specs_dir": common.get_specs_dir,
-        "archives_dir": common.get_archives_dir,
-    }
+    ctx = spex_config.get_context()
+    all_vars = _build_config_vars(ctx)
 
-    matched = [k for k in flag_map if getattr(args, k, False)]
-    if len(matched) != 1:
-        parser.error("exactly one of --specs-dir, --archives-dir is required")
+    if args.names:
+        requested = [n.replace("-", "_") for n in args.names]
+    else:
+        requested = None
 
-    print(flag_map[matched[0]]())
+    _print_config_vars(all_vars, requested)
 
 
 def _run_get_topic(argv=None):
@@ -387,7 +448,7 @@ DIRECT_COMMANDS = {
     "archive": _run_archive,
     "open": _run_open,
     "init": _run_init,
-    "get": _run_get,
+    "config": _run_config,
     "get-topic": _run_get_topic,
     "create-topic": _run_create_topic,
     "prompt": _run_prompt,

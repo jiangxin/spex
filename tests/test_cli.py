@@ -47,14 +47,14 @@ class TestHelpFlag:
         assert result.returncode == 0
         assert "Usage:" in result.stdout
 
-    def test_get_h_exits_zero_with_usage(self):
-        result = _run_spex("get", "-h")
+    def test_config_h_exits_zero_with_usage(self):
+        result = _run_spex("config", "-h")
 
         assert result.returncode == 0
         assert "Usage:" in result.stdout
 
-    def test_get_help_exits_zero_with_usage(self):
-        result = _run_spex("get", "--help")
+    def test_config_help_exits_zero_with_usage(self):
+        result = _run_spex("config", "--help")
 
         assert result.returncode == 0
         assert "Usage:" in result.stdout
@@ -231,14 +231,14 @@ class TestUnknownCommand:
 
 
 class TestGetCommand:
-    """Tests for the get subcommand."""
+    """Tests for the removed get subcommand."""
 
-    def test_no_flag_prints_usage_exit_1(self):
-        """spex get (no flag) prints usage to stderr, exit 2."""
+    def test_get_is_unknown_command(self):
+        """spex get is no longer a valid command."""
         result = _run_spex("get")
 
-        assert result.returncode == 2
-        assert "Usage:" in result.stderr
+        assert result.returncode == 1
+        assert "Unknown command: get" in result.stderr
 
 
 class TestGetTopicCommand:
