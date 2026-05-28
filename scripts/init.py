@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from common import (
+    _sync_all_templates,
     ensure_initialized,
     get_current_workdir,
 )
@@ -18,9 +19,11 @@ def is_initialized(workdir=None):
     Returns True if a spex_root is resolved and its specs/ directory exists.
     """
     ctx = get_context(workdir)
-    if not ctx.spex_roots:
+    if not ctx.spex_tomls:
         return False
-    return (Path(ctx.spex_root) / "specs").is_dir()
+    if ctx.spex_root and not Path(ctx.spex_root).is_dir():
+        return False
+    return True
 
 
 def _install_deps():
@@ -87,15 +90,19 @@ def run_init(workdir=None):
         workdir = get_current_workdir()
 
     _install_deps()
-    _create_toml_config()
-    clear_config_cache()
 
     ctx = get_context(workdir)
-    if not ctx.spex_roots:
-        target = Path.home() / ctx.config.get("spex_root", ".spex")
-        ensure_initialized(str(target))
+
+    if not ctx.spex_tomls:
+        _create_toml_config()
+        clear_config_cache()
+        ctx = get_context(workdir)
+
+    spex_root = Path(ctx.spex_root)
+    if not (spex_root / "specs").is_dir():
+        ensure_initialized(str(spex_root))
     else:
-        ensure_initialized(ctx.spex_root)
+        _sync_all_templates(spex_root)
 
     _install_cli()
     print("Initialization complete.")
