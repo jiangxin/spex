@@ -60,11 +60,13 @@ class TestIsInitialized:
             assert is_initialized() is False
 
     def test_not_initialized_no_specs_dir(self, tmp_path):
-        """Returns False when spex_root exists but specs/ is missing."""
+        """Returns False when spex_root does not exist on disk."""
         spex_root = tmp_path / "spex"
-        spex_root.mkdir()
+        # spex_root directory does not exist
         ctx = _make_context(
-            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
         )
         with patch("init.get_context", return_value=ctx):
             from init import is_initialized
@@ -72,11 +74,13 @@ class TestIsInitialized:
             assert is_initialized() is False
 
     def test_initialized(self, tmp_path):
-        """Returns True when spex_roots is non-empty and specs/ exists."""
+        """Returns True when spex_tomls is non-empty and spex_root exists."""
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
         ctx = _make_context(
-            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
         )
         with patch("init.get_context", return_value=ctx):
             from init import is_initialized
@@ -272,15 +276,23 @@ class TestCreateTomlConfig:
 
 class TestRunInit:
     def test_creates_spex_dir_when_no_roots(self, tmp_path):
-        """Creates ~/.spex/ when no roots exist."""
+        """Creates ~/.spex/ when no tomls exist."""
         fake_home = tmp_path / "home"
         fake_home.mkdir()
+        spex_root = fake_home / ".spex"
 
-        # First call (from _create_toml_config): no tomls
-        ctx_no_roots = _make_context(
+        # First call: no tomls -> triggers _create_toml_config
+        ctx_no_tomls = _make_context(
             spex_root="",
             spex_roots=[],
             spex_tomls=[],
+            config={"spex_root": ".spex"},
+        )
+        # Second call (after _create_toml_config): tomls exist, spex_root resolved
+        ctx_with_tomls = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[fake_home / ".spex.toml"],
             config={"spex_root": ".spex"},
         )
 
@@ -289,18 +301,17 @@ class TestRunInit:
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.clear_config_cache"),
-            patch("init.get_context", return_value=ctx_no_roots),
-            patch("init.Path.home", return_value=fake_home),
+            patch("init.get_context", side_effect=[ctx_no_tomls, ctx_with_tomls]),
             patch("init.ensure_initialized") as mock_ensure,
         ):
             from init import run_init
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(fake_home / ".spex"))
+        mock_ensure.assert_called_once_with(str(spex_root))
 
     def test_uses_existing_root(self, tmp_path):
-        """Uses existing spex_root when roots are already resolved."""
+        """Syncs templates when spex_root and specs/ already exist."""
         spex_root = tmp_path / ".spex"
         (spex_root / "specs").mkdir(parents=True)
 
@@ -314,16 +325,16 @@ class TestRunInit:
         with (
             patch("init._install_deps"),
             patch("init._install_cli"),
-            patch("init._create_toml_config"),
-            patch("init.clear_config_cache"),
             patch("init.get_context", return_value=ctx_with_roots),
+            patch("init._sync_all_templates") as mock_sync,
             patch("init.ensure_initialized") as mock_ensure,
         ):
             from init import run_init
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(spex_root))
+        mock_ensure.assert_not_called()
+        mock_sync.assert_called_once_with(spex_root)
 
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
         """Integration: templates are created during init."""
@@ -377,7 +388,9 @@ class TestMainCheckFlag:
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
         ctx = _make_context(
-            spex_root=str(spex_root), spex_roots=[str(spex_root)]
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
         )
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
