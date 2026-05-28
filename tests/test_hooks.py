@@ -24,16 +24,24 @@ def _clear_cache(monkeypatch):
 
 
 class TestResolveHookRoots:
-    def test_returns_two_paths_in_order(self, monkeypatch, tmp_path):
-        """_resolve_hook_roots returns [spex_root/hooks, ~/.spex/hooks]."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+    def test_returns_paths_from_spex_roots(self, monkeypatch, tmp_path):
+        """_resolve_hook_roots returns <spex_root>/hooks for each spex_root."""
+        from unittest.mock import patch
 
-        roots = hooks._resolve_hook_roots()
+        from config import SpexContext
 
-        assert len(roots) == 2
-        assert str(roots[0]).endswith("hooks")
-        assert str(roots[1]) == str(Path.home() / ".spex" / "hooks")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            roots = hooks._resolve_hook_roots()
+
+        assert len(roots) >= 1
+        assert roots[0] == Path(str(tmp_path)) / "hooks"
 
 
 # ===================== find_hook =====================
@@ -42,8 +50,9 @@ class TestResolveHookRoots:
 class TestFindHook:
     def test_finds_in_spex_root(self, monkeypatch, tmp_path):
         """Hook found in spex_root/hooks/ takes priority."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
+
+        from config import SpexContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -51,49 +60,88 @@ class TestFindHook:
         hook_file.write_text("#!/bin/bash\necho ok")
         os.chmod(hook_file, 0o755)
 
-        result = hooks.find_hook("post-action")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            result = hooks.find_hook("post-action")
         assert result == hook_file
 
-    def test_finds_in_home_spex(self, monkeypatch, tmp_path):
-        """Hook found in ~/.spex/hooks/ when spex_root has none."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        monkeypatch.setattr("hooks.Path.home", lambda: tmp_path)
-        clear_spex_root_cache()
+    def test_finds_in_secondary_spex_root(self, monkeypatch, tmp_path):
+        """Hook found in secondary spex_root/hooks/ when primary has none."""
+        from unittest.mock import patch
 
-        home_hooks = tmp_path / ".spex" / "hooks"
-        home_hooks.mkdir(parents=True)
-        hook_file = home_hooks / "post-action"
+        from config import SpexContext
+
+        # Primary spex_root has no hooks, secondary does
+        primary = tmp_path / "primary"
+        secondary = tmp_path / "secondary"
+        primary.mkdir()
+        secondary.mkdir()
+
+        sec_hooks = secondary / "hooks"
+        sec_hooks.mkdir()
+        hook_file = sec_hooks / "post-action"
         hook_file.write_text("#!/bin/bash\necho ok")
         os.chmod(hook_file, 0o755)
 
-        result = hooks.find_hook("post-action")
-        assert result == hook_file
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(primary),
+            spex_roots=[str(primary), str(secondary)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            clear_spex_root_cache()
+            result = hooks.find_hook("post-action")
+            assert result == hook_file
 
-    def test_spex_root_overrides_home(self, monkeypatch, tmp_path):
-        """spex_root hook wins over ~/.spex hook."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        monkeypatch.setattr("hooks.Path.home", lambda: tmp_path)
-        clear_spex_root_cache()
+    def test_primary_spex_root_overrides_secondary(self, monkeypatch, tmp_path):
+        """Primary spex_root hook wins over secondary spex_root hook."""
+        from unittest.mock import patch
 
-        spex_hooks_dir = tmp_path / "hooks"
-        spex_hooks_dir.mkdir()
-        spex_hook = spex_hooks_dir / "post-action"
-        spex_hook.write_text("#!/bin/bash\necho spex")
-        os.chmod(spex_hook, 0o755)
+        from config import SpexContext
 
-        home_hooks = tmp_path / ".spex" / "hooks"
-        home_hooks.mkdir(parents=True)
-        home_hook = home_hooks / "post-action"
-        home_hook.write_text("#!/bin/bash\necho home")
-        os.chmod(home_hook, 0o755)
+        primary = tmp_path / "primary"
+        secondary = tmp_path / "secondary"
+        primary.mkdir()
+        secondary.mkdir()
 
-        result = hooks.find_hook("post-action")
-        assert result == spex_hook
+        # Both have hooks
+        primary_hooks = primary / "hooks"
+        primary_hooks.mkdir()
+        primary_hook = primary_hooks / "post-action"
+        primary_hook.write_text("#!/bin/bash\necho primary")
+        os.chmod(primary_hook, 0o755)
+
+        secondary_hooks = secondary / "hooks"
+        secondary_hooks.mkdir()
+        secondary_hook = secondary_hooks / "post-action"
+        secondary_hook.write_text("#!/bin/bash\necho secondary")
+        os.chmod(secondary_hook, 0o755)
+
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(primary),
+            spex_roots=[str(primary), str(secondary)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            clear_spex_root_cache()
+            result = hooks.find_hook("post-action")
+            assert result == primary_hook
 
     def test_skips_non_executable(self, monkeypatch, tmp_path):
         """Non-executable file is skipped."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
+
+        from config import SpexContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -101,15 +149,32 @@ class TestFindHook:
         hook_file.write_text("#!/bin/bash")
         # Do NOT chmod +x
 
-        result = hooks.find_hook("post-action")
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            result = hooks.find_hook("post-action")
         assert result is None
 
     def test_returns_none_when_missing(self, monkeypatch, tmp_path):
         """No hook found anywhere returns None."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
 
-        result = hooks.find_hook("post-action")
+        from config import SpexContext
+
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
+        )
+        with patch("common.get_context", return_value=ctx):
+            result = hooks.find_hook("post-action")
         assert result is None
 
 
@@ -149,13 +214,13 @@ class TestBuildEventData:
 class TestRunHook:
     def test_executes_and_passes_json(self, monkeypatch, tmp_path):
         """run_hook executes hook and passes JSON to stdin."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
+
+        from config import SpexContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
         output_file = tmp_path / "hook_output.txt"
-        # Create a hook that reads stdin and writes result to a file
         hook_file = hooks_dir / "post-action"
         hook_file.write_text(
             "#!/usr/bin/env python3\n"
@@ -165,18 +230,27 @@ class TestRunHook:
         )
         os.chmod(hook_file, 0o755)
 
-        hooks.run_hook(
-            "post-action",
-            {"event_type": "apply", "payload": {}},
-            str(tmp_path),
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
         )
+        with patch("common.get_context", return_value=ctx):
+            hooks.run_hook(
+                "post-action",
+                {"event_type": "apply", "payload": {}},
+                str(tmp_path),
+            )
 
         assert output_file.read_text() == "event=apply"
 
     def test_logs_error_on_failure(self, monkeypatch, tmp_path, capfd):
         """run_hook logs stderr when hook exits non-zero."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
+
+        from config import SpexContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -186,12 +260,19 @@ class TestRunHook:
         )
         os.chmod(hook_file, 0o755)
 
-        # Should not raise
-        hooks.run_hook(
-            "post-action",
-            {"event_type": "create", "payload": {}},
-            str(tmp_path),
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
         )
+        with patch("common.get_context", return_value=ctx):
+            hooks.run_hook(
+                "post-action",
+                {"event_type": "create", "payload": {}},
+                str(tmp_path),
+            )
 
         _, stderr = capfd.readouterr()
         assert "intentional error" in stderr
@@ -199,13 +280,22 @@ class TestRunHook:
 
     def test_silent_when_no_hook(self, monkeypatch, tmp_path, capfd):
         """run_hook is silent when no hook exists."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        clear_spex_root_cache()
+        from unittest.mock import patch
 
-        hooks.run_hook(
-            "post-action",
-            {"event_type": "init", "payload": {}},
+        from config import SpexContext
+
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
         )
+        with patch("common.get_context", return_value=ctx):
+            hooks.run_hook(
+                "post-action",
+                {"event_type": "init", "payload": {}},
+            )
 
         stdout, stderr = capfd.readouterr()
         assert stdout == ""
@@ -218,7 +308,10 @@ class TestRunHook:
 class TestRunPostAction:
     def test_delegates_to_run_hook(self, monkeypatch, tmp_path):
         """run_post_action calls run_hook with 'post-action' name."""
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from unittest.mock import patch
+
+        from config import SpexContext
+
         monkeypatch.setattr(
             "hooks._build_event_data",
             lambda *a, **k: {
@@ -229,7 +322,6 @@ class TestRunPostAction:
                 "payload": {"foo": "bar", "topic_name": "my-topic"},
             },
         )
-        clear_spex_root_cache()
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -243,8 +335,16 @@ class TestRunPostAction:
         )
         os.chmod(hook_file, 0o755)
 
-        hooks.run_post_action(
-            "apply", {"foo": "bar"}, str(tmp_path), topic_name="my-topic"
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=tmp_path,
         )
+        with patch("common.get_context", return_value=ctx):
+            hooks.run_post_action(
+                "apply", {"foo": "bar"}, str(tmp_path), topic_name="my-topic"
+            )
 
         assert output_file.read_text() == "topic=my-topic"

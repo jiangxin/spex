@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from config import (
+     SpexContext,
     _deep_merge,
     _find_spex_tomls,
     _get_worktree_root,
@@ -15,6 +16,7 @@ from config import (
     _merge_configs,
     _resolve_spex_roots,
     clear_config_cache,
+    get_context,
     load_config,
     resolve_spex_root_and_roots,
 )
@@ -553,3 +555,90 @@ class TestResolveSpexRootAndRoots:
         home_spex = str((home / ".spex").resolve())
         assert primary == home_spex
         assert roots.count(home_spex) == 1
+
+
+# ===================== get_context =====================
+
+
+class TestGetContext:
+    def test_returns_spex_context(self, tmp_path, monkeypatch):
+        """get_context returns a SpexContext dataclass."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        (tmp_path / ".spex").mkdir()
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        ctx = get_context()
+
+        assert isinstance(ctx, SpexContext)
+        assert ctx.worktree_root == tmp_path
+        assert ctx.spex_root == str((tmp_path / ".spex").resolve())
+        assert str((tmp_path / ".spex").resolve()) in ctx.spex_roots
+        assert any(
+            str(p) == str(tmp_path / ".spex.toml") for p in ctx.spex_tomls
+        )
+        assert ctx.config.get("spex_root") == ".spex"
+
+    def test_caching(self, tmp_path, monkeypatch):
+        """get_context returns cached result on subsequent calls."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        (tmp_path / ".spex").mkdir()
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        first = get_context()
+        second = get_context()
+
+        assert first is second
+
+    def test_cache_cleared_on_clear_config_cache(self, tmp_path, monkeypatch):
+        """clear_config_cache resets the context cache."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        (tmp_path / ".spex").mkdir()
+        (tmp_path / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
+
+        first = get_context()
+        clear_config_cache()
+        second = get_context()
+
+        assert first is not second
+
+    def test_no_git_repo(self, tmp_path, monkeypatch):
+        """get_context works when not in a git repo (worktree_root is None)."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: None
+        )
+        monkeypatch.chdir(tmp_path)
+
+        ctx = get_context()
+
+        assert ctx.worktree_root is None
+        assert ctx.spex_root == str((tmp_path / ".spex").resolve())
+        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert ctx.spex_roots == [home_default]
+
+    def test_env_var_sets_spex_root(self, tmp_path, monkeypatch):
+        """SPEX_ROOT env var is reflected in context's spex_root."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr(
+            "config._get_worktree_root", lambda w=None: tmp_path
+        )
+        monkeypatch.setenv("SPEX_ROOT", "/custom/spex")
+
+        ctx = get_context()
+
+        assert ctx.spex_root == "/custom/spex"

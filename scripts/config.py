@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
@@ -18,7 +19,6 @@ class SpexConfig(TypedDict, total=False):
     main_branch_name: str
     submit_method: str
 
-
 _DEFAULTS: SpexConfig = {
     "spex_root": ".spex",
     "create_branch": False,
@@ -26,9 +26,20 @@ _DEFAULTS: SpexConfig = {
     "submit_method": "merge",
 }
 
+@dataclass
+class SpexContext:
+    """Resolved spex configuration context."""
+
+    spex_tomls: list[Path]
+    config: dict
+    spex_root: str
+    spex_roots: list[str]
+    worktree_root: Path | None
+
 _SENTINEL = object()
 _worktree_root_cache: dict = {}
 _config_cache: dict | None = None
+_context_cache: SpexContext | None = None
 
 
 def _get_worktree_root(workdir: str | Path | None = None) -> Path | None:
@@ -253,8 +264,35 @@ def resolve_spex_root_and_roots(
     return ("", [])
 
 
+def get_context(workdir: str | Path | None = None) -> SpexContext:
+    """Return a resolved SpexContext, cached after first call.
+
+    Aggregates worktree root, discovered TOML paths, merged config, and
+    resolved spex_root/spex_roots into a single object.
+    """
+    global _context_cache
+
+    if _context_cache is not None:
+        return _context_cache
+
+    worktree_root = _get_worktree_root(workdir)
+    spex_tomls = _find_spex_tomls(worktree_root)
+    config = load_config(workdir)
+    spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
+
+    _context_cache = SpexContext(
+        spex_tomls=spex_tomls,
+        config=config,
+        spex_root=spex_root,
+        spex_roots=spex_roots,
+        worktree_root=worktree_root,
+    )
+    return _context_cache
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
-    global _config_cache, _worktree_root_cache
+    global _config_cache, _worktree_root_cache, _context_cache
     _config_cache = None
     _worktree_root_cache = {}
+    _context_cache = None

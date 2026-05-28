@@ -5,12 +5,17 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from config import clear_config_cache, load_config
+from config import (
+    clear_config_cache,
+    get_context,
+)
+from config import (
+    get_worktree_root as _cfg_get_worktree_root,
+)
 
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
@@ -69,15 +74,10 @@ def _write_internal_gitignore(spex_root_path: Path):
 def _resolve_hook_roots(workdir=None):
     """Return hook root paths in priority order (highest first).
 
-    Order:
-      1. <spex_root>/hooks/
-      2. ~/.spex/hooks/
+    Builds from all resolved spex_roots: <spex_root>/hooks/ for each.
     """
-    roots = []
-    spex_root = Path(get_spex_root(workdir, auto_init=False))
-    roots.append(spex_root / "hooks")
-    roots.append(Path.home() / ".spex" / "hooks")
-    return roots
+    ctx = get_context(workdir)
+    return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
 def ensure_initialized(spex_root):
@@ -93,36 +93,10 @@ def ensure_initialized(spex_root):
     _write_internal_gitignore(spex_root_path)
 
 
-def _get_repo_root(workdir=None):
-    """Return the git repository root, or None if not in a repo."""
-    cmd = ["git", "rev-parse", "--show-toplevel"]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=workdir
-    )
-    if result.returncode != 0:
-        return None
-    return Path(result.stdout.strip()).resolve()
-
-
-def _resolve_spex_path(value: str, repo_root) -> str:
-    """Resolve a spex_root path value to an absolute path.
-
-    - ~/... paths are expanded to the user's home directory.
-    - Relative paths resolve from repo_root (if in a git repo) or cwd.
-    - Absolute paths are returned as-is.
-    """
-    p = Path(value).expanduser()
-    if not p.is_absolute():
-        base = repo_root if repo_root is not None else Path.cwd()
-        p = base / p
-    return str(p.resolve())
-
-
-
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Resolution order (delegated to config.load_config):
+    Resolution order (delegated to config.get_context):
       1. SPEX_ROOT environment variable.
       2. Merged .spex.toml files (~/.spex.toml, ~/.config/spex/config.toml,
          repo-root/.spex.toml).
@@ -138,14 +112,29 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     Returns:
         Absolute path to the spex root directory.
     """
-    cfg = load_config(workdir)
-    repo_root = _get_repo_root(workdir)
-    spex_root = _resolve_spex_path(cfg["spex_root"], repo_root)
-    if require_git and _get_repo_root(workdir) is None:
+    ctx = get_context(workdir)
+
+    if not ctx.spex_root:
+        raise RuntimeError(
+            "Cannot determine spex_root. "
+            "Set SPEX_ROOT, use --spex-root, or configure .spex.toml."
+        )
+
+    if require_git and ctx.worktree_root is None:
         raise RuntimeError("Not inside a git repository")
     if auto_init:
-        ensure_initialized(spex_root)
-    return spex_root
+        ensure_initialized(ctx.spex_root)
+    return ctx.spex_root
+
+
+def get_spex_roots(workdir=None) -> list[str]:
+    """Return all resolved spex root directories (highest priority first)."""
+    return get_context(workdir).spex_roots
+
+
+def get_spex_tomls(workdir=None) -> list[str]:
+    """Return discovered .spex.toml config paths as strings."""
+    return [str(p) for p in get_context(workdir).spex_tomls]
 
 
 def get_specs_dir(workdir=None):
@@ -160,8 +149,8 @@ def get_archives_dir(workdir=None):
 
 def get_current_workdir():
     """Return the current git toplevel path, or None if not in a repo."""
-    repo_root = _get_repo_root()
-    return str(repo_root) if repo_root else None
+    root = _cfg_get_worktree_root()
+    return str(root) if root else None
 
 
 def same_path(a: str, b: str) -> bool:
@@ -410,17 +399,12 @@ def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
 def _resolve_template_roots(workdir=None):
     """Return template root paths in priority order (highest first).
 
-    Order:
-      1. <spex_root>/templates/
-      2. ~/.spex/templates/
-      3. <skill_path>/templates/
+    Builds from all resolved spex_roots: <spex_root>/templates/ for each,
+    then appends the skill's built-in templates directory last.
     """
-    roots = []
-    spex_root = Path(get_spex_root(workdir, auto_init=False))
-    roots.append(spex_root / TEMPLATE_DIR)
-    roots.append(Path.home() / ".spex" / TEMPLATE_DIR)
-    skill_path = _get_skill_path()
-    roots.append(skill_path / TEMPLATE_DIR)
+    ctx = get_context(workdir)
+    roots = [Path(sr) / TEMPLATE_DIR for sr in ctx.spex_roots]
+    roots.append(_get_skill_path() / TEMPLATE_DIR)
     return roots
 
 
@@ -429,10 +413,9 @@ def get_template(template_name: str, workdir=None) -> str:
 
     Workflow:
     1. Sync built-in template to <spex_root>/templates/examples/ if needed.
-    2. Search template roots in priority order:
-       a. <spex_root>/templates/ (user custom)
-       b. ~/.spex/templates/ (home-level user config)
-       c. <skill_path>/templates/ (built-in)
+    2. Search template roots in priority order (derived from spex_roots):
+       a. <spex_root>/templates/ for each discovered spex_root
+       b. <skill_path>/templates/ (built-in fallback)
     3. Return content of the first matching file.
 
     The returned content includes YAML front-matter. Use strip_front_matter()
