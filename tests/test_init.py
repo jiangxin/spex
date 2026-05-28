@@ -51,18 +51,17 @@ def _make_context(
 
 
 class TestIsInitialized:
-    def test_not_initialized_no_roots(self, tmp_path):
-        """Returns False when no spex_roots are resolved."""
-        ctx = _make_context(spex_root="", spex_roots=[])
+    def test_not_initialized_no_tomls(self, tmp_path):
+        """Returns False when no .spex.toml config files are found."""
+        ctx = _make_context(spex_root="", spex_roots=[], spex_tomls=[])
         with patch("init.get_context", return_value=ctx):
             from init import is_initialized
 
             assert is_initialized() is False
 
-    def test_not_initialized_no_specs_dir(self, tmp_path):
+    def test_not_initialized_spex_root_missing(self, tmp_path):
         """Returns False when spex_root does not exist on disk."""
         spex_root = tmp_path / "spex"
-        # spex_root directory does not exist
         ctx = _make_context(
             spex_root=str(spex_root),
             spex_roots=[str(spex_root)],
@@ -76,7 +75,7 @@ class TestIsInitialized:
     def test_initialized(self, tmp_path):
         """Returns True when spex_tomls is non-empty and spex_root exists."""
         spex_root = tmp_path / "spex"
-        (spex_root / "specs").mkdir(parents=True)
+        spex_root.mkdir()
         ctx = _make_context(
             spex_root=str(spex_root),
             spex_roots=[str(spex_root)],
@@ -275,8 +274,8 @@ class TestCreateTomlConfig:
 
 
 class TestRunInit:
-    def test_creates_spex_dir_when_no_roots(self, tmp_path):
-        """Creates ~/.spex/ when no tomls exist."""
+    def test_creates_toml_and_initializes_spex_root(self, tmp_path):
+        """Creates ~/.spex.toml and initializes spex_root when no tomls exist."""
         fake_home = tmp_path / "home"
         fake_home.mkdir()
         spex_root = fake_home / ".spex"
@@ -310,7 +309,7 @@ class TestRunInit:
 
         mock_ensure.assert_called_once_with(str(spex_root))
 
-    def test_uses_existing_root(self, tmp_path):
+    def test_syncs_templates_when_already_initialized(self, tmp_path):
         """Syncs templates when spex_root and specs/ already exist."""
         spex_root = tmp_path / ".spex"
         (spex_root / "specs").mkdir(parents=True)
@@ -335,6 +334,52 @@ class TestRunInit:
 
         mock_ensure.assert_not_called()
         mock_sync.assert_called_once_with(spex_root)
+
+    def test_initializes_spex_root_when_missing(self, tmp_path):
+        """Calls ensure_initialized when tomls exist but spex_root/specs/ is missing."""
+        spex_root = tmp_path / "custom-spex"
+
+        ctx = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init.get_context", return_value=ctx),
+            patch("init._create_toml_config") as mock_create_toml,
+            patch("init.ensure_initialized") as mock_ensure,
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path))
+
+        mock_create_toml.assert_not_called()
+        mock_ensure.assert_called_once_with(str(spex_root))
+
+    def test_uses_resolved_spex_root(self, tmp_path):
+        """run_init() targets ctx.spex_root, not hardcoded ~/.spex."""
+        custom_root = tmp_path / "workspace" / ".my-spex"
+
+        ctx = _make_context(
+            spex_root=str(custom_root),
+            spex_roots=[str(custom_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init.get_context", return_value=ctx),
+            patch("init.ensure_initialized") as mock_ensure,
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path))
+
+        mock_ensure.assert_called_once_with(str(custom_root))
 
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
         """Integration: templates are created during init."""
