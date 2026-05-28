@@ -63,12 +63,13 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     assert result == str(repo / ".spex")
 
 
-def test_not_a_git_repo(tmp_path):
+def test_not_a_git_repo(monkeypatch, tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
+    monkeypatch.chdir(workdir)
 
-    with pytest.raises(RuntimeError, match="Cannot determine spex_root"):
-        get_spex_root(str(workdir))
+    result = get_spex_root(str(workdir))
+    assert result == str((workdir / ".spex").resolve())
 
 
 def test_require_git_raises_outside_repo(monkeypatch, tmp_path):

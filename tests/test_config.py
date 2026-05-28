@@ -295,6 +295,6 @@ class TestBranchConfig:
 
         result = load_config()
 
-        assert "create_branch" not in result
-        assert "main_branch_name" not in result
-        assert "submit_method" not in result
+        assert result["create_branch"] is False
+        assert result["main_branch_name"] == ""
+        assert result["submit_method"] == "merge"

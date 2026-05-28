@@ -99,13 +99,15 @@ class TestMergeBranch:
 class TestValidateCreateBranch:
     @patch("branch.get_current_branch", return_value="main")
     def test_returns_current_branch(self, _mock):
-        result = validate_create_branch({"create_branch": True})
+        result = validate_create_branch(
+            {"create_branch": True, "main_branch_name": "", "submit_method": "merge"})
         assert result == "main"
 
     @patch("branch.get_current_branch", return_value="main")
     def test_disabled_exits(self, _mock):
         try:
-            validate_create_branch({})
+            validate_create_branch(
+                {"create_branch": False, "main_branch_name": "", "submit_method": "merge"})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -131,7 +133,8 @@ class TestValidateCreateBranch:
     @patch("branch.get_current_branch", return_value="spex/feature")
     def test_spex_prefix_exits(self, _mock):
         try:
-            validate_create_branch({"create_branch": True})
+            validate_create_branch(
+                {"create_branch": True, "main_branch_name": "", "submit_method": "merge"})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -256,7 +259,9 @@ class TestValidateApplyBranch:
 
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
-    @patch("config.load_config", return_value={"create_branch": True})
+    @patch("config.load_config", return_value={
+        "create_branch": True, "main_branch_name": "", "submit_method": "merge",
+        "spex_root": ".spex"})
     def test_outputs_success(self, _cfg, _branch, capsys):
         cli_create_validate()
         out = capsys.readouterr().out

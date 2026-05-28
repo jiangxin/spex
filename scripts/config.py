@@ -19,6 +19,13 @@ class SpexConfig(TypedDict, total=False):
     submit_method: str
 
 
+_DEFAULTS: SpexConfig = {
+    "spex_root": ".spex",
+    "create_branch": False,
+    "main_branch_name": "",
+    "submit_method": "merge",
+}
+
 _config_cache: dict | None = None
 
 
@@ -89,27 +96,27 @@ def load_config(workdir: str | Path | None = None) -> dict:
     """Main entry point: resolve spex configuration with caching.
 
     Precedence:
-      1. SPEX_ROOT env var (overrides everything)
+      1. SPEX_ROOT env var (overrides everything for spex_root)
       2. Merged TOML files found by _find_spex_toml
+      3. Built-in _DEFAULTS
     """
     global _config_cache
 
     if _config_cache is not None:
         return _config_cache
 
-    env_spex_root = os.environ.get("SPEX_ROOT")
-    if env_spex_root:
-        resolved = _resolve_spex_path(env_spex_root)
-        _config_cache = {"spex_root": resolved}
-        return _config_cache
-
     repo_root = _get_repo_root(workdir)
     raw = _find_spex_toml(repo_root)
 
-    if "spex_root" in raw:
-        raw["spex_root"] = _resolve_spex_path(raw["spex_root"], repo_root)
+    result: dict = {**_DEFAULTS, **raw}
 
-    _config_cache = raw
+    result["spex_root"] = _resolve_spex_path(result["spex_root"], repo_root)
+
+    env_spex_root = os.environ.get("SPEX_ROOT")
+    if env_spex_root:
+        result["spex_root"] = _resolve_spex_path(env_spex_root)
+
+    _config_cache = result
     return _config_cache
 
 

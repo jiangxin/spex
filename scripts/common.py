@@ -14,7 +14,6 @@ from config import clear_config_cache, load_config
 
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
-DEFAULT_SPEX_ROOT_DIR = ".spex"
 DEFAULT_SPEX_BRANCH_PREFIX = "spex/"
 TEMPLATE_DIR = "templates"
 EXAMPLES_TEMPLATE_DIR = "examples"
@@ -140,16 +139,6 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
         Absolute path to the spex root directory.
     """
     cfg = load_config(workdir)
-
-    if "spex_root" not in cfg:
-        repo_root = _get_repo_root(workdir)
-        if repo_root is None:
-            raise RuntimeError(
-                "Cannot determine spex_root. "
-                "Set SPEX_ROOT, use --spex-root, or configure .spex.toml."
-            )
-        cfg["spex_root"] = str(repo_root / DEFAULT_SPEX_ROOT_DIR)
-
     spex_root = cfg["spex_root"]
     if require_git and _get_repo_root(workdir) is None:
         raise RuntimeError("Not inside a git repository")
