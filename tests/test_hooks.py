@@ -34,7 +34,8 @@ class TestResolveHookRoots:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             roots = hooks._resolve_hook_roots()
@@ -64,7 +65,8 @@ class TestFindHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             result = hooks.find_hook("post-action")
@@ -93,7 +95,8 @@ class TestFindHook:
             config={},
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             clear_spex_root_cache()
@@ -129,7 +132,8 @@ class TestFindHook:
             config={},
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             clear_spex_root_cache()
@@ -153,7 +157,8 @@ class TestFindHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             result = hooks.find_hook("post-action")
@@ -170,7 +175,8 @@ class TestFindHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             result = hooks.find_hook("post-action")
@@ -234,7 +240,8 @@ class TestRunHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             hooks.run_hook(
@@ -264,7 +271,8 @@ class TestRunHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             hooks.run_hook(
@@ -288,7 +296,8 @@ class TestRunHook:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             hooks.run_hook(
@@ -339,7 +348,8 @@ class TestRunPostAction:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             hooks.run_post_action(

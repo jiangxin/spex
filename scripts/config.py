@@ -34,10 +34,12 @@ class SpexContext:
     config: dict
     spex_root: str
     spex_roots: list[str]
-    worktree_root: Path | None
+    top_workdir: Path | None
+    main_worktree: Path | None
 
 _SENTINEL = object()
-_worktree_root_cache: dict = {}
+_top_workdir_cache: dict = {}
+_main_worktree_cache: dict = {}
 _config_cache: dict | None = None
 _context_cache: SpexContext | None = None
 _spex_config_file_override: str | None = None
@@ -48,17 +50,28 @@ def set_spex_config_file(path: str | None) -> None:
     global _spex_config_file_override
     _spex_config_file_override = path
 
-
-def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
-    """Return the git top workdir, or None if not inside a repo. Cached."""
+def _get_main_worktree(workdir: str | Path | None = None) -> Path | None:
+    """Return the git main worktree, or None if not inside a repo. Cached."""
     key = str(Path(workdir).resolve()) if workdir else None
-    cached = _worktree_root_cache.get(key, _SENTINEL)
+    cached = _main_worktree_cache.get(key, _SENTINEL)
     if cached is not _SENTINEL:
         return cached
     cmd = ["git", "rev-parse", "--show-toplevel"]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
     value = Path(result.stdout.strip()).resolve() if result.returncode == 0 else None
-    _worktree_root_cache[key] = value
+    _main_worktree_cache[key] = value
+    return value
+
+def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
+    """Return the git top workdir, or None if not inside a repo. Cached."""
+    key = str(Path(workdir).resolve()) if workdir else None
+    cached = _top_workdir_cache.get(key, _SENTINEL)
+    if cached is not _SENTINEL:
+        return cached
+    cmd = ["git", "rev-parse", "--show-toplevel"]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
+    value = Path(result.stdout.strip()).resolve() if result.returncode == 0 else None
+    _top_workdir_cache[key] = value
     return value
 
 
@@ -290,8 +303,9 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
     if _context_cache is not None:
         return _context_cache
 
-    worktree_root = _get_top_workdir(workdir)
-    spex_tomls = _find_spex_tomls(worktree_root)
+    top_workdir = _get_top_workdir(workdir)
+    main_worktree = _get_main_worktree(workdir)
+    spex_tomls = _find_spex_tomls(main_worktree)
     config = load_config(workdir)
     spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
 
@@ -300,15 +314,18 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
         config=config,
         spex_root=spex_root,
         spex_roots=spex_roots,
-        worktree_root=worktree_root,
+        top_workdir=top_workdir,
+        main_worktree=main_worktree,
     )
     return _context_cache
 
 
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
-    global _config_cache, _worktree_root_cache, _context_cache, _spex_config_file_override
+    global _config_cache, _top_workdir_cache, _main_worktree_cache
+    global _context_cache, _spex_config_file_override
     _config_cache = None
-    _worktree_root_cache = {}
+    _top_workdir_cache = {}
+    _main_worktree_cache = {}
     _context_cache = None
     _spex_config_file_override = None

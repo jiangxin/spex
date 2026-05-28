@@ -352,7 +352,8 @@ class TestGetTemplate:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         try:
             with patch("common.get_context", return_value=ctx):
@@ -378,7 +379,8 @@ class TestGetTemplate:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             roots = _resolve_template_roots()
@@ -408,7 +410,8 @@ class TestGetTemplate:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             result = get_template("prio-tpl.md")
@@ -436,7 +439,8 @@ class TestGetTemplate:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         try:
             with patch("common.get_context", return_value=ctx):
@@ -462,7 +466,8 @@ class TestGetTemplate:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
         )
         with patch("common.get_context", return_value=ctx):
             with pytest.raises(FileNotFoundError, match=unlikely):

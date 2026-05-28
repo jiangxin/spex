@@ -36,7 +36,8 @@ def _make_context(
     spex_roots=None,
     spex_tomls=None,
     config=None,
-    worktree_root=None,
+    top_workdir=None,
+    main_worktree=None,
 ):
     """Helper to build a SpexContext for mocking."""
     return SpexContext(
@@ -44,7 +45,8 @@ def _make_context(
         config=config or {},
         spex_root=spex_root,
         spex_roots=spex_roots or [],
-        worktree_root=worktree_root,
+        top_workdir=top_workdir,
+        main_worktree=main_worktree,
     )
 
 

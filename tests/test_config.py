@@ -555,6 +555,9 @@ class TestGetContext:
         monkeypatch.setattr(
             "config._get_top_workdir", lambda w=None: tmp_path
         )
+        monkeypatch.setattr(
+            "config._get_main_worktree", lambda w=None: tmp_path
+        )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
             'spex_root = ".spex"\n', encoding="utf-8"
@@ -563,7 +566,7 @@ class TestGetContext:
         ctx = get_context()
 
         assert isinstance(ctx, SpexContext)
-        assert ctx.worktree_root == tmp_path
+        assert ctx.top_workdir == tmp_path
         assert ctx.spex_root == str((tmp_path / ".spex").resolve())
         assert str((tmp_path / ".spex").resolve()) in ctx.spex_roots
         assert any(
@@ -614,7 +617,7 @@ class TestGetContext:
 
         ctx = get_context()
 
-        assert ctx.worktree_root is None
+        assert ctx.top_workdir is None
         home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert ctx.spex_root == home_default
         assert ctx.spex_roots == [home_default]

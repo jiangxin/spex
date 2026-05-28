@@ -109,7 +109,8 @@ class TestMain:
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            worktree_root=None,
+            top_workdir=None,
+            main_worktree=None,
         )
         monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         from common import clear_spex_root_cache

@@ -120,7 +120,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
             "Configure .spex.toml with spex_root."
         )
 
-    if require_git and ctx.worktree_root is None:
+    if require_git and ctx.main_worktree is None:
         raise RuntimeError("Not inside a git repository")
     if auto_init:
         ensure_initialized(ctx.spex_root)
