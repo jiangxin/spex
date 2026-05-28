@@ -11,9 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from parse_todo import (
     MAX_OUTPUT_BYTES,
     _format_done_output,
-    cmd_get_done,
-    cmd_get_next_undone,
-    cmd_validate,
+    main,
 )
 
 
@@ -43,7 +41,7 @@ class TestCmdValidate:
         tasks = [_make_task("1")]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_validate([path])
+        main(["validate", path])
 
         output = capsys.readouterr().out
         assert "OK: 1 step(s) validated" in output
@@ -52,7 +50,7 @@ class TestCmdValidate:
         tasks = [_make_task("1"), _make_task("2", completed=False)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_validate([path])
+        main(["validate", path])
 
         output = capsys.readouterr().out
         assert "OK: 2 step(s) validated" in output
@@ -62,49 +60,49 @@ class TestCmdValidate:
         path.write_text('{"not": "array"}', encoding="utf-8")
 
         with pytest.raises(SystemExit):
-            cmd_validate([str(path)])
+            main(["validate", str(path)])
 
     def test_empty_array(self, tmp_path):
         path = _write_todo(tmp_path, [])
 
         with pytest.raises(SystemExit):
-            cmd_validate([path])
+            main(["validate", path])
 
     def test_missing_fields(self, tmp_path):
         path = tmp_path / "todo.json"
         path.write_text('[{"id": "1"}]', encoding="utf-8")
 
         with pytest.raises(SystemExit):
-            cmd_validate([str(path)])
+            main(["validate", str(path)])
 
     def test_item_not_object(self, tmp_path):
         path = tmp_path / "todo.json"
         path.write_text('["string_item"]', encoding="utf-8")
 
         with pytest.raises(SystemExit):
-            cmd_validate([str(path)])
+            main(["validate", str(path)])
 
     def test_no_args(self):
         with pytest.raises(SystemExit):
-            cmd_validate([])
+            main(["validate"])
 
     def test_file_not_found(self):
         with pytest.raises(SystemExit):
-            cmd_validate(["/nonexistent/todo.json"])
+            main(["validate", "/nonexistent/todo.json"])
 
     def test_invalid_json(self, tmp_path):
         path = tmp_path / "todo.json"
         path.write_text("{invalid json", encoding="utf-8")
 
         with pytest.raises(SystemExit):
-            cmd_validate([str(path)])
+            main(["validate", str(path)])
 
     def test_duplicate_ids(self, tmp_path, capsys):
         tasks = [_make_task("1"), _make_task("1", name="Duplicate")]
         path = _write_todo(tmp_path, tasks)
 
         with pytest.raises(SystemExit):
-            cmd_validate([path])
+            main(["validate", path])
 
         err = capsys.readouterr().err
         assert "duplicate id '1'" in err
@@ -114,7 +112,7 @@ class TestCmdValidate:
         path = _write_todo(tmp_path, tasks)
 
         with pytest.raises(SystemExit):
-            cmd_validate([path])
+            main(["validate", path])
 
         err = capsys.readouterr().err
         assert "'id' must not be empty" in err
@@ -128,7 +126,7 @@ class TestCmdGetNextUndone:
         tasks = [_make_task("1"), _make_task("2", completed=False)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_next_undone(["--only-id", path])
+        main(["get-next-undone", "--only-id", path])
 
         output = capsys.readouterr().out.strip()
         assert output == "2"
@@ -137,7 +135,7 @@ class TestCmdGetNextUndone:
         tasks = [_make_task("1"), _make_task("2", name="Do thing", completed=False)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_next_undone(["--details", path])
+        main(["get-next-undone", "--details", path])
 
         output = capsys.readouterr().out
         assert "**Task**: 2 - Do thing" in output
@@ -147,7 +145,7 @@ class TestCmdGetNextUndone:
         tasks = [_make_task("1"), _make_task("2")]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_next_undone(["--only-id", path])
+        main(["get-next-undone", "--only-id", path])
 
         output = capsys.readouterr().out
         assert output == ""
@@ -160,28 +158,28 @@ class TestCmdGetNextUndone:
         ]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_next_undone(["--only-id", path])
+        main(["get-next-undone", "--only-id", path])
 
         output = capsys.readouterr().out.strip()
         assert output == "2"
 
     def test_no_args(self):
         with pytest.raises(SystemExit):
-            cmd_get_next_undone([])
+            main(["get-next-undone"])
 
     def test_wrong_flag(self, tmp_path):
         tasks = [_make_task("1", completed=False)]
         path = _write_todo(tmp_path, tasks)
 
         with pytest.raises(SystemExit):
-            cmd_get_next_undone(["--bad-flag", path])
+            main(["get-next-undone", "--bad-flag", path])
 
     def test_not_array(self, tmp_path):
         path = tmp_path / "todo.json"
         path.write_text('{}', encoding="utf-8")
 
         with pytest.raises(SystemExit):
-            cmd_get_next_undone(["--only-id", str(path)])
+            main(["get-next-undone", "--only-id", str(path)])
 
 
 # ===================== cmd_get_done =====================
@@ -194,7 +192,7 @@ class TestGetDoneSmallOutput:
         tasks = [_make_task(str(i), name=f"Task {i}") for i in range(1, 4)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         for i in range(1, 4):
@@ -204,7 +202,7 @@ class TestGetDoneSmallOutput:
         tasks = [_make_task(str(i), name=f"Task {i}") for i in range(1, 4)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         assert "showing last" not in output
@@ -213,14 +211,14 @@ class TestGetDoneSmallOutput:
         tasks = [_make_task("1", completed=False)]
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         assert output == ""
 
     def test_no_args(self):
         with pytest.raises(SystemExit):
-            cmd_get_done([])
+            main(["get-done"])
 
 
 class TestGetDoneLargeOutputTruncated:
@@ -240,7 +238,7 @@ class TestGetDoneLargeOutputTruncated:
         full = _format_done_output(tasks, details_mode=False)
         assert len(full.encode("utf-8")) > MAX_OUTPUT_BYTES
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         for i in range(11, 21):
@@ -252,7 +250,7 @@ class TestGetDoneLargeOutputTruncated:
         tasks = self._make_large_tasks()
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         assert "20 completed, showing last 10" in output
@@ -275,7 +273,7 @@ class TestGetDoneLargeOutputDetailsLastOnly:
         full = _format_done_output(tasks, details_mode=True)
         assert len(full.encode("utf-8")) > MAX_OUTPUT_BYTES
 
-        cmd_get_done(["--details", path])
+        main(["get-done", "--details", path])
 
         output = capsys.readouterr().out
         assert "Detail for 20" in output
@@ -285,7 +283,7 @@ class TestGetDoneLargeOutputDetailsLastOnly:
         tasks = self._make_large_tasks()
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done(["--details", path])
+        main(["get-done", "--details", path])
 
         output = capsys.readouterr().out
         for i in range(11, 20):
@@ -309,7 +307,7 @@ class TestGetDoneBoundary:
         assert len(tasks) > 10
         path = _write_todo(tmp_path, tasks)
 
-        cmd_get_done([path])
+        main(["get-done", path])
 
         output = capsys.readouterr().out
         assert "showing last" not in output
@@ -331,7 +329,7 @@ class TestGetDoneFewerThan10Completed:
         full = _format_done_output(tasks, details_mode=True)
         assert len(full.encode("utf-8")) > MAX_OUTPUT_BYTES
 
-        cmd_get_done(["--details", path])
+        main(["get-done", "--details", path])
 
         output = capsys.readouterr().out
         for i in range(1, 6):

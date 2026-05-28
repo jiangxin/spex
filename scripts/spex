@@ -11,6 +11,8 @@ from pathlib import Path
 _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
 
+from cli import ArgumentParser  # noqa: E402
+
 _skill_dir = _scripts_dir.parent
 
 USAGE = """\
@@ -60,34 +62,82 @@ Internal commands (used by skill):
 LLM_COMMANDS = {"apply", "create", "new", "modify"}
 
 
-def _run_list():
+def _extract_global_options(argv):
+    """Extract --version, -V, and --spex-root <path> from argv.
+
+    Returns (spex_root_or_None, cleaned_argv) where cleaned_argv has
+    global options removed.
+    """
+    spex_root = None
+    cleaned = []
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--version", "-V"):
+            _run_version()
+            sys.exit(0)
+        elif argv[i].startswith("--spex-root="):
+            spex_root = argv[i].split("=", 1)[1]
+            if not spex_root:
+                print("Error: --spex-root requires a path argument",
+                      file=sys.stderr)
+                sys.exit(1)
+            i += 1
+        elif argv[i] == "--spex-root":
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                spex_root = argv[i + 1]
+                i += 2
+            else:
+                # No value — check if there's any command in the full argv.
+                # If so, this is a subcommand flag; if not, it's an error.
+                has_command = any(
+                    a in DIRECT_COMMANDS or a in LLM_COMMANDS
+                    for a in argv
+                )
+                if not has_command:
+                    print("Error: --spex-root requires a path argument",
+                          file=sys.stderr)
+                    sys.exit(1)
+                # Otherwise pass through for subcommand to handle
+                cleaned.append(argv[i])
+                i += 1
+        else:
+            cleaned.append(argv[i])
+            i += 1
+
+    if spex_root is not None:
+        os.environ["SPEX_ROOT"] = spex_root
+        import config
+        config.clear_config_cache()
+
+    return spex_root, cleaned
+
+
+def _run_list(argv=None):
     """Run the list command."""
     import list_specs
 
-    list_specs.main()
+    list_specs.main(argv)
 
 
-def _run_archive():
+def _run_archive(argv=None):
     """Run the archive command."""
     import archive_specs
 
-    archive_specs.main()
+    archive_specs.main(argv)
 
 
-def _run_show():
+def _run_show(argv=None):
     """Show detailed topic information."""
     import show_topic
 
-    sys.argv = ["show_topic.py"] + sys.argv[2:]
-    show_topic.main()
+    show_topic.main(argv)
 
 
-def _run_open():
+def _run_open(argv=None):
     """Open a topic directory in the system file browser."""
     import open_topic
 
-    sys.argv = ["open_topic.py"] + sys.argv[2:]
-    open_topic.main()
+    open_topic.main(argv)
 
 
 _GET_USAGE = """\
@@ -100,90 +150,121 @@ Options:
 """
 
 
-def _run_get():
+def _run_get(argv=None):
     """Print a spec path based on the given flag."""
     import common
 
-    flags = sys.argv[2:]
-
-    if "-h" in flags or "--help" in flags:
-        print(_GET_USAGE, end="")
-        sys.exit(0)
+    parser = ArgumentParser(prog="spex get", usage=_GET_USAGE)
+    parser.add_argument("--spex-root", action="store_true")
+    parser.add_argument("--specs-dir", action="store_true")
+    parser.add_argument("--archives-dir", action="store_true")
+    args = parser.parse(argv)
 
     flag_map = {
-        "--spex-root": common.get_spex_root,
-        "--specs-dir": common.get_specs_dir,
-        "--archives-dir": common.get_archives_dir,
+        "spex_root": common.get_spex_root,
+        "specs_dir": common.get_specs_dir,
+        "archives_dir": common.get_archives_dir,
     }
 
-    if len(flags) != 1 or flags[0] not in flag_map:
-        print(
-            "Usage: spex get --spex-root|--specs-dir|--archives-dir",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    matched = [k for k in flag_map if getattr(args, k, False)]
+    if len(matched) != 1:
+        parser.error("exactly one of --spex-root, --specs-dir, --archives-dir is required")
 
-    print(flag_map[flags[0]]())
+    print(flag_map[matched[0]]())
 
 
-def _run_get_topic():
+def _run_get_topic(argv=None):
     """Resolve a topic directory."""
     import get_topic
 
-    sys.argv = ["get_topic.py"] + sys.argv[2:]
-    get_topic.main()
+    get_topic.main(argv)
 
 
-def _run_create_topic():
+def _run_create_topic(argv=None):
     """Create a new topic directory."""
-    if len(sys.argv) < 3:
+    if not argv or len(argv) < 1:
         print("Usage: spex create-topic <topic>", file=sys.stderr)
         sys.exit(1)
 
     mod = importlib.import_module("create-topic-dir")
-    sys.argv = ["create-topic-dir.py"] + sys.argv[2:]
-    mod.main()
+    mod.main(argv)
 
 
-def _run_prompt():
+def _run_prompt(argv=None):
     """Render a Jinja2 template with metadata."""
     import prompt
 
-    sys.argv = ["prompt.py"] + sys.argv[2:]
-    prompt.main()
+    prompt.main(argv)
 
 
-def _run_meta():
+def _run_meta(argv=None):
     """Set key/value in meta.json."""
     import meta
 
-    sys.argv = ["meta.py"] + sys.argv[2:]
-    meta.main()
+    meta.main(argv)
 
 
-def _run_create_helper():
+_CREATE_HELPER_USAGE = """\
+Usage: spex create-helper --validate
+
+Validate branch creation feasibility.
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+
+def _run_create_helper(argv=None):
     """Route create-helper subcommand."""
     import branch
 
-    flags = sys.argv[2:]
-    if "--validate" in flags:
+    parser = ArgumentParser(prog="spex create-helper",
+                            usage=_CREATE_HELPER_USAGE)
+    parser.add_argument("--validate", action="store_true")
+    args = parser.parse(argv)
+
+    if args.validate:
         branch.cli_create_validate()
     else:
         print("Usage: spex create-helper --validate", file=sys.stderr)
         sys.exit(1)
 
 
-def _run_apply_helper():
+_APPLY_HELPER_USAGE = """\
+Usage: spex apply-helper --validate|--post-action --topic <name>
+
+Validate or report apply-branch status.
+
+Options:
+  --validate        Validate branch setup
+  --post-action     Run post-action hook
+  --topic <name>    Topic name (required)
+  -h, --help        Show this help message and exit
+"""
+
+
+def _run_apply_helper(argv=None):
     """Route apply-helper subcommand."""
     import branch
 
-    flags = sys.argv[2:]
-    if "--validate" in flags:
-        sys.argv = [sys.argv[0]] + [a for a in flags if a != "--validate"]
-        branch.cli_apply_validate()
-    elif "--post-action" in flags:
-        sys.argv = [sys.argv[0]] + [a for a in flags if a != "--post-action"]
-        branch.cli_apply_post_action()
+    parser = ArgumentParser(prog="spex apply-helper",
+                            usage=_APPLY_HELPER_USAGE)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--validate", action="store_true")
+    mode.add_argument("--post-action", action="store_true")
+    parser.add_argument("--topic")
+    args = parser.parse(argv)
+
+    if args.validate:
+        if not args.topic:
+            print("Error: --topic is required", file=sys.stderr)
+            sys.exit(1)
+        branch.cli_apply_validate(["--topic", args.topic])
+    elif args.post_action:
+        if not args.topic:
+            print("Error: --topic is required", file=sys.stderr)
+            sys.exit(1)
+        branch.cli_apply_post_action(["--topic", args.topic])
     else:
         print(
             "Usage: spex apply-helper --validate|--post-action --topic <name>",
@@ -192,17 +273,35 @@ def _run_apply_helper():
         sys.exit(1)
 
 
-def _run_submit():
+_SUBMIT_USAGE = """\
+Usage: spex submit --topic <name>
+
+Submit (merge) a spex branch back to target.
+
+Options:
+  --topic <name>  Topic name (required)
+  -h, --help      Show this help message and exit
+"""
+
+
+def _run_submit(argv=None):
     """Route submit subcommand."""
     import branch
 
-    sys.argv = [sys.argv[0]] + sys.argv[2:]
-    branch.cli_submit()
+    parser = ArgumentParser(prog="spex submit", usage=_SUBMIT_USAGE)
+    parser.add_argument("--topic")
+    args = parser.parse(argv)
+
+    if not args.topic:
+        print("Error: --topic is required", file=sys.stderr)
+        sys.exit(1)
+
+    branch.cli_submit(["--topic", args.topic])
 
 
-def _run_todo():
+def _run_todo(argv=None):
     """Route todo subcommands."""
-    if len(sys.argv) < 3:
+    if not argv or len(argv) < 1:
         print(
             "Usage: spex todo <subcommand> ...\n"
             "Subcommands: validate, get-next-undone, get-done, mark-done,"
@@ -211,7 +310,8 @@ def _run_todo():
         )
         sys.exit(1)
 
-    subcmd = sys.argv[2]
+    subcmd = argv[0]
+    rest = argv[1:]
 
     if subcmd in ("-h", "--help"):
         import parse_todo
@@ -221,28 +321,23 @@ def _run_todo():
     elif subcmd == "mark-done":
         import mark_todo_complete
 
-        sys.argv = ["mark_todo_complete.py"] + sys.argv[3:]
-        mark_todo_complete.main()
+        mark_todo_complete.main(rest)
     elif subcmd == "xml2json":
         import xml2json_todo
 
-        sys.argv = ["xml2json_todo.py"] + sys.argv[3:]
-        xml2json_todo.main()
+        xml2json_todo.main(rest)
     elif subcmd == "json2xml":
         import json2xml_todo
 
-        sys.argv = ["json2xml_todo.py"] + sys.argv[3:]
-        json2xml_todo.main()
+        json2xml_todo.main(rest)
     elif subcmd == "remove-undone":
         import remove_undone_todo
 
-        sys.argv = ["remove_undone_todo.py"] + sys.argv[3:]
-        remove_undone_todo.main()
+        remove_undone_todo.main(rest)
     elif subcmd in ("validate", "get-next-undone", "get-done"):
         import parse_todo
 
-        sys.argv = ["parse_todo.py", subcmd] + sys.argv[3:]
-        parse_todo.main()
+        parse_todo.main([subcmd] + rest)
     else:
         print(f"Error: unknown todo subcommand '{subcmd}'", file=sys.stderr)
         print(
@@ -269,62 +364,55 @@ def _get_version():
     return "unknown"
 
 
-def _run_init():
+def _run_init(argv=None):
     """Initialize spex environment."""
     import init
 
-    init.main()
+    init.main(argv)
 
 
-def _run_hook():
-    """Execute a hook script with event data.
+_RUN_HOOK_USAGE = """\
+Usage: spex run-hook <hook_name> --event-type <type> --topic <name>
+       --json-payload '{"key": "value"}'
 
-    Usage: spex run-hook <hook_name> --event-type <type> --topic <name>
-           --json-payload '{"key": "value"}'
-    """
+Execute a hook script with event data.
+
+Options:
+  --event-type <type>   Event type (required)
+  --topic <name>        Topic name
+  --json-payload <json> JSON payload string
+  --workdir <path>      Working directory
+  -h, --help            Show this help message and exit
+"""
+
+
+def _run_hook(argv=None):
+    """Execute a hook script with event data."""
     import json
 
     import hooks
 
-    args = sys.argv[2:]
-    if not args:
-        print("Error: run-hook requires <hook_name>", file=sys.stderr)
-        sys.exit(1)
+    parser = ArgumentParser(prog="spex run-hook", usage=_RUN_HOOK_USAGE)
+    parser.add_argument("hook_name")
+    parser.add_argument("--event-type")
+    parser.add_argument("--topic")
+    parser.add_argument("--json-payload")
+    parser.add_argument("--workdir")
+    args = parser.parse(argv)
 
-    hook_name = args[0]
-    event_type = None
-    topic_name = None
-    payload_json = None
-    workdir = None
-
-    i = 1
-    while i < len(args):
-        if args[i] == "--event-type" and i + 1 < len(args):
-            event_type = args[i + 1]
-            i += 2
-        elif args[i] == "--topic" and i + 1 < len(args):
-            topic_name = args[i + 1]
-            i += 2
-        elif args[i] == "--json-payload" and i + 1 < len(args):
-            payload_json = args[i + 1]
-            i += 2
-        elif args[i] == "--workdir" and i + 1 < len(args):
-            workdir = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    if not event_type:
+    if not args.event_type:
         print("Error: --event-type is required", file=sys.stderr)
         sys.exit(1)
 
-    payload = json.loads(payload_json or "{}")
-    payload = {**payload, "topic_name": topic_name} if topic_name else payload
-    event_data = hooks._build_event_data(event_type, payload, workdir)
-    hooks.run_hook(hook_name, event_data, workdir)
+    payload = json.loads(args.json_payload or "{}")
+    if args.topic:
+        payload = {**payload, "topic_name": args.topic}
+    event_data = hooks._build_event_data(args.event_type, payload,
+                                         args.workdir)
+    hooks.run_hook(args.hook_name, event_data, args.workdir)
 
 
-def _run_version():
+def _run_version(argv=None):  # noqa: ARG001
     """Print version and exit."""
     print(f"spex {_get_version()}")
 
@@ -349,67 +437,25 @@ DIRECT_COMMANDS = {
 }
 
 
-def _extract_global_options():
-    """Extract --spex-root from sys.argv at any position.
-
-    Distinguishes the global option (which always has a value) from the
-    'get --spex-root' subcommand flag (which has no value).
-    """
-    args = sys.argv[1:]
-    if "--version" in args or "-V" in args:
-        _run_version()
-        sys.exit(0)
-
-    new_args = []
-    spex_root = None
-    i = 0
-    while i < len(args):
-        if args[i].startswith("--spex-root="):
-            spex_root = args[i].split("=", 1)[1]
-            if not spex_root:
-                print("Error: --spex-root requires a path argument",
-                      file=sys.stderr)
-                sys.exit(1)
-            i += 1
-        elif args[i] == "--spex-root" and i + 1 < len(args) and not args[i + 1].startswith("-"):
-            spex_root = args[i + 1]
-            i += 2
-        else:
-            new_args.append(args[i])
-            i += 1
-
-    if spex_root is not None:
-        os.environ["SPEX_ROOT"] = spex_root
-        import config
-
-        config.clear_config_cache()
-    elif "--spex-root" in args and args[-1] == "--spex-root":
-        # Bare --spex-root at end with no value and no command context
-        if not any(a in DIRECT_COMMANDS or a in LLM_COMMANDS for a in args[:-1]):
-            print("Error: --spex-root requires a path argument",
-                  file=sys.stderr)
-            sys.exit(1)
-        new_args = args
-
-    sys.argv = [sys.argv[0]] + new_args
-
-
-def main():
+def main(argv=None):
     """CLI entry point."""
-    _extract_global_options()
+    if argv is None:
+        argv = sys.argv[1:]
 
-    if len(sys.argv) < 2:
+    _, argv = _extract_global_options(argv)
+
+    if not argv:
         print(USAGE, end="")
         sys.exit(0)
 
-    command = sys.argv[1]
+    command = argv[0]
 
     if command in ("-h", "--help"):
         print(USAGE, end="")
         sys.exit(0)
 
     if command in DIRECT_COMMANDS:
-        DIRECT_COMMANDS[command]()
+        DIRECT_COMMANDS[command](argv[1:])
     elif command in LLM_COMMANDS:
         print(
             f"Error: 'spex {command}' requires an AI coding agent. "

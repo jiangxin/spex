@@ -75,11 +75,11 @@ def _format_verbose(topic_dir):
     return "\n".join(parts).rstrip()
 
 
-def main():
-    check_help_flag(USAGE)
-
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+def main(argv=None):
+    check_help_flag(USAGE, argv)
+    full_argv = argv if argv is not None else sys.argv[1:]
+    args = [a for a in full_argv if not a.startswith("-")]
+    flags = [a for a in full_argv if a.startswith("-")]
 
     verbose = any(f in ("-v", "--verbose") for f in flags)
 

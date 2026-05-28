@@ -152,9 +152,9 @@ def _topic_matches_workdir(topic_dir, workdir):
     return same_path(topic_wd, workdir)
 
 
-def main():
-    check_help_flag(USAGE)
-    args = sys.argv[1:]
+def main(argv=None):
+    check_help_flag(USAGE, argv)
+    args = argv if argv is not None else sys.argv[1:]
     json_mode = "--json" in args
     if json_mode:
         args = [a for a in args if a != "--json"]

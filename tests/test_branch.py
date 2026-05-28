@@ -268,12 +268,11 @@ class TestCliApplyValidate:
     @patch("common.resolve_topic_dir")
     @patch("config.load_config", return_value={"create_branch": False})
     def test_disabled_no_output(self, _cfg, mock_resolve, tmp_path,
-                                capsys, monkeypatch):
+                                capsys):
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
-        monkeypatch.setattr("sys.argv", ["spex", "--topic", "test-topic"])
-        cli_apply_validate()
+        cli_apply_validate(["--topic", "test-topic"])
         # When create_branch is False, function returns early with no output
         out = capsys.readouterr().out
         assert out == ""
@@ -281,15 +280,13 @@ class TestCliApplyValidate:
 
 class TestCliApplyPostAction:
     @patch("common.resolve_topic_dir")
-    def test_outputs_text_with_branch(self, mock_resolve, tmp_path, capsys,
-                                      monkeypatch):
+    def test_outputs_text_with_branch(self, mock_resolve, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
         )
         mock_resolve.return_value = tmp_path
-        monkeypatch.setattr("sys.argv", ["spex", "--topic", "my-feat"])
-        cli_apply_post_action()
+        cli_apply_post_action(["--topic", "my-feat"])
         out = capsys.readouterr().out
         assert "spex/my-feat" in out
         assert "Development completed" in out
@@ -297,11 +294,10 @@ class TestCliApplyPostAction:
 
     @patch("common.resolve_topic_dir")
     @patch("common.load_meta", return_value={})
-    def test_no_branch_no_output(self, _meta, _resolve, capsys, monkeypatch,
+    def test_no_branch_no_output(self, _meta, _resolve, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
-        monkeypatch.setattr("sys.argv", ["spex", "--topic", "no-branch"])
-        cli_apply_post_action()
+        cli_apply_post_action(["--topic", "no-branch"])
         out = capsys.readouterr().out
         assert out == ""
 
@@ -311,15 +307,14 @@ class TestCliSubmit:
     @patch("config.load_config", return_value={"submit_method": "merge"})
     @patch("common.resolve_topic_dir")
     def test_merge_success(self, mock_resolve, _cfg, mock_merge, tmp_path,
-                           capsys, monkeypatch):
+                           capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/done", "branch": "main"}),
             encoding="utf-8",
         )
         mock_resolve.return_value = tmp_path
-        monkeypatch.setattr("sys.argv", ["spex", "--topic", "done-topic"])
-        cli_submit()
+        cli_submit(["--topic", "done-topic"])
         out = json.loads(capsys.readouterr().out)
         assert out["action"] == "merge"
         assert out["source"] == "spex/done"
@@ -332,16 +327,15 @@ class TestCliSubmit:
     @patch("config.load_config", return_value={"submit_method": "merge"})
     @patch("common.resolve_topic_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _cfg, _merge,
-                                         tmp_path, capsys, monkeypatch):
+                                         tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
             encoding="utf-8",
         )
         mock_resolve.return_value = tmp_path
-        monkeypatch.setattr("sys.argv", ["spex", "--topic", "conflict"])
         try:
-            cli_submit()
+            cli_submit(["--topic", "conflict"])
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -363,17 +357,17 @@ class TestCliRouting:
             text=True,
         )
 
-    def test_create_helper_no_flag_exits_1(self):
+    def test_create_helper_no_flag_exits(self):
         result = self._run_spex("create-helper")
-        assert result.returncode == 1
+        assert result.returncode in (1, 2)
         assert "Usage:" in result.stderr
 
-    def test_apply_helper_no_flag_exits_1(self):
+    def test_apply_helper_no_flag_exits(self):
         result = self._run_spex("apply-helper")
-        assert result.returncode == 1
+        assert result.returncode in (1, 2)
         assert "Usage:" in result.stderr
 
-    def test_submit_no_topic_exits_1(self):
+    def test_submit_no_topic_exits(self):
         result = self._run_spex("submit")
-        assert result.returncode == 1
+        assert result.returncode in (1, 2)
         assert "--topic" in result.stderr

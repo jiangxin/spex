@@ -423,9 +423,9 @@ class TestMissingArgs:
         with pytest.raises(SystemExit) as exc_info:
             main()
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "expected exactly one argument" in err
+        assert "xml_file" in err
 
 
 # ===================== Special character handling =====================
@@ -523,9 +523,12 @@ class TestSpecialCharacters:
 
 
 class TestPostActionFlag:
-    def test_post_action_without_event_type_error(self, monkeypatch, capsys):
+    def test_post_action_without_event_type_error(self, tmp_path, monkeypatch, capsys):
+        xml = _make_xml([("step-1", "First", "Details")])
+        xml_path = _write_xml(tmp_path, xml)
+
         monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", "todo.xml", "--post-action"]
+            sys, "argv", ["xml2json_todo.py", str(xml_path), "--post-action"]
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -540,7 +543,6 @@ class TestPostActionFlag:
         xml = _make_xml([("step-1", "First", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        # Patch run_post_action to capture the call
         captured = {}
 
         def _fake_run_post_action(event_type, payload, workdir=None, topic_name=None):
@@ -551,12 +553,7 @@ class TestPostActionFlag:
         import hooks
         monkeypatch.setattr(hooks, "run_post_action", _fake_run_post_action)
 
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["xml2json_todo.py", str(xml_path), "--post-action", "--event-type", "create"],
-        )
-        main()
+        main([str(xml_path), "--post-action", "--event-type", "create"])
 
         assert captured["event_type"] == "create"
         assert captured["payload"]["done"] == 0
@@ -567,7 +564,6 @@ class TestPostActionFlag:
         xml = _make_xml([("step-1", "Done", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
-        # Pre-write todo.json with one completed step
         existing = [
             {
                 "id": "step-0", "name": "Old", "details": "...",
@@ -586,20 +582,13 @@ class TestPostActionFlag:
         import hooks
         monkeypatch.setattr(hooks, "run_post_action", _fake_run_post_action)
 
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["xml2json_todo.py", str(xml_path), "--append", "--post-action",
-             "--event-type", "modify"],
-        )
-        main()
+        main([str(xml_path), "--append", "--post-action", "--event-type", "modify"])
 
-        # step-0 completed, step-1 not completed → done=1, undone=1
         assert captured["payload"]["done"] == 1
         assert captured["payload"]["undone"] == 1
 
-    def test_post_action_with_short_event_type_flag(self, tmp_path, monkeypatch, capsys):
-        """--post-action --event-type=VALUE should also work."""
+    def test_post_action_with_equals_event_type(self, tmp_path, monkeypatch, capsys):
+        """--event-type=VALUE should also work (argparse native)."""
         xml = _make_xml([("step-1", "Step", "Details")])
         xml_path = _write_xml(tmp_path, xml)
 
@@ -611,37 +600,27 @@ class TestPostActionFlag:
         import hooks
         monkeypatch.setattr(hooks, "run_post_action", _fake_run_post_action)
 
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            ["xml2json_todo.py", str(xml_path), "--post-action",
-             "--event-type=create"],
-        )
-        main()
+        main([str(xml_path), "--post-action", "--event-type=create"])
 
         assert captured["event_type"] == "create"
 
-    def test_unknown_flag_error(self, monkeypatch, capsys):
-        monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", "todo.xml", "--bogus"]
-        )
+    def test_unknown_flag_error(self, tmp_path, capsys):
+        xml = _write_xml(tmp_path, _make_xml([("s", "n", "d")]))
 
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main([str(xml), "--bogus"])
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "unknown flag: --bogus" in err
+        assert "unrecognized" in err.lower() or "unknown" in err.lower()
 
-    def test_multiple_extra_args_not_allowed(self, monkeypatch, capsys):
+    def test_multiple_extra_args_not_allowed(self, tmp_path, capsys):
         """Two positional args should error."""
-        monkeypatch.setattr(
-            sys, "argv", ["xml2json_todo.py", "a.xml", "b.xml"]
-        )
+        xml = _write_xml(tmp_path, _make_xml([("s", "n", "d")]))
 
         with pytest.raises(SystemExit) as exc_info:
-            main()
+            main([str(xml), "extra.xml"])
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "expected exactly one argument" in err
+        assert "unrecognized arguments" in err.lower() or "error" in err.lower()

@@ -26,9 +26,11 @@ ICON_ARCHIVED = "\U0001f4e6"
 
 
 
-def check_help_flag(usage_text):
-    """If -h or --help is in sys.argv, print usage and exit."""
-    if "-h" in sys.argv or "--help" in sys.argv:
+def check_help_flag(usage_text, argv=None):
+    """If -h or --help is in argv, print usage and exit."""
+    if argv is None:
+        argv = sys.argv
+    if "-h" in argv or "--help" in argv:
         print(usage_text, end="")
         sys.exit(0)
 

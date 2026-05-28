@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import check_help_flag
 
 USAGE = """\
@@ -61,18 +62,14 @@ def convert_todo_to_xml(data):
     return "\n".join(lines) + "\n"
 
 
-def main():
+def main(argv=None):
     check_help_flag(USAGE)
 
-    if len(sys.argv) != 2:
-        print(
-            "Error: expected exactly one argument (JSON file path).",
-            file=sys.stderr,
-        )
-        print(USAGE, file=sys.stderr)
-        sys.exit(1)
+    parser = ArgumentParser(prog="spex todo json2xml", usage=USAGE)
+    parser.add_argument("json_file", help="Path to the JSON file")
+    args = parser.parse(argv)
 
-    json_path = Path(sys.argv[1])
+    json_path = Path(args.json_file)
 
     if not json_path.is_file():
         print(f"Error: file not found: {json_path}", file=sys.stderr)

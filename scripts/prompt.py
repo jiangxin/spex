@@ -228,7 +228,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     return strip_front_matter(rendered)
 
 
-def main():
+def main(argv=None):
     import json
 
     parser = argparse.ArgumentParser(
@@ -241,7 +241,7 @@ def main():
     parser.add_argument("--json", action="store_true",
                         help="Output JSON with rendered prompt to stdout")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         from jinja2 import TemplateError

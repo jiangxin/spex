@@ -92,7 +92,7 @@ def _write_meta(topic_dir, git_info, prompt, timestamp, description=""):
         f.write("\n")
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Create a topic directory. Reads requirement from stdin "
         "and saves it to meta.json prompts field."
@@ -117,7 +117,7 @@ def main():
         default="",
         help="Brief description of the topic (saved to meta.json)"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.get and not args.json:
         print("Error: --get requires --json", file=sys.stderr)

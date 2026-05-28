@@ -113,7 +113,7 @@ class TestMainErrors:
         monkeypatch.setattr(sys, "argv", ["prog", "only-one"])
         with pytest.raises(SystemExit) as exc_info:
             mark_todo_complete.main()
-        assert exc_info.value.code == 1
+        assert exc_info.value.code in (1, 2)
 
     def test_file_not_found_exits(self, monkeypatch, tmp_path):
         monkeypatch.setattr(

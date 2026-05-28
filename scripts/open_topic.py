@@ -80,10 +80,11 @@ def open_directory(path):
         subprocess.run(["xdg-open", path])
 
 
-def main():
+def main(argv=None):
     """CLI entry point for the open command."""
-    check_help_flag(USAGE)
-    topic = sys.argv[1] if len(sys.argv) > 1 else ""
+    check_help_flag(USAGE, argv)
+    args = argv if argv is not None else sys.argv[1:]
+    topic = args[0] if args else ""
 
     if not topic:
         open_directory(get_spex_root())

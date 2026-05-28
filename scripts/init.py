@@ -120,12 +120,11 @@ Options:
 """
 
 
-def main():
+def main(argv=None):
     from common import check_help_flag
 
-    check_help_flag(_USAGE)
-
-    args = sys.argv[2:] if len(sys.argv) > 2 else sys.argv[1:]
+    check_help_flag(_USAGE, argv)
+    args = argv if argv is not None else (sys.argv[2:] if len(sys.argv) > 2 else sys.argv[1:])
 
     if "--check" in args:
         sys.exit(0 if is_initialized() else 1)
