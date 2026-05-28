@@ -51,14 +51,48 @@ def set_spex_config_file(path: str | None) -> None:
     _spex_config_file_override = path
 
 def _get_main_worktree(workdir: str | Path | None = None) -> Path | None:
-    """Return the git main worktree, or None if not inside a repo. Cached."""
+    """Return the git main worktree, or None if not inside a repo. Cached.
+
+    Handles linked worktrees and submodules: when .git is a file, resolves
+    back to the main worktree via ``git worktree list --porcelain``.
+    """
     key = str(Path(workdir).resolve()) if workdir else None
     cached = _main_worktree_cache.get(key, _SENTINEL)
     if cached is not _SENTINEL:
         return cached
-    cmd = ["git", "rev-parse", "--show-toplevel"]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
-    value = Path(result.stdout.strip()).resolve() if result.returncode == 0 else None
+
+    top_workdir = _get_top_workdir(workdir)
+    if top_workdir is None:
+        _main_worktree_cache[key] = None
+        return None
+
+    dot_git = top_workdir / ".git"
+
+    if dot_git.is_dir():
+        _main_worktree_cache[key] = top_workdir
+        return top_workdir
+
+    # .git is a file → linked worktree or submodule
+    list_cwd: str | Path | None = workdir
+
+    super_result = subprocess.run(
+        ["git", "rev-parse", "--show-superproject-working-tree"],
+        capture_output=True, text=True, cwd=workdir,
+    )
+    if super_result.returncode == 0 and super_result.stdout.strip():
+        list_cwd = super_result.stdout.strip()
+
+    wt_result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        capture_output=True, text=True, cwd=list_cwd,
+    )
+    value: Path | None = None
+    if wt_result.returncode == 0:
+        for line in wt_result.stdout.splitlines():
+            if line.startswith("worktree "):
+                value = Path(line[len("worktree "):]).resolve()
+                break
+
     _main_worktree_cache[key] = value
     return value
 

@@ -1,5 +1,6 @@
 """Tests for config.py: hierarchical TOML discovery, merging, and caching."""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from config import (
     SpexContext,
     _deep_merge,
     _find_spex_tomls,
+    _get_main_worktree,
     _get_top_workdir,
     _load_toml_config,
     _merge_configs,
@@ -715,4 +717,114 @@ class TestSpexConfigFileOverride:
             assert result == []
         finally:
             config.Path.home = original_home
+
+
+# ===================== _get_main_worktree =====================
+
+
+@pytest.mark.slow
+class TestGetMainWorktree:
+    """Tests for _get_main_worktree with real git repos."""
+
+    def test_normal_repo(self, tmp_path):
+        """Normal repo (.git is a directory) returns top_workdir."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True
+        )
+        clear_config_cache()
+
+        result = _get_main_worktree(str(repo))
+
+        assert result == repo.resolve()
+
+    def test_not_in_git_repo(self, tmp_path):
+        """Returns None when not inside a git repo."""
+        clear_config_cache()
+
+        result = _get_main_worktree(str(tmp_path))
+
+        assert result is None
+
+    def test_linked_worktree(self, tmp_path):
+        """Linked worktree (.git is a file) resolves to main worktree."""
+        main = tmp_path / "main"
+        main.mkdir()
+        subprocess.run(
+            ["git", "init", str(main)], capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(main), "commit",
+             "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        linked = tmp_path / "linked"
+        subprocess.run(
+            ["git", "-C", str(main), "worktree", "add",
+             str(linked), "-b", "feature"],
+            capture_output=True, check=True,
+        )
+        clear_config_cache()
+
+        result = _get_main_worktree(str(linked))
+
+        assert result == main.resolve()
+
+    def test_submodule(self, tmp_path):
+        """Submodule (.git is a file) resolves to parent project main worktree."""
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        subprocess.run(
+            ["git", "init", str(parent)], capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(parent), "commit",
+             "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+
+        child_origin = tmp_path / "child_origin"
+        child_origin.mkdir()
+        subprocess.run(
+            ["git", "init", str(child_origin)],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(child_origin), "commit",
+             "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(parent),
+             "-c", "protocol.file.allow=always",
+             "submodule", "add", str(child_origin), "child"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(parent), "commit", "-m", "add submodule"],
+            capture_output=True, check=True,
+        )
+
+        sub_workdir = parent / "child"
+        clear_config_cache()
+
+        result = _get_main_worktree(str(sub_workdir))
+
+        assert result == parent.resolve()
+
+    def test_caching(self, tmp_path):
+        """Second call returns cached result without running git again."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True
+        )
+        clear_config_cache()
+
+        first = _get_main_worktree(str(repo))
+        second = _get_main_worktree(str(repo))
+
+        assert first == second
+        assert first == repo.resolve()
 
