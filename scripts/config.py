@@ -110,13 +110,13 @@ def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
 
 
 def _find_spex_tomls(
-    worktree_root: Path | None, workdir: str | Path | None = None
+    main_worktree: Path | None, workdir: str | Path | None = None
 ) -> list[Path]:
     """Discover .spex.toml files in priority order (highest first).
 
     Walk from a starting directory upward to filesystem root, collecting
     existing .spex.toml files. When inside a git repo, start from
-    worktree_root; otherwise start from workdir (or cwd).
+    main_worktree; otherwise start from workdir (or cwd).
     Then check ~/.spex.toml as a fallback.
 
     If --spex-config-file or SPEX_CONFIG_FILE is set, skip discovery and
@@ -134,8 +134,8 @@ def _find_spex_tomls(
     candidates: list[Path] = []
     visited: set[Path] = set()
 
-    if worktree_root is not None:
-        start = worktree_root.resolve()
+    if main_worktree is not None:
+        start = main_worktree.resolve()
     else:
         start = Path(workdir).resolve() if workdir else Path.cwd().resolve()
 
@@ -196,8 +196,8 @@ def load_config(workdir: str | Path | None = None) -> dict:
     if _config_cache is not None:
         return _config_cache
 
-    worktree_root = _get_top_workdir(workdir)
-    spex_tomls = _find_spex_tomls(worktree_root, workdir)
+    main_wt = _get_main_worktree(workdir)
+    spex_tomls = _find_spex_tomls(main_wt, workdir)
     merged = _merge_configs(spex_tomls)
 
     result: dict = {**_DEFAULTS, **merged}
@@ -213,13 +213,13 @@ def get_top_workdir(workdir: str | Path | None = None) -> Path | None:
 
 def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     """Return the discovered TOML config paths (highest priority first)."""
-    worktree_root = _get_top_workdir(workdir)
-    return _find_spex_tomls(worktree_root, workdir)
+    main_wt = _get_main_worktree(workdir)
+    return _find_spex_tomls(main_wt, workdir)
 
 
 def _resolve_spex_roots(
     spex_tomls: list[Path],
-    worktree_root: Path | None,
+    main_worktree: Path | None,
     workdir: str | Path | None = None,
 ) -> list[str]:
     """Resolve spex_root to a list of directory paths using per-level configs.
@@ -233,8 +233,8 @@ def _resolve_spex_roots(
     where the governing .spex.toml lives, the candidate path is added
     unconditionally (even if it doesn't exist yet).
     """
-    if worktree_root is not None:
-        start = worktree_root.resolve()
+    if main_worktree is not None:
+        start = main_worktree.resolve()
     else:
         start = Path(workdir).resolve() if workdir else Path.cwd().resolve()
 
@@ -318,9 +318,9 @@ def resolve_spex_root_and_roots(
 
     The primary root is the first (highest-priority) entry in the roots list.
     """
-    worktree_root = get_top_workdir(workdir)
-    spex_tomls = _find_spex_tomls(worktree_root, workdir)
-    roots = _resolve_spex_roots(spex_tomls, worktree_root, workdir)
+    main_wt = _get_main_worktree(workdir)
+    spex_tomls = _find_spex_tomls(main_wt, workdir)
+    roots = _resolve_spex_roots(spex_tomls, main_wt, workdir)
     if roots:
         return (roots[0], roots)
     return ("", [])

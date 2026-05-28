@@ -17,13 +17,14 @@ def _strip_refs_prefix(name: str) -> str:
     return name
 
 
-def get_current_branch() -> str:
+def get_current_branch(cwd: str | Path | None = None) -> str:
     """Return the current git branch name in short format (no refs/heads/ prefix)."""
     result = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
     if result.returncode != 0:
         raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
@@ -33,18 +34,19 @@ def get_current_branch() -> str:
     return branch_name
 
 
-def branch_exists(branch_name: str) -> bool:
+def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
     """Check if a local git branch exists."""
     branch_name = _strip_refs_prefix(branch_name)
     result = subprocess.run(
         ["git", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
         capture_output=True,
         text=True,
+        cwd=cwd,
     )
     return result.returncode == 0
 
 
-def create_branch(branch_name: str) -> None:
+def create_branch(branch_name: str, cwd: str | Path | None = None) -> None:
     """Create a new local branch. Raises subprocess.CalledProcessError on failure."""
     branch_name = _strip_refs_prefix(branch_name)
     subprocess.run(
@@ -52,10 +54,11 @@ def create_branch(branch_name: str) -> None:
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
 
 
-def switch_branch(branch_name: str) -> None:
+def switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
     """Switch to the given branch. Raises subprocess.CalledProcessError on failure."""
     branch_name = _strip_refs_prefix(branch_name)
     subprocess.run(
@@ -63,10 +66,13 @@ def switch_branch(branch_name: str) -> None:
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
 
 
-def set_branch_description(branch: str, description: str) -> None:
+def set_branch_description(
+    branch: str, description: str, cwd: str | Path | None = None,
+) -> None:
     """Set the git branch description. Branch must be short format (no refs/heads/)."""
     branch = _strip_refs_prefix(branch)
     subprocess.run(
@@ -74,16 +80,20 @@ def set_branch_description(branch: str, description: str) -> None:
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
 
 
-def merge_branch(target: str, source: str) -> None:
+def merge_branch(
+    target: str, source: str, cwd: str | Path | None = None,
+) -> None:
     """Merge source branch into target. Raises CalledProcessError on conflict."""
     subprocess.run(
         ["git", "switch", target],
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
     subprocess.run(
         ["git",
@@ -95,10 +105,13 @@ def merge_branch(target: str, source: str) -> None:
         capture_output=True,
         text=True,
         check=True,
+        cwd=cwd,
     )
 
 
-def validate_create_branch(config: dict) -> str:
+def validate_create_branch(
+    config: dict, cwd: str | Path | None = None,
+) -> str:
     """Validate whether branch creation is enabled and feasible.
 
     Prints errors to stderr and exits on failure.
@@ -110,7 +123,7 @@ def validate_create_branch(config: dict) -> str:
         sys.exit(1)
 
     try:
-        current = get_current_branch()
+        current = get_current_branch(cwd)
     except subprocess.CalledProcessError as e:
         print(f"Error: cannot determine current branch: {e}", file=sys.stderr)
         sys.exit(1)
@@ -148,7 +161,9 @@ def _extract_topic_name_for_branch(topic_dir: Path, meta: dict) -> str:
     return meta.get("topic", "") or topic_dir.name
 
 
-def validate_apply_branch(config: dict, topic_dir: Path) -> None:
+def validate_apply_branch(
+    config: dict, topic_dir: Path, cwd: str | Path | None = None,
+) -> None:
     """Perform branch setup for applying a topic spec.
 
     Steps:
@@ -179,9 +194,9 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
 
     # Step 3: spex_branch exists in meta — ensure current branch matches
     if spex_branch:
-        current = get_current_branch()
+        current = get_current_branch(cwd)
         if current != spex_branch:
-            if not branch_exists(spex_branch):
+            if not branch_exists(spex_branch, cwd):
                 print(
                     f"Error: spex_branch '{spex_branch}' defined in meta.json "
                     f"does not exist.",
@@ -189,7 +204,7 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
                 )
                 sys.exit(1)
             try:
-                switch_branch(spex_branch)
+                switch_branch(spex_branch, cwd)
             except subprocess.CalledProcessError as e:
                 print(
                     f"Error: failed to switch to '{spex_branch}': "
@@ -211,11 +226,11 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
 
     created_branch = None
     for candidate in candidates:
-        if branch_exists(candidate):
+        if branch_exists(candidate, cwd):
             created_branch = candidate
             break
         try:
-            create_branch(candidate)
+            create_branch(candidate, cwd)
             created_branch = candidate
             break
         except subprocess.CalledProcessError:
@@ -230,7 +245,7 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
 
     # Step 5: switch to the branch and set metadata
     try:
-        switch_branch(created_branch)
+        switch_branch(created_branch, cwd)
     except subprocess.CalledProcessError as e:
         print(
             f"Error: failed to switch to '{created_branch}': "
@@ -243,7 +258,7 @@ def validate_apply_branch(config: dict, topic_dir: Path) -> None:
     description = common.get_spec_description(topic_dir)
     if description:
         try:
-            set_branch_description(created_branch, description)
+            set_branch_description(created_branch, description, cwd)
         except subprocess.CalledProcessError:
             pass  # non-fatal
 
@@ -272,8 +287,8 @@ def cli_create_validate() -> None:
     """CLI: validate branch creation feasibility."""
     import config as cfg
 
-    conf = cfg.load_config()
-    current = validate_create_branch(conf)
+    ctx = cfg.get_context()
+    current = validate_create_branch(ctx.config, cwd=ctx.main_worktree)
     print(f"Valid: currently on branch '{current}'")
 
 
@@ -282,9 +297,9 @@ def cli_apply_validate(argv=None) -> None:
     import common
     import config as cfg
 
-    conf = cfg.load_config()
+    ctx = cfg.get_context()
     topic_dir = common.resolve_topic_dir(_parse_topic_arg(argv))
-    validate_apply_branch(conf, topic_dir)
+    validate_apply_branch(ctx.config, topic_dir, cwd=ctx.main_worktree)
 
 
 def cli_apply_post_action(argv=None) -> None:
@@ -330,7 +345,8 @@ def cli_submit(argv=None) -> None:
     import hooks
 
     topic_name = _parse_topic_arg(argv)
-    conf = cfg.load_config()
+    ctx = cfg.get_context()
+    conf = ctx.config
     topic_dir = common.resolve_topic_dir(topic_name)
     meta = common.load_meta(topic_dir)
     source = meta.get("spex_branch", "") if meta else ""
@@ -346,7 +362,7 @@ def cli_submit(argv=None) -> None:
 
     if method == "merge":
         try:
-            merge_branch(target, source)
+            merge_branch(target, source, cwd=ctx.main_worktree)
         except subprocess.CalledProcessError as e:
             errors.append(f"Merge failed: {e.stderr.strip() or str(e)}")
             print(json.dumps({"action": method, "source": source,

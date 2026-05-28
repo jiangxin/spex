@@ -18,6 +18,21 @@ from branch import (
     validate_create_branch,
 )
 from common import strip_date_prefix
+from config import SpexContext
+
+
+def _fake_context(**overrides):
+    """Build a SpexContext with sensible defaults, overriding as needed."""
+    defaults = {
+        "spex_tomls": [],
+        "config": {},
+        "spex_root": "",
+        "spex_roots": [],
+        "top_workdir": None,
+        "main_worktree": None,
+    }
+    defaults.update(overrides)
+    return SpexContext(**defaults)
 
 
 class TestStripDatePrefix:
@@ -44,6 +59,7 @@ class TestGetCurrentBranch:
             capture_output=True,
             text=True,
             check=True,
+            cwd=None,
         )
 
 
@@ -73,12 +89,12 @@ class TestMergeBranch:
         assert mock_run.call_count == 2
         mock_run.assert_any_call(
             ["git", "switch", "main"],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, cwd=None,
         )
         mock_run.assert_any_call(
                 ["git", "-c", "merge.branchdesc=true", "-c", "merge.log=true",
                  "merge", "spex/feature", "--no-ff", "--no-edit"],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, cwd=None,
         )
 
     @patch("branch.subprocess.run")
@@ -177,7 +193,7 @@ class TestValidateApplyBranch:
             json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
         )
         validate_apply_branch({"create_branch": True}, tmp_path)
-        mock_switch.assert_called_once_with("spex/feat")
+        mock_switch.assert_called_once_with("spex/feat", None)
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
@@ -209,8 +225,8 @@ class TestValidateApplyBranch:
             encoding="utf-8",
         )
         validate_apply_branch({"create_branch": True}, tmp_path)
-        mock_create.assert_called_once_with("spex/add-feature")
-        mock_switch.assert_called_once_with("spex/add-feature")
+        mock_create.assert_called_once_with("spex/add-feature", None)
+        mock_switch.assert_called_once_with("spex/add-feature", None)
 
     @patch("branch.switch_branch")
     @patch("branch.set_branch_description")
@@ -233,10 +249,10 @@ class TestValidateApplyBranch:
         validate_apply_branch({"create_branch": True}, tmp_path)
         # First call with short name fails, second with long name succeeds
         assert mock_create.call_count == 2
-        mock_create.assert_any_call("spex/add-feature")
-        mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature")
+        mock_create.assert_any_call("spex/add-feature", None)
+        mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature", None)
         mock_switch.assert_called_once_with(
-            "spex/2026-05-27-10-00-add-feature"
+            "spex/2026-05-27-10-00-add-feature", None
         )
 
     @patch("branch.get_current_branch", return_value="main")
@@ -259,10 +275,10 @@ class TestValidateApplyBranch:
 
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
-    @patch("config.load_config", return_value={
+    @patch("config.get_context", return_value=_fake_context(config={
         "create_branch": True, "main_branch_name": "", "submit_method": "merge",
-        "spex_root": ".spex"})
-    def test_outputs_success(self, _cfg, _branch, capsys):
+        "spex_root": ".spex"}))
+    def test_outputs_success(self, _ctx, _branch, capsys):
         cli_create_validate()
         out = capsys.readouterr().out
         assert "develop" in out
@@ -271,8 +287,9 @@ class TestCliCreateValidate:
 
 class TestCliApplyValidate:
     @patch("common.resolve_topic_dir")
-    @patch("config.load_config", return_value={"create_branch": False})
-    def test_disabled_no_output(self, _cfg, mock_resolve, tmp_path,
+    @patch("config.get_context", return_value=_fake_context(
+        config={"create_branch": False}))
+    def test_disabled_no_output(self, _ctx, mock_resolve, tmp_path,
                                 capsys):
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
@@ -309,9 +326,10 @@ class TestCliApplyPostAction:
 
 class TestCliSubmit:
     @patch("branch.merge_branch")
-    @patch("config.load_config", return_value={"submit_method": "merge"})
+    @patch("config.get_context", return_value=_fake_context(
+        config={"submit_method": "merge"}))
     @patch("common.resolve_topic_dir")
-    def test_merge_success(self, mock_resolve, _cfg, mock_merge, tmp_path,
+    def test_merge_success(self, mock_resolve, _ctx, mock_merge, tmp_path,
                            capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -325,13 +343,14 @@ class TestCliSubmit:
         assert out["source"] == "spex/done"
         assert out["target"] == "main"
         assert out["errors"] == []
-        mock_merge.assert_called_once_with("main", "spex/done")
+        mock_merge.assert_called_once_with("main", "spex/done", cwd=None)
 
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
-    @patch("config.load_config", return_value={"submit_method": "merge"})
+    @patch("config.get_context", return_value=_fake_context(
+        config={"submit_method": "merge"}))
     @patch("common.resolve_topic_dir")
-    def test_merge_failure_exits_nonzero(self, mock_resolve, _cfg, _merge,
+    def test_merge_failure_exits_nonzero(self, mock_resolve, _ctx, _merge,
                                          tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
