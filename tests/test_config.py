@@ -23,8 +23,7 @@ from config import (
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache(monkeypatch):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
+def _clear_cache():
     clear_config_cache()
     yield
     clear_config_cache()
@@ -215,18 +214,6 @@ class TestMergeConfigs:
 
 
 class TestLoadConfig:
-    def test_env_var_overrides_files(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
-        (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/from/file"\n', encoding="utf-8"
-        )
-        monkeypatch.setenv("SPEX_ROOT", "/from/env")
-
-        result = load_config()
-
-        assert result["spex_root"] == "/from/env"
-
     def test_caching(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
@@ -627,18 +614,7 @@ class TestGetContext:
         ctx = get_context()
 
         assert ctx.worktree_root is None
-        assert ctx.spex_root == str((tmp_path / ".spex").resolve())
         home_default = str((tmp_path / "fakehome" / ".spex").resolve())
+        assert ctx.spex_root == home_default
         assert ctx.spex_roots == [home_default]
 
-    def test_env_var_sets_spex_root(self, tmp_path, monkeypatch):
-        """SPEX_ROOT env var is reflected in context's spex_root."""
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
-        )
-        monkeypatch.setenv("SPEX_ROOT", "/custom/spex")
-
-        ctx = get_context()
-
-        assert ctx.spex_root == "/custom/spex"

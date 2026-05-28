@@ -97,10 +97,9 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
     Resolution order (delegated to config.get_context):
-      1. SPEX_ROOT environment variable.
-      2. Merged .spex.toml files (~/.spex.toml, ~/.config/spex/config.toml,
-         repo-root/.spex.toml).
-      3. Default: .spex inside the git toplevel.
+      1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
+         ~/.spex.toml).
+      2. Default: .spex inside the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
@@ -117,7 +116,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     if not ctx.spex_root:
         raise RuntimeError(
             "Cannot determine spex_root. "
-            "Set SPEX_ROOT, use --spex-root, or configure .spex.toml."
+            "Configure .spex.toml with spex_root."
         )
 
     if require_git and ctx.worktree_root is None:

@@ -23,17 +23,26 @@ def _make_topic(tmp_path, topic_name, data):
     return meta_path
 
 
+def _setup_spex_toml(tmp_path):
+    """Write .spex.toml so the subprocess resolves spex_root to tmp_path."""
+    toml = tmp_path / ".spex.toml"
+    if not toml.exists():
+        toml.write_text(
+            f'spex_root = "{tmp_path}"\n', encoding="utf-8"
+        )
+
+
 def _run_script(tmp_path, topic_name, key, value=None):
-    """Run meta.py as a subprocess with SPEX_ROOT pointing to tmp_path."""
+    """Run meta.py as a subprocess with .spex.toml pointing to tmp_path."""
+    _setup_spex_toml(tmp_path)
     args = [sys.executable, SCRIPT, topic_name, key]
     if value is not None:
         args.append(value)
-    env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
     return subprocess.run(
         args,
         capture_output=True,
         text=True,
-        env=env,
+        cwd=str(tmp_path),
         input="" if value is not None else None,
     )
 
@@ -127,14 +136,14 @@ class TestReadValueFromStdin:
 
     def test_read_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": []})
+        _setup_spex_toml(tmp_path)
 
-        env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
         result = subprocess.run(
             [sys.executable, SCRIPT, "my-topic", "prompts"],
             capture_output=True,
             text=True,
             input="stdin value",
-            env=env,
+            cwd=str(tmp_path),
         )
 
         assert result.returncode == 0
@@ -144,14 +153,14 @@ class TestReadValueFromStdin:
 
     def test_read_key_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {})
+        _setup_spex_toml(tmp_path)
 
-        env = {**subprocess.os.environ, "SPEX_ROOT": str(tmp_path)}
         result = subprocess.run(
             [sys.executable, SCRIPT, "my-topic", "branch"],
             capture_output=True,
             text=True,
             input="feature-x",
-            env=env,
+            cwd=str(tmp_path),
         )
 
         assert result.returncode == 0
@@ -172,14 +181,21 @@ class TestErrorOnMissingTopic:
         assert "file not found" in result.stderr
 
     def test_missing_topic_via_main(self, monkeypatch, tmp_path):
+        from config import SpexContext
         (tmp_path / "specs").mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
-        monkeypatch.setattr(
-            sys, "argv", ["prog", "nonexistent", "key", "val"]
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=None,
         )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
+        from common import clear_spex_root_cache
+        clear_spex_root_cache()
 
         with pytest.raises(SystemExit) as exc_info:
-            meta.main()
+            meta.main(["nonexistent", "key", "val"])
         assert exc_info.value.code == 1
 
 

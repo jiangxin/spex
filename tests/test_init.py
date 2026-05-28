@@ -30,9 +30,20 @@ def mock_workdir(tmp_path):
 
 
 class TestIsInitialized:
-    def test_not_initialized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "spex"))
+    def _mock_context(self, monkeypatch, spex_root_path):
+        from config import SpexContext
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(spex_root_path),
+            spex_roots=[str(spex_root_path)],
+            worktree_root=None,
+        )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         clear_spex_root_cache()
+
+    def test_not_initialized(self, tmp_path, monkeypatch):
+        self._mock_context(monkeypatch, tmp_path / "spex")
         from init import is_initialized
 
         assert is_initialized() is False
@@ -43,8 +54,7 @@ class TestIsInitialized:
         (spex_root / "archives").mkdir(parents=True)
         (spex_root / "hooks").mkdir(parents=True)
         (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
+        self._mock_context(monkeypatch, spex_root)
         from init import is_initialized
 
         assert is_initialized() is True
@@ -53,8 +63,7 @@ class TestIsInitialized:
         spex_root = tmp_path / "spex"
         (spex_root / "archives").mkdir(parents=True)
         (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
+        self._mock_context(monkeypatch, spex_root)
         from init import is_initialized
 
         assert is_initialized() is False
@@ -196,8 +205,17 @@ class TestEnsureInitialized:
         assert (spex_root / "specs").is_dir()
 
     def test_get_spex_root_auto_initializes(self, tmp_path, monkeypatch):
+        from config import SpexContext
+
         spex_root = tmp_path / "empty_spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            worktree_root=None,
+        )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         clear_spex_root_cache()
 
         from common import get_spex_root
@@ -212,13 +230,15 @@ class TestRunInit:
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
         from init import run_init
 
-        spex_root = mock_workdir / ".spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        (mock_workdir / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
         clear_spex_root_cache()
 
         with patch("init._install_deps"), patch("init._install_cli"):
             run_init(workdir=str(mock_workdir))
 
+        spex_root = mock_workdir / ".spex"
         examples = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         assert examples.is_dir()
         assert (examples / "spec-template.md").exists()
@@ -226,22 +246,35 @@ class TestRunInit:
     def test_idempotent(self, tmp_path, monkeypatch, mock_workdir):
         from init import run_init
 
-        spex_root = mock_workdir / ".spex"
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
+        (mock_workdir / ".spex.toml").write_text(
+            'spex_root = ".spex"\n', encoding="utf-8"
+        )
         clear_spex_root_cache()
 
         with patch("init._install_deps"), patch("init._install_cli"):
             run_init(workdir=str(mock_workdir))
             run_init(workdir=str(mock_workdir))
 
+        spex_root = mock_workdir / ".spex"
         examples = spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
         assert examples.is_dir()
 
 
 class TestMainCheckFlag:
-    def test_check_not_initialized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path / "missing"))
+    def _mock_context(self, monkeypatch, spex_root_path):
+        from config import SpexContext
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(spex_root_path),
+            spex_roots=[str(spex_root_path)],
+            worktree_root=None,
+        )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         clear_spex_root_cache()
+
+    def test_check_not_initialized(self, tmp_path, monkeypatch):
+        self._mock_context(monkeypatch, tmp_path / "missing")
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
         from init import main
@@ -256,8 +289,7 @@ class TestMainCheckFlag:
         (spex_root / "archives").mkdir(parents=True)
         (spex_root / "hooks").mkdir(parents=True)
         (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).mkdir(parents=True)
-        monkeypatch.setenv("SPEX_ROOT", str(spex_root))
-        clear_spex_root_cache()
+        self._mock_context(monkeypatch, spex_root)
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
         from init import main

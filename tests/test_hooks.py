@@ -14,7 +14,6 @@ from common import clear_spex_root_cache
 
 @pytest.fixture(autouse=True)
 def _clear_cache(monkeypatch):
-    monkeypatch.delenv("SPEX_ROOT", raising=False)
     clear_spex_root_cache()
     yield
     clear_spex_root_cache()

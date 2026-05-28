@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -135,10 +134,6 @@ def load_config(workdir: str | Path | None = None) -> dict:
     merged = _merge_configs(spex_tomls)
 
     result: dict = {**_DEFAULTS, **merged}
-
-    env_spex_root = os.environ.get("SPEX_ROOT")
-    if env_spex_root:
-        result["spex_root"] = env_spex_root
 
     _config_cache = result
     return _config_cache

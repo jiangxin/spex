@@ -102,11 +102,19 @@ class TestMain:
         assert exc_info.value.code == 0
 
     def test_nonexistent_topic(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("SPEX_ROOT", str(tmp_path))
+        from config import SpexContext
         (tmp_path / "specs").mkdir()
-        monkeypatch.setattr(sys, "argv", ["prog", "nonexistent"])
+        ctx = SpexContext(
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+            worktree_root=None,
+        )
+        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
         from common import clear_spex_root_cache
         clear_spex_root_cache()
+        monkeypatch.setattr(sys, "argv", ["prog", "nonexistent"])
         with pytest.raises(SystemExit) as exc_info:
             show_topic.main()
         assert exc_info.value.code == 1

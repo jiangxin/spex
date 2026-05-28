@@ -87,7 +87,7 @@ class TestAllDoneDetection:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
         )
@@ -108,7 +108,7 @@ class TestAllDoneDetection:
         repo.mkdir()
         _init_git_repo(repo)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv", ["prompt", "nonexistent-template"]
         )
@@ -131,7 +131,7 @@ class TestAllDoneDetection:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -155,7 +155,7 @@ class TestFutureTasks:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import _build_metadata
 
@@ -179,7 +179,7 @@ class TestFutureTasks:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import _build_metadata
 
@@ -210,7 +210,7 @@ class TestFutureTasks:
         spec_path.write_text("# Spec\n", encoding="utf-8")
 
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import _build_metadata
 
@@ -228,7 +228,7 @@ class TestFutureTasks:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import _build_metadata
 
@@ -250,7 +250,7 @@ class TestApplyOneTaskRendering:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -264,7 +264,7 @@ class TestApplyOneTaskRendering:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -282,7 +282,7 @@ class TestApplyOneTaskRendering:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -300,7 +300,7 @@ class TestApplyOneTaskRendering:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -319,7 +319,7 @@ class TestTaskIdStderr:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
         )
@@ -341,7 +341,7 @@ class TestTaskIdStderr:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv", ["prompt", "apply-commit", "--topic", "test-topic"]
         )
@@ -367,7 +367,7 @@ class TestJsonMode:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
@@ -395,7 +395,7 @@ class TestJsonMode:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
@@ -430,7 +430,7 @@ class TestStdinExtraVars:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "apply-commit", "--topic", "test-topic", "--stdin"],
@@ -453,7 +453,7 @@ class TestStdinExtraVars:
         repo.mkdir()
         _init_git_repo(repo)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         json_input = json.dumps({
             "spec_content": "My spec",
             "next_task_text": "Build feature X",
@@ -561,7 +561,7 @@ class TestApplyCommitWithTopic:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -583,7 +583,7 @@ class TestApplyCommitWithTopic:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -597,7 +597,7 @@ class TestApplyCommitWithTopic:
         repo.mkdir()
         _init_git_repo(repo)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -697,7 +697,7 @@ class TestModifySpecTemplate:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -718,7 +718,7 @@ class TestModifySpecTemplate:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -735,7 +735,7 @@ class TestModifySpecTemplate:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "modify-spec", "--topic", "test-topic", "--stdin"],
@@ -769,7 +769,7 @@ class TestModifySpecTemplate:
             json.dumps({"workdir": str(repo)}), encoding="utf-8"
         )
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         # Provide extra_vars via JSON stdin (no prompt_context key)
         json_input = json.dumps({"spec_content": "Custom spec"})
         monkeypatch.setattr(
@@ -804,7 +804,7 @@ class TestModifyTodoTemplate:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -821,7 +821,7 @@ class TestModifyTodoTemplate:
         ]
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
 
         from prompt import render_prompt
 
@@ -841,7 +841,7 @@ class TestModifyTodoTemplate:
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         todo_path = topic_dir / "todo.json"
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "modify-todo", "--topic", "test-topic"],
@@ -869,7 +869,7 @@ class TestModifyTodoTemplate:
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         todo_path = topic_dir / "todo.json"
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "modify-todo", "--topic", "test-topic"],
@@ -893,7 +893,7 @@ class TestModifyTodoTemplate:
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         todo_path = topic_dir / "todo.json"
         monkeypatch.chdir(repo)
-        monkeypatch.setenv("SPEX_ROOT", str(repo / ".spex"))
+
         monkeypatch.setattr(
             "sys.argv",
             ["prompt", "modify-todo", "--topic", "test-topic"],
