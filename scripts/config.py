@@ -49,8 +49,8 @@ def set_spex_config_file(path: str | None) -> None:
     _spex_config_file_override = path
 
 
-def _get_worktree_root(workdir: str | Path | None = None) -> Path | None:
-    """Return the git worktree root, or None if not inside a repo. Cached."""
+def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
+    """Return the git top workdir, or None if not inside a repo. Cached."""
     key = str(Path(workdir).resolve()) if workdir else None
     cached = _worktree_root_cache.get(key, _SENTINEL)
     if cached is not _SENTINEL:
@@ -149,7 +149,7 @@ def load_config(workdir: str | Path | None = None) -> dict:
     if _config_cache is not None:
         return _config_cache
 
-    worktree_root = _get_worktree_root(workdir)
+    worktree_root = _get_top_workdir(workdir)
     spex_tomls = _find_spex_tomls(worktree_root, workdir)
     merged = _merge_configs(spex_tomls)
 
@@ -159,14 +159,14 @@ def load_config(workdir: str | Path | None = None) -> dict:
     return _config_cache
 
 
-def get_worktree_root(workdir: str | Path | None = None) -> Path | None:
-    """Public wrapper for _get_worktree_root."""
-    return _get_worktree_root(workdir)
+def get_top_workdir(workdir: str | Path | None = None) -> Path | None:
+    """Public wrapper for _get_top_workdir."""
+    return _get_top_workdir(workdir)
 
 
 def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     """Return the discovered TOML config paths (highest priority first)."""
-    worktree_root = _get_worktree_root(workdir)
+    worktree_root = _get_top_workdir(workdir)
     return _find_spex_tomls(worktree_root, workdir)
 
 
@@ -271,7 +271,7 @@ def resolve_spex_root_and_roots(
 
     The primary root is the first (highest-priority) entry in the roots list.
     """
-    worktree_root = get_worktree_root(workdir)
+    worktree_root = get_top_workdir(workdir)
     spex_tomls = _find_spex_tomls(worktree_root, workdir)
     roots = _resolve_spex_roots(spex_tomls, worktree_root, workdir)
     if roots:
@@ -290,7 +290,7 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
     if _context_cache is not None:
         return _context_cache
 
-    worktree_root = _get_worktree_root(workdir)
+    worktree_root = _get_top_workdir(workdir)
     spex_tomls = _find_spex_tomls(worktree_root)
     config = load_config(workdir)
     spex_root, spex_roots = resolve_spex_root_and_roots(workdir)

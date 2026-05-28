@@ -11,7 +11,7 @@ from config import (
     SpexContext,
     _deep_merge,
     _find_spex_tomls,
-    _get_worktree_root,
+    _get_top_workdir,
     _load_toml_config,
     _merge_configs,
     _resolve_spex_roots,
@@ -217,7 +217,7 @@ class TestMergeConfigs:
 class TestLoadConfig:
     def test_caching(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
             'spex_root = "/original"\n', encoding="utf-8"
         )
@@ -233,7 +233,7 @@ class TestLoadConfig:
 
     def test_cache_clear_then_reload(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
-        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
             'spex_root = "/v1"\n', encoding="utf-8"
         )
@@ -264,8 +264,8 @@ class TestWorktreeRootCaching:
 
         monkeypatch.setattr("subprocess.run", mock_run)
 
-        _get_worktree_root()
-        _get_worktree_root()
+        _get_top_workdir()
+        _get_top_workdir()
 
         assert call_count["n"] == 1
 
@@ -276,7 +276,7 @@ class TestWorktreeRootCaching:
 class TestBranchConfig:
     def test_load_branch_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
             'create_branch = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
             encoding="utf-8",
@@ -290,7 +290,7 @@ class TestBranchConfig:
 
     def test_default_branch_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr("config._get_worktree_root", lambda w=None: tmp_path)
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
             'spex_root = ".spex"\n', encoding="utf-8"
         )
@@ -479,7 +479,7 @@ class TestResolveSpexRootAndRoots:
         """With .spex/ and .spex.toml, returns correct tuple."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
@@ -498,7 +498,7 @@ class TestResolveSpexRootAndRoots:
         """Same-level rule: primary returned even if dir doesn't exist."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         (tmp_path / ".spex.toml").write_text(
             'spex_root = ".my-spex"\n', encoding="utf-8"
@@ -516,7 +516,7 @@ class TestResolveSpexRootAndRoots:
         """~/.<default> is always in roots even without any .spex.toml."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
 
         primary, roots = resolve_spex_root_and_roots()
@@ -531,7 +531,7 @@ class TestResolveSpexRootAndRoots:
         home.mkdir()
         monkeypatch.setattr("config.Path.home", lambda: home)
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: home
+            "config._get_top_workdir", lambda w=None: home
         )
         (home / ".spex").mkdir()
         (home / ".spex.toml").write_text(
@@ -553,7 +553,7 @@ class TestGetContext:
         """get_context returns a SpexContext dataclass."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
@@ -575,7 +575,7 @@ class TestGetContext:
         """get_context returns cached result on subsequent calls."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
@@ -591,7 +591,7 @@ class TestGetContext:
         """clear_config_cache resets the context cache."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
@@ -608,7 +608,7 @@ class TestGetContext:
         """get_context works when not in a git repo (worktree_root is None)."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: None
+            "config._get_top_workdir", lambda w=None: None
         )
         monkeypatch.chdir(tmp_path)
 
@@ -676,7 +676,7 @@ class TestSpexConfigFileOverride:
         """Config file overrides spex_root in get_context."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
-            "config._get_worktree_root", lambda w=None: tmp_path
+            "config._get_top_workdir", lambda w=None: tmp_path
         )
         # Normal .spex.toml in worktree (should be ignored)
         (tmp_path / ".spex.toml").write_text(

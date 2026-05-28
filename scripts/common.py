@@ -14,7 +14,7 @@ from config import (
     get_context,
 )
 from config import (
-    get_worktree_root as _cfg_get_worktree_root,
+    get_top_workdir as _cfg_get_top_workdir,
 )
 
 TODO_FILE = "todo.json"
@@ -149,7 +149,7 @@ def get_archives_dir(workdir=None):
 
 def get_current_workdir():
     """Return the current git toplevel path, or None if not in a repo."""
-    root = _cfg_get_worktree_root()
+    root = _cfg_get_top_workdir()
     return str(root) if root else None
 
 
