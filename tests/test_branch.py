@@ -120,13 +120,10 @@ class TestValidateCreateBranch:
         assert result == "main"
 
     @patch("branch.get_current_branch", return_value="main")
-    def test_disabled_exits(self, _mock):
-        try:
-            validate_create_branch(
-                {"branch_management": False, "main_branch_name": "", "submit_method": "merge"})
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
+    def test_disabled_returns_current_branch(self, _mock):
+        result = validate_create_branch(
+            {"branch_management": False, "main_branch_name": "", "submit_method": "merge"})
+        assert result == "main"
 
     @patch("branch.get_current_branch",
            side_effect=subprocess.CalledProcessError(1, "git"))

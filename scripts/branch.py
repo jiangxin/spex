@@ -117,11 +117,6 @@ def validate_create_branch(
     Prints errors to stderr and exits on failure.
     Returns the current branch name on success.
     """
-    enabled = bool(config["branch_management"])
-    if not enabled:
-        print("Error: branch creation is not enabled in config.", file=sys.stderr)
-        sys.exit(1)
-
     try:
         current = get_current_branch(cwd)
     except subprocess.CalledProcessError as e:
@@ -130,6 +125,12 @@ def validate_create_branch(
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    if not bool(config["branch_management"]):
+        print("Note: branch management is not enabled in .spex.toml, "
+              "will not create new branch for spec.", file=sys.stderr)
+        return current
+
 
     # 1. If main_branch_name is set, current branch must match it.
     main_branch = config["main_branch_name"]
@@ -186,7 +187,7 @@ def validate_apply_branch(
         sys.exit(1)
 
     # Step 2
-    if not config["branch_management"]:
+    if not bool(config["branch_management"]):
         return
 
     meta = common.load_meta(topic_dir) or {}
@@ -289,7 +290,8 @@ def cli_create_validate() -> None:
 
     ctx = cfg.get_context()
     current = validate_create_branch(ctx.config, cwd=ctx.main_worktree)
-    print(f"Valid: currently on branch '{current}'")
+    if current:
+        print(f"Valid: currently on branch '{current}'")
 
 
 def cli_apply_validate(argv=None) -> None:
