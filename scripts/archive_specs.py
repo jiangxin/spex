@@ -101,6 +101,11 @@ def archive_single_topic(
     Returns the destination path, or None if skipped due to active branch.
     """
     topic_dir = resolve_topic_dir(topic_name, specs_dir)
+    if not force and not is_topic_completed(topic_dir):
+        print(
+            "Skipping: topic is not completed (use --force to archive)"
+        )
+        return None
     if not force and has_active_branch(topic_dir):
         meta = load_meta(topic_dir)
         spex_branch = meta.get("spex_branch", "") if meta else ""
