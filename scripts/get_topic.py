@@ -5,14 +5,16 @@ If a topic name is given, verify it exists.
 If no topic name is given, list topics with undone tasks as candidates.
 """
 
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
 from common import (
     check_help_flag,
+    find_matching_topics,
     get_current_workdir,
     get_specs_dir,
     get_spex_roots,
@@ -58,9 +60,17 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
     """
     specs_dir = Path(specs_dir)
 
+    if must_done:
+        topic_filter = is_topic_completed
+    else:
+        topic_filter = has_undone_tasks
+
     if topic_name:
-        if (specs_dir / topic_name).is_dir():
-            topic_path = specs_dir / topic_name
+        matches = find_matching_topics(topic_name, specs_dir)
+
+        # Exact match — apply status check directly
+        if len(matches) == 1 and matches[0].name == topic_name:
+            topic_path = matches[0]
             if must_done:
                 if not is_topic_completed(topic_path):
                     print(
@@ -77,20 +87,12 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
                 return []
             return [topic_name]
 
-        if must_done:
-            topic_filter = is_topic_completed
-        else:
-            topic_filter = has_undone_tasks
-
-        matches = sorted(
-            d.name
-            for d in specs_dir.iterdir()
-            if d.is_dir()
-            and topic_name in d.name
-            and topic_filter(d)
+        # Substring matches — filter by status
+        filtered = sorted(
+            d.name for d in matches if topic_filter(d)
         )
 
-        if not matches:
+        if not filtered:
             print(
                 f"Error: no topic matching '{topic_name}' found in"
                 f" {specs_dir}",
@@ -98,7 +100,7 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
             )
             sys.exit(1)
 
-        return matches
+        return filtered
 
     if not specs_dir.is_dir():
         print(
@@ -106,11 +108,6 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
             file=sys.stderr,
         )
         sys.exit(1)
-
-    if must_done:
-        topic_filter = is_topic_completed
-    else:
-        topic_filter = has_undone_tasks
 
     candidates = sorted(
         d.name
@@ -235,7 +232,7 @@ def main(argv=None):
         )
         sys.exit(1)
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
 
     # Determine workspace filter
     if topic_name or all_flag:

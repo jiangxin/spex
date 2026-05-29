@@ -5,12 +5,13 @@ If no topic is given, opens the spex root directory.
 If a topic is given, searches specs and archives for a match.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import check_help_flag, get_archives_dir, get_specs_dir, get_spex_root
 
 USAGE = """\

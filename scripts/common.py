@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Shared utilities for the Spex skill."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -159,14 +162,14 @@ def get_spex_tomls(workdir=None) -> list[str]:
     return [str(p) for p in get_context(workdir).spex_tomls]
 
 
-def get_specs_dir(workdir=None):
+def get_specs_dir(workdir=None) -> Path:
     """Return the specs directory: <spex_root>/specs/."""
-    return str(Path(get_spex_root(workdir)) / "specs")
+    return Path(get_spex_root(workdir)) / "specs"
 
 
-def get_archives_dir(workdir=None):
+def get_archives_dir(workdir=None) -> Path:
     """Return the archives directory: <spex_root>/archives/."""
-    return str(Path(get_spex_root(workdir)) / "archives")
+    return Path(get_spex_root(workdir)) / "archives"
 
 
 def get_current_workdir():
@@ -223,6 +226,72 @@ def load_todo(topic_dir: Path):
     if not isinstance(data, list) or len(data) == 0:
         return None
     return data
+
+
+def load_and_validate_todo_json(path, allow_empty=False):
+    """Load a JSON file, validate it is a list, return data.
+
+    Args:
+        path: Path to the JSON file.
+        allow_empty: If False (default), exit on empty list.
+
+    Returns:
+        Parsed list data.
+
+    Exits with code 1 on: file not found, invalid JSON, non-list data,
+    or empty list (when allow_empty is False).
+    """
+    path = Path(path)
+    if not path.is_file():
+        print(f"Error: file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(data, list):
+        print("Error: top-level value must be an array.", file=sys.stderr)
+        sys.exit(1)
+
+    if not allow_empty and not data:
+        print("Error: empty array, nothing to process.", file=sys.stderr)
+        sys.exit(1)
+
+    return data
+
+
+def validate_unique_ids(data):
+    """Check all items have unique non-empty 'id' fields.
+
+    Args:
+        data: List of dicts, each expected to have an 'id' key.
+
+    Exits with code 1 if any item is not a dict, or if any id is
+    empty or duplicated.
+    """
+    seen_ids = {}
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            print(f"Error: item[{i}] is not an object.", file=sys.stderr)
+            sys.exit(1)
+        step_id = item.get("id", "")
+        if not step_id:
+            print(
+                f"Error: item[{i}]: 'id' is missing or empty.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if step_id in seen_ids:
+            print(
+                f"Error: item[{i}]: duplicate id '{step_id}'"
+                f" (first seen at item[{seen_ids[step_id]}]).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        seen_ids[step_id] = i
 
 
 def is_topic_completed(topic_dir: Path) -> bool:
@@ -476,6 +545,33 @@ def get_template(template_name: str, workdir=None) -> str:
 
 
 
+def find_matching_topics(topic_name, specs_dir):
+    """Find topic directories matching a name or substring.
+
+    Tries exact match first; if found, returns a single-element list.
+    Otherwise returns all directories whose name contains topic_name
+    as a substring, sorted alphabetically.
+
+    Args:
+        topic_name: Topic name or substring to match.
+        specs_dir: Path to the specs directory.
+
+    Returns:
+        List of Path objects for matching topic directories.
+    """
+    specs_dir = Path(specs_dir)
+    if not specs_dir.is_dir():
+        return []
+
+    direct = specs_dir / topic_name
+    if direct.is_dir():
+        return [direct]
+
+    return sorted(
+        d for d in specs_dir.iterdir() if d.is_dir() and topic_name in d.name
+    )
+
+
 def resolve_topic_dir(topic_name, specs_dir=None):
     """Resolve a topic name to its directory path.
 
@@ -491,7 +587,7 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         Path to the resolved topic directory.
     """
     if specs_dir is None:
-        specs_dir = Path(get_specs_dir(get_current_workdir()))
+        specs_dir = get_specs_dir(get_current_workdir())
     else:
         specs_dir = Path(specs_dir)
 
@@ -499,13 +595,7 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         print(f"Error: specs directory does not exist: {specs_dir}", file=sys.stderr)
         sys.exit(1)
 
-    direct = specs_dir / topic_name
-    if direct.is_dir():
-        return direct
-
-    matches = sorted(
-        d for d in specs_dir.iterdir() if d.is_dir() and topic_name in d.name
-    )
+    matches = find_matching_topics(topic_name, specs_dir)
     if not matches:
         print(f"Error: no topic matching '{topic_name}' found.", file=sys.stderr)
         sys.exit(1)
@@ -547,6 +637,48 @@ def format_topic(topic_dir: Path, verbose: int = 0) -> str:
                 lines.append(f"    {step_id}: {step_name}")
 
     return "\n".join(lines)
+
+
+def get_git_info():
+    """Retrieve git repository metadata via subprocess calls."""
+    commands = {
+        "workdir": ["git", "rev-parse", "--show-toplevel"],
+        "remote_url": ["git", "remote", "get-url", "origin"],
+        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        "user_name": ["git", "config", "user.name"],
+        "user_email": ["git", "config", "user.email"],
+    }
+    info = {}
+    for key, cmd in commands.items():
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        info[key] = result.stdout.strip() if result.returncode == 0 else ""
+    return info
+
+
+def escape_xml_text(text: str) -> str:
+    """Escape &, <, > unconditionally in text content."""
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    return text
+
+
+def escape_xml_preserving_entities(text: str) -> str:
+    """Escape unescaped XML special characters, preserving existing entities.
+
+    Replaces &, <, > with their entity equivalents, but skips characters
+    that are already part of a valid XML entity (e.g. &lt;, &amp;).
+    Use this when preprocessing user-written XML that may already contain
+    entity references.
+    """
+    parts = re.split(r"(&(?:lt|gt|amp|quot|apos);)", text)
+    result = []
+    for part in parts:
+        if re.match(r"&(?:lt|gt|amp|quot|apos);", part):
+            result.append(part)
+        else:
+            result.append(escape_xml_text(part))
+    return "".join(result)
 
 
 if __name__ == "__main__":

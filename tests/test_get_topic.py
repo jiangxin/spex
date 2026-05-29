@@ -1,12 +1,8 @@
 import json
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from common import has_undone_tasks
 from get_topic import main, resolve_topic
 
@@ -284,7 +280,7 @@ class TestMainAllFlag:
             sys, "argv", ["get_topic", "--all", "my-topic"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         with pytest.raises(SystemExit):
             main()
@@ -304,7 +300,7 @@ class TestMainAllFlag:
             sys, "argv", ["get_topic", "--all"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         # Mock get_current_workdir to return workspace_a (should be ignored)
         monkeypatch.setattr(
@@ -326,7 +322,7 @@ class TestMainAllFlag:
 
         monkeypatch.setattr(sys, "argv", ["get_topic"])
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         monkeypatch.setattr(
             "get_topic.get_current_workdir", lambda: str(workspace_a)
@@ -344,7 +340,7 @@ class TestMainAllFlag:
 
         monkeypatch.setattr(sys, "argv", ["get_topic"])
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         # Not in a git repo — get_current_workdir returns None
         monkeypatch.setattr(
@@ -368,7 +364,7 @@ class TestMainMustDoneFlag:
             ["get_topic", "--must-done", "--must-undone", "my-topic"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         with pytest.raises(SystemExit) as exc_info:
             main()
@@ -387,7 +383,7 @@ class TestMainMustDoneFlag:
             ["get_topic", "--must-done", "2026-05-20-14-30-my-topic"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
 
         captured_kwargs = {}
@@ -412,7 +408,7 @@ class TestMainMustDoneFlag:
             ["get_topic", "2026-05-20-14-30-my-topic"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
 
         captured_kwargs = {}
@@ -436,7 +432,7 @@ class TestMainJsonFlag:
             sys, "argv", ["get_topic", "2026-05-20-14-30-my-topic"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         main()
         out = capsys.readouterr().out
@@ -451,7 +447,7 @@ class TestMainJsonFlag:
             ["get_topic", "2026-05-20-14-30-my-topic", "--json"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         main()
         out = capsys.readouterr().out
@@ -469,7 +465,7 @@ class TestMainJsonFlag:
             sys, "argv", ["get_topic", "--json", "edit"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: str(specs)
+            "get_topic.get_specs_dir", lambda: specs
         )
         main()
         out = capsys.readouterr().out

@@ -26,8 +26,6 @@ def get_current_branch(cwd: str | Path | None = None) -> str:
         check=True,
         cwd=cwd,
     )
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stderr)
     branch_name = result.stdout.strip()
     if branch_name == "HEAD":
         raise RuntimeError("Currently in detached HEAD state, no branch name.")

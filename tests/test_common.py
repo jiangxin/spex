@@ -4,9 +4,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from common import (
     _resolve_template_roots,
     check_help_flag,
@@ -122,7 +119,7 @@ def test_specs_dir(tmp_path):
     (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
 
     result = get_specs_dir(str(repo))
-    assert result == str(repo / ".spex" / "specs")
+    assert result == repo / ".spex" / "specs"
 
 
 def test_archives_dir(tmp_path):
@@ -132,7 +129,7 @@ def test_archives_dir(tmp_path):
     (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
 
     result = get_archives_dir(str(repo))
-    assert result == str(repo / ".spex" / "archives")
+    assert result == repo / ".spex" / "archives"
 
 
 def test_local_iso_timestamp_format():

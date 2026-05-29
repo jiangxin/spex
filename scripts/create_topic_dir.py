@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """Create a topic directory under the spex root."""
 
-import argparse
+from __future__ import annotations
+
 import json
 import re
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
 import config as cfg
-from common import get_specs_dir, local_iso_timestamp
+from cli import ArgumentParser
+from common import (
+    atomic_write_json,
+    get_git_info,
+    get_specs_dir,
+    local_iso_timestamp,
+    strip_date_prefix,
+)
 
 SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
@@ -55,23 +61,6 @@ def create_topic(topic, specs_dir, auto_prefix=True):
     return (topic, topic_dir)
 
 
-def _get_git_info():
-    """Retrieve git repository metadata via subprocess calls."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "remote_url": ["git", "remote", "get-url", "origin"],
-        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "user_name": ["git", "config", "user.name"],
-        "user_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            info[key] = result.stdout.strip()
-        else:
-            info[key] = ""
-    return info
 
 
 def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
@@ -79,6 +68,7 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = {
+        "topic": strip_date_prefix(Path(topic_dir).name),
         "workdir": workdir,
         "main_worktree": main_worktree,
         "remote_url": git_info.get("remote_url", ""),
@@ -91,13 +81,12 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     if description:
         meta["description"] = description
     meta_path = Path(topic_dir) / "meta.json"
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    atomic_write_json(meta_path, meta)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="spex create-topic",
         description="Create a topic directory. Reads requirement from stdin "
         "and saves it to meta.json prompts field."
     )
@@ -121,7 +110,7 @@ def main(argv=None):
         default="",
         help="Brief description of the topic (saved to meta.json)"
     )
-    args = parser.parse_args(argv)
+    args = parser.parse(argv)
 
     if args.get and not args.json:
         print("Error: --get requires --json", file=sys.stderr)
@@ -146,7 +135,7 @@ def main(argv=None):
     if args.get_prompt:
         prompt_keys = [k.strip() for k in args.get_prompt.split(",")]
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
@@ -155,7 +144,7 @@ def main(argv=None):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    git_info = _get_git_info()
+    git_info = get_git_info()
     ctx = cfg.get_context()
     timestamp = local_iso_timestamp()
     _write_meta(topic_dir, git_info, ctx, prompt, timestamp, args.description)

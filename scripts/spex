@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Spex - Spec-Driven Development CLI tool."""
 
-import importlib
 import re
 import sys
 from pathlib import Path
@@ -211,8 +210,9 @@ def _run_create_topic(argv=None):
         print("Usage: spex create-topic <topic>", file=sys.stderr)
         sys.exit(1)
 
-    mod = importlib.import_module("create-topic-dir")
-    mod.main(argv)
+    import create_topic_dir
+
+    create_topic_dir.main(argv)
 
 
 def _run_prompt(argv=None):

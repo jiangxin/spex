@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Render a Jinja2 template with metadata and output the result."""
 
-import argparse
+from __future__ import annotations
+
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import (
     atomic_write_json,
+    get_git_info,
     get_spex_root,
     get_template,
     load_meta,
@@ -20,23 +21,6 @@ from common import (
     strip_front_matter,
 )
 from remove_undone_todo import filter_completed_todos as _filter_completed_todos
-
-
-def _get_git_info():
-    """Retrieve git repository metadata."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "git_remote": ["git", "remote", "get-url", "origin"],
-        "git_branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "git_user": ["git", "config", "user.name"],
-        "git_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        info[key] = result.stdout.strip() if result.returncode == 0 else ""
-    return info
-
 
 
 def validate_required_meta(content, metadata):
@@ -158,10 +142,14 @@ def _build_metadata(template_name, topic_name=None):
 
     Different template names may produce different metadata.
     """
-    git_info = _get_git_info()
+    git_info = get_git_info()
     metadata = {
         "timestamp": local_iso_timestamp(),
-        **git_info,
+        "workdir": git_info["workdir"],
+        "git_remote": git_info["remote_url"],
+        "git_branch": git_info["branch"],
+        "git_user": git_info["user_name"],
+        "git_email": git_info["user_email"],
     }
 
     if topic_name:
@@ -221,7 +209,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     if name in ("apply-one-task", "apply-commit") and not metadata.get(
         "next_task_text"
     ):
-        sys.exit(0)
+        return ""
 
     validate_required_meta(content, metadata)
     rendered = Template(content).render(**metadata)
@@ -231,7 +219,8 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
 def main(argv=None):
     import json
 
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="spex prompt",
         description="Render a Jinja2 template with metadata."
     )
     parser.add_argument("name", help="Template name (without .md extension)")
@@ -241,7 +230,7 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true",
                         help="Output JSON with rendered prompt to stdout")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
-    args = parser.parse_args(argv)
+    args = parser.parse(argv)
 
     try:
         from jinja2 import TemplateError

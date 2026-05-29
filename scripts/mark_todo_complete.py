@@ -4,13 +4,18 @@
 Usage: mark_todo_complete.py <task-id> <commit-title> <todo.json>
 """
 
-import json
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import atomic_write_json, check_help_flag, local_iso_timestamp
+from common import (
+    atomic_write_json,
+    check_help_flag,
+    load_and_validate_todo_json,
+    local_iso_timestamp,
+)
 
 USAGE = """\
 Usage: spex todo mark-done <task-id> <commit-title> <todo.json>
@@ -23,7 +28,7 @@ Options:
 
 
 def main(argv=None):
-    check_help_flag(USAGE)
+    check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex todo mark-done", usage=USAGE)
     parser.add_argument("task_id", help="Task ID to mark as done")
@@ -35,19 +40,7 @@ def main(argv=None):
     commit_title = args.commit_title
     todo_path = Path(args.todo_path)
 
-    if not todo_path.is_file():
-        print(f"Error: file not found: {todo_path}", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        data = json.loads(todo_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(todo_path, allow_empty=True)
 
     found = False
     for item in data:

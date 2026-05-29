@@ -5,12 +5,13 @@ Moves topic directories whose todo.json items are all completed
 into the archives directory.
 """
 
+from __future__ import annotations
+
 import shutil
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from branch import branch_exists
+from cli import ArgumentParser
 from common import (
     check_help_flag,
     get_archives_dir,
@@ -101,6 +102,11 @@ def archive_single_topic(
     Returns the destination path, or None if skipped due to active branch.
     """
     topic_dir = resolve_topic_dir(topic_name, specs_dir)
+    if not force and not is_topic_completed(topic_dir):
+        print(
+            "Skipping: topic is not completed (use --force to archive)"
+        )
+        return None
     if not force and has_active_branch(topic_dir):
         meta = load_meta(topic_dir)
         spex_branch = meta.get("spex_branch", "") if meta else ""
@@ -117,30 +123,30 @@ def archive_single_topic(
 
 def main(argv=None):
     check_help_flag(USAGE, argv)
-    full_argv = argv if argv is not None else sys.argv[1:]
-    dry_run = "--dry-run" in full_argv or "-n" in full_argv
-    force = "--force" in full_argv or "-f" in full_argv
 
-    specs_dir = Path(get_specs_dir())
-    archives_dir = Path(get_archives_dir())
+    parser = ArgumentParser(prog="spex archive", usage=USAGE)
+    parser.add_argument("--topic", help="Archive a single topic by name")
+    parser.add_argument("-n", "--dry-run", action="store_true",
+                        help="Preview without moving")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="Bypass spex_branch existence check")
+    args = parser.parse(argv)
 
-    if "--topic" in full_argv:
-        idx = full_argv.index("--topic")
-        if idx + 1 >= len(full_argv):
-            print("Error: --topic requires a value", file=sys.stderr)
-            sys.exit(1)
-        topic_name = full_argv[idx + 1]
-        archive_single_topic(topic_name, specs_dir, archives_dir, force)
+    specs_dir = get_specs_dir()
+    archives_dir = get_archives_dir()
+
+    if args.topic:
+        archive_single_topic(args.topic, specs_dir, archives_dir, args.force)
         return
 
     current_workdir = get_current_workdir()
-    completed = find_completed_topics(specs_dir, current_workdir, force)
+    completed = find_completed_topics(specs_dir, current_workdir, args.force)
 
     if not completed:
         print("No completed topics to archive.")
         return
 
-    if dry_run:
+    if args.dry_run:
         # Show topics that would be skipped due to active branches
         skipped = [
             d for d in sorted(specs_dir.iterdir())

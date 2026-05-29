@@ -1,12 +1,7 @@
 import json
-import sys
-from pathlib import Path
-
-import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import json2xml_todo
+import pytest
 
 
 @pytest.fixture()
@@ -135,23 +130,23 @@ class TestMainJson2Xml:
 
 class TestEscapeXmlText:
     def test_escape_angle_brackets(self):
-        result = json2xml_todo._escape_xml_text("<repo_root>")
+        result = json2xml_todo.escape_xml_text("<repo_root>")
         assert result == "&lt;repo_root&gt;"
 
     def test_escape_ampersand(self):
-        result = json2xml_todo._escape_xml_text("a & b")
+        result = json2xml_todo.escape_xml_text("a & b")
         assert result == "a &amp; b"
 
     def test_escape_all_special_chars(self):
-        result = json2xml_todo._escape_xml_text("x < y > z & w")
+        result = json2xml_todo.escape_xml_text("x < y > z & w")
         assert result == "x &lt; y &gt; z &amp; w"
 
     def test_no_special_chars_unchanged(self):
-        result = json2xml_todo._escape_xml_text("plain text")
+        result = json2xml_todo.escape_xml_text("plain text")
         assert result == "plain text"
 
     def test_already_escaped_text(self):
-        result = json2xml_todo._escape_xml_text("&lt;tag&gt;")
+        result = json2xml_todo.escape_xml_text("&lt;tag&gt;")
         # The & in &lt; is itself escaped, so it becomes &amp;lt;
         assert result == "&amp;lt;tag&amp;gt;"
 

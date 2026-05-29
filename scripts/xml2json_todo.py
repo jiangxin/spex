@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Convert XML-formatted todo files to JSON format."""
 
+from __future__ import annotations
+
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import atomic_write_json, check_help_flag, load_todo, strip_date_prefix
+from common import (
+    atomic_write_json,
+    check_help_flag,
+    escape_xml_preserving_entities,
+    load_todo,
+    strip_date_prefix,
+    validate_unique_ids,
+)
 
 USAGE = """\
 Usage: spex todo xml2json <xml-file> [--append] [--rm] [--post-action --event-type <type>]
@@ -24,36 +32,6 @@ Options:
 """
 
 
-def _escape_xml_text(text: str) -> str:
-    """Escape unescaped XML special characters inside element text content.
-
-    Replaces &, <, > with their entity equivalents, but skips characters
-    that are already part of a valid XML entity (e.g. &lt;, &amp;).
-
-    Args:
-        text: Raw text that may contain unescaped special characters.
-
-    Returns:
-        Text with special characters properly escaped.
-    """
-    # Only escape bare &, <, > — skip already-escaped entities like &lt; &gt; &amp;
-    # Strategy: split on existing entities, escape non-entity parts, rejoin.
-    parts = re.split(r"(&(?:lt|gt|amp|quot|apos);)", text)
-    result = []
-    for part in parts:
-        if re.match(r"&(?:lt|gt|amp|quot|apos);", part):
-            result.append(part)  # Already an entity, leave as-is
-        else:
-            result.append(_escape_bare_xml_chars(part))
-    return "".join(result)
-
-
-def _escape_bare_xml_chars(text: str) -> str:
-    """Escape &, <, > in text that contains no XML entities."""
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    return text
 
 
 def _preprocess_xml(xml_text: str) -> str:
@@ -78,7 +56,7 @@ def _preprocess_xml(xml_text: str) -> str:
         open_tag = match.group(1)
         content = match.group(2)
         close_tag = match.group(3)
-        return open_tag + _escape_xml_text(content) + close_tag
+        return open_tag + escape_xml_preserving_entities(content) + close_tag
 
     return pattern.sub(_replacer, xml_text)
 
@@ -136,7 +114,6 @@ def convert_xml_to_todo(xml_path):
         sys.exit(1)
 
     results = []
-    seen_ids = {}
 
     for i, step in enumerate(steps):
         # Extract step-id
@@ -148,16 +125,6 @@ def convert_xml_to_todo(xml_path):
             )
             sys.exit(1)
         step_id = id_elem.text.strip()
-
-        # Check duplicate ids
-        if step_id in seen_ids:
-            print(
-                f"Error: step[{i}]: duplicate id '{step_id}'"
-                f" (first seen at step[{seen_ids[step_id]}]).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        seen_ids[step_id] = i
 
         # Extract step-name
         name_elem = step.find("step-name")
@@ -187,11 +154,12 @@ def convert_xml_to_todo(xml_path):
             "commit_title": "",
         })
 
+    validate_unique_ids(results)
     return results
 
 
 def main(argv=None):
-    check_help_flag(USAGE)
+    check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex todo xml2json", usage=USAGE)
     parser.add_argument("xml_file", help="Path to the XML file")

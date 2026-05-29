@@ -406,6 +406,8 @@ def safe_update_toml(toml_path):
     existing = _load_toml_config(toml_path)
     user_config = (existing or {}).get("spex", {})
     new_content = generate_updated_toml(user_config)
+    if not toml_path.is_file():
+        return False
     old_content = toml_path.read_text(encoding="utf-8")
     if new_content != old_content:
         toml_path.write_text(new_content, encoding="utf-8")

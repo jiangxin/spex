@@ -1,8 +1,4 @@
 import json
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from common import get_todo_progress, load_meta
 from list_specs import (

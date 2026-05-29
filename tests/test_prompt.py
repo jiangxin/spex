@@ -3,13 +3,8 @@
 import io
 import json
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from common import clear_spex_root_cache
 
 
@@ -123,8 +118,8 @@ class TestAllDoneDetection:
         captured = capsys.readouterr()
         assert captured.err != ""
 
-    def test_all_done_render_prompt_exits_zero(self, tmp_path, monkeypatch):
-        """render_prompt() itself exits(0) when all tasks are done."""
+    def test_all_done_render_prompt_returns_none(self, tmp_path, monkeypatch):
+        """render_prompt() returns None when all tasks are done."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
@@ -132,12 +127,10 @@ class TestAllDoneDetection:
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
-
         from prompt import render_prompt
 
-        with pytest.raises(SystemExit) as exc_info:
-            render_prompt("apply-one-task", "test-topic")
-        assert exc_info.value.code == 0
+        result = render_prompt("apply-one-task", "test-topic")
+        assert not result
 
 
 @pytest.mark.slow
@@ -576,7 +569,7 @@ class TestApplyCommitWithTopic:
         assert "step-3: Add tests" in rendered
 
     def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic but all tasks done exits(0)."""
+        """apply-commit with --topic but all tasks done returns None."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
@@ -584,25 +577,22 @@ class TestApplyCommitWithTopic:
         repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
-
         from prompt import render_prompt
 
-        with pytest.raises(SystemExit) as exc_info:
-            render_prompt("apply-commit", "test-topic")
-        assert exc_info.value.code == 0
+        result = render_prompt("apply-commit", "test-topic")
+        assert not result
 
     def test_no_topic_fails_validation(self, tmp_path, monkeypatch):
-        """apply-commit without --topic fails because required vars are missing."""
+        """apply-commit without --topic returns None (no topic to render)."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _init_git_repo(repo)
         monkeypatch.chdir(repo)
 
-
         from prompt import render_prompt
 
-        with pytest.raises(SystemExit):
-            render_prompt("apply-commit")
+        result = render_prompt("apply-commit")
+        assert not result
 
 
 @pytest.mark.slow

@@ -1,6 +1,5 @@
-"""Tests for create-topic-dir.py (direct import)."""
+"""Tests for create_topic_dir.py (direct import)."""
 
-import importlib
 import io
 import json
 import sys
@@ -8,13 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import common  # noqa: E402
 import config as cfg  # noqa: E402
+import create_topic_dir
+import pytest
 
-create_topic_dir = importlib.import_module("create-topic-dir")
 create_topic = create_topic_dir.create_topic
 
 
@@ -305,7 +302,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -382,7 +379,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -425,7 +422,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -470,7 +467,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",

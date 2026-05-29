@@ -1,14 +1,9 @@
 """Tests for config.py: hierarchical TOML discovery, merging, and caching."""
 
 import subprocess
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from config import (
     SpexContext,
     _deep_merge,

@@ -8,11 +8,11 @@ When key is 'prompts', the value is appended to the prompts array.
 Otherwise the key is set (overwritten) directly.
 """
 
+from __future__ import annotations
+
 import json
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import atomic_write_json, check_help_flag, get_specs_dir
 
 USAGE = """\
@@ -44,7 +44,7 @@ def main(argv=None):
     else:
         value = sys.stdin.read()
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
     meta_path = specs_dir / topic_name / "meta.json"
 
     if not meta_path.is_file():

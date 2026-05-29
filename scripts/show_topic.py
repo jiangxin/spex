@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Show detailed information about a single spec topic."""
 
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cli import ArgumentParser
 from common import (
     check_help_flag,
     format_topic,
@@ -77,26 +76,16 @@ def _format_verbose(topic_dir):
 
 def main(argv=None):
     check_help_flag(USAGE, argv)
-    full_argv = argv if argv is not None else sys.argv[1:]
-    args = [a for a in full_argv if not a.startswith("-")]
-    flags = [a for a in full_argv if a.startswith("-")]
 
-    verbose = any(f in ("-v", "--verbose") for f in flags)
+    parser = ArgumentParser(prog="spex show", usage=USAGE)
+    parser.add_argument("topic", help="Topic name or substring")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Show full spec and structured todo details")
+    args = parser.parse(argv)
 
-    if not args:
-        print("Error: topic name is required.", file=sys.stderr)
-        print(USAGE, file=sys.stderr)
-        sys.exit(1)
+    topic_dir = resolve_topic_dir(args.topic)
 
-    topic_name = args[0]
-
-    try:
-        topic_dir = resolve_topic_dir(topic_name)
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if verbose:
+    if args.verbose:
         print(_format_verbose(topic_dir))
     else:
         print(_format_default(topic_dir))

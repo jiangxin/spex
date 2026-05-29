@@ -1,13 +1,8 @@
 """Tests for parse_todo.py (direct import)."""
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from parse_todo import (
     MAX_OUTPUT_BYTES,
     _format_done_output,
@@ -115,7 +110,7 @@ class TestCmdValidate:
             main(["validate", path])
 
         err = capsys.readouterr().err
-        assert "'id' must not be empty" in err
+        assert "'id' is missing or empty" in err
 
 
 # ===================== cmd_get_next_undone =====================
