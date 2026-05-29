@@ -15,13 +15,13 @@ class SpexConfig(TypedDict, total=False):
     """TypedDict for spex configuration keys."""
 
     spex_root: str
-    create_branch: bool
+    branch_management: bool
     main_branch_name: str
     submit_method: str
 
 _DEFAULTS: SpexConfig = {
     "spex_root": ".spex",
-    "create_branch": False,
+    "branch_management": False,
     "main_branch_name": "",
     "submit_method": "merge",
 }
@@ -185,7 +185,7 @@ def _merge_configs(spex_tomls: list[Path]) -> dict:
     for path in reversed(spex_tomls):
         data = _load_toml_config(path)
         if data is not None:
-            merged = _deep_merge(merged, data)
+            merged = _deep_merge(merged, data.get("spex", {}))
     return merged
 
 
@@ -256,7 +256,7 @@ def _resolve_spex_roots(
     for toml_path in spex_tomls:
         toml_dir = toml_path.parent.resolve()
         data = _load_toml_config(toml_path)
-        sr = (data or {}).get("spex_root")
+        sr = (data or {}).get("spex", {}).get("spex_root")
         if sr is None:
             continue
         if toml_dir in path_set:

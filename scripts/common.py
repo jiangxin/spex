@@ -27,7 +27,7 @@ ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 ICON_ARCHIVED = "\U0001f4e6"
 
-_DEFAULT_TOML = '# spex_root = ".spex"\n'
+_DEFAULT_TOML = '[spex]\n# spex_root = ".spex"\n'
 
 
 def _create_default_toml():

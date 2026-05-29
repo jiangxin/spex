@@ -117,7 +117,7 @@ def validate_create_branch(
     Prints errors to stderr and exits on failure.
     Returns the current branch name on success.
     """
-    enabled = bool(config["create_branch"])
+    enabled = bool(config["branch_management"])
     if not enabled:
         print("Error: branch creation is not enabled in config.", file=sys.stderr)
         sys.exit(1)
@@ -168,7 +168,7 @@ def validate_apply_branch(
 
     Steps:
     1. If all topic tasks are completed, error and exit.
-    2. If create_branch is False in config, return immediately.
+    2. If branch_management is False in config, return immediately.
     3. If meta.json has spex_branch, ensure current branch matches it;
        switch if not (exit on failure).
     4. If meta.json has no spex_branch, try creating a branch using
@@ -186,7 +186,7 @@ def validate_apply_branch(
         sys.exit(1)
 
     # Step 2
-    if not config["create_branch"]:
+    if not config["branch_management"]:
         return
 
     meta = common.load_meta(topic_dir) or {}

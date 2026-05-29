@@ -1,4 +1,5 @@
+[spex]
 spex_root = ".spex"
-create_branch = true
+branch_management = true
 # main_branch_name =
 # submit_method = "merge"

@@ -96,7 +96,7 @@ class TestDeepMerge:
 class TestFindSpexTomls:
     def test_single_file_at_worktree_root(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        (tmp_path / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
+        (tmp_path / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
 
         result = _find_spex_tomls(tmp_path)
 
@@ -107,12 +107,12 @@ class TestFindSpexTomls:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         # Parent has .spex.toml
         (tmp_path / ".spex.toml").write_text(
-            'submit_method = "pr"\n', encoding="utf-8"
+            '[spex]\nsubmit_method = "pr"\n', encoding="utf-8"
         )
         # Worktree root (child) also has .spex.toml
         child = tmp_path / "projects" / "myrepo"
         child.mkdir(parents=True)
-        (child / ".spex.toml").write_text('spex_root = ".spex"\n', encoding="utf-8")
+        (child / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
 
         result = _find_spex_tomls(child)
 
@@ -126,7 +126,7 @@ class TestFindSpexTomls:
         home.mkdir()
         monkeypatch.setattr("config.Path.home", lambda: home)
         (home / ".spex.toml").write_text(
-            'create_branch = true\n', encoding="utf-8"
+            '[spex]\nbranch_management = true\n', encoding="utf-8"
         )
         # worktree_root is somewhere else with no .spex.toml
         worktree = tmp_path / "repo"
@@ -199,8 +199,8 @@ class TestMergeConfigs:
     def test_higher_priority_overrides(self, tmp_path):
         low = tmp_path / "low.toml"
         high = tmp_path / "high.toml"
-        low.write_text('spex_root = "/low"\nextra = true\n', encoding="utf-8")
-        high.write_text('spex_root = "/high"\n', encoding="utf-8")
+        low.write_text('[spex]\nspex_root = "/low"\nextra = true\n', encoding="utf-8")
+        high.write_text('[spex]\nspex_root = "/high"\n', encoding="utf-8")
 
         # highest priority first in list
         result = _merge_configs([high, low])
@@ -221,12 +221,12 @@ class TestLoadConfig:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/original"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/original"\n', encoding="utf-8"
         )
 
         first = load_config()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/changed"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/changed"\n', encoding="utf-8"
         )
         second = load_config()
 
@@ -237,12 +237,12 @@ class TestLoadConfig:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path)
         monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/v1"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/v1"\n', encoding="utf-8"
         )
 
         first = load_config()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/v2"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/v2"\n', encoding="utf-8"
         )
         clear_config_cache()
         second = load_config()
@@ -280,13 +280,13 @@ class TestBranchConfig:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
-            'create_branch = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
+            '[spex]\nbranch_management = true\nmain_branch_name = "main"\nsubmit_method = "pr"\n',
             encoding="utf-8",
         )
 
         result = load_config()
 
-        assert result["create_branch"] is True
+        assert result["branch_management"] is True
         assert result["main_branch_name"] == "main"
         assert result["submit_method"] == "pr"
 
@@ -294,12 +294,12 @@ class TestBranchConfig:
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         result = load_config()
 
-        assert result["create_branch"] is False
+        assert result["branch_management"] is False
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
 
@@ -314,7 +314,7 @@ class TestResolveSpexRoots:
         worktree = tmp_path / "repo"
         worktree.mkdir()
         toml = worktree / ".spex.toml"
-        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
         # .spex/ does NOT exist
 
         result = _resolve_spex_roots([toml], worktree)
@@ -328,7 +328,7 @@ class TestResolveSpexRoots:
         child = parent / "child"
         child.mkdir(parents=True)
         toml = parent / ".spex.toml"
-        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
         # child/.spex does NOT exist, parent/.spex exists
         (parent / ".spex").mkdir()
 
@@ -348,9 +348,9 @@ class TestResolveSpexRoots:
 
         # Parent sets .spex, grandparent sets .specs
         parent_toml = parent / ".spex.toml"
-        parent_toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        parent_toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
         gp_toml = grandparent / ".spex.toml"
-        gp_toml.write_text('spex_root = ".specs"\n', encoding="utf-8")
+        gp_toml.write_text('[spex]\nspex_root = ".specs"\n', encoding="utf-8")
 
         # child/.spex exists (governed by parent's config)
         (child / ".spex").mkdir()
@@ -371,10 +371,10 @@ class TestResolveSpexRoots:
 
         # Child has .spex.toml but without spex_root
         child_toml = child / ".spex.toml"
-        child_toml.write_text('create_branch = true\n', encoding="utf-8")
+        child_toml.write_text('[spex]\nbranch_management = true\n', encoding="utf-8")
         # Parent has .spex.toml with spex_root
         parent_toml = parent / ".spex.toml"
-        parent_toml.write_text('spex_root = ".my-spex"\n', encoding="utf-8")
+        parent_toml.write_text('[spex]\nspex_root = ".my-spex"\n', encoding="utf-8")
 
         # child/.my-spex exists (governed by parent's config, since child's toml is transparent)
         (child / ".my-spex").mkdir()
@@ -391,7 +391,7 @@ class TestResolveSpexRoots:
         worktree.mkdir()
         abs_path = tmp_path / "absolute-spex"
         toml = worktree / ".spex.toml"
-        toml.write_text(f'spex_root = "{abs_path}"\n', encoding="utf-8")
+        toml.write_text(f'[spex]\nspex_root = "{abs_path}"\n', encoding="utf-8")
 
         result = _resolve_spex_roots([toml], worktree)
 
@@ -408,7 +408,7 @@ class TestResolveSpexRoots:
         worktree = tmp_path / "repo"
         worktree.mkdir()
         toml = worktree / ".spex.toml"
-        toml.write_text('spex_root = "~/my-specs"\n', encoding="utf-8")
+        toml.write_text('[spex]\nspex_root = "~/my-specs"\n', encoding="utf-8")
 
         result = _resolve_spex_roots([toml], worktree)
 
@@ -447,7 +447,7 @@ class TestResolveSpexRoots:
         parent.mkdir()
         (parent / ".spex").mkdir()
         toml = parent / ".spex.toml"
-        toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
         workdir = parent / "myapp"
         workdir.mkdir()
 
@@ -461,7 +461,7 @@ class TestResolveSpexRoots:
         home.mkdir()
         monkeypatch.setattr("config.Path.home", lambda: home)
         home_toml = home / ".spex.toml"
-        home_toml.write_text('spex_root = ".spex"\n', encoding="utf-8")
+        home_toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
 
         # worktree is NOT under home
         worktree = tmp_path / "other" / "repo"
@@ -485,7 +485,7 @@ class TestResolveSpexRootAndRoots:
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         primary, roots = resolve_spex_root_and_roots()
@@ -503,7 +503,7 @@ class TestResolveSpexRootAndRoots:
             "config._get_main_worktree", lambda w=None: tmp_path
         )
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".my-spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".my-spex"\n', encoding="utf-8"
         )
 
         primary, roots = resolve_spex_root_and_roots()
@@ -537,7 +537,7 @@ class TestResolveSpexRootAndRoots:
         )
         (home / ".spex").mkdir()
         (home / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         primary, roots = resolve_spex_root_and_roots()
@@ -562,7 +562,7 @@ class TestGetContext:
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         ctx = get_context()
@@ -587,7 +587,7 @@ class TestGetContext:
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         first = get_context()
@@ -606,7 +606,7 @@ class TestGetContext:
         )
         (tmp_path / ".spex").mkdir()
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
 
         first = get_context()
@@ -645,11 +645,11 @@ class TestSpexConfigFileOverride:
         worktree = tmp_path / "repo"
         worktree.mkdir()
         (worktree / ".spex.toml").write_text(
-            'spex_root = "/ignored"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/ignored"\n', encoding="utf-8"
         )
         # Explicit config file
         custom = tmp_path / "custom.toml"
-        custom.write_text('spex_root = "/custom"\n', encoding="utf-8")
+        custom.write_text('[spex]\nspex_root = "/custom"\n', encoding="utf-8")
         monkeypatch.setenv("SPEX_CONFIG_FILE", str(custom))
 
         result = _find_spex_tomls(worktree)
@@ -659,9 +659,9 @@ class TestSpexConfigFileOverride:
     def test_cli_override_takes_priority_over_env(self, tmp_path, monkeypatch):
         """set_spex_config_file (CLI) takes priority over SPEX_CONFIG_FILE env."""
         cli_file = tmp_path / "cli.toml"
-        cli_file.write_text('spex_root = "/from-cli"\n', encoding="utf-8")
+        cli_file.write_text('[spex]\nspex_root = "/from-cli"\n', encoding="utf-8")
         env_file = tmp_path / "env.toml"
-        env_file.write_text('spex_root = "/from-env"\n', encoding="utf-8")
+        env_file.write_text('[spex]\nspex_root = "/from-env"\n', encoding="utf-8")
 
         monkeypatch.setenv("SPEX_CONFIG_FILE", str(env_file))
         set_spex_config_file(str(cli_file))
@@ -697,11 +697,11 @@ class TestSpexConfigFileOverride:
         )
         # Normal .spex.toml in worktree (should be ignored)
         (tmp_path / ".spex.toml").write_text(
-            'spex_root = "/normal"\n', encoding="utf-8"
+            '[spex]\nspex_root = "/normal"\n', encoding="utf-8"
         )
         # Custom config file with different spex_root
         custom = tmp_path / "override.toml"
-        custom.write_text('spex_root = "/custom-root"\n', encoding="utf-8")
+        custom.write_text('[spex]\nspex_root = "/custom-root"\n', encoding="utf-8")
         set_spex_config_file(str(custom))
 
         ctx = get_context()
@@ -712,7 +712,7 @@ class TestSpexConfigFileOverride:
     def test_clear_cache_resets_override(self, tmp_path):
         """clear_config_cache resets the CLI override."""
         config_file = tmp_path / "test.toml"
-        config_file.write_text('spex_root = "/x"\n', encoding="utf-8")
+        config_file.write_text('[spex]\nspex_root = "/x"\n', encoding="utf-8")
         set_spex_config_file(str(config_file))
 
         clear_config_cache()

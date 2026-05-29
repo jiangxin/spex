@@ -248,6 +248,7 @@ class TestCreateTomlConfig:
         with (
             patch("init.get_context", return_value=ctx),
             patch("init.Path.home", return_value=fake_home),
+            patch("common.Path.home", return_value=fake_home),
             patch("init.clear_config_cache"),
         ):
             from init import _create_toml_config
@@ -256,12 +257,12 @@ class TestCreateTomlConfig:
 
         toml_file = fake_home / ".spex.toml"
         assert toml_file.exists()
-        assert toml_file.read_text() == '# spex_root = ".spex"\n'
+        assert toml_file.read_text() == '[spex]\n# spex_root = ".spex"\n'
 
     def test_preserves_existing_config(self, tmp_path):
         """Does not overwrite when config already exists."""
         existing_toml = tmp_path / ".spex.toml"
-        existing_toml.write_text('spex_root = "custom"\n')
+        existing_toml.write_text('[spex]\nspex_root = "custom"\n')
 
         ctx = _make_context(spex_tomls=[existing_toml])
         with patch("init.get_context", return_value=ctx):
@@ -270,7 +271,7 @@ class TestCreateTomlConfig:
             _create_toml_config()
 
         # File should be unchanged
-        assert existing_toml.read_text() == 'spex_root = "custom"\n'
+        assert existing_toml.read_text() == '[spex]\nspex_root = "custom"\n'
 
 
 class TestRunInit:
@@ -386,7 +387,7 @@ class TestRunInit:
         from init import run_init
 
         (mock_workdir / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 
@@ -403,7 +404,7 @@ class TestRunInit:
         from init import run_init
 
         (mock_workdir / ".spex.toml").write_text(
-            'spex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 

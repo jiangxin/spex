@@ -116,14 +116,14 @@ class TestValidateCreateBranch:
     @patch("branch.get_current_branch", return_value="main")
     def test_returns_current_branch(self, _mock):
         result = validate_create_branch(
-            {"create_branch": True, "main_branch_name": "", "submit_method": "merge"})
+            {"branch_management": True, "main_branch_name": "", "submit_method": "merge"})
         assert result == "main"
 
     @patch("branch.get_current_branch", return_value="main")
     def test_disabled_exits(self, _mock):
         try:
             validate_create_branch(
-                {"create_branch": False, "main_branch_name": "", "submit_method": "merge"})
+                {"branch_management": False, "main_branch_name": "", "submit_method": "merge"})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -132,7 +132,7 @@ class TestValidateCreateBranch:
            side_effect=subprocess.CalledProcessError(1, "git"))
     def test_git_error_exits(self, _mock):
         try:
-            validate_create_branch({"create_branch": True})
+            validate_create_branch({"branch_management": True})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -140,7 +140,7 @@ class TestValidateCreateBranch:
     @patch("branch.get_current_branch", return_value="develop")
     def test_wrong_main_branch_exits(self, _mock):
         try:
-            validate_create_branch({"create_branch": True,
+            validate_create_branch({"branch_management": True,
                                     "main_branch_name": "main"})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
@@ -150,7 +150,7 @@ class TestValidateCreateBranch:
     def test_spex_prefix_exits(self, _mock):
         try:
             validate_create_branch(
-                {"create_branch": True, "main_branch_name": "", "submit_method": "merge"})
+                {"branch_management": True, "main_branch_name": "", "submit_method": "merge"})
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -160,15 +160,15 @@ class TestValidateApplyBranch:
     def test_disabled_returns_immediately(self, tmp_path):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
-        # Should return without error when create_branch is False
-        validate_apply_branch({"create_branch": False}, tmp_path)
+        # Should return without error when branch_management is False
+        validate_apply_branch({"branch_management": False}, tmp_path)
 
     @patch("common.is_topic_completed", return_value=True)
     def test_completed_topic_exits(self, _mock, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
         try:
-            validate_apply_branch({"create_branch": True}, tmp_path)
+            validate_apply_branch({"branch_management": True}, tmp_path)
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -180,7 +180,7 @@ class TestValidateApplyBranch:
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
         )
-        validate_apply_branch({"create_branch": True}, tmp_path)
+        validate_apply_branch({"branch_management": True}, tmp_path)
         # Should not call switch_branch since current already matches
 
     @patch("branch.switch_branch")
@@ -192,7 +192,7 @@ class TestValidateApplyBranch:
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
         )
-        validate_apply_branch({"create_branch": True}, tmp_path)
+        validate_apply_branch({"branch_management": True}, tmp_path)
         mock_switch.assert_called_once_with("spex/feat", None)
 
     @patch("branch.get_current_branch", return_value="main")
@@ -204,7 +204,7 @@ class TestValidateApplyBranch:
             json.dumps({"spex_branch": "spex/missing"}), encoding="utf-8"
         )
         try:
-            validate_apply_branch({"create_branch": True}, tmp_path)
+            validate_apply_branch({"branch_management": True}, tmp_path)
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -224,7 +224,7 @@ class TestValidateApplyBranch:
             json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
-        validate_apply_branch({"create_branch": True}, tmp_path)
+        validate_apply_branch({"branch_management": True}, tmp_path)
         mock_create.assert_called_once_with("spex/add-feature", None)
         mock_switch.assert_called_once_with("spex/add-feature", None)
 
@@ -246,7 +246,7 @@ class TestValidateApplyBranch:
             json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
-        validate_apply_branch({"create_branch": True}, tmp_path)
+        validate_apply_branch({"branch_management": True}, tmp_path)
         # First call with short name fails, second with long name succeeds
         assert mock_create.call_count == 2
         mock_create.assert_any_call("spex/add-feature", None)
@@ -267,7 +267,7 @@ class TestValidateApplyBranch:
             json.dumps({"topic": "add-feature"}), encoding="utf-8"
         )
         try:
-            validate_apply_branch({"create_branch": True}, tmp_path)
+            validate_apply_branch({"branch_management": True}, tmp_path)
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
@@ -276,7 +276,7 @@ class TestValidateApplyBranch:
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
     @patch("config.get_context", return_value=_fake_context(config={
-        "create_branch": True, "main_branch_name": "", "submit_method": "merge",
+        "branch_management": True, "main_branch_name": "", "submit_method": "merge",
         "spex_root": ".spex"}))
     def test_outputs_success(self, _ctx, _branch, capsys):
         cli_create_validate()
@@ -288,14 +288,14 @@ class TestCliCreateValidate:
 class TestCliApplyValidate:
     @patch("common.resolve_topic_dir")
     @patch("config.get_context", return_value=_fake_context(
-        config={"create_branch": False}))
+        config={"branch_management": False}))
     def test_disabled_no_output(self, _ctx, mock_resolve, tmp_path,
                                 capsys):
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
         cli_apply_validate(["--topic", "test-topic"])
-        # When create_branch is False, function returns early with no output
+        # When branch_management is False, function returns early with no output
         out = capsys.readouterr().out
         assert out == ""
 

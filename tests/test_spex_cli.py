@@ -39,7 +39,7 @@ def _make_context(**overrides):
         "spex_root": "/test/repo/.spex",
         "config": {
             "spex_root": ".spex",
-            "create_branch": False,
+            "branch_management": False,
             "main_branch_name": "",
             "submit_method": "merge",
         },
@@ -59,7 +59,7 @@ class TestBuildConfigVars:
 
         expected_keys = [
             "top_workdir", "main_worktree", "spex_root",
-            "config.spex_root", "config.create_branch",
+            "config.spex_root", "config.branch_management",
             "config.main_branch_name", "config.submit_method",
             "spex_tomls", "spex_roots",
         ]
@@ -105,7 +105,7 @@ class TestPrintConfigVars:
         # followed by "- ")
         scalar_keys = [
             "top_workdir", "main_worktree", "spex_root",
-            "config.spex_root", "config.create_branch",
+            "config.spex_root", "config.branch_management",
             "config.main_branch_name", "config.submit_method",
         ]
         list_keys = ["spex_tomls", "spex_roots"]
@@ -184,7 +184,7 @@ class TestRunConfig:
         assert "main_worktree:" in out
         assert "spex_root:" in out
         assert "config.spex_root:" in out
-        assert "config.create_branch:" in out
+        assert "config.branch_management:" in out
         assert "config.main_branch_name:" in out
         assert "config.submit_method:" in out
         assert "spex_tomls:" in out
