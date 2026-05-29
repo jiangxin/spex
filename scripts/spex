@@ -383,7 +383,7 @@ def _get_version():
     if not match:
         return "unknown"
     for line in match.group(1).splitlines():
-        m = re.match(r"\s+version:\s*(.+)", line)
+        m = re.match(r"\s*version:\s*(.+)", line)
         if m:
             return m.group(1).strip().strip("\"'")
     return "unknown"
@@ -437,9 +437,14 @@ def _run_hook(argv=None):
     hooks.run_hook(args.hook_name, event_data, args.workdir)
 
 
-def _run_version(argv=None):  # noqa: ARG001
-    """Print version and exit."""
-    print(f"spex {_get_version()}")
+def _run_version(argv=None):
+    """Run the version command."""
+    import version
+
+    if argv:
+        version.main(argv)
+    else:
+        print(f"spex {_get_version()}")
 
 
 DIRECT_COMMANDS = {

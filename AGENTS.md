@@ -60,14 +60,30 @@ Specification documented in `references/SKILLS-SPEC.md`.
 | `get_template(name, workdir)` | Return template content (front-matter stripped). |
 | `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
 | `format_topic(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
+| `get_git_info()` | Retrieve git metadata (workdir, remote_url, branch, user_name, user_email). |
+| `escape_xml_text(text)` | Escape &, <, > unconditionally in text content. |
+| `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
+| `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
+| `validate_unique_ids(data)` | Check unique non-empty 'id' fields, exit on duplicates. |
+| `find_matching_topics(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
+
+## Version Management
+
+The version is stored in `pyproject.toml` and `SKILL.md`. Use the
+following Makefile targets:
+
+- `make version` — print current version
+- `make version-check` — verify both files are in sync (runs in `make check`)
+- `make bump VERSION=x.y.z` — update version in both files
 
 ## Quality Checks
 
 Before committing, `make check` runs automatically via a husky pre-commit hook. It executes:
 
-1. `ruff check scripts/ tests/` — Python lint
-2. `npx markdownlint-cli2` — Markdown lint
-3. `pytest` — unit tests
+1. `python3 scripts/version.py --check` — version consistency
+2. `ruff check scripts/ tests/` — Python lint
+3. `npx markdownlint-cli2` — Markdown lint
+4. `pytest` — unit tests
 
 If the pre-commit hook does not fire (e.g., hooks are not installed), run `make check` manually before creating a commit. Fix any failures before retrying.
 

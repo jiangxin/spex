@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-md format test test-all check check-all coverage
+.PHONY: setup lint lint-md format test test-all check check-all coverage version version-check bump
 
 setup:
 	@echo "==> Installing Python dev dependencies..."
@@ -31,9 +31,19 @@ test-all:
 	@echo "==> Running all tests (including slow)..."
 	pytest -m ""
 
-check: lint lint-md test
+version:
+	@python3 scripts/version.py
 
-check-all: lint lint-md test-all
+version-check:
+	@echo "==> Checking version consistency..."
+	@python3 scripts/version.py --check
+
+bump:
+	@python3 scripts/version.py --bump $(VERSION)
+
+check: version-check lint lint-md test
+
+check-all: version-check lint lint-md test-all
 
 coverage:
 	@echo "==> Running tests with coverage..."
