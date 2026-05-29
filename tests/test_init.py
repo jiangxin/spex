@@ -366,7 +366,9 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_create_toml.assert_called_once_with(verbose=False)
+        mock_create_toml.assert_called_once_with(
+            workdir=str(tmp_path), verbose=False,
+        )
 
     def test_syncs_templates_when_already_initialized(self, tmp_path):
         """Syncs templates when spex_root and specs/ already exist."""
@@ -522,7 +524,7 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["-v"])
-        mock_run.assert_called_once_with(verbose=True)
+        mock_run.assert_called_once_with(target_dir=None, verbose=True)
 
     def test_main_parses_verbose_long(self):
         """main() passes verbose=True when --verbose is given."""
@@ -530,7 +532,7 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["--verbose"])
-        mock_run.assert_called_once_with(verbose=True)
+        mock_run.assert_called_once_with(target_dir=None, verbose=True)
 
     def test_main_default_not_verbose(self):
         """main() passes verbose=False by default."""
@@ -538,7 +540,23 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=[])
-        mock_run.assert_called_once_with(verbose=False)
+        mock_run.assert_called_once_with(target_dir=None, verbose=False)
+
+    def test_main_parses_target_dir(self):
+        """main() passes target_dir when positional arg is given."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["/some/dir"])
+        mock_run.assert_called_once_with(target_dir="/some/dir", verbose=False)
+
+    def test_main_parses_target_dir_with_verbose(self):
+        """main() passes both target_dir and verbose."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["-v", "/some/dir"])
+        mock_run.assert_called_once_with(target_dir="/some/dir", verbose=True)
 
     def test_run_init_passes_verbose_to_ensure_initialized(self, tmp_path):
         """run_init(verbose=True) forwards verbose to ensure_initialized."""
@@ -597,3 +615,119 @@ class TestVerboseFlag:
         out = capsys.readouterr().out
         assert "Initializing:" not in out
         assert "Already initialized:" not in out
+
+
+class TestResolveTargetDir:
+    def test_git_repo_returns_main_worktree(self, mock_workdir):
+        from init import _resolve_target_dir
+
+        result = _resolve_target_dir(str(mock_workdir))
+        assert result == mock_workdir
+
+    def test_non_git_dir_returns_as_is(self, tmp_path):
+        target = tmp_path / "plain"
+        target.mkdir()
+
+        from init import _resolve_target_dir
+
+        result = _resolve_target_dir(str(target))
+        assert result == target
+
+    def test_nonexistent_dir_exits(self, tmp_path):
+        from init import _resolve_target_dir
+
+        with pytest.raises(SystemExit) as exc_info:
+            _resolve_target_dir(str(tmp_path / "nope"))
+        assert exc_info.value.code == 1
+
+
+class TestInitTargetToml:
+    def test_creates_toml_with_inherited_config(self, tmp_path, capsys):
+        """Creates .spex.toml inheriting user-set values from parent config."""
+        target = tmp_path / "project"
+        target.mkdir()
+        home_toml = tmp_path / "home" / ".spex.toml"
+        home_toml.parent.mkdir()
+        home_toml.write_text('[spex]\nbranch_management = true\n')
+
+        with patch("config.Path.home", return_value=home_toml.parent):
+            from init import _init_target_toml
+
+            clear_spex_root_cache()
+            _init_target_toml(target)
+
+        toml_path = target / ".spex.toml"
+        assert toml_path.exists()
+        content = toml_path.read_text()
+        assert "branch_management = true" in content
+        assert 'spex_root = ".spex"' in content
+        assert "Created:" in capsys.readouterr().out
+
+    def test_creates_toml_with_all_defaults_uncommented(self, tmp_path):
+        """Creates .spex.toml with all effective values uncommented."""
+        target = tmp_path / "project"
+        target.mkdir()
+
+        with patch("config.Path.home", return_value=tmp_path / "empty_home"):
+            from init import _init_target_toml
+
+            clear_spex_root_cache()
+            _init_target_toml(target)
+
+        content = (target / ".spex.toml").read_text()
+        assert 'spex_root = ".spex"' in content
+        assert "branch_management = false" in content
+        assert "# spex_root" not in content
+
+    def test_skips_when_toml_exists(self, tmp_path):
+        """Does not overwrite existing .spex.toml."""
+        target = tmp_path / "project"
+        target.mkdir()
+        toml_path = target / ".spex.toml"
+        toml_path.write_text('[spex]\nspex_root = "custom"\n')
+
+        from init import _init_target_toml
+
+        _init_target_toml(target)
+
+        assert toml_path.read_text() == '[spex]\nspex_root = "custom"\n'
+
+
+class TestRunInitWithTargetDir:
+    def test_creates_toml_in_target_dir(self, tmp_path, mock_workdir):
+        """spex init <dir> creates .spex.toml in the target directory."""
+        from init import run_init
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("config.Path.home", return_value=tmp_path / "empty_home"),
+        ):
+            clear_spex_root_cache()
+            run_init(target_dir=str(mock_workdir))
+
+        toml_path = mock_workdir / ".spex.toml"
+        assert toml_path.exists()
+        spex_root = mock_workdir / ".spex"
+        assert (spex_root / "specs").is_dir()
+
+    def test_inherits_parent_config(self, tmp_path, mock_workdir):
+        """Target dir .spex.toml inherits values from ~/.spex.toml."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        (fake_home / ".spex.toml").write_text(
+            '[spex]\nbranch_management = true\n'
+        )
+
+        from init import run_init
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("config.Path.home", return_value=fake_home),
+        ):
+            clear_spex_root_cache()
+            run_init(target_dir=str(mock_workdir))
+
+        content = (mock_workdir / ".spex.toml").read_text()
+        assert "branch_management = true" in content

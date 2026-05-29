@@ -3,6 +3,7 @@
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -21,6 +22,7 @@ from config import (
     generate_default_toml,
     generate_updated_toml,
     get_context,
+    get_effective_user_config,
     load_config,
     resolve_spex_root_and_roots,
     set_spex_config_file,
@@ -930,4 +932,49 @@ class TestGenerateUpdatedToml:
         result = generate_updated_toml({"spex_root": "x"})
         assert "# Root directory for spec storage" in result
         assert "# Create and manage branches for specs" in result
+
+
+# ===================== get_effective_user_config =====================
+
+
+class TestGetEffectiveUserConfig:
+    def test_returns_user_set_values(self, tmp_path):
+        """Returns only explicitly set values, not defaults."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text('[spex]\nbranch_management = true\n')
+
+        with patch("config.Path.home", return_value=tmp_path / "no_home"):
+            clear_config_cache()
+            result = get_effective_user_config(str(tmp_path))
+
+        assert result == {"branch_management": True}
+
+    def test_returns_empty_when_no_tomls(self, tmp_path):
+        """Returns empty dict when no config files exist."""
+        target = tmp_path / "empty"
+        target.mkdir()
+
+        with patch("config.Path.home", return_value=tmp_path / "no_home"):
+            clear_config_cache()
+            result = get_effective_user_config(str(target))
+
+        assert result == {}
+
+    def test_merges_multiple_tomls(self, tmp_path):
+        """Merges values from project and home-level tomls."""
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".spex.toml").write_text('[spex]\nspex_root = "proj"\n')
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        (fake_home / ".spex.toml").write_text(
+            '[spex]\nbranch_management = true\n'
+        )
+
+        with patch("config.Path.home", return_value=fake_home):
+            clear_config_cache()
+            result = get_effective_user_config(str(project))
+
+        assert result["spex_root"] == "proj"
+        assert result["branch_management"] is True
 

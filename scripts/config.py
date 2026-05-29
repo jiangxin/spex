@@ -212,6 +212,11 @@ def get_top_workdir(workdir: str | Path | None = None) -> Path | None:
     return _get_top_workdir(workdir)
 
 
+def get_main_worktree(workdir: str | Path | None = None) -> Path | None:
+    """Public wrapper for _get_main_worktree."""
+    return _get_main_worktree(workdir)
+
+
 def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     """Return the discovered TOML config paths (highest priority first)."""
     main_wt = _get_main_worktree(workdir)
@@ -340,7 +345,7 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
     top_workdir = _get_top_workdir(workdir)
     main_worktree = _get_main_worktree(workdir)
-    spex_tomls = _find_spex_tomls(main_worktree)
+    spex_tomls = _find_spex_tomls(main_worktree, workdir)
     config = load_config(workdir)
     spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
 
@@ -406,6 +411,19 @@ def safe_update_toml(toml_path):
         toml_path.write_text(new_content, encoding="utf-8")
         return True
     return False
+
+
+def get_effective_user_config(workdir: str | Path | None = None) -> dict:
+    """Return merged user-set config values (without defaults) for a workdir.
+
+    Discovers .spex.toml files relative to workdir and merges their [spex]
+    tables. Only explicitly set keys are included — commented-out defaults
+    are not. Use this to create a new project-level .spex.toml that inherits
+    parent settings.
+    """
+    main_wt = _get_main_worktree(workdir)
+    spex_tomls = _find_spex_tomls(main_wt, workdir)
+    return _merge_configs(spex_tomls)
 
 
 def clear_config_cache() -> None:

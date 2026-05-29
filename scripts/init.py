@@ -13,7 +13,10 @@ from common import (
 )
 from config import (
     clear_config_cache,
+    generate_updated_toml,
     get_context,
+    get_main_worktree,
+    load_config,
     safe_update_toml,
 )
 
@@ -78,9 +81,41 @@ def _install_cli(verbose=False):
               file=sys.stderr)
 
 
-def _create_toml_config(verbose=False):
+def _resolve_target_dir(dir_path):
+    """Resolve target directory for init.
+
+    If dir_path is inside a git repo, returns the main worktree (handles
+    submodules and linked worktrees). Otherwise returns dir_path as-is.
+    """
+    target = Path(dir_path).resolve()
+    if not target.is_dir():
+        print(f"Error: not a directory: {dir_path}", file=sys.stderr)
+        sys.exit(1)
+
+    main_wt = get_main_worktree(str(target))
+    return main_wt if main_wt is not None else target
+
+
+def _init_target_toml(target_dir, verbose=False):
+    """Create .spex.toml in target_dir if it does not exist.
+
+    The new file inherits effective config values from parent tomls.
+    """
+    toml_path = Path(target_dir) / ".spex.toml"
+    if toml_path.is_file():
+        if verbose:
+            print(f"Config already exists: {toml_path}")
+        return
+
+    effective = load_config(str(target_dir))
+    content = generate_updated_toml(effective)
+    toml_path.write_text(content, encoding="utf-8")
+    print(f"Created: {toml_path}")
+
+
+def _create_toml_config(workdir=None, verbose=False):
     """Create or safely update .spex.toml files with the latest config schema."""
-    ctx = get_context()
+    ctx = get_context(workdir)
 
     if ctx.spex_tomls:
         changed = False
@@ -101,13 +136,20 @@ def _create_toml_config(verbose=False):
     clear_config_cache()
 
 
-def run_init(workdir=None, verbose=False):
+def run_init(workdir=None, target_dir=None, verbose=False):
     """Run full spex initialization."""
     if workdir is None:
         workdir = get_current_workdir()
 
     _install_deps(verbose=verbose)
-    _create_toml_config(verbose=verbose)
+
+    if target_dir:
+        resolved = _resolve_target_dir(target_dir)
+        _init_target_toml(resolved, verbose=verbose)
+        clear_config_cache()
+        workdir = str(resolved)
+
+    _create_toml_config(workdir=workdir, verbose=verbose)
 
     ctx = get_context(workdir)
 
@@ -120,9 +162,12 @@ def run_init(workdir=None, verbose=False):
 
 
 _USAGE = """\
-Usage: spex init [--check] [-v | --verbose]
+Usage: spex init [<dir>] [--check] [-v | --verbose]
 
 Initialize the spex environment.
+
+When <dir> is given, creates .spex.toml in that directory (resolving to the
+git main worktree if applicable) and initializes its spex_root.
 
 Options:
   --check        Check if initialized (exit 0 = yes, exit 1 = no)
@@ -141,7 +186,10 @@ def main(argv=None):
         sys.exit(0 if is_initialized() else 1)
 
     verbose = "-v" in args or "--verbose" in args
-    run_init(verbose=verbose)
+    positional = [a for a in args if not a.startswith("-")]
+    target_dir = positional[0] if positional else None
+
+    run_init(target_dir=target_dir, verbose=verbose)
 
 
 if __name__ == "__main__":
