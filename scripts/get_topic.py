@@ -17,9 +17,9 @@ from common import (
     get_specs_dir,
     get_spex_roots,
     get_spex_tomls,
-    get_topic_workdir,
     has_undone_tasks,
     is_topic_completed,
+    load_meta,
     same_path,
 )
 from config import set_spex_config_file
@@ -155,11 +155,15 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
 
 
 def _topic_matches_workdir(topic_dir, workdir):
-    """Return True if the topic's workdir matches the given workdir."""
-    topic_wd = get_topic_workdir(topic_dir)
-    if not topic_wd:
-        return False
-    return same_path(topic_wd, workdir)
+    """Return True if the topic's workdir or main_worktree matches the given workdir."""
+    meta = load_meta(topic_dir) or {}
+    topic_wd = meta.get("workdir", "")
+    main_wt = meta.get("main_worktree", "")
+    if topic_wd and same_path(topic_wd, workdir):
+        return True
+    if main_wt and same_path(main_wt, workdir):
+        return True
+    return False
 
 
 def main(argv=None):
