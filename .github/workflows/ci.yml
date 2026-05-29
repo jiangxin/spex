@@ -22,7 +22,7 @@ jobs:
 
       - run: pip install .[dev]
 
-      - run: npm install
+      - run: cp package.dev.json package.json && npm install
 
       - run: ruff check scripts/ tests/
 
