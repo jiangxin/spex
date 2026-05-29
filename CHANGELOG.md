@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.2.1
+
+### Bug Fixes
+
+- Fix dead code in `branch.py` (`check=True` with unreachable returncode
+  check) and `config.py` (`safe_update_toml` missing file existence guard).
+- Fix `check_help_flag` calls missing `argv` parameter in 4 todo scripts.
+- Remove dead `try/except` in `show_topic.py`; differentiate `--details`
+  vs default output in `parse_todo.py`.
+- Replace `sys.exit(0)` in `render_prompt` with return value, making it
+  safe to call as a library function.
+- Use `atomic_write_json` in `create_topic_dir.py` for consistent writes.
+- Refuse to archive incomplete topics without `--force`.
+- Match topics by `main_worktree` in addition to `workdir`.
+
+### Features
+
+- `spex init` accepts a target directory argument.
+- `spex init -v/--verbose` shows detailed operations.
+- `spex init` safe-updates `~/.spex.toml` with latest config schema.
+- Record `main_worktree` from SpexContext in `meta.json`.
+
+### Refactoring
+
+- Consolidate `_get_git_info()` into `common.get_git_info()`.
+- Consolidate `_escape_xml_text()` into `common.escape_xml_text()` and
+  `common.escape_xml_preserving_entities()`.
+- Add shared `load_and_validate_todo_json()` and `validate_unique_ids()`
+  to `common.py`.
+- Unify topic resolution with shared `find_matching_topics()` helper.
+- Eliminate `sys.path.insert` boilerplate via package structure.
+- Change `get_specs_dir()`/`get_archives_dir()` to return `Path` objects.
+- Rename `create-topic-dir.py` to `create_topic_dir.py`; add
+  `from __future__ import annotations` to all scripts.
+- Standardize argument parsing with `cli.ArgumentParser`.
+
 ## 0.2.0
 
 ### Features
