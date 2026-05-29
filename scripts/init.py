@@ -12,10 +12,9 @@ from common import (
     get_current_workdir,
 )
 from config import (
-    _load_toml_config,
     clear_config_cache,
-    generate_updated_toml,
     get_context,
+    safe_update_toml,
 )
 
 
@@ -79,24 +78,6 @@ def _install_cli(verbose=False):
               file=sys.stderr)
 
 
-def _safe_update_toml(toml_path, verbose=False):
-    """Safe-update a single .spex.toml with the latest config schema.
-
-    Returns True if the file was modified.
-    """
-    existing = _load_toml_config(toml_path)
-    user_config = (existing or {}).get("spex", {})
-    new_content = generate_updated_toml(user_config)
-    old_content = toml_path.read_text(encoding="utf-8")
-    if new_content != old_content:
-        toml_path.write_text(new_content, encoding="utf-8")
-        print(f"Reinitialized: {toml_path}")
-        return True
-    if verbose:
-        print(f"Config up-to-date: {toml_path}")
-    return False
-
-
 def _create_toml_config(verbose=False):
     """Create or safely update .spex.toml files with the latest config schema."""
     ctx = get_context()
@@ -104,8 +85,12 @@ def _create_toml_config(verbose=False):
     if ctx.spex_tomls:
         changed = False
         for toml_path in ctx.spex_tomls:
-            if _safe_update_toml(Path(toml_path), verbose=verbose):
+            path = Path(toml_path)
+            if safe_update_toml(path):
+                print(f"Reinitialized: {path}")
                 changed = True
+            elif verbose:
+                print(f"Config up-to-date: {path}")
         if changed:
             clear_config_cache()
         return

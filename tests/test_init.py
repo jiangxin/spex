@@ -239,19 +239,18 @@ class TestEnsureInitialized:
 
 
 class TestSafeUpdateToml:
-    def test_updates_stale_file(self, tmp_path, capsys):
+    def test_updates_stale_file(self, tmp_path):
         """Rewrites a toml missing new schema keys."""
         toml_file = tmp_path / ".spex.toml"
         toml_file.write_text('[spex]\nspex_root = "custom"\n')
 
-        from init import _safe_update_toml
+        from config import safe_update_toml
 
-        assert _safe_update_toml(toml_file) is True
+        assert safe_update_toml(toml_file) is True
 
         content = toml_file.read_text()
         assert 'spex_root = "custom"' in content
         assert "# branch_management = false" in content
-        assert "Reinitialized:" in capsys.readouterr().out
 
     def test_preserves_all_user_values(self, tmp_path):
         """All user-set keys stay uncommented after update."""
@@ -260,9 +259,9 @@ class TestSafeUpdateToml:
             '[spex]\nspex_root = "/my/root"\nbranch_management = true\n'
         )
 
-        from init import _safe_update_toml
+        from config import safe_update_toml
 
-        _safe_update_toml(toml_file)
+        safe_update_toml(toml_file)
 
         content = toml_file.read_text()
         assert 'spex_root = "/my/root"' in content
@@ -276,21 +275,10 @@ class TestSafeUpdateToml:
         toml_file.write_text(generate_default_toml())
         original_mtime = toml_file.stat().st_mtime
 
-        from init import _safe_update_toml
+        from config import safe_update_toml
 
-        assert _safe_update_toml(toml_file) is False
+        assert safe_update_toml(toml_file) is False
         assert toml_file.stat().st_mtime == original_mtime
-
-    def test_verbose_up_to_date(self, tmp_path, capsys):
-        """Verbose prints 'Config up-to-date:' when unchanged."""
-        toml_file = tmp_path / ".spex.toml"
-        toml_file.write_text(generate_default_toml())
-
-        from init import _safe_update_toml
-
-        _safe_update_toml(toml_file, verbose=True)
-
-        assert "Config up-to-date:" in capsys.readouterr().out
 
 
 class TestCreateTomlConfig:

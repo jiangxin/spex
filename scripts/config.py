@@ -390,6 +390,24 @@ def generate_updated_toml(user_config: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def safe_update_toml(toml_path):
+    """Safe-update a single .spex.toml with the latest config schema.
+
+    Reads the existing file, preserves user-set keys, and regenerates with
+    the full schema. New keys appear as commented-out defaults.
+
+    Returns True if the file was modified.
+    """
+    existing = _load_toml_config(toml_path)
+    user_config = (existing or {}).get("spex", {})
+    new_content = generate_updated_toml(user_config)
+    old_content = toml_path.read_text(encoding="utf-8")
+    if new_content != old_content:
+        toml_path.write_text(new_content, encoding="utf-8")
+        return True
+    return False
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _config_cache, _top_workdir_cache, _main_worktree_cache
