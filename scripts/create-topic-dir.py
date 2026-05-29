@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
+import config as cfg
 from common import get_specs_dir, local_iso_timestamp
 
 SUPPORTED_GET_KEYS = {
@@ -73,10 +74,13 @@ def _get_git_info():
     return info
 
 
-def _write_meta(topic_dir, git_info, prompt, timestamp, description=""):
+def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     """Write meta.json into topic_dir with git info and prompt."""
+    workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
+    main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = {
-        "workdir": git_info.get("workdir", ""),
+        "workdir": workdir,
+        "main_worktree": main_worktree,
         "remote_url": git_info.get("remote_url", ""),
         "branch": git_info.get("branch", ""),
         "user_name": git_info.get("user_name", ""),
@@ -152,8 +156,9 @@ def main(argv=None):
         sys.exit(1)
 
     git_info = _get_git_info()
+    ctx = cfg.get_context()
     timestamp = local_iso_timestamp()
-    _write_meta(topic_dir, git_info, prompt, timestamp, args.description)
+    _write_meta(topic_dir, git_info, ctx, prompt, timestamp, args.description)
 
     if args.json:
         result = {

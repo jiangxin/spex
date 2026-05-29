@@ -4,6 +4,7 @@ import importlib
 import io
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,9 +12,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import common  # noqa: E402
+import config as cfg  # noqa: E402
 
 create_topic_dir = importlib.import_module("create-topic-dir")
 create_topic = create_topic_dir.create_topic
+
+
+@dataclass
+class MockSpexContext:
+    top_workdir: Path | None = None
+    main_worktree: Path | None = None
 
 
 class TestCreateTopic:
@@ -115,8 +123,12 @@ class TestWriteMeta:
             "user_name": "Alice",
             "user_email": "alice@example.com",
         }
+        ctx = MockSpexContext(
+            top_workdir=Path("/home/user/project"),
+            main_worktree=Path("/home/user/project"),
+        )
         create_topic_dir._write_meta(
-            topic_dir, git_info, "fix the login bug",
+            topic_dir, git_info, ctx, "fix the login bug",
             "2026-05-24T20:00:00+08:00"
         )
 
@@ -124,6 +136,7 @@ class TestWriteMeta:
         assert meta_path.exists()
         meta = json.loads(meta_path.read_text())
         assert meta["workdir"] == "/home/user/project"
+        assert meta["main_worktree"] == "/home/user/project"
         assert meta["remote_url"] == "git@github.com:user/project.git"
         assert meta["branch"] == "main"
         assert meta["user_name"] == "Alice"
@@ -142,13 +155,98 @@ class TestWriteMeta:
             "user_name": "Alice",
             "user_email": "alice@example.com",
         }
+        ctx = MockSpexContext(
+            top_workdir=Path("/home/user/project"),
+            main_worktree=Path("/home/user/project"),
+        )
         create_topic_dir._write_meta(
-            topic_dir, git_info, "", "2026-05-24T20:00:00+08:00"
+            topic_dir, git_info, ctx, "", "2026-05-24T20:00:00+08:00"
         )
 
         meta = json.loads((topic_dir / "meta.json").read_text())
         assert meta["prompts"] == []
         assert meta["remote_url"] == ""
+
+    def test_worktree_main_worktree_points_to_main(self, tmp_path):
+        """In a linked worktree, main_worktree should point to the main
+        worktree's top_workdir, not the current worktree."""
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+
+        git_info = {
+            "workdir": "/home/user/project-wt",
+            "remote_url": "git@github.com:user/project.git",
+            "branch": "feature",
+            "user_name": "Alice",
+            "user_email": "alice@example.com",
+        }
+        ctx = MockSpexContext(
+            top_workdir=Path("/home/user/project-wt"),
+            main_worktree=Path("/home/user/project"),
+        )
+        create_topic_dir._write_meta(
+            topic_dir, git_info, ctx, "add feature",
+            "2026-05-29T10:00:00+08:00"
+        )
+
+        meta = json.loads((topic_dir / "meta.json").read_text())
+        assert meta["workdir"] == "/home/user/project-wt"
+        assert meta["main_worktree"] == "/home/user/project"
+
+    def test_multiple_worktrees_share_main_worktree(self, tmp_path):
+        """All worktrees of the same repo should record the same
+        main_worktree value."""
+        main_repo = Path("/home/user/project")
+        worktrees = [
+            Path("/home/user/project"),
+            Path("/home/user/project-wt1"),
+            Path("/home/user/project-wt2"),
+        ]
+        results = []
+        for wt in worktrees:
+            topic_dir = tmp_path / wt.name
+            topic_dir.mkdir()
+            git_info = {
+                "workdir": str(wt),
+                "remote_url": "git@github.com:user/project.git",
+                "branch": "branch",
+                "user_name": "Alice",
+                "user_email": "alice@example.com",
+            }
+            ctx = MockSpexContext(
+                top_workdir=wt,
+                main_worktree=main_repo,
+            )
+            create_topic_dir._write_meta(
+                topic_dir, git_info, ctx, "",
+                "2026-05-29T10:00:00+08:00"
+            )
+            meta = json.loads((topic_dir / "meta.json").read_text())
+            results.append(meta["main_worktree"])
+
+        assert all(mw == str(main_repo) for mw in results)
+
+    def test_ctx_none_falls_back_to_git_info(self, tmp_path):
+        """When ctx fields are None, fall back to git_info workdir."""
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+
+        git_info = {
+            "workdir": "/fallback/project",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Alice",
+            "user_email": "alice@example.com",
+        }
+        ctx = MockSpexContext(top_workdir=None, main_worktree=None)
+        create_topic_dir._write_meta(
+            topic_dir, git_info, ctx, "",
+            "2026-05-29T10:00:00+08:00"
+        )
+
+        meta = json.loads((topic_dir / "meta.json").read_text())
+        assert meta["workdir"] == "/fallback/project"
+        assert meta["main_worktree"] == "/fallback/project"
 
 
 class TestMain:
@@ -197,6 +295,10 @@ class TestMain:
             "user_name": "Test",
             "user_email": "test@test.com",
         }
+        mock_ctx = MockSpexContext(
+            top_workdir=Path("/tmp/proj"),
+            main_worktree=Path("/tmp/proj"),
+        )
         with (
             patch.object(
                 create_topic_dir, "get_specs_dir",
@@ -209,6 +311,7 @@ class TestMain:
                 create_topic_dir, "local_iso_timestamp",
                 return_value="2026-05-24T20:00:00+08:00"
             ),
+            patch.object(cfg, "get_context", return_value=mock_ctx),
         ):
             create_topic_dir.main()
 
@@ -266,6 +369,10 @@ class TestMain:
             "user_name": "Test",
             "user_email": "test@test.com",
         }
+        mock_ctx = MockSpexContext(
+            top_workdir=Path("/tmp/proj"),
+            main_worktree=Path("/tmp/proj"),
+        )
 
         import prompt as prompt_mod
 
@@ -285,6 +392,7 @@ class TestMain:
                 prompt_mod, "render_prompt",
                 return_value="# Rendered Template"
             ),
+            patch.object(cfg, "get_context", return_value=mock_ctx),
         ):
             create_topic_dir.main()
 
@@ -307,6 +415,10 @@ class TestMain:
             "user_name": "Test",
             "user_email": "test@test.com",
         }
+        mock_ctx = MockSpexContext(
+            top_workdir=Path("/tmp/proj"),
+            main_worktree=Path("/tmp/proj"),
+        )
         with (
             patch.object(
                 create_topic_dir, "get_specs_dir",
@@ -327,6 +439,7 @@ class TestMain:
                 common, "get_specs_dir",
                 return_value="/mock/specs-dir"
             ),
+            patch.object(cfg, "get_context", return_value=mock_ctx),
         ):
             create_topic_dir.main()
 
@@ -347,6 +460,10 @@ class TestMain:
             "user_name": "Test",
             "user_email": "test@test.com",
         }
+        mock_ctx = MockSpexContext(
+            top_workdir=Path("/tmp/proj"),
+            main_worktree=Path("/tmp/proj"),
+        )
         with (
             patch.object(
                 create_topic_dir, "get_specs_dir",
@@ -359,6 +476,7 @@ class TestMain:
                 create_topic_dir, "local_iso_timestamp",
                 return_value="2026-05-24T20:00:00+08:00"
             ),
+            patch.object(cfg, "get_context", return_value=mock_ctx),
         ):
             create_topic_dir.main()
 
