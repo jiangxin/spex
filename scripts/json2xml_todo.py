@@ -8,7 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import check_help_flag, escape_xml_text, load_and_validate_todo_json
+from common import (
+    check_help_flag,
+    escape_xml_text,
+    load_and_validate_todo_json,
+    validate_unique_ids,
+)
 
 USAGE = """\
 Usage: spex todo json2xml <todo.json>
@@ -56,23 +61,8 @@ def main(argv=None):
 
     data = load_and_validate_todo_json(json_path)
 
-    seen_ids = {}
+    validate_unique_ids(data)
     for i, item in enumerate(data):
-        if not isinstance(item, dict):
-            print(f"Error: item[{i}] is not an object.", file=sys.stderr)
-            sys.exit(1)
-        step_id = item.get("id", "")
-        if not step_id:
-            print(f"Error: item[{i}]: 'id' is missing or empty.", file=sys.stderr)
-            sys.exit(1)
-        if step_id in seen_ids:
-            print(
-                f"Error: item[{i}]: duplicate id '{step_id}'"
-                f" (first seen at item[{seen_ids[step_id]}]).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        seen_ids[step_id] = i
         if not item.get("name"):
             print(f"Error: item[{i}]: 'name' is missing or empty.", file=sys.stderr)
             sys.exit(1)

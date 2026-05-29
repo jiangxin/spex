@@ -115,7 +115,7 @@ class TestCmdValidate:
             main(["validate", path])
 
         err = capsys.readouterr().err
-        assert "'id' must not be empty" in err
+        assert "'id' is missing or empty" in err
 
 
 # ===================== cmd_get_next_undone =====================

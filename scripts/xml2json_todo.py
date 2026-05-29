@@ -14,6 +14,7 @@ from common import (
     escape_xml_preserving_entities,
     load_todo,
     strip_date_prefix,
+    validate_unique_ids,
 )
 
 USAGE = """\
@@ -112,7 +113,6 @@ def convert_xml_to_todo(xml_path):
         sys.exit(1)
 
     results = []
-    seen_ids = {}
 
     for i, step in enumerate(steps):
         # Extract step-id
@@ -124,16 +124,6 @@ def convert_xml_to_todo(xml_path):
             )
             sys.exit(1)
         step_id = id_elem.text.strip()
-
-        # Check duplicate ids
-        if step_id in seen_ids:
-            print(
-                f"Error: step[{i}]: duplicate id '{step_id}'"
-                f" (first seen at step[{seen_ids[step_id]}]).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        seen_ids[step_id] = i
 
         # Extract step-name
         name_elem = step.find("step-name")
@@ -163,6 +153,7 @@ def convert_xml_to_todo(xml_path):
             "commit_title": "",
         })
 
+    validate_unique_ids(results)
     return results
 
 

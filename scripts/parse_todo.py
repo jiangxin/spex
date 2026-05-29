@@ -10,7 +10,7 @@ Subcommands:
 import sys
 
 from cli import ArgumentParser
-from common import load_and_validate_todo_json
+from common import load_and_validate_todo_json, validate_unique_ids
 
 REQUIRED_FIELDS = {"id", "name", "details", "completed_at", "commit_title"}
 
@@ -100,27 +100,15 @@ def cmd_validate(args):
     """Validate todo.json structure."""
     data = load_and_validate_todo_json(args.todo_json)
 
+    validate_unique_ids(data)
+
     errors = []
-    seen_ids = {}
     for i, item in enumerate(data):
-        if not isinstance(item, dict):
-            errors.append(f"  item[{i}]: must be an object.")
-            continue
         missing = REQUIRED_FIELDS - set(item.keys())
         if missing:
             errors.append(
                 f"  item[{i}]: missing fields: {', '.join(sorted(missing))}"
             )
-        item_id = item.get("id", "")
-        if not item_id:
-            errors.append(f"  item[{i}]: 'id' must not be empty")
-        elif item_id in seen_ids:
-            errors.append(
-                f"  item[{i}]: duplicate id '{item_id}'"
-                f" (first seen at item[{seen_ids[item_id]}])"
-            )
-        else:
-            seen_ids[item_id] = i
 
     if errors:
         print("Error: invalid todo items:", file=sys.stderr)

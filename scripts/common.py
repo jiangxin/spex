@@ -261,6 +261,37 @@ def load_and_validate_todo_json(path, allow_empty=False):
     return data
 
 
+def validate_unique_ids(data):
+    """Check all items have unique non-empty 'id' fields.
+
+    Args:
+        data: List of dicts, each expected to have an 'id' key.
+
+    Exits with code 1 if any item is not a dict, or if any id is
+    empty or duplicated.
+    """
+    seen_ids = {}
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            print(f"Error: item[{i}] is not an object.", file=sys.stderr)
+            sys.exit(1)
+        step_id = item.get("id", "")
+        if not step_id:
+            print(
+                f"Error: item[{i}]: 'id' is missing or empty.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if step_id in seen_ids:
+            print(
+                f"Error: item[{i}]: duplicate id '{step_id}'"
+                f" (first seen at item[{seen_ids[step_id]}]).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        seen_ids[step_id] = i
+
+
 def is_topic_completed(topic_dir: Path) -> bool:
     """Return True if all tasks in todo.json have non-empty completed_at."""
     data = load_todo(topic_dir)
