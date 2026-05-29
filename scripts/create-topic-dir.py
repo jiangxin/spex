@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
 import config as cfg
-from common import get_specs_dir, local_iso_timestamp
+from common import atomic_write_json, get_specs_dir, local_iso_timestamp
 
 SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
@@ -91,9 +91,7 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     if description:
         meta["description"] = description
     meta_path = Path(topic_dir) / "meta.json"
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    atomic_write_json(meta_path, meta)
 
 
 def main(argv=None):

@@ -221,7 +221,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     if name in ("apply-one-task", "apply-commit") and not metadata.get(
         "next_task_text"
     ):
-        sys.exit(0)
+        return ""
 
     validate_required_meta(content, metadata)
     rendered = Template(content).render(**metadata)
