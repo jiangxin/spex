@@ -3,6 +3,7 @@
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -19,7 +20,9 @@ from config import (
     _resolve_spex_roots,
     clear_config_cache,
     generate_default_toml,
+    generate_updated_toml,
     get_context,
+    get_effective_user_config,
     load_config,
     resolve_spex_root_and_roots,
     set_spex_config_file,
@@ -879,4 +882,99 @@ class TestGenerateDefaultToml:
         assert lines[2] == '# spex_root = ".spex"'
         assert lines[3] == ""
         assert lines[4] == "# Create and manage branches for specs"
+
+
+# ===================== generate_updated_toml =====================
+
+
+class TestGenerateUpdatedToml:
+    def test_empty_config_equals_default(self):
+        assert generate_updated_toml({}) == generate_default_toml()
+
+    def test_user_key_uncommented(self):
+        result = generate_updated_toml({"spex_root": "custom"})
+        assert 'spex_root = "custom"' in result
+        assert '# spex_root = ' not in result
+
+    def test_other_keys_stay_commented(self):
+        result = generate_updated_toml({"spex_root": "custom"})
+        assert "# branch_management = false" in result
+        assert '# submit_method = "merge"' in result
+
+    def test_boolean_user_value(self):
+        result = generate_updated_toml({"branch_management": True})
+        assert "branch_management = true" in result
+        assert "# branch_management" not in result
+
+    def test_unknown_key_ignored(self):
+        result = generate_updated_toml({"unknown_key": "val"})
+        assert "unknown_key" not in result
+        assert result == generate_default_toml()
+
+    def test_all_keys_set(self):
+        cfg = {
+            "spex_root": "/my/root",
+            "branch_management": True,
+            "main_branch_name": "develop",
+            "submit_method": "pr",
+        }
+        result = generate_updated_toml(cfg)
+        assert 'spex_root = "/my/root"' in result
+        assert "branch_management = true" in result
+        assert 'main_branch_name = "develop"' in result
+        assert 'submit_method = "pr"' in result
+        for line in result.splitlines():
+            if line.startswith("#") and " = " in line and line != "[spex]":
+                key_part = line.lstrip("# ").split(" = ")[0]
+                assert key_part not in cfg
+
+    def test_comments_always_present(self):
+        result = generate_updated_toml({"spex_root": "x"})
+        assert "# Root directory for spec storage" in result
+        assert "# Create and manage branches for specs" in result
+
+
+# ===================== get_effective_user_config =====================
+
+
+class TestGetEffectiveUserConfig:
+    def test_returns_user_set_values(self, tmp_path):
+        """Returns only explicitly set values, not defaults."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text('[spex]\nbranch_management = true\n')
+
+        with patch("config.Path.home", return_value=tmp_path / "no_home"):
+            clear_config_cache()
+            result = get_effective_user_config(str(tmp_path))
+
+        assert result == {"branch_management": True}
+
+    def test_returns_empty_when_no_tomls(self, tmp_path):
+        """Returns empty dict when no config files exist."""
+        target = tmp_path / "empty"
+        target.mkdir()
+
+        with patch("config.Path.home", return_value=tmp_path / "no_home"):
+            clear_config_cache()
+            result = get_effective_user_config(str(target))
+
+        assert result == {}
+
+    def test_merges_multiple_tomls(self, tmp_path):
+        """Merges values from project and home-level tomls."""
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".spex.toml").write_text('[spex]\nspex_root = "proj"\n')
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        (fake_home / ".spex.toml").write_text(
+            '[spex]\nbranch_management = true\n'
+        )
+
+        with patch("config.Path.home", return_value=fake_home):
+            clear_config_cache()
+            result = get_effective_user_config(str(project))
+
+        assert result["spex_root"] == "proj"
+        assert result["branch_management"] is True
 

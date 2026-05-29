@@ -1,5 +1,12 @@
 [spex]
+# Root directory for spec storage
 spex_root = ".spex"
+
+# Create and manage branches for specs
 branch_management = true
-# main_branch_name =
+
+# Restrict spec creation to this branch
+# main_branch_name = ""
+
+# How to submit completed work: merge or pr
 # submit_method = "merge"

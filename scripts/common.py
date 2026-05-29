@@ -50,7 +50,7 @@ def clear_spex_root_cache():
     clear_config_cache()
 
 
-def _sync_all_templates(spex_root_path: Path):
+def _sync_all_templates(spex_root_path: Path, verbose=False):
     """Sync all built-in templates to spex_root/templates/examples/.
 
     Iterates every .md file in the skill's templates/ directory and calls
@@ -62,19 +62,25 @@ def _sync_all_templates(spex_root_path: Path):
         return
     for src in source_dir.iterdir():
         if src.is_file() and src.suffix == ".md":
-            _sync_builtin_template(src.name, spex_root=spex_root_path)
+            _sync_builtin_template(
+                src.name, spex_root=spex_root_path, verbose=verbose,
+            )
 
 
-def _write_internal_gitignore(spex_root_path: Path):
+def _write_internal_gitignore(spex_root_path: Path, verbose=False):
     """Create .gitignore files inside spex_root to ignore generated content."""
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
         root_gi.write_text("/specs/\n/archives/\n")
+        if verbose:
+            print(f"  Created: {root_gi}")
     tpl_dir = spex_root_path / TEMPLATE_DIR
     tpl_dir.mkdir(parents=True, exist_ok=True)
     tpl_gi = tpl_dir / ".gitignore"
     if not tpl_gi.exists():
         tpl_gi.write_text("/examples/\n")
+        if verbose:
+            print(f"  Created: {tpl_gi}")
 
 
 def _resolve_hook_roots(workdir=None):
@@ -86,17 +92,22 @@ def _resolve_hook_roots(workdir=None):
     return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
-def ensure_initialized(spex_root):
+def ensure_initialized(spex_root, verbose=False):
     """Ensure spex_root directory structure is initialized."""
     spex_root_path = Path(spex_root)
     if (spex_root_path / "specs").is_dir():
+        if verbose:
+            print(f"Already initialized: {spex_root_path}")
         return
+    if verbose:
+        print(f"Initializing: {spex_root_path}")
     spex_root_path.mkdir(parents=True, exist_ok=True)
-    (spex_root_path / "specs").mkdir(exist_ok=True)
-    (spex_root_path / "archives").mkdir(exist_ok=True)
-    (spex_root_path / "hooks").mkdir(exist_ok=True)
-    _sync_all_templates(spex_root_path)
-    _write_internal_gitignore(spex_root_path)
+    for subdir in ("specs", "archives", "hooks"):
+        (spex_root_path / subdir).mkdir(exist_ok=True)
+        if verbose:
+            print(f"  Created: {spex_root_path / subdir}/")
+    _sync_all_templates(spex_root_path, verbose=verbose)
+    _write_internal_gitignore(spex_root_path, verbose=verbose)
 
 
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
@@ -365,7 +376,9 @@ def get_spec_description(topic_dir: Path) -> str:
     return parse_front_matter_description(content)
 
 
-def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
+def _sync_builtin_template(
+    template_name: str, workdir=None, spex_root=None, verbose=False,
+):
     """Sync a built-in template to spex_root/templates/examples/ if version differs.
 
     If the target file does not exist, copy it directly.
@@ -390,6 +403,8 @@ def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
     if not target.exists():
         examples_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+        if verbose:
+            print(f"  Synced template: {template_name}")
         return
 
     src_stat = source.stat()
@@ -397,14 +412,20 @@ def _sync_builtin_template(template_name: str, workdir=None, spex_root=None):
     if (tgt_stat.st_mtime != src_stat.st_mtime
             or tgt_stat.st_size != src_stat.st_size):
         shutil.copy2(source, target)
+        if verbose:
+            print(f"  Updated template: {template_name}")
         return
 
     source_version = _extract_template_version(source)
     target_version = _extract_template_version(target)
     if source_version and source_version == target_version:
-        return  # Already up-to-date
+        if verbose:
+            print(f"  Template up-to-date: {template_name}")
+        return
 
     shutil.copy2(source, target)
+    if verbose:
+        print(f"  Updated template: {template_name}")
 
 
 def _resolve_template_roots(workdir=None):

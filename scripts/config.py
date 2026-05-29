@@ -212,6 +212,11 @@ def get_top_workdir(workdir: str | Path | None = None) -> Path | None:
     return _get_top_workdir(workdir)
 
 
+def get_main_worktree(workdir: str | Path | None = None) -> Path | None:
+    """Public wrapper for _get_main_worktree."""
+    return _get_main_worktree(workdir)
+
+
 def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     """Return the discovered TOML config paths (highest priority first)."""
     main_wt = _get_main_worktree(workdir)
@@ -340,7 +345,7 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
     top_workdir = _get_top_workdir(workdir)
     main_worktree = _get_main_worktree(workdir)
-    spex_tomls = _find_spex_tomls(main_worktree)
+    spex_tomls = _find_spex_tomls(main_worktree, workdir)
     config = load_config(workdir)
     spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
 
@@ -357,19 +362,68 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
 def generate_default_toml() -> str:
     """Generate a TOML string with all config defaults as commented-out entries."""
+    return generate_updated_toml({})
+
+
+def _render_toml_value(value) -> str:
+    """Render a Python value as a TOML literal."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
+
+
+def generate_updated_toml(user_config: dict) -> str:
+    """Generate a TOML string preserving user-set values from an existing config.
+
+    Keys present in user_config are rendered uncommented with the user's value.
+    Keys absent from user_config are rendered as commented-out defaults.
+    Keys in user_config that are not in the schema are ignored.
+    """
     lines = ["[spex]"]
-    for i, (key, value, comment) in enumerate(_CONFIG_SCHEMA):
+    for i, (key, default, comment) in enumerate(_CONFIG_SCHEMA):
         if i > 0:
             lines.append("")
         lines.append(f"# {comment}")
-        if isinstance(value, bool):
-            rendered = "true" if value else "false"
-        elif isinstance(value, str):
-            rendered = f'"{value}"'
+        if key in user_config:
+            rendered = _render_toml_value(user_config[key])
+            lines.append(f"{key} = {rendered}")
         else:
-            rendered = str(value)
-        lines.append(f"# {key} = {rendered}")
+            rendered = _render_toml_value(default)
+            lines.append(f"# {key} = {rendered}")
     return "\n".join(lines) + "\n"
+
+
+def safe_update_toml(toml_path):
+    """Safe-update a single .spex.toml with the latest config schema.
+
+    Reads the existing file, preserves user-set keys, and regenerates with
+    the full schema. New keys appear as commented-out defaults.
+
+    Returns True if the file was modified.
+    """
+    existing = _load_toml_config(toml_path)
+    user_config = (existing or {}).get("spex", {})
+    new_content = generate_updated_toml(user_config)
+    old_content = toml_path.read_text(encoding="utf-8")
+    if new_content != old_content:
+        toml_path.write_text(new_content, encoding="utf-8")
+        return True
+    return False
+
+
+def get_effective_user_config(workdir: str | Path | None = None) -> dict:
+    """Return merged user-set config values (without defaults) for a workdir.
+
+    Discovers .spex.toml files relative to workdir and merges their [spex]
+    tables. Only explicitly set keys are included — commented-out defaults
+    are not. Use this to create a new project-level .spex.toml that inherits
+    parent settings.
+    """
+    main_wt = _get_main_worktree(workdir)
+    spex_tomls = _find_spex_tomls(main_wt, workdir)
+    return _merge_configs(spex_tomls)
 
 
 def clear_config_cache() -> None:
