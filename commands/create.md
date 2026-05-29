@@ -56,8 +56,8 @@ Based on `$requirement`, generate a JSON object with two fields:
 
 - `topic`: a short English name (<32 bytes) using only `[a-z0-9-]`,
   replacing spaces with `-`. Do NOT prepend any date prefix.
-- `description`: a brief English summary of the requirement, ideally
-  under 100 characters.
+- `description`: a brief English summary of the requirement, used as
+  merge commit message and PR description. Wrap lines at ~60 characters.
 
 Example: `{"topic": "add-login-api", "description": "Add user login API with JWT authentication"}`
 

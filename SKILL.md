@@ -1,13 +1,13 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill for creating and managing specification documents. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit (merge), archive, init."
+description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit (merge), archive, init."
 metadata:
   version: 0.2.0
 arguments:
   - name: command
     required: false
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. If omitted, infer intent from the remaining text and ask user to confirm."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. If omitted, infer intent from the remaining text; route directly when confidence ≥ 90%, otherwise ask user to confirm."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -15,48 +15,56 @@ arguments:
 
 # Spex — Spec-Driven Development
 
-A skill for managing specification documents in a structured spec directory.
+A spec-driven development skill that manages the full SDLC — from requirement
+analysis and design to incremental implementation, and submission.
 
 ## Usage
 
 ```
-/spex <command> [arguments...]
+/spex [command] [prompt]
 ```
+
+1. **No arguments** (`/spex`) — display the Supported Commands table
+   below and stop.
+2. **Recognized command** (`/spex create ...`) — route to the
+   corresponding command file per Command Routing and execute its SOP.
+3. **Free-form prompt** (`/spex <arbitrary text>`) — infer intent using
+   the heuristics in Command Routing. If confidence is ≥ 90%, route
+   directly. Otherwise, ask the user to confirm intent before routing.
 
 ## Supported Commands
 
-| Command    | Aliases          | Description                       |
-|------------|------------------|-----------------------------------|
-| `create`   | `new`            | Create a spec document (no code changes) |
-| `modify`   |                  | Modify a spec's requirements      |
-| `apply`    | `run`, `do`, `go`| Apply a spec to generate code     |
-| `apply-one-step` | `step`    | Apply one step from a spec's todo list |
-| `submit`   | `merge`          | Submit completed work (merge or PR) |
-| `archive`  |                  | Archive a completed spec          |
-| `init`     |                  | Initialize spex environment       |
+| Command         | Aliases            | Description                          |
+|-----------------|--------------------|--------------------------------------|
+| `create`        | `new`              | Create a spec document (no code changes) |
+| `modify`        |                    | Modify a spec's requirements         |
+| `apply`         | `run`, `do`, `go`  | Apply a spec to generate code        |
+| `apply-one-step`| `step`             | Apply one step from a spec's todo list |
+| `submit`        | `merge`            | Submit completed work (merge or PR)  |
+| `archive`       |                    | Archive a completed spec             |
+| `init`          |                    | Initialize spex environment          |
 
 ## Command Routing
 
-`$spex_skill_dir` refers to the directory where this SKILL.md resides.
+All command file paths below are relative to the directory where this
+SKILL.md resides.
 
-Parse the first argument as `<command>` and route to the corresponding
-command file:
+| Match                              | Command file                  |
+|------------------------------------|-------------------------------|
+| `create` / `new`                   | `commands/create.md`          |
+| `modify`                           | `commands/modify.md`          |
+| `apply` / `run` / `do` / `go`     | `commands/apply.md`           |
+| `apply-one-step` / `step`          | `commands/apply-one-step.md`  |
+| `submit` / `merge`                 | `commands/submit.md`          |
+| `archive`                          | `commands/archive.md`         |
+| `init`                             | `commands/init.md`            |
 
-- `create` / `new` → `commands/create.md`
-- `modify` → `commands/modify.md`
-- `apply` / `run` / `do` / `go` → `commands/apply.md`
-- `apply-one-step` / `step` → `commands/apply-one-step.md`
-- `submit` / `merge` → `commands/submit.md`
-- `archive` → `commands/archive.md`
-- `init` → `commands/init.md`
+### Routing Discipline
 
-### ⚠️ CRITICAL — Routing Discipline
-
-**You are a router, not an assistant.** Your ONLY job after receiving
-a `/spex` invocation is to resolve a command and load the corresponding
-command file. The user's prompt text (e.g. "I want to add a login
-feature") is NOT an instruction for you to act on — it is merely
-context to be forwarded as `$prompt` to the command's SOP.
+**You are a router, not an assistant.** After receiving a `/spex`
+invocation, resolve a command and load the corresponding command file.
+The user's prompt text is context to be forwarded as `$prompt` to the
+command's SOP — never act on it directly.
 
 - **NEVER** act on the user's prompt directly (no reading code, no
   writing files, no planning).
@@ -64,40 +72,24 @@ context to be forwarded as `$prompt` to the command's SOP.
 - **ALWAYS** load the full command markdown and follow every Phase
   exactly as written.
 
-The only valid outputs are: (a) a command file's SOP execution,
-(b) an AskUserQuestion for intent resolution, or (c) the usage table.
-Anything else is a routing failure.
+### Free-form Intent Inference
 
----
+When the first argument does not match any route, infer intent using
+these heuristics:
 
-### Constraints
+| If the user's text suggests...                      | Suggest command   |
+|-----------------------------------------------------|-------------------|
+| A new feature, requirement, or idea to implement    | `create`          |
+| Changing requirements for an existing spec           | `modify`          |
+| Starting implementation of a spec                    | `apply`           |
+| Working through a spec one step at a time            | `apply-one-step`  |
+| Finishing, merging, or submitting completed work     | `submit`          |
+| Cleaning up completed specs                          | `archive`         |
+| Setting up spex for the first time                   | `init`            |
 
-1. If the first argument matches a route above, you MUST load the
-   corresponding command markdown file and follow its procedure
-   step-by-step exactly as written. Do NOT interpret the user's prompt
-   directly or skip loading the command file.
-
-2. If the first argument does not match any route, treat the remaining
-   text as a free-form prompt. Infer the user's intent and ask the user
-   to confirm which command to run, then execute the selected command
-   with the free-form text as the `$prompt` argument. Use the following
-   intent-matching heuristics:
-
-   | If the user's text suggests... | Suggest command |
-   |---|---|
-   | A new feature, requirement, or idea to implement | `create` |
-   | Changing requirements for an existing spec | `modify` |
-   | Starting implementation of a spec | `apply` |
-   | Working through a spec one step at a time | `apply-one-step` |
-   | Finishing, merging, or submitting completed work | `submit` |
-   | Cleaning up completed specs | `archive` |
-   | Setting up spex for the first time | `init` |
-
-   If a single command is clearly implied, offer it as the recommended
-   option with the user's text as context. If multiple commands are
-   plausible, present 2-3 options for the user to choose from. If the
-   text is too vague (e.g. just "help" or empty), show the usage table
-   and stop.
-
-3. The user MUST confirm or select a command before execution. Never
-   auto-execute on inferred intent.
+- **Confidence ≥ 90%**: route directly with the free-form text as
+  `$prompt`.
+- **Confidence < 90%** or multiple commands plausible: use
+  ask the user to confirm before routing.
+- **Too vague** (e.g. just "help" or empty): show the Supported
+  Commands table and stop.

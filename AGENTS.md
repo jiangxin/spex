@@ -11,9 +11,9 @@
 
 ## About This Project
 
-This project is a **Claude Code skill** (invoked via `/spex`). All changes to
-`SKILL.md`, commands, scripts, and references MUST conform to the Claude Code
-Skills Specification documented in `references/SKILLS-SPEC.md`.
+This project is a **coding agent skill** (invoked via `/spex`). All changes
+to `SKILL.md`, commands, scripts, and references MUST conform to the Skills
+Specification documented in `references/SKILLS-SPEC.md`.
 
 ## Language
 
@@ -26,7 +26,7 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 
 - `SKILL.md` — Skill entry point (front-matter + instructions).
 - `commands/` — Sub-command definitions (Markdown).
-- `scripts/` — Executable helper scripts, written in Python (3.9+).
+- `scripts/` — Executable helper scripts, written in Python (3.11+).
 - `scripts/common.py` — Shared library (see API below).
 - `references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
@@ -35,24 +35,31 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 
 | Function | Description |
 |----------|-------------|
+| `check_help_flag(usage_text, argv)` | Print usage and exit if `-h`/`--help` in argv. |
+| `clear_spex_root_cache()` | Clear the spex_root configuration cache. |
+| `ensure_initialized(spex_root)` | Create spex_root dirs, templates, and .gitignore if missing. |
 | `get_spex_root(workdir, require_git, auto_init)` | Resolve spex_root path (.spex.toml > default). |
-| `ensure_initialized(spex_root)` | Ensure spex_root dirs, templates, and .gitignore are set up. |
-| `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
+| `get_spex_roots(workdir)` | Return all resolved spex_root directories (highest priority first). |
+| `get_spex_tomls(workdir)` | Return discovered `.spex.toml` config paths. |
 | `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
 | `get_current_workdir()` | Return git toplevel of cwd, or `None` if not in a repo. |
 | `same_path(a, b)` | True if two path strings resolve to the same location (symlink-safe). |
-| `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
 | `load_meta(topic_dir)` | Load and parse `meta.json`; returns dict or `None`. |
+| `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
 | `load_todo(topic_dir)` | Load and parse `todo.json`; returns list or `None`. |
 | `is_topic_completed(topic_dir)` | True if all tasks in `todo.json` have `completed_at`. |
 | `has_undone_tasks(topic_dir)` | True if `todo.json` has incomplete items. |
 | `get_todo_progress(topic_dir)` | Return `(completed_count, total_count)`. |
 | `atomic_write_json(path, data)` | Atomically write JSON via tempfile + `os.replace`. |
-| `get_template(name, workdir)` | Return template content (front-matter stripped). |
-| `get_spec_template(workdir)` | Shortcut for `get_template("spec.md")`. |
 | `local_iso_timestamp()` | Current local time as ISO 8601 string. |
-| `clear_spex_root_cache()` | Reset the internal spex_root cache. |
+| `strip_date_prefix(topic_name)` | Remove `YYYY-MM-DD-HH-MM-` prefix from a topic name. |
+| `strip_front_matter(content)` | Remove YAML front-matter block from template content. |
+| `parse_front_matter_description(content)` | Extract `description` from YAML front-matter. |
+| `get_spec_description(topic_dir)` | Return topic description from `meta.json` or `spec.md` front-matter. |
+| `get_template(name, workdir)` | Return template content (front-matter stripped). |
+| `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
+| `format_topic(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
 
 ## Quality Checks
 
@@ -70,8 +77,8 @@ The test suite is split into two tiers:
 
 | Target | Command | Tests | Duration |
 |--------|---------|-------|----------|
-| Fast (pre-commit) | `make check` | 372 (default) | ~4s |
-| Full | `make check-all` | 404 (all) | ~32s |
+| Fast (pre-commit) | `make check` | default | seconds |
+| Full | `make check-all` | all | ~30s |
 
 Tests in `tests/test_prompt.py` (except `TestBuildTaskContext`) are marked
 `@pytest.mark.slow` because each one spawns `git init` subprocesses (~0.5–2s
