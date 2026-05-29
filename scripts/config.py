@@ -357,18 +357,36 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
 def generate_default_toml() -> str:
     """Generate a TOML string with all config defaults as commented-out entries."""
+    return generate_updated_toml({})
+
+
+def _render_toml_value(value) -> str:
+    """Render a Python value as a TOML literal."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
+
+
+def generate_updated_toml(user_config: dict) -> str:
+    """Generate a TOML string preserving user-set values from an existing config.
+
+    Keys present in user_config are rendered uncommented with the user's value.
+    Keys absent from user_config are rendered as commented-out defaults.
+    Keys in user_config that are not in the schema are ignored.
+    """
     lines = ["[spex]"]
-    for i, (key, value, comment) in enumerate(_CONFIG_SCHEMA):
+    for i, (key, default, comment) in enumerate(_CONFIG_SCHEMA):
         if i > 0:
             lines.append("")
         lines.append(f"# {comment}")
-        if isinstance(value, bool):
-            rendered = "true" if value else "false"
-        elif isinstance(value, str):
-            rendered = f'"{value}"'
+        if key in user_config:
+            rendered = _render_toml_value(user_config[key])
+            lines.append(f"{key} = {rendered}")
         else:
-            rendered = str(value)
-        lines.append(f"# {key} = {rendered}")
+            rendered = _render_toml_value(default)
+            lines.append(f"# {key} = {rendered}")
     return "\n".join(lines) + "\n"
 
 

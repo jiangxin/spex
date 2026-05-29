@@ -11,7 +11,12 @@ from common import (
     ensure_initialized,
     get_current_workdir,
 )
-from config import clear_config_cache, get_context
+from config import (
+    _load_toml_config,
+    clear_config_cache,
+    generate_updated_toml,
+    get_context,
+)
 
 
 def is_initialized(workdir=None):
@@ -75,7 +80,22 @@ def _install_cli(verbose=False):
 
 
 def _create_toml_config(verbose=False):
-    """Create ~/.spex.toml if no config exists yet."""
+    """Create or safely update ~/.spex.toml with the latest config schema."""
+    home_toml = Path.home() / ".spex.toml"
+
+    if home_toml.is_file():
+        existing = _load_toml_config(home_toml)
+        user_config = (existing or {}).get("spex", {})
+        new_content = generate_updated_toml(user_config)
+        old_content = home_toml.read_text(encoding="utf-8")
+        if new_content != old_content:
+            home_toml.write_text(new_content, encoding="utf-8")
+            print(f"Reinitialized: {home_toml}")
+            clear_config_cache()
+        elif verbose:
+            print(f"Config up-to-date: {home_toml}")
+        return
+
     ctx = get_context()
     if ctx.spex_tomls:
         if verbose:
@@ -83,7 +103,7 @@ def _create_toml_config(verbose=False):
         return
 
     _create_default_toml()
-    print(f"Created: {Path.home() / '.spex.toml'}")
+    print(f"Created: {home_toml}")
     clear_config_cache()
 
 
@@ -93,13 +113,9 @@ def run_init(workdir=None, verbose=False):
         workdir = get_current_workdir()
 
     _install_deps(verbose=verbose)
+    _create_toml_config(verbose=verbose)
 
     ctx = get_context(workdir)
-
-    if not ctx.spex_tomls:
-        _create_toml_config(verbose=verbose)
-        clear_config_cache()
-        ctx = get_context(workdir)
 
     spex_root = Path(ctx.spex_root)
     ensure_initialized(str(spex_root), verbose=verbose)
