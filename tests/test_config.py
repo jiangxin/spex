@@ -867,3 +867,16 @@ class TestGenerateDefaultToml:
         assert '# main_branch_name = ""' in result
         assert '# submit_method = "merge"' in result
 
+    def test_comments_present(self):
+        result = generate_default_toml()
+        assert "# Root directory for spec storage" in result
+        assert "# Create and manage branches for specs" in result
+
+    def test_blank_line_separators(self):
+        lines = generate_default_toml().splitlines()
+        assert lines[0] == "[spex]"
+        assert lines[1] == "# Root directory for spec storage"
+        assert lines[2] == '# spex_root = ".spex"'
+        assert lines[3] == ""
+        assert lines[4] == "# Create and manage branches for specs"
+

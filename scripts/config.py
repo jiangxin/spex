@@ -19,12 +19,14 @@ class SpexConfig(TypedDict, total=False):
     main_branch_name: str
     submit_method: str
 
-_DEFAULTS: SpexConfig = {
-    "spex_root": ".spex",
-    "branch_management": False,
-    "main_branch_name": "",
-    "submit_method": "merge",
-}
+_CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
+    ("spex_root", ".spex", "Root directory for spec storage"),
+    ("branch_management", False, "Create and manage branches for specs"),
+    ("main_branch_name", "", "Restrict spec creation to this branch"),
+    ("submit_method", "merge", "How to submit completed work: merge or pr"),
+]
+
+_DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
 
 @dataclass
 class SpexContext:
@@ -355,9 +357,12 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
 
 
 def generate_default_toml() -> str:
-    """Generate a TOML string with all _DEFAULTS as commented-out entries."""
+    """Generate a TOML string with all config defaults as commented-out entries."""
     lines = ["[spex]"]
-    for key, value in _DEFAULTS.items():
+    for i, (key, value, comment) in enumerate(_CONFIG_SCHEMA):
+        if i > 0:
+            lines.append("")
+        lines.append(f"# {comment}")
         if isinstance(value, bool):
             rendered = "true" if value else "false"
         elif isinstance(value, str):
