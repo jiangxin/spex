@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
@@ -12,6 +11,7 @@ from pathlib import Path
 
 import common
 import config as cfg
+from cli import ArgumentParser
 from common import (
     atomic_write_json,
     get_git_info,
@@ -85,7 +85,8 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="spex create-topic",
         description="Create a topic directory. Reads requirement from stdin "
         "and saves it to meta.json prompts field."
     )
@@ -109,7 +110,7 @@ def main(argv=None):
         default="",
         help="Brief description of the topic (saved to meta.json)"
     )
-    args = parser.parse_args(argv)
+    args = parser.parse(argv)
 
     if args.get and not args.json:
         print("Error: --get requires --json", file=sys.stderr)

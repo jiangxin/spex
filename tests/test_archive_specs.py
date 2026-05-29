@@ -287,9 +287,9 @@ class TestMain:
         ):
             with pytest.raises(SystemExit) as exc_info:
                 archive_specs.main()
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "--topic requires a value" in err
+        assert "--topic" in err
 
 
 class TestArchiveSingleTopic:

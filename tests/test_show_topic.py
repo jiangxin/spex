@@ -89,7 +89,7 @@ class TestMain:
         monkeypatch.setattr(sys, "argv", ["prog"])
         with pytest.raises(SystemExit) as exc_info:
             show_topic.main()
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
     def test_help_flag(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["prog", "-h"])

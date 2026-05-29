@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
 import sys
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import (
     atomic_write_json,
     get_git_info,
@@ -219,7 +219,8 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
 def main(argv=None):
     import json
 
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
+        prog="spex prompt",
         description="Render a Jinja2 template with metadata."
     )
     parser.add_argument("name", help="Template name (without .md extension)")
@@ -229,7 +230,7 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true",
                         help="Output JSON with rendered prompt to stdout")
     parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
-    args = parser.parse_args(argv)
+    args = parser.parse(argv)
 
     try:
         from jinja2 import TemplateError
