@@ -13,7 +13,7 @@ from common import (
     _sync_builtin_template,
     clear_spex_root_cache,
 )
-from config import SpexContext
+from config import SpexContext, generate_default_toml
 
 
 @pytest.fixture(autouse=True)
@@ -257,7 +257,7 @@ class TestCreateTomlConfig:
 
         toml_file = fake_home / ".spex.toml"
         assert toml_file.exists()
-        assert toml_file.read_text() == '[spex]\n# spex_root = ".spex"\n'
+        assert toml_file.read_text() == generate_default_toml()
 
     def test_preserves_existing_config(self, tmp_path):
         """Does not overwrite when config already exists."""

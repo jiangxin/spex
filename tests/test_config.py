@@ -18,6 +18,7 @@ from config import (
     _merge_configs,
     _resolve_spex_roots,
     clear_config_cache,
+    generate_default_toml,
     get_context,
     load_config,
     resolve_spex_root_and_roots,
@@ -839,4 +840,43 @@ class TestGetMainWorktree:
 
         assert first == second
         assert first == repo.resolve()
+
+
+# ===================== generate_default_toml =====================
+
+
+class TestGenerateDefaultToml:
+    def test_header_is_first_line(self):
+        result = generate_default_toml()
+        first_line = result.splitlines()[0]
+        assert first_line == "[spex]"
+
+    def test_all_default_keys_present(self):
+        result = generate_default_toml()
+        for key in ("spex_root", "branch_management", "main_branch_name", "submit_method"):
+            assert f"# {key} = " in result
+
+    def test_boolean_formatting(self):
+        result = generate_default_toml()
+        assert "# branch_management = false" in result
+        assert "False" not in result
+
+    def test_string_formatting(self):
+        result = generate_default_toml()
+        assert '# spex_root = ".spex"' in result
+        assert '# main_branch_name = ""' in result
+        assert '# submit_method = "merge"' in result
+
+    def test_comments_present(self):
+        result = generate_default_toml()
+        assert "# Root directory for spec storage" in result
+        assert "# Create and manage branches for specs" in result
+
+    def test_blank_line_separators(self):
+        lines = generate_default_toml().splitlines()
+        assert lines[0] == "[spex]"
+        assert lines[1] == "# Root directory for spec storage"
+        assert lines[2] == '# spex_root = ".spex"'
+        assert lines[3] == ""
+        assert lines[4] == "# Create and manage branches for specs"
 
