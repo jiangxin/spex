@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Convert JSON-formatted todo files to XML format."""
 
+from __future__ import annotations
+
 import os
 import sys
 import tempfile

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Show detailed information about a single spec topic."""
 
+from __future__ import annotations
+
 import sys
 
 from common import (

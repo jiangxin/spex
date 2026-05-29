@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Create a topic directory under the spex root."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -10,7 +12,13 @@ from pathlib import Path
 
 import common
 import config as cfg
-from common import atomic_write_json, get_git_info, get_specs_dir, local_iso_timestamp
+from common import (
+    atomic_write_json,
+    get_git_info,
+    get_specs_dir,
+    local_iso_timestamp,
+    strip_date_prefix,
+)
 
 SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
@@ -60,6 +68,7 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = {
+        "topic": strip_date_prefix(Path(topic_dir).name),
         "workdir": workdir,
         "main_worktree": main_worktree,
         "remote_url": git_info.get("remote_url", ""),

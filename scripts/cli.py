@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Centralized argument parser wrapper for spex CLI scripts."""
 
+from __future__ import annotations
+
 import argparse
 
 

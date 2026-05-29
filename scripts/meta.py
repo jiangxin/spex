@@ -8,6 +8,8 @@ When key is 'prompts', the value is appended to the prompts array.
 Otherwise the key is set (overwritten) directly.
 """
 
+from __future__ import annotations
+
 import json
 import sys
 

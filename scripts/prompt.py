@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Render a Jinja2 template with metadata and output the result."""
 
+from __future__ import annotations
+
 import argparse
 import os
 import re

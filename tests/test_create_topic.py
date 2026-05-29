@@ -1,6 +1,5 @@
-"""Tests for create-topic-dir.py (direct import)."""
+"""Tests for create_topic_dir.py (direct import)."""
 
-import importlib
 import io
 import json
 import sys
@@ -10,9 +9,9 @@ from unittest.mock import patch
 
 import common  # noqa: E402
 import config as cfg  # noqa: E402
+import create_topic_dir
 import pytest
 
-create_topic_dir = importlib.import_module("create-topic-dir")
 create_topic = create_topic_dir.create_topic
 
 

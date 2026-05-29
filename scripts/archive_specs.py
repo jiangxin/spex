@@ -5,6 +5,8 @@ Moves topic directories whose todo.json items are all completed
 into the archives directory.
 """
 
+from __future__ import annotations
+
 import shutil
 import sys
 from pathlib import Path

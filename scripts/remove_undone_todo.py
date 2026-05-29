@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Remove undone tasks from todo.json, keeping only completed ones."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from cli import ArgumentParser

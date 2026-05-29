@@ -5,6 +5,8 @@ If a topic name is given, verify it exists.
 If no topic name is given, list topics with undone tasks as candidates.
 """
 
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path

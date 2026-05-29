@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """List spec topics with progress and prompt summary."""
 
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path

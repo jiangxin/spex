@@ -4,6 +4,8 @@
 Usage: mark_todo_complete.py <task-id> <commit-title> <todo.json>
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Hooks system for spex CLI — find and execute hook scripts."""
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess

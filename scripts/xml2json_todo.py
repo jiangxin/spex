@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Convert XML-formatted todo files to JSON format."""
 
+from __future__ import annotations
+
 import re
 import sys
 import xml.etree.ElementTree as ET

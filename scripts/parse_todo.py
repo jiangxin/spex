@@ -7,6 +7,8 @@ Subcommands:
     get-done          Print completed tasks.
 """
 
+from __future__ import annotations
+
 import sys
 
 from cli import ArgumentParser

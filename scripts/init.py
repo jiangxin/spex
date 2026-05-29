@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Initialize the spex environment."""
 
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path

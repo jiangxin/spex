@@ -5,6 +5,8 @@ If no topic is given, opens the spex root directory.
 If a topic is given, searches specs and archives for a match.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys

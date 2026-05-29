@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Shared utilities for the Spex skill."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
