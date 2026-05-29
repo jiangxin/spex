@@ -1,103 +1,278 @@
 # Spex — Spec-Driven Development Skill
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that brings spec-driven development to your projects. Manage specification documents with progress tracking while keeping specs outside the repository — avoiding two sources of truth (code and specs).
+Spex is a skill that brings
+spec-driven development to your projects. It can save specification documents
+with progress tracking while keeping specs outside the repository — avoiding
+two sources of truth (code and specs). Users can customize the storage directory
+and prompt templates to match their team's conventions.
 
-## Why
+## Highlights
 
-In many projects, keeping specification documents alongside code creates a maintenance burden: the code evolves but specs go stale, leaving two conflicting sources of truth. Spex solves this by storing specs in a sibling hidden directory (e.g., `.my-app.specs/`) outside the git repository, so specs serve as living planning artifacts without polluting the codebase.
+- **Full spec lifecycle** — create, modify, apply, submit, and archive specs
+  with a single `/spex` command.
+- **Harness for long-running tasks** — implementation is planned as JSON
+  steps; each step commits on completion and stamps a timestamp in
+  `todo.json`, enabling pause/resume and progress visibility.
+- **Small batches** — each step is scoped to ~200 lines of change and
+  must be committed before the next step begins, preventing oversized
+  commits and keeping reviews manageable.
+- **Customizable templates** — Jinja2 templates for spec documents, task
+  prompts, and commit messages; override per-project or globally.
+- **Flexible storage & hierarchical config** — specs live outside the repo
+  by default (`~/.spex/`); `.spex.toml` config loads at project, user, and
+  system levels with nearest-wins merging, and `SPEX_CONFIG_FILE` overrides
+  all discovery. Each level can set its own `spex_root` to control where
+  specs are stored.
+- **Branch management** — optionally create and switch `spex/<topic>` branches
+  per spec, with auto-merge or PR submission.
+- **Worktree & submodule aware** — specs are anchored to the main worktree,
+  so all worktrees share a single spec store; submodules are also supported.
+- **Fuzzy topic matching** — all commands accept partial topic names with
+  interactive disambiguation.
+- **Hooks** — extensible `post-action` hooks receive JSON events on stdin
+  for create, modify, apply, and submit actions — useful for telemetry,
+  notifications, or automating pull request creation.
+- **CLI + skill** — use `/spex` inside your coding agent or the standalone
+  `spex` CLI for listing, showing, and managing specs.
 
 ## Usage
 
-This skill is invoked manually — it does **not** auto-trigger via LLM detection. Use the `/spex` slash command:
+This skill is invoked manually — it does **not** auto-trigger via LLM detection.
+Use the `/spex` slash command in two ways:
+
+- **Free-form prompt** — let the LLM determine intent:
+
+  ```
+  /spex <natural language prompt>
+  ```
+
+- **Explicit subcommand** — directly load a specific skill template:
+
+  ```
+  /spex <command> [arguments...]
+  ```
+
+### Commands
+
+| Command         | Aliases            | Description                              |
+|-----------------|--------------------|------------------------------------------|
+| `create`        | `new`              | Create a new spec document (no code changes) |
+| `modify`        |                    | Modify a spec's requirements             |
+| `apply`         | `run`, `do`, `go`  | Apply a spec to generate code            |
+| `apply-one-step`| `step`             | Apply one step from a spec's todo list   |
+| `submit`        | `merge`            | Submit completed work (merge or PR)      |
+| `archive`       |                    | Archive a completed spec                 |
+| `init`          |                    | Initialize spex environment              |
+
+#### `/spex create <spec-name> [description]`
+
+Creates a new spec file according to the configured template and standard
+sections (Overview, Requirements, Design, Implementation Notes).
+
+#### `/spex modify <spec-name>`
+
+Modifies the requirements of an existing spec.
+
+#### `/spex apply <spec-name>`
+
+Applies a spec to drive implementation — translating requirements and
+design into code changes.
+
+#### `/spex apply-one-step <spec-name>`
+
+Applies a single step from the spec's todo list, then stops.
+
+#### `/spex submit <spec-name>`
+
+Submits completed work by merging the branch or creating a pull request,
+depending on the `submit_method` config option.
+
+#### `/spex archive <spec-name>`
+
+Marks a spec as `archived`, stamps the archive date, and moves it into an
+`archived/` subdirectory.
+
+#### `/spex init`
+
+Initializes the spex environment — creates the config file, spec storage
+directory, and default templates.
+
+### CLI commands
+
+Running `/spex init` inside your coding agent installs the standalone `spex`
+CLI to `~/.local/bin`. The CLI provides commands that run without an
+AI agent:
+
+| Command          | Description                                      |
+|------------------|--------------------------------------------------|
+| `spex list`      | List spec topics with status and progress         |
+| `spex show`      | Show summary info for a topic                     |
+| `spex open`      | Open a topic directory in the system file browser |
+| `spex config`    | Display resolved configuration                   |
+| `spex archive`   | Archive completed specs                           |
+| `spex init`      | Initialize spex environment                       |
+
+#### `spex list`
+
+Lists all spec topics with status icons and progress ratios:
+
+- `spex list` — compact view: topic name, status, and progress (e.g.,
+  `3/5`).
+- `spex list -v` — adds the topic description.
+- `spex list -vv` — adds individual step listing with completion status.
+- `spex list --all` — includes topics from all repositories, not just
+  the current one.
+
+#### `spex show <topic>`
+
+- `spex show <topic>` — displays topic summary (status, dates,
+  branch, progress).
+- `spex show -v <topic>` — shows the full spec content and structured
+  todo with step-level details.
+
+## Configuration
+
+Spex uses `.spex.toml` files for configuration. On first run, a default
+config and spec directory are created in the user's home directory:
+
+- `~/.spex.toml` — global config
+- `~/.spex/` — default spec storage (with `specs/`, `archives/`,
+  `templates/` subdirectories)
+
+### Config file discovery
+
+Spex searches for `.spex.toml` from the git repository root **upward**
+to the filesystem root, then falls back to `~/.spex.toml`. When
+multiple files are found, they are merged with the nearest file taking
+highest priority. Use `spex config` to inspect the resolved config
+files, settings, and spec storage directories:
+
+```bash
+spex config
+```
+
+To override all discovery, set the `SPEX_CONFIG_FILE` environment
+variable to an explicit path:
+
+```bash
+export SPEX_CONFIG_FILE=/path/to/custom.toml
+```
+
+### Config options
+
+All options live under the `[spex]` section:
+
+```toml
+[spex]
+# Root directory for spec storage
+# spex_root = ".spex"
+
+# Create and manage branches for specs
+# branch_management = false
+
+# Restrict spec creation to this branch
+# main_branch_name = ""
+
+# How to submit completed work: merge or pr
+# submit_method = "merge"
+```
+
+| Key                 | Type   | Default    | Description                                                                |
+|---------------------|--------|------------|----------------------------------------------------------------------------|
+| `spex_root`         | string | `".spex"`  | Spec storage directory (relative to the `.spex.toml` location, or absolute)|
+| `branch_management` | bool   | `false`    | Automatically create/switch branches per spec topic                        |
+| `main_branch_name`  | string | `""`       | Only allow spec creation on this branch (empty = any)                      |
+| `submit_method`     | string | `"merge"`  | How to submit completed work: `merge` or `pr`                              |
+
+### Scoping with `spex_root`
+
+When a `.spex.toml` sets `spex_root`, it governs the directory where
+that file lives **and all child directories**. This lets you use
+different spec roots at different levels:
 
 ```
-/spex <command> [arguments...]
+/home/alice/
+├── .spex.toml              ← spex_root = ".spex" (global default)
+├── .spex/                  ← global specs
+└── projects/
+    └── my-app/             ← git repo
+        ├── .spex.toml      ← spex_root = "specifications" (project-level)
+        └── specifications/ ← project-local specs
 ```
 
-## Commands
+**Common setups:**
 
-| Command   | Description                              |
-|-----------|------------------------------------------|
-| `create`  | Create a new spec document               |
-| `apply`   | Apply a spec to generate implementation  |
-| `archive` | Archive a completed spec                 |
-
-### `/spex create <spec-name> [description]`
-
-Creates a new spec file with structured frontmatter (title, status, created date) and standard sections (Overview, Requirements, Design, Implementation Notes).
-
-### `/spex apply <spec-name>`
-
-Applies a spec to drive implementation — translating requirements and design into code changes.
-
-### `/spex archive <spec-name>`
-
-Marks a spec as `archived`, stamps the archive date, and moves it into an `archived/` subdirectory.
-
-## Spec Storage
-
-Specs are stored **outside** the project repository in a sibling hidden directory:
-
-```
-/Users/alice/projects/
-├── my-app/              ← your project (git repo)
-└── .my-app.specs/        ← spec directory (not in git)
-    ├── feature-auth.md
-    ├── api-redesign.md
-    └── archived/
-        └── old-feature.md
-```
-
-This convention ensures specs never conflict with your codebase and won't appear in pull requests or CI pipelines.
+- **Global only** (default): specs stored in `~/.spex/`, shared across
+  all projects.
+- **Per-project**: can create `.spex/` in the repo root to keep specs
+  alongside the project, and optionally add `.spex.toml` to override
+  defaults.
+- **CI/build override**: set `SPEX_CONFIG_FILE` to point at a
+  build-specific config, bypassing all `.spex.toml` discovery.
 
 ## Installation
 
-Clone or copy this skill into your Claude Code skills directory:
+Install via [skills.sh](https://www.skills.sh/) (for Claude Code):
 
 ```bash
-# Global installation
-cp -r spex-skill ~/.claude/skills/spex
+npm install -g skills@latest
+npx skills add jiangxin/spex
+```
 
-# Or project-local installation
-cp -r spex-skill .claude/skills/spex
+Or clone the repository manually:
+
+```bash
+git clone https://github.com/jiangxin/spex ~/.agents/skills/spex
+
+# For Claude Code
+ln -s ~/.agents/skills/spex ~/.claude/skills/spex
 ```
 
 ## Development
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.11+
 - Node.js (for markdownlint and husky)
 
 ### Setup
 
-Install dev dependencies:
-
 ```bash
-pip install ruff pytest
-npm install
+make setup
 ```
 
-Running `npm install` also sets up [husky](https://typicode.github.io/husky/) git hooks via the `prepare` script.
+This installs Python dev dependencies (ruff, pytest, pytest-cov) in
+editable mode, creates the `package.json` symlink, and runs `npm install`
+to set up [husky](https://typicode.github.io/husky/) git hooks. The npm
+config file is named `package.dev.json` (symlinked to `package.json`) to
+avoid conflicts with the Alibaba internal skill publishing platform.
+These tools are used for quality assurance — linting, testing, and
+pre-commit checks.
 
 ### Available Make Targets
 
-| Command | Description |
-|---------|-------------|
-| `make lint` | Run ruff linter on Python files |
-| `make lint-md` | Run markdownlint on Markdown files |
-| `make format` | Auto-format Python files with ruff |
-| `make test` | Run pytest unit tests |
-| `make check` | Run all checks (lint + lint-md + test) |
+| Command          | Description                                  |
+|------------------|----------------------------------------------|
+| `make setup`     | Create package.json symlink and npm install   |
+| `make lint`      | Run ruff linter on Python files               |
+| `make lint-md`   | Run markdownlint on Markdown files            |
+| `make format`    | Auto-format Python files with ruff            |
+| `make test`      | Run pytest unit tests (fast tier)             |
+| `make test-all`  | Run all tests including slow tests            |
+| `make check`     | Run all checks (lint + lint-md + test)        |
+| `make check-all` | Run all checks including slow tests           |
+| `make coverage`  | Run tests with coverage report                |
 
 ### Pre-commit Hooks
 
 This project uses husky to enforce quality checks before each commit:
 
-- **pre-commit**: Runs `make check` (ruff lint, markdownlint, pytest) — commits are blocked if any check fails.
-- **commit-msg**: Injects a co-developed-by trailer for AI-assisted commits.
+- **pre-commit**: Runs `make check` (ruff lint, markdownlint, pytest)
+  — commits are blocked if any check fails.
+- **commit-msg**: Injects a co-developed-by trailer for AI-assisted
+  commits.
 
-These hooks are installed automatically when you run `npm install`.
+These hooks are installed automatically via `make setup`.
 
 ## License
 

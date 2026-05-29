@@ -18,6 +18,9 @@ Skills Specification documented in `references/SKILLS-SPEC.md`.
 ## Language
 
 - All code, comments, and commit messages MUST be written in English.
+- The project maintains two README files: `README.md` (English) and
+  `README.zh.md` (Chinese). When updating either file, the other MUST
+  be updated to keep both versions consistent.
 
 ## Project Structure
 
