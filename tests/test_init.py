@@ -308,7 +308,7 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(spex_root))
+        mock_ensure.assert_called_once_with(str(spex_root), verbose=False)
 
     def test_syncs_templates_when_already_initialized(self, tmp_path):
         """Syncs templates when spex_root and specs/ already exist."""
@@ -333,8 +333,8 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(spex_root))
-        mock_sync.assert_called_once_with(spex_root)
+        mock_ensure.assert_called_once_with(str(spex_root), verbose=False)
+        mock_sync.assert_called_once_with(spex_root, verbose=False)
 
     def test_initializes_spex_root_when_missing(self, tmp_path):
         """Calls ensure_initialized when tomls exist but spex_root/specs/ is missing."""
@@ -358,7 +358,7 @@ class TestRunInit:
             run_init(workdir=str(tmp_path))
 
         mock_create_toml.assert_not_called()
-        mock_ensure.assert_called_once_with(str(spex_root))
+        mock_ensure.assert_called_once_with(str(spex_root), verbose=False)
 
     def test_uses_resolved_spex_root(self, tmp_path):
         """run_init() targets ctx.spex_root, not hardcoded ~/.spex."""
@@ -380,7 +380,7 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(custom_root))
+        mock_ensure.assert_called_once_with(str(custom_root), verbose=False)
 
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
         """Integration: templates are created during init."""
@@ -446,3 +446,86 @@ class TestMainCheckFlag:
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
+
+
+class TestVerboseFlag:
+    def test_main_parses_verbose_short(self):
+        """main() passes verbose=True when -v is given."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["-v"])
+        mock_run.assert_called_once_with(verbose=True)
+
+    def test_main_parses_verbose_long(self):
+        """main() passes verbose=True when --verbose is given."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["--verbose"])
+        mock_run.assert_called_once_with(verbose=True)
+
+    def test_main_default_not_verbose(self):
+        """main() passes verbose=False by default."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=[])
+        mock_run.assert_called_once_with(verbose=False)
+
+    def test_run_init_passes_verbose_to_ensure_initialized(self, tmp_path):
+        """run_init(verbose=True) forwards verbose to ensure_initialized."""
+        spex_root = tmp_path / ".spex"
+        ctx = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init.get_context", return_value=ctx),
+            patch("init.ensure_initialized") as mock_ensure,
+            patch("init._sync_all_templates"),
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path), verbose=True)
+
+        mock_ensure.assert_called_once_with(str(spex_root), verbose=True)
+
+    def test_ensure_initialized_verbose_output(self, tmp_path, capsys):
+        """ensure_initialized(verbose=True) prints directory creation."""
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        ensure_initialized(str(spex_root), verbose=True)
+
+        out = capsys.readouterr().out
+        assert "Initializing:" in out
+        assert "specs/" in out
+        assert "archives/" in out
+        assert "hooks/" in out
+
+    def test_ensure_initialized_verbose_already_initialized(self, tmp_path, capsys):
+        """ensure_initialized(verbose=True) reports when already initialized."""
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        (spex_root / "specs").mkdir(parents=True)
+        ensure_initialized(str(spex_root), verbose=True)
+
+        out = capsys.readouterr().out
+        assert "Already initialized:" in out
+
+    def test_ensure_initialized_quiet_by_default(self, tmp_path, capsys):
+        """ensure_initialized(verbose=False) prints nothing."""
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        ensure_initialized(str(spex_root))
+
+        out = capsys.readouterr().out
+        assert "Initializing:" not in out
+        assert "Already initialized:" not in out
