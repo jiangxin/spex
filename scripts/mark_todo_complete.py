@@ -23,7 +23,7 @@ Options:
 
 
 def main(argv=None):
-    check_help_flag(USAGE)
+    check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex todo mark-done", usage=USAGE)
     parser.add_argument("task_id", help="Task ID to mark as done")

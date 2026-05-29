@@ -63,7 +63,7 @@ def convert_todo_to_xml(data):
 
 
 def main(argv=None):
-    check_help_flag(USAGE)
+    check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex todo json2xml", usage=USAGE)
     parser.add_argument("json_file", help="Path to the JSON file")

@@ -35,7 +35,7 @@ def filter_completed_todos(data):
 
 
 def main(argv=None):
-    check_help_flag(USAGE)
+    check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex todo remove-undone", usage=USAGE)
     parser.add_argument("todo_path", help="Path to todo.json")
