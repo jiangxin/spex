@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import check_help_flag
+from common import check_help_flag, escape_xml_text
 
 USAGE = """\
 Usage: spex todo json2xml <todo.json>
@@ -21,22 +21,6 @@ Options:
 """
 
 
-def _escape_xml_text(text: str) -> str:
-    """Escape XML special characters in text content.
-
-    Escapes &, <, > which are the only special characters needed
-    inside element text content (quotes only matter in attributes).
-
-    Args:
-        text: Raw text that may contain XML special characters.
-
-    Returns:
-        Text with XML special characters properly escaped.
-    """
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    return text
 
 
 def convert_todo_to_xml(data):
@@ -52,10 +36,10 @@ def convert_todo_to_xml(data):
     lines = ["<steps>"]
     for item in data:
         lines.append("  <step>")
-        lines.append(f"    <step-id>{_escape_xml_text(item['id'])}</step-id>")
-        lines.append(f"    <step-name>{_escape_xml_text(item['name'])}</step-name>")
+        lines.append(f"    <step-id>{escape_xml_text(item['id'])}</step-id>")
+        lines.append(f"    <step-name>{escape_xml_text(item['name'])}</step-name>")
         lines.append("    <step-markdown-details>")
-        lines.append(_escape_xml_text(item.get("details", "")))
+        lines.append(escape_xml_text(item.get("details", "")))
         lines.append("    </step-markdown-details>")
         lines.append("  </step>")
     lines.append("</steps>")

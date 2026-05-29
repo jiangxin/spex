@@ -566,5 +566,31 @@ def get_git_info():
     return info
 
 
+def escape_xml_text(text: str) -> str:
+    """Escape &, <, > unconditionally in text content."""
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    return text
+
+
+def escape_xml_preserving_entities(text: str) -> str:
+    """Escape unescaped XML special characters, preserving existing entities.
+
+    Replaces &, <, > with their entity equivalents, but skips characters
+    that are already part of a valid XML entity (e.g. &lt;, &amp;).
+    Use this when preprocessing user-written XML that may already contain
+    entity references.
+    """
+    parts = re.split(r"(&(?:lt|gt|amp|quot|apos);)", text)
+    result = []
+    for part in parts:
+        if re.match(r"&(?:lt|gt|amp|quot|apos);", part):
+            result.append(part)
+        else:
+            result.append(escape_xml_text(part))
+    return "".join(result)
+
+
 if __name__ == "__main__":
     print(get_spex_root())
