@@ -11,6 +11,7 @@ from pathlib import Path
 
 from config import (
     clear_config_cache,
+    generate_default_toml,
     get_context,
 )
 from config import (
@@ -27,13 +28,10 @@ ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 ICON_ARCHIVED = "\U0001f4e6"
 
-_DEFAULT_TOML = '[spex]\n# spex_root = ".spex"\n'
-
-
 def _create_default_toml():
     """Create ~/.spex.toml with default content."""
     target = Path.home() / ".spex.toml"
-    target.write_text(_DEFAULT_TOML, encoding="utf-8")
+    target.write_text(generate_default_toml(), encoding="utf-8")
 
 
 
