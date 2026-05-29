@@ -238,6 +238,61 @@ class TestEnsureInitialized:
         assert (spex_root / "archives").is_dir()
 
 
+class TestSafeUpdateToml:
+    def test_updates_stale_file(self, tmp_path, capsys):
+        """Rewrites a toml missing new schema keys."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text('[spex]\nspex_root = "custom"\n')
+
+        from init import _safe_update_toml
+
+        assert _safe_update_toml(toml_file) is True
+
+        content = toml_file.read_text()
+        assert 'spex_root = "custom"' in content
+        assert "# branch_management = false" in content
+        assert "Reinitialized:" in capsys.readouterr().out
+
+    def test_preserves_all_user_values(self, tmp_path):
+        """All user-set keys stay uncommented after update."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(
+            '[spex]\nspex_root = "/my/root"\nbranch_management = true\n'
+        )
+
+        from init import _safe_update_toml
+
+        _safe_update_toml(toml_file)
+
+        content = toml_file.read_text()
+        assert 'spex_root = "/my/root"' in content
+        assert "branch_management = true" in content
+        assert "# spex_root" not in content
+        assert "# branch_management" not in content
+
+    def test_no_write_when_up_to_date(self, tmp_path):
+        """Does not touch file when content already matches schema."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(generate_default_toml())
+        original_mtime = toml_file.stat().st_mtime
+
+        from init import _safe_update_toml
+
+        assert _safe_update_toml(toml_file) is False
+        assert toml_file.stat().st_mtime == original_mtime
+
+    def test_verbose_up_to_date(self, tmp_path, capsys):
+        """Verbose prints 'Config up-to-date:' when unchanged."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(generate_default_toml())
+
+        from init import _safe_update_toml
+
+        _safe_update_toml(toml_file, verbose=True)
+
+        assert "Config up-to-date:" in capsys.readouterr().out
+
+
 class TestCreateTomlConfig:
     def test_creates_home_toml_when_no_config(self, tmp_path):
         """Creates ~/.spex.toml when no config exists."""
@@ -259,111 +314,47 @@ class TestCreateTomlConfig:
         assert toml_file.exists()
         assert toml_file.read_text() == generate_default_toml()
 
-    def test_safe_updates_existing_config(self, tmp_path):
-        """Updates ~/.spex.toml with new schema keys, preserving user values."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        home_toml = fake_home / ".spex.toml"
-        home_toml.write_text('[spex]\nspex_root = "custom"\n')
+    def test_safe_updates_all_discovered_tomls(self, tmp_path):
+        """Updates every toml in spex_tomls, not just ~/.spex.toml."""
+        project_toml = tmp_path / "project" / ".spex.toml"
+        home_toml = tmp_path / "home" / ".spex.toml"
+        project_toml.parent.mkdir()
+        home_toml.parent.mkdir()
+        project_toml.write_text('[spex]\nspex_root = "proj"\n')
+        home_toml.write_text('[spex]\nbranch_management = true\n')
 
+        ctx = _make_context(spex_tomls=[project_toml, home_toml])
         with (
-            patch("init.Path.home", return_value=fake_home),
-            patch("init.clear_config_cache"),
-        ):
-            from init import _create_toml_config
-
-            _create_toml_config()
-
-        content = home_toml.read_text()
-        assert 'spex_root = "custom"' in content
-        assert "# branch_management = false" in content
-
-    def test_safe_update_preserves_all_user_values(self, tmp_path):
-        """All user-set values survive the safe update."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        home_toml = fake_home / ".spex.toml"
-        home_toml.write_text(
-            '[spex]\nspex_root = "/my/root"\nbranch_management = true\n'
-        )
-
-        with (
-            patch("init.Path.home", return_value=fake_home),
-            patch("init.clear_config_cache"),
-        ):
-            from init import _create_toml_config
-
-            _create_toml_config()
-
-        content = home_toml.read_text()
-        assert 'spex_root = "/my/root"' in content
-        assert "branch_management = true" in content
-        assert "# spex_root" not in content
-        assert "# branch_management" not in content
-
-    def test_no_write_when_up_to_date(self, tmp_path):
-        """Does not write when ~/.spex.toml already matches current schema."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        home_toml = fake_home / ".spex.toml"
-        home_toml.write_text(generate_default_toml())
-        original_mtime = home_toml.stat().st_mtime
-
-        with patch("init.Path.home", return_value=fake_home):
-            from init import _create_toml_config
-
-            _create_toml_config()
-
-        assert home_toml.stat().st_mtime == original_mtime
-
-    def test_prints_reinitialized(self, tmp_path, capsys):
-        """Prints 'Reinitialized:' when updating stale config."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        home_toml = fake_home / ".spex.toml"
-        home_toml.write_text('[spex]\nspex_root = "x"\n')
-
-        with (
-            patch("init.Path.home", return_value=fake_home),
-            patch("init.clear_config_cache"),
-        ):
-            from init import _create_toml_config
-
-            _create_toml_config()
-
-        assert "Reinitialized:" in capsys.readouterr().out
-
-    def test_verbose_up_to_date(self, tmp_path, capsys):
-        """Verbose mode prints 'Config up-to-date:' when no update needed."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        home_toml = fake_home / ".spex.toml"
-        home_toml.write_text(generate_default_toml())
-
-        with patch("init.Path.home", return_value=fake_home):
-            from init import _create_toml_config
-
-            _create_toml_config(verbose=True)
-
-        assert "Config up-to-date:" in capsys.readouterr().out
-
-    def test_skips_when_other_config_exists(self, tmp_path):
-        """Does not create ~/.spex.toml when project-level config exists."""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        project_toml = tmp_path / ".spex.toml"
-        project_toml.write_text('[spex]\nspex_root = ".spex"\n')
-
-        ctx = _make_context(spex_tomls=[project_toml])
-        with (
-            patch("init.Path.home", return_value=fake_home),
             patch("init.get_context", return_value=ctx),
+            patch("init.clear_config_cache"),
         ):
             from init import _create_toml_config
 
             _create_toml_config()
 
-        assert not (fake_home / ".spex.toml").exists()
+        proj_content = project_toml.read_text()
+        assert 'spex_root = "proj"' in proj_content
+        assert "# branch_management = false" in proj_content
+
+        home_content = home_toml.read_text()
+        assert "branch_management = true" in home_content
+        assert '# spex_root = ".spex"' in home_content
+
+    def test_no_cache_clear_when_all_up_to_date(self, tmp_path):
+        """Does not clear cache when no toml was modified."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(generate_default_toml())
+
+        ctx = _make_context(spex_tomls=[toml_file])
+        with (
+            patch("init.get_context", return_value=ctx),
+            patch("init.clear_config_cache") as mock_clear,
+        ):
+            from init import _create_toml_config
+
+            _create_toml_config()
+
+        mock_clear.assert_not_called()
 
 
 class TestRunInit:

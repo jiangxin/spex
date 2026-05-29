@@ -79,29 +79,38 @@ def _install_cli(verbose=False):
               file=sys.stderr)
 
 
+def _safe_update_toml(toml_path, verbose=False):
+    """Safe-update a single .spex.toml with the latest config schema.
+
+    Returns True if the file was modified.
+    """
+    existing = _load_toml_config(toml_path)
+    user_config = (existing or {}).get("spex", {})
+    new_content = generate_updated_toml(user_config)
+    old_content = toml_path.read_text(encoding="utf-8")
+    if new_content != old_content:
+        toml_path.write_text(new_content, encoding="utf-8")
+        print(f"Reinitialized: {toml_path}")
+        return True
+    if verbose:
+        print(f"Config up-to-date: {toml_path}")
+    return False
+
+
 def _create_toml_config(verbose=False):
-    """Create or safely update ~/.spex.toml with the latest config schema."""
-    home_toml = Path.home() / ".spex.toml"
-
-    if home_toml.is_file():
-        existing = _load_toml_config(home_toml)
-        user_config = (existing or {}).get("spex", {})
-        new_content = generate_updated_toml(user_config)
-        old_content = home_toml.read_text(encoding="utf-8")
-        if new_content != old_content:
-            home_toml.write_text(new_content, encoding="utf-8")
-            print(f"Reinitialized: {home_toml}")
-            clear_config_cache()
-        elif verbose:
-            print(f"Config up-to-date: {home_toml}")
-        return
-
+    """Create or safely update .spex.toml files with the latest config schema."""
     ctx = get_context()
+
     if ctx.spex_tomls:
-        if verbose:
-            print(f"Config already exists: {ctx.spex_tomls[0]}")
+        changed = False
+        for toml_path in ctx.spex_tomls:
+            if _safe_update_toml(Path(toml_path), verbose=verbose):
+                changed = True
+        if changed:
+            clear_config_cache()
         return
 
+    home_toml = Path.home() / ".spex.toml"
     _create_default_toml()
     print(f"Created: {home_toml}")
     clear_config_cache()
