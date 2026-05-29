@@ -198,7 +198,7 @@ class TestMain:
         ), patch.object(
             archive_specs, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            archive_specs.main([])
         output = capsys.readouterr().out
         assert "No completed topics" in output
 
@@ -215,7 +215,7 @@ class TestMain:
         ), patch.object(
             archive_specs, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            archive_specs.main([])
         output = capsys.readouterr().out
         assert "done-topic" in output
         assert "wip-topic" not in output
