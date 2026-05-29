@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -547,6 +548,22 @@ def format_topic(topic_dir: Path, verbose: int = 0) -> str:
                 lines.append(f"    {step_id}: {step_name}")
 
     return "\n".join(lines)
+
+
+def get_git_info():
+    """Retrieve git repository metadata via subprocess calls."""
+    commands = {
+        "workdir": ["git", "rev-parse", "--show-toplevel"],
+        "remote_url": ["git", "remote", "get-url", "origin"],
+        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        "user_name": ["git", "config", "user.name"],
+        "user_email": ["git", "config", "user.email"],
+    }
+    info = {}
+    for key, cmd in commands.items():
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        info[key] = result.stdout.strip() if result.returncode == 0 else ""
+    return info
 
 
 if __name__ == "__main__":

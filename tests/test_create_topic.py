@@ -305,7 +305,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -382,7 +382,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -425,7 +425,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",
@@ -470,7 +470,7 @@ class TestMain:
                 return_value=str(tmp_path)
             ),
             patch.object(
-                create_topic_dir, "_get_git_info", return_value=mock_git
+                create_topic_dir, "get_git_info", return_value=mock_git
             ),
             patch.object(
                 create_topic_dir, "local_iso_timestamp",

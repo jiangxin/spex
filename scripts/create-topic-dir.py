@@ -4,7 +4,6 @@
 import argparse
 import json
 import re
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
 import config as cfg
-from common import atomic_write_json, get_specs_dir, local_iso_timestamp
+from common import atomic_write_json, get_git_info, get_specs_dir, local_iso_timestamp
 
 SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
@@ -55,23 +54,6 @@ def create_topic(topic, specs_dir, auto_prefix=True):
     return (topic, topic_dir)
 
 
-def _get_git_info():
-    """Retrieve git repository metadata via subprocess calls."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "remote_url": ["git", "remote", "get-url", "origin"],
-        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "user_name": ["git", "config", "user.name"],
-        "user_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            info[key] = result.stdout.strip()
-        else:
-            info[key] = ""
-    return info
 
 
 def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
@@ -153,7 +135,7 @@ def main(argv=None):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    git_info = _get_git_info()
+    git_info = get_git_info()
     ctx = cfg.get_context()
     timestamp = local_iso_timestamp()
     _write_meta(topic_dir, git_info, ctx, prompt, timestamp, args.description)

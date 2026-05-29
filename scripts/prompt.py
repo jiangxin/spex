@@ -4,13 +4,13 @@
 import argparse
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
     atomic_write_json,
+    get_git_info,
     get_spex_root,
     get_template,
     load_meta,
@@ -20,23 +20,6 @@ from common import (
     strip_front_matter,
 )
 from remove_undone_todo import filter_completed_todos as _filter_completed_todos
-
-
-def _get_git_info():
-    """Retrieve git repository metadata."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "git_remote": ["git", "remote", "get-url", "origin"],
-        "git_branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "git_user": ["git", "config", "user.name"],
-        "git_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        info[key] = result.stdout.strip() if result.returncode == 0 else ""
-    return info
-
 
 
 def validate_required_meta(content, metadata):
@@ -158,10 +141,14 @@ def _build_metadata(template_name, topic_name=None):
 
     Different template names may produce different metadata.
     """
-    git_info = _get_git_info()
+    git_info = get_git_info()
     metadata = {
         "timestamp": local_iso_timestamp(),
-        **git_info,
+        "workdir": git_info["workdir"],
+        "git_remote": git_info["remote_url"],
+        "git_branch": git_info["branch"],
+        "git_user": git_info["user_name"],
+        "git_email": git_info["user_email"],
     }
 
     if topic_name:
