@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Convert JSON-formatted todo files to XML format."""
 
-import json
 import os
 import sys
 import tempfile
@@ -9,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import check_help_flag, escape_xml_text
+from common import check_help_flag, escape_xml_text, load_and_validate_todo_json
 
 USAGE = """\
 Usage: spex todo json2xml <todo.json>
@@ -55,23 +54,7 @@ def main(argv=None):
 
     json_path = Path(args.json_file)
 
-    if not json_path.is_file():
-        print(f"Error: file not found: {json_path}", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
-
-    if not data:
-        print("Error: empty array, nothing to convert.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(json_path)
 
     seen_ids = {}
     for i, item in enumerate(data):

@@ -226,6 +226,41 @@ def load_todo(topic_dir: Path):
     return data
 
 
+def load_and_validate_todo_json(path, allow_empty=False):
+    """Load a JSON file, validate it is a list, return data.
+
+    Args:
+        path: Path to the JSON file.
+        allow_empty: If False (default), exit on empty list.
+
+    Returns:
+        Parsed list data.
+
+    Exits with code 1 on: file not found, invalid JSON, non-list data,
+    or empty list (when allow_empty is False).
+    """
+    path = Path(path)
+    if not path.is_file():
+        print(f"Error: file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(data, list):
+        print("Error: top-level value must be an array.", file=sys.stderr)
+        sys.exit(1)
+
+    if not allow_empty and not data:
+        print("Error: empty array, nothing to process.", file=sys.stderr)
+        sys.exit(1)
+
+    return data
+
+
 def is_topic_completed(topic_dir: Path) -> bool:
     """Return True if all tasks in todo.json have non-empty completed_at."""
     data = load_todo(topic_dir)

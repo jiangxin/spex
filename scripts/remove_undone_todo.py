@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Remove undone tasks from todo.json, keeping only completed ones."""
 
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
-from common import atomic_write_json, check_help_flag
+from common import atomic_write_json, check_help_flag, load_and_validate_todo_json
 
 USAGE = """\
 Usage: spex todo remove-undone <todo.json>
@@ -43,19 +42,7 @@ def main(argv=None):
 
     todo_path = Path(args.todo_path)
 
-    if not todo_path.is_file():
-        print(f"Error: file not found: {todo_path}", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        data = json.loads(todo_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(todo_path, allow_empty=True)
 
     completed = filter_completed_todos(data)
     removed = len(data) - len(completed)

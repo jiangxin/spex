@@ -7,10 +7,10 @@ Subcommands:
     get-done          Print completed tasks.
 """
 
-import json
 import sys
 
 from cli import ArgumentParser
+from common import load_and_validate_todo_json
 
 REQUIRED_FIELDS = {"id", "name", "details", "completed_at", "commit_title"}
 
@@ -59,17 +59,6 @@ Options:
 """
 
 
-def _load(path):
-    """Load and return parsed todo.json data."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
-    except FileNotFoundError:
-        print(f"Error: file not found: {path}", file=sys.stderr)
-        sys.exit(1)
 
 
 def main(argv=None):
@@ -109,15 +98,7 @@ def main(argv=None):
 
 def cmd_validate(args):
     """Validate todo.json structure."""
-    data = _load(args.todo_json)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
-
-    if len(data) == 0:
-        print("Error: todo list is empty.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(args.todo_json)
 
     errors = []
     seen_ids = {}
@@ -153,11 +134,7 @@ def cmd_validate(args):
 def cmd_get_next_undone(args):
     """Print the next incomplete task."""
     mode = "--only-id" if args.only_id else "--details" if args.details else ""
-    data = _load(args.todo_json)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(args.todo_json, allow_empty=True)
 
     for item in data:
         if not isinstance(item, dict):
@@ -238,11 +215,7 @@ MAX_OUTPUT_BYTES = 10240
 
 def cmd_get_done(args):
     """Print completed tasks."""
-    data = _load(args.todo_json)
-
-    if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
-        sys.exit(1)
+    data = load_and_validate_todo_json(args.todo_json, allow_empty=True)
 
     done_items = [
         item for item in data
