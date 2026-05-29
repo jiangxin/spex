@@ -9,7 +9,6 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
 from common import (
     check_help_flag,

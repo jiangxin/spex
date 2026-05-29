@@ -1,14 +1,10 @@
 """Tests for hooks.py: hook resolution, execution, and event data."""
 
 import os
-import sys
 from pathlib import Path
 
-import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 import hooks
+import pytest
 from common import clear_spex_root_cache
 
 

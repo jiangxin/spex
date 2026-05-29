@@ -1,13 +1,9 @@
 import json
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 import archive_specs
+import pytest
 from archive_specs import (
     archive_single_topic,
     find_completed_topics,

@@ -2,9 +2,7 @@
 """Show detailed information about a single spec topic."""
 
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
     check_help_flag,
     format_topic,

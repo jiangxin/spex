@@ -9,7 +9,6 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from branch import branch_exists
 from common import (
     check_help_flag,

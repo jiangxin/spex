@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import check_help_flag, get_archives_dir, get_specs_dir, get_spex_root
 
 USAGE = """\

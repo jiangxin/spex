@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Remove undone tasks from todo.json, keeping only completed ones."""
 
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
 from common import atomic_write_json, check_help_flag, load_and_validate_todo_json
 

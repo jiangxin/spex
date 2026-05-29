@@ -8,7 +8,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
 import config as cfg
 from common import atomic_write_json, get_git_info, get_specs_dir, local_iso_timestamp

@@ -2,11 +2,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 import open_topic
+import pytest
 from open_topic import find_topic, main, open_directory
 
 

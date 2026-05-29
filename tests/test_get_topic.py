@@ -1,12 +1,8 @@
 import json
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 from common import has_undone_tasks
 from get_topic import main, resolve_topic
 

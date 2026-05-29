@@ -6,7 +6,6 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cli import ArgumentParser
 from common import (
     atomic_write_json,
