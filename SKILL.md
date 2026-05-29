@@ -3,7 +3,7 @@ name: spex
 disable-model-invocation: true
 description: "Spec-Driven Development (Spex) skill for creating and managing specification documents. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit (merge), archive, init."
 metadata:
-  version: 0.0.1
+  version: 0.1.0
 arguments:
   - name: command
     required: false
