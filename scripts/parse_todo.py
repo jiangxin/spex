@@ -165,7 +165,7 @@ def cmd_get_next_undone(args):
         if not item.get("completed_at"):
             if mode == "--only-id":
                 print(item.get("id", ""))
-            else:
+            elif mode == "--details":
                 task_id = item.get("id", "")
                 name = item.get("name", "")
                 details = item.get("details", "")
@@ -177,6 +177,8 @@ def cmd_get_next_undone(args):
                 print(f"{details}")
                 print()
                 print("</details>")
+            else:
+                print(f"{item.get('id', '')}: {item.get('name', '')}")
             return
 
     # No undone task found — output nothing, exit 0

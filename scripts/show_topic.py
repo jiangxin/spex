@@ -90,11 +90,7 @@ def main(argv=None):
 
     topic_name = args[0]
 
-    try:
-        topic_dir = resolve_topic_dir(topic_name)
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    topic_dir = resolve_topic_dir(topic_name)
 
     if verbose:
         print(_format_verbose(topic_dir))
