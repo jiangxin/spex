@@ -10,7 +10,6 @@ Otherwise the key is set (overwritten) directly.
 
 import json
 import sys
-from pathlib import Path
 
 from common import atomic_write_json, check_help_flag, get_specs_dir
 
@@ -43,7 +42,7 @@ def main(argv=None):
     else:
         value = sys.stdin.read()
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
     meta_path = specs_dir / topic_name / "meta.json"
 
     if not meta_path.is_file():

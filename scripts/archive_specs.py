@@ -125,8 +125,8 @@ def main(argv=None):
     dry_run = "--dry-run" in full_argv or "-n" in full_argv
     force = "--force" in full_argv or "-f" in full_argv
 
-    specs_dir = Path(get_specs_dir())
-    archives_dir = Path(get_archives_dir())
+    specs_dir = get_specs_dir()
+    archives_dir = get_archives_dir()
 
     if "--topic" in full_argv:
         idx = full_argv.index("--topic")

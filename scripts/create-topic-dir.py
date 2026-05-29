@@ -125,7 +125,7 @@ def main(argv=None):
     if args.get_prompt:
         prompt_keys = [k.strip() for k in args.get_prompt.split(",")]
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:

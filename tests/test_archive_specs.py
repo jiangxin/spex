@@ -194,9 +194,9 @@ class TestMain:
         specs.mkdir()
         archives = tmp_path / "archives"
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             archive_specs.main()
         output = capsys.readouterr().out
@@ -211,9 +211,9 @@ class TestMain:
         )
         archives = tmp_path / "archives"
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             archive_specs.main()
         output = capsys.readouterr().out
@@ -228,9 +228,9 @@ class TestMain:
         archives = tmp_path / "archives"
         monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--dry-run"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             archive_specs.main()
         output = capsys.readouterr().out
@@ -245,9 +245,9 @@ class TestMain:
         archives = tmp_path / "archives"
         monkeypatch.setattr(sys, "argv", ["archive_specs.py", "-n"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             archive_specs.main()
         output = capsys.readouterr().out
@@ -263,9 +263,9 @@ class TestMain:
             sys, "argv", ["archive_specs.py", "--topic", "target-topic"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             archive_specs.main()
         output = capsys.readouterr().out
@@ -281,9 +281,9 @@ class TestMain:
         archives = tmp_path / "archives"
         monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--topic"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ):
             with pytest.raises(SystemExit) as exc_info:
                 archive_specs.main()
@@ -515,9 +515,9 @@ class TestMainWithBranchGuard:
             sys, "argv", ["archive_specs.py", "--force"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ), patch(
             "archive_specs.branch_exists", return_value=True
         ):
@@ -539,9 +539,9 @@ class TestMainWithBranchGuard:
             sys, "argv", ["archive_specs.py", "-f"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ), patch(
             "archive_specs.branch_exists", return_value=True
         ):
@@ -566,9 +566,9 @@ class TestMainWithBranchGuard:
             sys, "argv", ["archive_specs.py", "--dry-run"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ), patch(
             "archive_specs.branch_exists",
             side_effect=lambda name: name == "spex/active",
@@ -596,9 +596,9 @@ class TestMainWithBranchGuard:
         archives = tmp_path / "archives"
         monkeypatch.setattr(sys, "argv", ["archive_specs.py"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ), patch(
             "archive_specs.branch_exists",
             side_effect=lambda name: name == "spex/active",
@@ -621,9 +621,9 @@ class TestMainWithBranchGuard:
             ["archive_specs.py", "--topic", "branch-guard"],
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=str(specs)
+            archive_specs, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=str(archives)
+            archive_specs, "get_archives_dir", return_value=archives
         ), patch(
             "archive_specs.branch_exists", return_value=False
         ):

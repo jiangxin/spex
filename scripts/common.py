@@ -160,14 +160,14 @@ def get_spex_tomls(workdir=None) -> list[str]:
     return [str(p) for p in get_context(workdir).spex_tomls]
 
 
-def get_specs_dir(workdir=None):
+def get_specs_dir(workdir=None) -> Path:
     """Return the specs directory: <spex_root>/specs/."""
-    return str(Path(get_spex_root(workdir)) / "specs")
+    return Path(get_spex_root(workdir)) / "specs"
 
 
-def get_archives_dir(workdir=None):
+def get_archives_dir(workdir=None) -> Path:
     """Return the archives directory: <spex_root>/archives/."""
-    return str(Path(get_spex_root(workdir)) / "archives")
+    return Path(get_spex_root(workdir)) / "archives"
 
 
 def get_current_workdir():
@@ -585,7 +585,7 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         Path to the resolved topic directory.
     """
     if specs_dir is None:
-        specs_dir = Path(get_specs_dir(get_current_workdir()))
+        specs_dir = get_specs_dir(get_current_workdir())
     else:
         specs_dir = Path(specs_dir)
 

@@ -243,10 +243,10 @@ def main(argv=None):
     full_argv = argv if argv is not None else sys.argv[1:]
     all_mode = "--all" in full_argv
 
-    dirs = [Path(get_specs_dir())]
+    dirs = [get_specs_dir()]
     archive_dirs = []
     if all_mode:
-        archive_dir = Path(get_archives_dir())
+        archive_dir = get_archives_dir()
         dirs.append(archive_dir)
         archive_dirs.append(archive_dir)
 

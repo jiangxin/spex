@@ -230,7 +230,7 @@ def main(argv=None):
         )
         sys.exit(1)
 
-    specs_dir = Path(get_specs_dir())
+    specs_dir = get_specs_dir()
 
     # Determine workspace filter
     if topic_name or all_flag:
