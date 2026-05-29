@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0
+
+### Features
+
+- **Dynamic default config** — `generate_default_toml()` produces the
+  default `.spex.toml` from `_CONFIG_SCHEMA`, keeping comments and
+  defaults in sync with the code.
+- **Chinese README** — add `README.zh.md`; both language versions must
+  be kept consistent per `AGENTS.md`.
+
+### Changes
+
+- Rename `create_branch` config key to `branch_management`.
+- Add `[spex]` section header to config schema.
+- Rename `package.json` to `package.dev.json` (symlinked via
+  `make setup`) to avoid conflicts with Alibaba internal skill
+  publishing platform.
+- Rewrite `README.md` with highlights, full command reference (skill
+  and CLI), installation via skills.sh, and improved configuration
+  docs.
+- Add user-friendly progress messages to Makefile rules; include
+  `pip install -e '.[dev]'` in `make setup`.
+- Require Python 3.11+ (for `tomllib` stdlib support).
+
 ## 0.1.0
 
 ### Features

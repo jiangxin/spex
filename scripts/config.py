@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
-
-import tomllib
 
 
 class SpexConfig(TypedDict, total=False):
