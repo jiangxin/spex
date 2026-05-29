@@ -18,6 +18,7 @@ from config import (
     _merge_configs,
     _resolve_spex_roots,
     clear_config_cache,
+    generate_default_toml,
     get_context,
     load_config,
     resolve_spex_root_and_roots,
@@ -839,4 +840,30 @@ class TestGetMainWorktree:
 
         assert first == second
         assert first == repo.resolve()
+
+
+# ===================== generate_default_toml =====================
+
+
+class TestGenerateDefaultToml:
+    def test_header_is_first_line(self):
+        result = generate_default_toml()
+        first_line = result.splitlines()[0]
+        assert first_line == "[spex]"
+
+    def test_all_default_keys_present(self):
+        result = generate_default_toml()
+        for key in ("spex_root", "branch_management", "main_branch_name", "submit_method"):
+            assert f"# {key} = " in result
+
+    def test_boolean_formatting(self):
+        result = generate_default_toml()
+        assert "# branch_management = false" in result
+        assert "False" not in result
+
+    def test_string_formatting(self):
+        result = generate_default_toml()
+        assert '# spex_root = ".spex"' in result
+        assert '# main_branch_name = ""' in result
+        assert '# submit_method = "merge"' in result
 

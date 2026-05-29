@@ -354,6 +354,20 @@ def get_context(workdir: str | Path | None = None) -> SpexContext:
     return _context_cache
 
 
+def generate_default_toml() -> str:
+    """Generate a TOML string with all _DEFAULTS as commented-out entries."""
+    lines = ["[spex]"]
+    for key, value in _DEFAULTS.items():
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, str):
+            rendered = f'"{value}"'
+        else:
+            rendered = str(value)
+        lines.append(f"# {key} = {rendered}")
+    return "\n".join(lines) + "\n"
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _config_cache, _top_workdir_cache, _main_worktree_cache
