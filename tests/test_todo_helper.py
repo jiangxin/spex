@@ -469,6 +469,139 @@ SAMPLE_XML = """\
 """
 
 
+# -----------------------------------------------------------------------
+# xml2json / json2xml conversion
+# -----------------------------------------------------------------------
+CONVERSION_XML = """\
+<todo>
+  <step>
+    <step-id>step-1</step-id>
+    <step-name>First</step-name>
+    <step-details>Details one</step-details>
+    <completed-at></completed-at>
+    <commit-title></commit-title>
+  </step>
+  <step>
+    <step-id>step-2</step-id>
+    <step-name>Second</step-name>
+    <step-details>Details two</step-details>
+    <completed-at>2026-01-01</completed-at>
+    <commit-title>feat: second</commit-title>
+  </step>
+</todo>
+"""
+
+CONVERSION_JSON = [
+    {
+        "id": "step-1",
+        "name": "First",
+        "details": "Details one",
+        "completed_at": "",
+        "commit_title": "",
+    },
+    {
+        "id": "step-2",
+        "name": "Second",
+        "details": "Details two",
+        "completed_at": "2026-01-01",
+        "commit_title": "feat: second",
+    },
+]
+
+
+class TestConversion:
+    def test_xml2json_converts(self, tmp_path, capsys):
+        xml_file = tmp_path / "todo.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        json_file = tmp_path / "todo.json"
+        assert json_file.exists()
+        result = _read(json_file)
+        assert len(result) == 2
+        assert result[0]["id"] == "step-1"
+        assert result[1]["id"] == "step-2"
+        assert result[1]["completed_at"] == "2026-01-01"
+        out = capsys.readouterr().out
+        assert "Converted" in out
+
+    def test_xml2json_rm(self, tmp_path):
+        xml_file = tmp_path / "todo.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json", "--rm",
+        ])
+        json_file = tmp_path / "todo.json"
+        assert json_file.exists()
+        assert not xml_file.exists()
+        result = _read(json_file)
+        assert len(result) == 2
+
+    def test_xml2json_output_path(self, tmp_path):
+        subdir = tmp_path / "sub"
+        subdir.mkdir()
+        xml_file = subdir / "tasks.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        expected = subdir / "tasks.json"
+        assert expected.exists()
+        assert not (tmp_path / "tasks.json").exists()
+
+    def test_json2xml_converts(self, tmp_path, capsys):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+        assert data[0]["id"] == "step-1"
+        assert data[1]["completed_at"] == "2026-01-01"
+        out = capsys.readouterr().out
+        assert "Converted" in out
+
+    def test_json2xml_rm(self, tmp_path):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml", "--rm",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        assert not json_file.exists()
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+
+    def test_json2xml_roundtrip(self, tmp_path):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        # JSON -> XML
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        # XML -> JSON (writes back to todo.json via stem)
+        # Use the xml file as source
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        # xml2json writes to todo.json (same stem)
+        result = _read(json_file)
+        assert len(result) == len(CONVERSION_JSON)
+        for i, expected in enumerate(CONVERSION_JSON):
+            for key in (
+                "id", "name", "details",
+                "completed_at", "commit_title",
+            ):
+                assert result[i][key] == expected[key]
+
+
 class TestXmlFormat:
     @pytest.fixture()
     def xml_file(self, tmp_path):
