@@ -15,6 +15,7 @@ from cli import ArgumentParser
 from common import (
     check_help_flag,
     find_matching_topics,
+    get_archives_dir,
     get_current_workdir,
     get_specs_dir,
     get_spex_roots,
@@ -27,7 +28,7 @@ from common import (
 from config import set_spex_config_file
 
 USAGE = """\
-Usage: spex get-topic [--json] [--all] [--must-done | --must-undone] [topic]
+Usage: spex get-topic [--json] [--all] [--with-archives] [--must-done | --must-undone] [topic]
        spex get-topic --spex-roots | --spex-toml | --spex-tomls
 
 Resolve a topic directory under specs.
@@ -35,42 +36,54 @@ Resolve a topic directory under specs.
 Options:
   --json         Output in JSON format
   --all          Show all topics (ignore workspace filter)
+  --with-archives
+                 Also search archives directory
   --spex-config-file <path>
                  Use specified config file (overrides SPEX_CONFIG_FILE env var)
   --must-done    Only show completed topics
-  --must-undone  Only show topics with undone tasks (default)
+  --must-undone  Only show topics with undone tasks
   --spex-roots   Print all spex root directories (one per line)
   --spex-toml    Print the highest-priority .spex.toml path
   --spex-tomls   Print all discovered .spex.toml paths (one per line)
   -h, --help     Show this help message and exit"""
 
 
-def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
-    """Resolve topic name against specs_dir.
+def resolve_topic(topic_name, search_dirs, filter_workdir=None,
+                  must_done=False, must_undone=False):
+    """Resolve topic name against search directories.
 
     Args:
         topic_name: Topic name or substring to match. Empty string lists all.
-        specs_dir: Path to the specs directory.
+        search_dirs: List of Path objects to search for topics.
         filter_workdir: When set, only return topics whose meta.json workdir
             matches this path. Ignored when topic_name is provided.
         must_done: When True, only return completed topics.
+        must_undone: When True, only return topics with undone tasks.
 
-    Returns a list of matching topic names.
+    Returns a list of (topic_name, parent_dir) tuples.
     Raises SystemExit on error.
     """
-    specs_dir = Path(specs_dir)
+    # Accept a single Path/str for backward compatibility
+    if isinstance(search_dirs, (str, Path)):
+        search_dirs = [Path(search_dirs)]
 
     if must_done:
         topic_filter = is_topic_completed
-    else:
+    elif must_undone:
         topic_filter = has_undone_tasks
+    else:
+        topic_filter = None  # no filtering
 
     if topic_name:
-        matches = find_matching_topics(topic_name, specs_dir)
+        all_matches = []
+        for search_dir in search_dirs:
+            search_dir = Path(search_dir)
+            for m in find_matching_topics(topic_name, search_dir):
+                all_matches.append((m, search_dir))
 
         # Exact match — apply status check directly
-        if len(matches) == 1 and matches[0].name == topic_name:
-            topic_path = matches[0]
+        if len(all_matches) == 1 and all_matches[0][0].name == topic_name:
+            topic_path, parent_dir = all_matches[0]
             if must_done:
                 if not is_topic_completed(topic_path):
                     print(
@@ -78,50 +91,74 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
                         file=sys.stderr,
                     )
                     sys.exit(1)
-                return [topic_name]
-            if not has_undone_tasks(topic_path):
-                print(
-                    f"Warning: topic '{topic_name}' has no undone tasks.",
-                    file=sys.stderr,
-                )
-                return []
-            return [topic_name]
+                return [(topic_name, parent_dir)]
+            if must_undone:
+                if not has_undone_tasks(topic_path):
+                    print(
+                        f"Warning: topic '{topic_name}' has no undone tasks.",
+                        file=sys.stderr,
+                    )
+                    return []
+            return [(topic_name, parent_dir)]
 
         # Substring matches — filter by status
-        filtered = sorted(
-            d.name for d in matches if topic_filter(d)
-        )
+        if topic_filter is not None:
+            filtered = sorted(
+                (d.name, parent) for d, parent in all_matches
+                if topic_filter(d)
+            )
+        else:
+            filtered = sorted(
+                (d.name, parent) for d, parent in all_matches
+            )
 
         if not filtered:
+            dir_list = ", ".join(str(d) for d in search_dirs)
             print(
                 f"Error: no topic matching '{topic_name}' found in"
-                f" {specs_dir}",
+                f" {dir_list}",
                 file=sys.stderr,
             )
             sys.exit(1)
 
         return filtered
 
-    if not specs_dir.is_dir():
+    all_candidates = []
+    for search_dir in search_dirs:
+        search_dir = Path(search_dir)
+        if not search_dir.is_dir():
+            continue
+        if topic_filter is not None:
+            entries = sorted(
+                (d.name, search_dir)
+                for d in search_dir.iterdir()
+                if d.is_dir() and topic_filter(d)
+            )
+        else:
+            entries = sorted(
+                (d.name, search_dir)
+                for d in search_dir.iterdir()
+                if d.is_dir()
+            )
+        all_candidates.extend(entries)
+
+    if not all_candidates and not any(
+        Path(d).is_dir() for d in search_dirs
+    ):
+        dir_list = ", ".join(str(d) for d in search_dirs)
         print(
-            f"Error: specs directory does not exist: {specs_dir}",
+            f"Error: specs directory does not exist: {dir_list}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    candidates = sorted(
-        d.name
-        for d in specs_dir.iterdir()
-        if d.is_dir() and topic_filter(d)
-    )
-
     if filter_workdir:
-        candidates = [
-            name for name in candidates
-            if _topic_matches_workdir(specs_dir / name, filter_workdir)
+        all_candidates = [
+            (name, parent) for name, parent in all_candidates
+            if _topic_matches_workdir(parent / name, filter_workdir)
         ]
 
-    if not candidates:
+    if not all_candidates:
         if must_done:
             if filter_workdir:
                 print(
@@ -134,7 +171,7 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
                     "Error: no completed topics found.",
                     file=sys.stderr,
                 )
-        else:
+        elif must_undone:
             if filter_workdir:
                 print(
                     "Error: no topics with undone tasks found for the current"
@@ -146,9 +183,21 @@ def resolve_topic(topic_name, specs_dir, filter_workdir=None, must_done=False):
                     "Error: no topics with undone tasks found.",
                     file=sys.stderr,
                 )
+        else:
+            if filter_workdir:
+                print(
+                    "Error: no topics found for the current"
+                    " workspace. Use --all to show all topics.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "Error: no topics found.",
+                    file=sys.stderr,
+                )
         sys.exit(1)
 
-    return candidates
+    return all_candidates
 
 
 def _topic_matches_workdir(topic_dir, workdir):
@@ -223,6 +272,10 @@ def main(argv=None):
         sys.exit(1)
     args = [a for a in args if a not in ("--must-done", "--must-undone")]
 
+    with_archives_flag = "--with-archives" in args
+    if with_archives_flag:
+        args = [a for a in args if a != "--with-archives"]
+
     topic_name = args[0] if args else ""
 
     if all_flag and topic_name:
@@ -232,26 +285,32 @@ def main(argv=None):
         )
         sys.exit(1)
 
+    workdir = get_current_workdir()
     specs_dir = get_specs_dir()
+    search_dirs = [specs_dir]
+    if with_archives_flag:
+        archives_dir = get_archives_dir(workdir)
+        if archives_dir.is_dir():
+            search_dirs.append(archives_dir)
 
     # Determine workspace filter
     if topic_name or all_flag:
         filter_workdir = None
     else:
-        filter_workdir = get_current_workdir()
+        filter_workdir = workdir
 
     results = resolve_topic(
-        topic_name, specs_dir, filter_workdir=filter_workdir,
-        must_done=must_done_flag,
+        topic_name, search_dirs, filter_workdir=filter_workdir,
+        must_done=must_done_flag, must_undone=must_undone_flag,
     )
     if json_mode:
         items = [
-            {"topic_name": name, "topic_path": str(specs_dir / name)}
-            for name in results
+            {"topic_name": name, "topic_path": str(parent_dir / name)}
+            for name, parent_dir in results
         ]
         print(json.dumps(items, indent=2))
     else:
-        for name in results:
+        for name, _parent_dir in results:
             print(name)
 
 

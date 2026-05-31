@@ -67,16 +67,15 @@ class TestResolveTopic:
         _make_topic(specs, "2026-05-20-14-30-my-topic")
 
         result = resolve_topic("2026-05-20-14-30-my-topic", specs)
-        assert result == ["2026-05-20-14-30-my-topic"]
+        assert result == [("2026-05-20-14-30-my-topic", specs)]
 
-    def test_exact_match_no_undone_tasks(self, tmp_path, capsys):
+    def test_exact_match_no_undone_tasks(self, tmp_path):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
 
+        # Default (no filter) returns the topic unconditionally
         result = resolve_topic("2026-05-20-14-30-done-topic", specs)
-        assert result == []
-        err = capsys.readouterr().err
-        assert "Warning: topic '2026-05-20-14-30-done-topic' has no undone tasks." in err
+        assert result == [("2026-05-20-14-30-done-topic", specs)]
 
     def test_fuzzy_single_match(self, tmp_path):
         specs = tmp_path / "specs"
@@ -84,7 +83,7 @@ class TestResolveTopic:
         _make_topic(specs, "2026-05-20-14-30-other-thing")
 
         result = resolve_topic("fuzzy", specs)
-        assert result == ["2026-05-20-14-30-fuzzy-topic"]
+        assert result == [("2026-05-20-14-30-fuzzy-topic", specs)]
 
     def test_fuzzy_multiple_matches(self, tmp_path):
         specs = tmp_path / "specs"
@@ -92,7 +91,10 @@ class TestResolveTopic:
         _make_topic(specs, "2026-05-20-14-30-edit-beta")
 
         result = resolve_topic("edit", specs)
-        assert result == ["2026-05-20-14-30-edit-alpha", "2026-05-20-14-30-edit-beta"]
+        assert result == [
+            ("2026-05-20-14-30-edit-alpha", specs),
+            ("2026-05-20-14-30-edit-beta", specs),
+        ]
 
     def test_fuzzy_no_match(self, tmp_path):
         specs = tmp_path / "specs"
@@ -101,29 +103,39 @@ class TestResolveTopic:
         with pytest.raises(SystemExit):
             resolve_topic("nonexistent", specs)
 
-    def test_fuzzy_skips_completed(self, tmp_path):
+    def test_fuzzy_includes_completed(self, tmp_path):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
         _make_topic(specs, "2026-05-20-14-30-active-topic")
 
+        # Default (no filter) returns both done and undone topics
         result = resolve_topic("topic", specs)
-        assert result == ["2026-05-20-14-30-active-topic"]
+        assert result == [
+            ("2026-05-20-14-30-active-topic", specs),
+            ("2026-05-20-14-30-done-topic", specs),
+        ]
 
-    def test_no_name_lists_all_undone(self, tmp_path):
+    def test_no_name_lists_all(self, tmp_path):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-alpha")
         _make_topic(specs, "2026-05-20-14-30-beta")
         _make_topic(specs, "2026-05-20-14-30-done", completed=True)
 
+        # Default (no filter) returns all topics
         result = resolve_topic("", specs)
-        assert result == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
+        assert result == [
+            ("2026-05-20-14-30-alpha", specs),
+            ("2026-05-20-14-30-beta", specs),
+            ("2026-05-20-14-30-done", specs),
+        ]
 
-    def test_no_name_no_undone_exits(self, tmp_path):
+    def test_no_name_all_done_still_listed(self, tmp_path):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-done", completed=True)
 
-        with pytest.raises(SystemExit):
-            resolve_topic("", specs)
+        # Default (no filter) returns done topics without exiting
+        result = resolve_topic("", specs)
+        assert result == [("2026-05-20-14-30-done", specs)]
 
     def test_no_name_specs_dir_missing(self, tmp_path):
         specs = tmp_path / "nonexistent"
@@ -138,7 +150,7 @@ class TestResolveTopicMustDone:
         _make_topic(specs, "2026-05-20-14-30-my-topic", completed=True)
 
         result = resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
-        assert result == ["2026-05-20-14-30-my-topic"]
+        assert result == [("2026-05-20-14-30-my-topic", specs)]
 
     def test_exact_match_must_done_not_completed(self, tmp_path, capsys):
         specs = tmp_path / "specs"
@@ -155,7 +167,7 @@ class TestResolveTopicMustDone:
         _make_topic(specs, "2026-05-20-14-30-active-topic")
 
         result = resolve_topic("topic", specs, must_done=True)
-        assert result == ["2026-05-20-14-30-done-topic"]
+        assert result == [("2026-05-20-14-30-done-topic", specs)]
 
     def test_fuzzy_match_must_done_no_match(self, tmp_path):
         specs = tmp_path / "specs"
@@ -171,7 +183,10 @@ class TestResolveTopicMustDone:
         _make_topic(specs, "2026-05-20-14-30-active")
 
         result = resolve_topic("", specs, must_done=True)
-        assert result == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
+        assert result == [
+            ("2026-05-20-14-30-alpha", specs),
+            ("2026-05-20-14-30-beta", specs),
+        ]
 
     def test_no_name_must_done_none_completed(self, tmp_path, capsys):
         specs = tmp_path / "specs"
@@ -194,7 +209,7 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-beta", workdir=str(workspace_b))
 
         result = resolve_topic("", specs, filter_workdir=str(workspace_a))
-        assert result == ["2026-05-20-14-30-alpha"]
+        assert result == [("2026-05-20-14-30-alpha", specs)]
 
     def test_filter_returns_multiple(self, tmp_path):
         specs = tmp_path / "specs"
@@ -204,7 +219,10 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-two", workdir=str(workspace))
 
         result = resolve_topic("", specs, filter_workdir=str(workspace))
-        assert result == ["2026-05-20-14-30-one", "2026-05-20-14-30-two"]
+        assert result == [
+            ("2026-05-20-14-30-one", specs),
+            ("2026-05-20-14-30-two", specs),
+        ]
 
     def test_filter_no_match_exits_with_hint(self, tmp_path, capsys):
         specs = tmp_path / "specs"
@@ -227,7 +245,7 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-no-meta")  # no workdir
 
         result = resolve_topic("", specs, filter_workdir=str(workspace))
-        assert result == ["2026-05-20-14-30-has-meta"]
+        assert result == [("2026-05-20-14-30-has-meta", specs)]
 
     def test_no_filter_returns_all(self, tmp_path):
         specs = tmp_path / "specs"
@@ -239,7 +257,10 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-beta", workdir=str(workspace_b))
 
         result = resolve_topic("", specs, filter_workdir=None)
-        assert result == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
+        assert result == [
+            ("2026-05-20-14-30-alpha", specs),
+            ("2026-05-20-14-30-beta", specs),
+        ]
 
     def test_filter_with_symlink(self, tmp_path):
         specs = tmp_path / "specs"
@@ -251,7 +272,7 @@ class TestResolveTopicWorkdirFilter:
 
         # Filter using the symlink path — same_path should resolve it
         result = resolve_topic("", specs, filter_workdir=str(link))
-        assert result == ["2026-05-20-14-30-sym"]
+        assert result == [("2026-05-20-14-30-sym", specs)]
 
     def test_topic_name_ignores_filter(self, tmp_path):
         """When topic_name is given, filter_workdir is not applied."""
@@ -268,7 +289,7 @@ class TestResolveTopicWorkdirFilter:
         result = resolve_topic(
             "2026-05-20-14-30-target", specs, filter_workdir=str(workspace)
         )
-        assert result == ["2026-05-20-14-30-target"]
+        assert result == [("2026-05-20-14-30-target", specs)]
 
 
 class TestMainAllFlag:
@@ -397,7 +418,7 @@ class TestMainMustDoneFlag:
         main()
         assert captured_kwargs.get("must_done") is True
 
-    def test_must_undone_is_default(
+    def test_no_filter_is_default(
         self, tmp_path, monkeypatch, capsys
     ):
         specs = tmp_path / "specs"
@@ -421,6 +442,7 @@ class TestMainMustDoneFlag:
         monkeypatch.setattr("get_topic.resolve_topic", mock_resolve)
         main()
         assert captured_kwargs.get("must_done") is False
+        assert captured_kwargs.get("must_undone") is False
 
 
 class TestMainJsonFlag:
@@ -478,6 +500,212 @@ class TestMainJsonFlag:
         assert items[1]["topic_name"] == "2026-05-20-14-30-edit-beta"
         assert items[1]["topic_path"] == str(
             specs / "2026-05-20-14-30-edit-beta"
+        )
+
+
+class TestResolveTopicMustUndone:
+    def test_exact_match_undone(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+
+        result = resolve_topic(
+            "2026-05-20-14-30-active-topic", specs, must_undone=True
+        )
+        assert result == [("2026-05-20-14-30-active-topic", specs)]
+
+    def test_exact_match_completed_returns_empty(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+
+        result = resolve_topic(
+            "2026-05-20-14-30-done-topic", specs, must_undone=True
+        )
+        assert result == []
+        err = capsys.readouterr().err
+        assert "no undone tasks" in err
+
+    def test_fuzzy_match_filters_undone(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+
+        result = resolve_topic("topic", specs, must_undone=True)
+        assert result == [("2026-05-20-14-30-active-topic", specs)]
+
+    def test_fuzzy_match_all_done_exits(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
+
+        with pytest.raises(SystemExit):
+            resolve_topic("topic", specs, must_undone=True)
+
+    def test_no_name_lists_undone_only(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-alpha")
+        _make_topic(specs, "2026-05-20-14-30-beta", completed=True)
+        _make_topic(specs, "2026-05-20-14-30-gamma")
+
+        result = resolve_topic("", specs, must_undone=True)
+        assert result == [
+            ("2026-05-20-14-30-alpha", specs),
+            ("2026-05-20-14-30-gamma", specs),
+        ]
+
+    def test_no_name_all_done_exits(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-done", completed=True)
+
+        with pytest.raises(SystemExit):
+            resolve_topic("", specs, must_undone=True)
+        err = capsys.readouterr().err
+        assert "no topics with undone tasks found" in err
+
+
+class TestResolveTopicWithArchives:
+    def test_both_dirs_searched(self, tmp_path):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(archives, "2026-05-10-10-00-archived-topic")
+
+        result = resolve_topic("", [specs, archives])
+        # Entries are sorted within each directory, appended in dir order
+        assert result == [
+            ("2026-05-20-14-30-active-topic", specs),
+            ("2026-05-10-10-00-archived-topic", archives),
+        ]
+
+    def test_parent_dir_correct_for_each_source(self, tmp_path):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-in-specs")
+        _make_topic(archives, "2026-05-10-10-00-in-archives")
+
+        result = resolve_topic("", [specs, archives])
+        result_dict = {name: parent for name, parent in result}
+        assert result_dict["2026-05-20-14-30-in-specs"] == specs
+        assert result_dict["2026-05-10-10-00-in-archives"] == archives
+
+    def test_fuzzy_match_across_dirs(self, tmp_path):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-feature-auth")
+        _make_topic(archives, "2026-05-10-10-00-feature-login")
+
+        result = resolve_topic("feature", [specs, archives])
+        assert result == [
+            ("2026-05-10-10-00-feature-login", archives),
+            ("2026-05-20-14-30-feature-auth", specs),
+        ]
+
+    def test_must_done_across_dirs(self, tmp_path):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(specs, "2026-05-20-14-30-done-specs", completed=True)
+        _make_topic(archives, "2026-05-10-10-00-done-archive", completed=True)
+        _make_topic(archives, "2026-05-10-10-00-active-archive")
+
+        result = resolve_topic("", [specs, archives], must_done=True)
+        assert result == [
+            ("2026-05-20-14-30-done-specs", specs),
+            ("2026-05-10-10-00-done-archive", archives),
+        ]
+
+    def test_must_undone_across_dirs(self, tmp_path):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(specs, "2026-05-20-14-30-done-specs", completed=True)
+        _make_topic(archives, "2026-05-10-10-00-done-archive", completed=True)
+        _make_topic(archives, "2026-05-10-10-00-active-archive")
+
+        result = resolve_topic("", [specs, archives], must_undone=True)
+        assert result == [
+            ("2026-05-20-14-30-active-topic", specs),
+            ("2026-05-10-10-00-active-archive", archives),
+        ]
+
+    def test_single_dir_backward_compat(self, tmp_path):
+        specs = tmp_path / "specs"
+        _make_topic(specs, "2026-05-20-14-30-my-topic")
+
+        # Single Path (not a list) should still work
+        result = resolve_topic("", specs)
+        assert result == [("2026-05-20-14-30-my-topic", specs)]
+
+
+class TestMainWithArchives:
+    def test_archived_topics_appear_with_flag(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(archives, "2026-05-10-10-00-archived-topic")
+
+        monkeypatch.setattr(
+            sys, "argv", ["get_topic", "--with-archives", "--all"]
+        )
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr(
+            "get_topic.get_archives_dir", lambda workdir: archives
+        )
+        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        main()
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        assert "2026-05-10-10-00-archived-topic" in lines
+        assert "2026-05-20-14-30-active-topic" in lines
+
+    def test_archived_topics_not_shown_without_flag(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(archives, "2026-05-10-10-00-archived-topic")
+
+        monkeypatch.setattr(
+            sys, "argv", ["get_topic", "--all"]
+        )
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        main()
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        assert "2026-05-10-10-00-archived-topic" not in lines
+        assert "2026-05-20-14-30-active-topic" in lines
+
+    def test_json_output_correct_topic_path(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        _make_topic(specs, "2026-05-20-14-30-active-topic")
+        _make_topic(archives, "2026-05-10-10-00-archived-topic")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["get_topic", "--with-archives", "--all", "--json"],
+        )
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr(
+            "get_topic.get_archives_dir", lambda workdir: archives
+        )
+        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        main()
+        out = capsys.readouterr().out
+        items = json.loads(out)
+        assert len(items) == 2
+
+        # Build a lookup by topic_name
+        by_name = {item["topic_name"]: item for item in items}
+        assert by_name["2026-05-20-14-30-active-topic"]["topic_path"] == str(
+            specs / "2026-05-20-14-30-active-topic"
+        )
+        assert by_name["2026-05-10-10-00-archived-topic"]["topic_path"] == str(
+            archives / "2026-05-10-10-00-archived-topic"
         )
 
 
