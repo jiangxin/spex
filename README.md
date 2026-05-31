@@ -168,7 +168,7 @@ All options live under the `[spex]` section:
 # spex_root = ".spex"
 
 # Create and manage branches for specs
-# branch_management = false
+# branch_management = true
 
 # Restrict spec creation to this branch
 # main_branch_name = ""
@@ -180,7 +180,7 @@ All options live under the `[spex]` section:
 | Key                 | Type   | Default    | Description                                                                |
 |---------------------|--------|------------|----------------------------------------------------------------------------|
 | `spex_root`         | string | `".spex"`  | Spec storage directory (relative to the `.spex.toml` location, or absolute)|
-| `branch_management` | bool   | `false`    | Automatically create/switch branches per spec topic                        |
+| `branch_management` | bool   | `true`     | Automatically create/switch branches per spec topic                        |
 | `main_branch_name`  | string | `""`       | Only allow spec creation on this branch (empty = any)                      |
 | `submit_method`     | string | `"merge"`  | How to submit completed work: `merge` or `pr`                              |
 
