@@ -27,7 +27,7 @@ def validate_create_branch(
     Prints errors to stderr and exits on failure.
     Returns the current branch name on success.
     """
-    from branch import get_current_branch
+    from branch import get_current_branch, switch_branch
 
     try:
         current = get_current_branch(cwd)
@@ -46,11 +46,22 @@ def validate_create_branch(
     main_branch = config["main_branch_name"]
     if main_branch and current != main_branch:
         print(
-            f"Error: current branch '{current}' does not match "
-            f"main_branch_name '{main_branch}'.",
+            f"Warning: current branch '{current}' does not match "
+            f"main_branch_name '{main_branch}'. "
+            f"Switching to '{main_branch}'...",
             file=sys.stderr,
         )
-        sys.exit(1)
+        try:
+            switch_branch(main_branch, cwd)
+        except subprocess.CalledProcessError as e:
+            print(
+                f"Error: failed to switch to '{main_branch}': "
+                f"{e.stderr.strip() or e}",
+                file=sys.stderr,
+            )
+            sys.exit(-1)
+        print(f"Switched to branch '{main_branch}'.", file=sys.stderr)
+        return main_branch
 
     if current.startswith(DEFAULT_SPEX_BRANCH_PREFIX):
         print(

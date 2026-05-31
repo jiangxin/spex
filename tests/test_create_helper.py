@@ -43,14 +43,13 @@ class TestValidateCreateBranch:
         except SystemExit as e:
             assert e.code == 1
 
+    @patch("branch.switch_branch")
     @patch("branch.get_current_branch", return_value="develop")
-    def test_wrong_main_branch_exits(self, _mock):
-        try:
-            validate_create_branch({"branch_management": True,
-                                    "main_branch_name": "main"})
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
+    def test_wrong_main_branch_auto_switches(self, _curr, _switch):
+        result = validate_create_branch({"branch_management": True,
+                                         "main_branch_name": "main"})
+        assert result == "main"
+        _switch.assert_called_once_with("main", None)
 
     @patch("branch.get_current_branch", return_value="spex/feature")
     def test_spex_prefix_exits(self, _mock):
