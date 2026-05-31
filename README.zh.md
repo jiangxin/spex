@@ -150,7 +150,7 @@ export SPEX_CONFIG_FILE=/path/to/custom.toml
 # spex_root = ".spex"
 
 # 为规格创建和管理分支
-# branch_management = false
+# branch_management = true
 
 # 限制只能在此分支上创建规格
 # main_branch_name = ""
@@ -162,7 +162,7 @@ export SPEX_CONFIG_FILE=/path/to/custom.toml
 | 键                  | 类型   | 默认值     | 说明                                                 |
 |---------------------|--------|------------|---------------------------------------------------|
 | `spex_root`         | string | `".spex"`  | 规格存储目录（相对于 `.spex.toml` 所在位置，或绝对路径） |
-| `branch_management` | bool   | `false`    | 自动为每个规格主题创建/切换分支                        |
+| `branch_management` | bool   | `true`     | 自动为每个规格主题创建/切换分支                        |
 | `main_branch_name`  | string | `""`       | 仅允许在此分支上创建规格（空 = 任意分支）               |
 | `submit_method`     | string | `"merge"`  | 完成工作的提交方式：`merge` 或 `pr`                   |
 

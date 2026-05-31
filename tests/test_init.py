@@ -247,13 +247,13 @@ class TestSafeUpdateToml:
 
         content = toml_file.read_text()
         assert 'spex_root = "custom"' in content
-        assert "# branch_management = false" in content
+        assert "# branch_management = true" in content
 
-    def test_preserves_all_user_values(self, tmp_path):
-        """All user-set keys stay uncommented after update."""
+    def test_preserves_non_default_user_values(self, tmp_path):
+        """User-set keys with non-default values stay uncommented."""
         toml_file = tmp_path / ".spex.toml"
         toml_file.write_text(
-            '[spex]\nspex_root = "/my/root"\nbranch_management = true\n'
+            '[spex]\nspex_root = "/my/root"\nbranch_management = false\n'
         )
 
         from config import safe_update_toml
@@ -262,9 +262,23 @@ class TestSafeUpdateToml:
 
         content = toml_file.read_text()
         assert 'spex_root = "/my/root"' in content
-        assert "branch_management = true" in content
+        assert "branch_management = false" in content
         assert "# spex_root" not in content
         assert "# branch_management" not in content
+
+    def test_default_matching_values_become_comments(self, tmp_path):
+        """Values matching defaults are commented out on update."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(
+            '[spex]\nbranch_management = true\n'
+        )
+
+        from config import safe_update_toml
+
+        safe_update_toml(toml_file)
+
+        content = toml_file.read_text()
+        assert "# branch_management = true" in content
 
     def test_no_write_when_up_to_date(self, tmp_path):
         """Does not touch file when content already matches schema."""
@@ -319,10 +333,10 @@ class TestCreateTomlConfig:
 
         proj_content = project_toml.read_text()
         assert 'spex_root = "proj"' in proj_content
-        assert "# branch_management = false" in proj_content
+        assert "# branch_management = true" in proj_content
 
         home_content = home_toml.read_text()
-        assert "branch_management = true" in home_content
+        assert "# branch_management = true" in home_content
         assert '# spex_root = ".spex"' in home_content
 
     def test_no_cache_clear_when_all_up_to_date(self, tmp_path):
@@ -645,7 +659,7 @@ class TestInitTargetToml:
         target.mkdir()
         home_toml = tmp_path / "home" / ".spex.toml"
         home_toml.parent.mkdir()
-        home_toml.write_text('[spex]\nbranch_management = true\n')
+        home_toml.write_text('[spex]\nbranch_management = false\n')
 
         with patch("config.Path.home", return_value=home_toml.parent):
             from init import _init_target_toml
@@ -656,12 +670,12 @@ class TestInitTargetToml:
         toml_path = target / ".spex.toml"
         assert toml_path.exists()
         content = toml_path.read_text()
-        assert "branch_management = true" in content
+        assert "branch_management = false" in content
         assert 'spex_root = ".spex"' in content
         assert "Created:" in capsys.readouterr().out
 
-    def test_creates_toml_with_all_defaults_uncommented(self, tmp_path):
-        """Creates .spex.toml with all effective values uncommented."""
+    def test_creates_toml_with_forced_spex_root(self, tmp_path):
+        """Creates .spex.toml with spex_root always explicit."""
         target = tmp_path / "project"
         target.mkdir()
 
@@ -673,8 +687,7 @@ class TestInitTargetToml:
 
         content = (target / ".spex.toml").read_text()
         assert 'spex_root = ".spex"' in content
-        assert "branch_management = false" in content
-        assert "# spex_root" not in content
+        assert "# branch_management = true" in content
 
     def test_skips_when_toml_exists(self, tmp_path):
         """Does not overwrite existing .spex.toml."""
@@ -713,7 +726,7 @@ class TestRunInitWithTargetDir:
         fake_home = tmp_path / "home"
         fake_home.mkdir()
         (fake_home / ".spex.toml").write_text(
-            '[spex]\nbranch_management = true\n'
+            '[spex]\nbranch_management = false\n'
         )
 
         from init import run_init
@@ -727,4 +740,4 @@ class TestRunInitWithTargetDir:
             run_init(target_dir=str(mock_workdir))
 
         content = (mock_workdir / ".spex.toml").read_text()
-        assert "branch_management = true" in content
+        assert "branch_management = false" in content

@@ -110,7 +110,7 @@ def _init_target_toml(target_dir, verbose=False):
         return
 
     effective = load_config(str(target_dir))
-    content = generate_updated_toml(effective)
+    content = generate_updated_toml(effective, force_keys={"spex_root"})
     toml_path.write_text(content, encoding="utf-8")
     print(f"Created: {toml_path}")
 

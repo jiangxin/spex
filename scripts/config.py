@@ -20,7 +20,7 @@ class SpexConfig(TypedDict, total=False):
 
 _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("spex_root", ".spex", "Root directory for spec storage"),
-    ("branch_management", False, "Create and manage branches for specs"),
+    ("branch_management", True, "Create and manage branches for specs"),
     ("main_branch_name", "", "Restrict spec creation to this branch"),
     ("submit_method", "merge", "How to submit completed work: merge or pr"),
 ]
@@ -374,20 +374,27 @@ def _render_toml_value(value) -> str:
     return str(value)
 
 
-def generate_updated_toml(user_config: dict) -> str:
+def generate_updated_toml(
+    user_config: dict, force_keys: set | None = None,
+) -> str:
     """Generate a TOML string preserving user-set values from an existing config.
 
-    Keys present in user_config are rendered uncommented with the user's value.
-    Keys absent from user_config are rendered as commented-out defaults.
-    Keys in user_config that are not in the schema are ignored.
+    Keys in user_config with non-default values are rendered uncommented.
+    Keys matching defaults or absent from user_config are commented out.
+    Keys in force_keys are always rendered uncommented.
     """
+    if force_keys is None:
+        force_keys = set()
     lines = ["[spex]"]
     for i, (key, default, comment) in enumerate(_CONFIG_SCHEMA):
         if i > 0:
             lines.append("")
         lines.append(f"# {comment}")
-        if key in user_config:
-            rendered = _render_toml_value(user_config[key])
+        value = user_config.get(key)
+        is_explicit = value is not None and value != default
+        if is_explicit or key in force_keys:
+            rendered = _render_toml_value(
+                value if value is not None else default)
             lines.append(f"{key} = {rendered}")
         else:
             rendered = _render_toml_value(default)
@@ -405,7 +412,8 @@ def safe_update_toml(toml_path):
     """
     existing = _load_toml_config(toml_path)
     user_config = (existing or {}).get("spex", {})
-    new_content = generate_updated_toml(user_config)
+    force = {"spex_root"} if "spex_root" in user_config else set()
+    new_content = generate_updated_toml(user_config, force_keys=force)
     if not toml_path.is_file():
         return False
     old_content = toml_path.read_text(encoding="utf-8")

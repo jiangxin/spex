@@ -298,7 +298,7 @@ class TestBranchConfig:
 
         result = load_config()
 
-        assert result["branch_management"] is False
+        assert result["branch_management"] is True
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
 
@@ -856,8 +856,8 @@ class TestGenerateDefaultToml:
 
     def test_boolean_formatting(self):
         result = generate_default_toml()
-        assert "# branch_management = false" in result
-        assert "False" not in result
+        assert "# branch_management = true" in result
+        assert "True" not in result
 
     def test_string_formatting(self):
         result = generate_default_toml()
@@ -893,35 +893,38 @@ class TestGenerateUpdatedToml:
 
     def test_other_keys_stay_commented(self):
         result = generate_updated_toml({"spex_root": "custom"})
-        assert "# branch_management = false" in result
+        assert "# branch_management = true" in result
         assert '# submit_method = "merge"' in result
 
-    def test_boolean_user_value(self):
-        result = generate_updated_toml({"branch_management": True})
-        assert "branch_management = true" in result
+    def test_boolean_user_value_different_from_default(self):
+        result = generate_updated_toml({"branch_management": False})
+        assert "branch_management = false" in result
         assert "# branch_management" not in result
+
+    def test_value_matching_default_is_commented(self):
+        result = generate_updated_toml({"branch_management": True})
+        assert "# branch_management = true" in result
+
+        result = generate_updated_toml({"spex_root": ".spex"})
+        assert '# spex_root = ".spex"' in result
 
     def test_unknown_key_ignored(self):
         result = generate_updated_toml({"unknown_key": "val"})
         assert "unknown_key" not in result
         assert result == generate_default_toml()
 
-    def test_all_keys_set(self):
+    def test_all_keys_set_non_default(self):
         cfg = {
             "spex_root": "/my/root",
-            "branch_management": True,
+            "branch_management": False,
             "main_branch_name": "develop",
             "submit_method": "pr",
         }
         result = generate_updated_toml(cfg)
         assert 'spex_root = "/my/root"' in result
-        assert "branch_management = true" in result
+        assert "branch_management = false" in result
         assert 'main_branch_name = "develop"' in result
         assert 'submit_method = "pr"' in result
-        for line in result.splitlines():
-            if line.startswith("#") and " = " in line and line != "[spex]":
-                key_part = line.lstrip("# ").split(" = ")[0]
-                assert key_part not in cfg
 
     def test_comments_always_present(self):
         result = generate_updated_toml({"spex_root": "x"})
