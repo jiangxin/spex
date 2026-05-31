@@ -44,7 +44,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper --validate --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper precheck --topic $topic_name
 ```
 
 If the script exits with an error (non-zero), the error message is already
@@ -123,7 +123,7 @@ still has undone tasks.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper --post-action --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper post-action --topic $topic_name
 ```
 
 Display the output to the user.

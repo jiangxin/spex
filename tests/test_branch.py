@@ -4,14 +4,16 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+from apply_helper import (
+    cli_post_action,
+    cli_precheck,
+    validate_apply_branch,
+)
 from branch import (
     branch_exists,
-    cli_apply_post_action,
-    cli_apply_validate,
     cli_submit,
     get_current_branch,
     merge_branch,
-    validate_apply_branch,
 )
 from common import strip_date_prefix
 from config import SpexContext
@@ -225,7 +227,7 @@ class TestValidateApplyBranch:
             assert e.code == 1
 
 
-class TestCliApplyValidate:
+class TestCliPrecheck:
     @patch("common.resolve_topic_dir")
     @patch("config.get_context", return_value=_fake_context(
         config={"branch_management": False}))
@@ -234,13 +236,12 @@ class TestCliApplyValidate:
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
-        cli_apply_validate(["--topic", "test-topic"])
-        # When branch_management is False, function returns early with no output
+        cli_precheck(["--topic", "test-topic"])
         out = capsys.readouterr().out
         assert out == ""
 
 
-class TestCliApplyPostAction:
+class TestCliPostAction:
     @patch("common.resolve_topic_dir")
     def test_outputs_text_with_branch(self, mock_resolve, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
@@ -248,7 +249,7 @@ class TestCliApplyPostAction:
             json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
         )
         mock_resolve.return_value = tmp_path
-        cli_apply_post_action(["--topic", "my-feat"])
+        cli_post_action(["--topic", "my-feat"])
         out = capsys.readouterr().out
         assert "spex/my-feat" in out
         assert "Development completed" in out
@@ -259,7 +260,7 @@ class TestCliApplyPostAction:
     def test_no_branch_no_output(self, _meta, _resolve, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
-        cli_apply_post_action(["--topic", "no-branch"])
+        cli_post_action(["--topic", "no-branch"])
         out = capsys.readouterr().out
         assert out == ""
 

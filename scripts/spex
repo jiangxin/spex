@@ -52,8 +52,9 @@ Internal commands (used by skill):
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  apply-helper --validate|--post-action --topic <name>
-                Validate or report apply-branch status (JSON/text)
+  apply-helper <subcommand>
+                Helper utilities for applying specs
+                (precheck, post-action)
   submit --topic <name>
                 Submit (merge) a spex branch back to target
 """
@@ -227,47 +228,11 @@ def _run_create_helper(argv=None):
     create_helper.main(argv)
 
 
-_APPLY_HELPER_USAGE = """\
-Usage: spex apply-helper --validate|--post-action --topic <name>
-
-Validate or report apply-branch status.
-
-Options:
-  --validate        Validate branch setup
-  --post-action     Run post-action hook
-  --topic <name>    Topic name (required)
-  -h, --help        Show this help message and exit
-"""
-
-
 def _run_apply_helper(argv=None):
     """Route apply-helper subcommand."""
-    import branch
+    import apply_helper
 
-    parser = ArgumentParser(prog="spex apply-helper",
-                            usage=_APPLY_HELPER_USAGE)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--validate", action="store_true")
-    mode.add_argument("--post-action", action="store_true")
-    parser.add_argument("--topic")
-    args = parser.parse(argv)
-
-    if args.validate:
-        if not args.topic:
-            print("Error: --topic is required", file=sys.stderr)
-            sys.exit(1)
-        branch.cli_apply_validate(["--topic", args.topic])
-    elif args.post_action:
-        if not args.topic:
-            print("Error: --topic is required", file=sys.stderr)
-            sys.exit(1)
-        branch.cli_apply_post_action(["--topic", args.topic])
-    else:
-        print(
-            "Usage: spex apply-helper --validate|--post-action --topic <name>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    apply_helper.main(argv)
 
 
 _SUBMIT_USAGE = """\
