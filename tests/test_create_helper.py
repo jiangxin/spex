@@ -51,6 +51,31 @@ class TestValidateCreateBranch:
         assert result == "main"
         _switch.assert_called_once_with("main", None)
 
+    @patch("branch.switch_branch")
+    @patch("branch.get_current_branch", return_value="develop")
+    def test_auto_switch_success_output(self, _curr, _switch, capsys):
+        result = validate_create_branch({"branch_management": True,
+                                         "main_branch_name": "main"})
+        assert result == "main"
+        err = capsys.readouterr().err
+        assert "Warning" in err
+        assert "Switching" in err
+        assert "Switched to branch" in err
+
+    @patch("branch.switch_branch",
+           side_effect=subprocess.CalledProcessError(
+               1, "git", stderr="error: pathspec"))
+    @patch("branch.get_current_branch", return_value="develop")
+    def test_auto_switch_failure_exits(self, _curr, _switch, capsys):
+        try:
+            validate_create_branch({"branch_management": True,
+                                    "main_branch_name": "main"})
+            assert False, "Should have called sys.exit(-1)"
+        except SystemExit as e:
+            assert e.code == -1
+        err = capsys.readouterr().err
+        assert "failed to switch" in err
+
     @patch("branch.get_current_branch", return_value="spex/feature")
     def test_spex_prefix_exits(self, _mock):
         try:
@@ -60,6 +85,18 @@ class TestValidateCreateBranch:
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
+
+    @patch("branch.get_current_branch", return_value="spex/feature")
+    def test_spex_prefix_error_includes_hint(self, _mock, capsys):
+        try:
+            validate_create_branch(
+                {"branch_management": True, "main_branch_name": "",
+                 "submit_method": "merge"})
+        except SystemExit:
+            pass
+        err = capsys.readouterr().err
+        assert "main_branch_name" in err
+        assert "Hint" in err
 
 
 class TestCliCreateValidate:
