@@ -46,6 +46,9 @@ Internal commands (used by skill):
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done, xml2json, json2xml)
+  todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
+                Operate on todo files (validate, append, edit, remove,
+                show, remove-undone, xml2json, json2xml)
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
@@ -293,6 +296,13 @@ def _run_submit(argv=None):
     branch.cli_submit(["--topic", args.topic])
 
 
+def _run_todo_helper(argv=None):
+    """Route todo-helper subcommands."""
+    import todo_helper
+
+    todo_helper.main(argv)
+
+
 def _run_todo(argv=None):
     """Route todo subcommands."""
     if not argv or len(argv) < 1:
@@ -427,6 +437,7 @@ DIRECT_COMMANDS = {
 "prompt": _run_prompt,
     "meta": _run_meta,
     "todo": _run_todo,
+    "todo-helper": _run_todo_helper,
     "create-helper": _run_create_helper,
     "apply-helper": _run_apply_helper,
     "submit": _run_submit,
