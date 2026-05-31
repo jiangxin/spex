@@ -277,8 +277,64 @@ def cli_apply_one_task(argv):
         _output_rendered(rendered, args.output)
 
 
+def _read_stdin_extra_vars(stdin_flag):
+    """Read extra variables from stdin (JSON or raw text with --stdin flag)."""
+    import json
+
+    if sys.stdin.isatty():
+        return None
+    stdin_data = sys.stdin.read().strip()
+    if not stdin_data:
+        return None
+    if stdin_flag:
+        return {"prompt_context": stdin_data}
+    try:
+        return json.loads(stdin_data)
+    except json.JSONDecodeError:
+        print("Error: stdin must be valid JSON", file=sys.stderr)
+        sys.exit(1)
+
+
+def cli_apply_commit(argv):
+    """CLI handler for apply-commit subcommand."""
+    from jinja2 import TemplateError
+
+    parser = ArgumentParser(
+        prog="spex prompt apply-commit",
+        description="Render apply-commit template with topic metadata.",
+    )
+    parser.add_argument("--topic", help="Topic name")
+    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
+                        help="Read raw text from stdin as prompt_context")
+    parser.add_argument("-o", "--output",
+                        help="Output file path (default: stdout)")
+    args = parser.parse(argv)
+
+    extra_vars = _read_stdin_extra_vars(args.stdin_flag)
+
+    try:
+        metadata = _build_metadata("apply-commit", args.topic)
+        if extra_vars:
+            metadata.update(extra_vars)
+
+        # Handle all-done: exit(0) with empty stdout
+        if not metadata.get("next_task_text"):
+            sys.exit(0)
+
+        rendered = render_prompt("apply-commit", args.topic, metadata=metadata)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except TemplateError as e:
+        print(f"Error rendering template: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    _output_rendered(rendered, args.output)
+
+
 SUBCOMMANDS = {
     "apply-one-task": cli_apply_one_task,
+    "apply-commit": cli_apply_commit,
 }
 
 
