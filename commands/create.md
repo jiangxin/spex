@@ -121,32 +121,41 @@ Principles:
 - **Ordered by dependency**: list steps so that each builds on the
   previous one; no forward references.
 
-Create `$topic_path/todo.json` listing each step in order:
+Use `spex todo-helper` to build `todo.json` step by step.
+Number steps sequentially: `step-1`, `step-2`, etc.
 
-```json
-[
-  {
-    "id": "step-1",
-    "name": "Short name for the step",
-    "details": "Markdown-formatted description of what this step does,\nincluding file changes, logic, and acceptance criteria.\n\n- Use lists, bold, and inline code\n- Do not use headings (`#`, `##`, etc.)",
-    "completed_at": "",
-    "commit_title": ""
-  }
-]
+**Append** a step:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name append \
+  --id step-1 --name "Short name" --details "Markdown details..."
 ```
 
-- `details`: Markdown-formatted text describing the step. Use `\n`
-  for newlines in the JSON string.
-- Number steps sequentially: `step-1`, `step-2`, etc.
+**Show** current steps (to review before adding more):
 
-**CRITICAL — the validator will reject any deviation from this
-structure:**
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name show \
+  --format markdown
+```
 
-- The file **MUST** be a valid JSON array.
-- Each element **MUST** contain exactly five fields:
-  `id`, `name`, `details`, `completed_at`, `commit_title`.
-- `id` values **MUST** be unique across all elements.
-- `completed_at` and `commit_title` **MUST** be empty strings `""`.
+**Edit** a step (only specified fields are updated):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+  --id step-1 --details "Updated details..."
+```
+
+**Remove** a step:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name remove \
+  --id step-1
+```
+
+The `details` field supports multi-line Markdown:
+
+- Use lists, bold, and inline code
+- Do not use headings (`#`, `##`, etc.)
 
 ### Phase 7: Post-Action
 
