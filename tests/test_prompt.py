@@ -897,3 +897,264 @@ class TestModifyTodoTemplate:
         # Verify todo.json is empty list
         data = json.loads(todo_path.read_text(encoding="utf-8"))
         assert data == []
+
+
+@pytest.mark.slow
+class TestCliApplyOneTask:
+    """Test cli_apply_one_task handler directly."""
+
+    def test_json_mode_output(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task --json outputs JSON with task_id and prompt."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import cli_apply_one_task
+
+        cli_apply_one_task(["--topic", "test-topic", "--json"])
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["task_id"] == "step-2"
+        assert "step-2" in data["prompt"]
+        assert "task_id=" not in captured.err
+
+    def test_non_json_emits_task_id_stderr(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task without --json emits task_id to stderr."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import cli_apply_one_task
+
+        cli_apply_one_task(["--topic", "test-topic"])
+
+        captured = capsys.readouterr()
+        assert "task_id=step-1" in captured.err
+        assert captured.out.strip()  # should have rendered output
+
+    def test_all_done_json(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task --json all-done outputs all_done=true."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import cli_apply_one_task
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_apply_one_task(["--topic", "test-topic", "--json"])
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["all_done"] is True
+
+    def test_all_done_non_json(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task without --json exits 0 with empty output."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import cli_apply_one_task
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_apply_one_task(["--topic", "test-topic"])
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+
+@pytest.mark.slow
+class TestCliApplyCommit:
+    """Test cli_apply_commit handler directly."""
+
+    def test_renders_commit_prompt(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_commit renders commit instructions."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature", details="Implement X"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import cli_apply_commit
+
+        cli_apply_commit(["--topic", "test-topic"])
+
+        captured = capsys.readouterr()
+        assert "<current-task>" in captured.out
+        assert "Add feature" in captured.out
+
+    def test_all_done_exits_zero(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_commit exits 0 with empty output when all done."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import cli_apply_commit
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_apply_commit(["--topic", "test-topic"])
+        assert exc_info.value.code == 0
+
+
+@pytest.mark.slow
+class TestCliModifySpec:
+    """Test cli_modify_spec handler directly."""
+
+    def test_stdin_logs_to_meta(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec with --stdin logs prompt_context to meta.json."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Add caching support"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+
+        captured = capsys.readouterr()
+        assert "Add caching support" in captured.out
+
+        # Verify meta.json was updated
+        meta_path = topic_dir / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["prompts"][0]["text"] == "Add caching support"
+
+    def test_json_mode_output(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec --json outputs JSON with prompt key."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Refactor module"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin", "--json"])
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "prompt" in data
+        assert "Refactor module" in data["prompt"]
+
+
+@pytest.mark.slow
+class TestCliModifyTodo:
+    """Test cli_modify_todo handler directly."""
+
+    def test_cleans_undone_todos(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_todo removes undone tasks from todo.json."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import cli_modify_todo
+
+        cli_modify_todo(["--topic", "test-topic"])
+
+        # Verify todo.json only contains completed tasks
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+
+    def test_json_mode_output(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_todo --json outputs JSON with prompt key."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import cli_modify_todo
+
+        cli_modify_todo(["--topic", "test-topic", "--json"])
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "prompt" in data
+
+
+@pytest.mark.slow
+class TestMainRouting:
+    """Test main() subcommand routing."""
+
+    def test_routes_to_apply_one_task(self, tmp_path, monkeypatch, capsys):
+        """main() routes apply-one-task to cli_apply_one_task."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import main
+
+        main(["apply-one-task", "--topic", "test-topic", "--json"])
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["task_id"] == "step-1"
+
+    def test_fallback_to_cli_render(self, tmp_path, monkeypatch, capsys):
+        """main() falls back to cli_render for unknown template names."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["nonexistent-template"])
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "Error" in captured.err
+
+    def test_help_flag(self, capsys):
+        """main() --help prints usage and exits 0."""
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--help"])
+        assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        assert "apply-one-task" in captured.out
+        assert "modify-spec" in captured.out
+
+    def test_no_args_prints_usage_to_stderr(self, capsys):
+        """main() with no args prints usage to stderr and exits 1."""
+        from prompt import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([])
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "Usage:" in captured.err
