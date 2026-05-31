@@ -11,6 +11,7 @@ from pathlib import Path
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     atomic_write_json,
+    resolve_topic_dir,
     strip_date_prefix,
 )
 
@@ -24,6 +25,7 @@ Usage: spex create-helper <subcommand> [options]
 Subcommands:
   precheck      Validate branch creation feasibility
   prepare-spec  Create topic directory and return JSON metadata
+  post-action   Convert todo.xml to todo.json and run post-action hook
 
 Options:
   -h, --help  Show this help message and exit
@@ -201,6 +203,72 @@ def cli_prepare_spec(argv=None):
     print(json.dumps(result, indent=2))
 
 
+_POST_ACTION_USAGE = """\
+Usage: spex create-helper post-action --topic <name> [--event-type <type>]
+
+Convert todo.xml to todo.json (deleting the XML) and run post-action hook.
+
+Options:
+  --topic <name>       Topic name (required)
+  --event-type <type>  Hook event type (default: create)
+  -h, --help           Show this help message and exit
+"""
+
+
+def cli_post_action(argv=None):
+    """CLI: convert todo.xml to todo.json and trigger post-action hook."""
+    from cli import ArgumentParser
+    from common import (
+        atomic_write_json,
+        get_current_workdir,
+        load_meta,
+    )
+
+    parser = ArgumentParser(
+        prog="spex create-helper post-action",
+        usage=_POST_ACTION_USAGE,
+    )
+    parser.add_argument("--topic", required=True)
+    parser.add_argument("--event-type", default="create")
+    args = parser.parse(argv)
+
+    topic_dir = resolve_topic_dir(args.topic)
+    xml_path = topic_dir / "todo.xml"
+    json_path = topic_dir / "todo.json"
+
+    if not xml_path.is_file():
+        print(f"Error: {xml_path} not found.", file=sys.stderr)
+        sys.exit(1)
+
+    import todo_helper
+
+    data = todo_helper.load_todo_xml(xml_path)
+    atomic_write_json(json_path, data)
+    xml_path.unlink()
+    print(f"OK: {len(data)} step(s) converted.")
+
+    import hooks
+
+    meta = load_meta(topic_dir)
+    topic_name = (meta.get("topic", "") if meta else "") or (
+        strip_date_prefix(topic_dir.name)
+    )
+    workdir = (meta.get("workdir", "") if meta else "") or (
+        get_current_workdir()
+    )
+    done = sum(
+        1 for item in data
+        if isinstance(item, dict) and item.get("completed_at")
+    )
+    undone = len(data) - done
+    hooks.run_post_action(
+        args.event_type,
+        {"topic": topic_name, "done": done, "undone": undone},
+        workdir or None,
+        topic_name,
+    )
+
+
 def main(argv=None):
     """Route create-helper subcommands."""
     if not argv:
@@ -217,6 +285,8 @@ def main(argv=None):
         cli_create_validate()
     elif subcmd == "prepare-spec":
         cli_prepare_spec(rest)
+    elif subcmd == "post-action":
+        cli_post_action(rest)
     else:
         print(f"Error: unknown create-helper subcommand"
               f" '{subcmd}'", file=sys.stderr)
