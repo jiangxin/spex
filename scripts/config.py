@@ -386,7 +386,7 @@ def generate_updated_toml(user_config: dict) -> str:
         if i > 0:
             lines.append("")
         lines.append(f"# {comment}")
-        if key in user_config:
+        if key in user_config and user_config[key] != default:
             rendered = _render_toml_value(user_config[key])
             lines.append(f"{key} = {rendered}")
         else:
