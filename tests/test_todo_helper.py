@@ -1,0 +1,721 @@
+"""Unit tests for todo_helper.py — JSON CRUD operations."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+import todo_helper
+
+
+@pytest.fixture()
+def todo_file(tmp_path):
+    return tmp_path / "todo.json"
+
+
+def _write(path, data):
+    path.write_text(
+        json.dumps(data, indent=2) + "\n", encoding="utf-8",
+    )
+
+
+def _read(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+SAMPLE_DATA = [
+    {
+        "id": "step-1",
+        "name": "First step",
+        "details": "Do the first thing",
+        "completed_at": "2026-01-01T10:00:00+08:00",
+        "commit_title": "feat: first step",
+    },
+    {
+        "id": "step-2",
+        "name": "Second step",
+        "details": "Do the second thing",
+        "completed_at": "",
+        "commit_title": "",
+    },
+    {
+        "id": "step-3",
+        "name": "Third step",
+        "details": "Do the third thing",
+        "completed_at": "2026-01-02T12:00:00+08:00",
+        "commit_title": "feat: third step",
+    },
+]
+
+
+# -----------------------------------------------------------------------
+# File locating
+# -----------------------------------------------------------------------
+class TestFileLocating:
+    def test_topic_resolves_todo_json(self, tmp_path, monkeypatch):
+        topic_dir = tmp_path / "my-topic"
+        topic_dir.mkdir()
+        todo = topic_dir / "todo.json"
+        _write(todo, SAMPLE_DATA)
+
+        monkeypatch.setattr(
+            todo_helper, "resolve_topic_dir",
+            lambda name, **kw: topic_dir,
+        )
+        todo_helper.main([
+            "--topic", "my-topic", "validate",
+        ])
+
+    def test_todo_file_direct_path(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "validate",
+        ])
+
+    def test_both_topic_and_todo_file_error(self, todo_file):
+        with pytest.raises(SystemExit):
+            todo_helper.main([
+                "--topic", "x",
+                "--todo-file", str(todo_file),
+                "validate",
+            ])
+
+    def test_neither_topic_nor_todo_file_error(self):
+        with pytest.raises(SystemExit):
+            todo_helper.main(["validate"])
+
+    def test_xml_flag_with_topic(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        topic_dir = tmp_path / "my-topic"
+        topic_dir.mkdir()
+        xml_file = topic_dir / "todo.xml"
+        xml_file.write_text(
+            "<todo></todo>\n", encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            todo_helper, "resolve_topic_dir",
+            lambda name, **kw: topic_dir,
+        )
+        todo_helper.main([
+            "--topic", "my-topic", "--xml", "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
+
+    def test_todo_file_xml_extension_auto_detects(
+        self, tmp_path,
+    ):
+        xml_file = tmp_path / "todo.xml"
+        xml_file.write_text("<steps/>", encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(xml_file), "validate",
+            ])
+        assert exc.value.code == 1
+
+
+# -----------------------------------------------------------------------
+# validate
+# -----------------------------------------------------------------------
+class TestValidate:
+    def test_valid_file(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
+
+    def test_duplicate_ids_fail(self, todo_file):
+        data = [
+            {"id": "s1", "name": "A", "details": "",
+             "completed_at": "", "commit_title": ""},
+            {"id": "s1", "name": "B", "details": "",
+             "completed_at": "", "commit_title": ""},
+        ]
+        _write(todo_file, data)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert exc.value.code == 1
+
+    def test_missing_required_field_fails(self, todo_file):
+        data = [{"id": "s1", "name": "A"}]  # missing details etc.
+        _write(todo_file, data)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert exc.value.code == 1
+
+    def test_empty_file_ok(self, todo_file, capsys):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
+
+
+# -----------------------------------------------------------------------
+# append
+# -----------------------------------------------------------------------
+class TestAppend:
+    def test_append_to_existing(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "step-4",
+            "--name", "Fourth step",
+            "--details", "Do the fourth thing",
+        ])
+        result = _read(todo_file)
+        assert len(result) == 4
+        assert result[-1]["id"] == "step-4"
+        assert result[-1]["name"] == "Fourth step"
+        assert result[-1]["completed_at"] == ""
+        assert result[-1]["commit_title"] == ""
+
+    def test_append_creates_new_file(self, todo_file):
+        assert not todo_file.exists()
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "step-1",
+            "--name", "First",
+            "--details", "Details here",
+        ])
+        result = _read(todo_file)
+        assert len(result) == 1
+        assert result[0]["id"] == "step-1"
+
+    def test_append_duplicate_id_fails(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "append",
+                "--id", "step-1",
+                "--name", "Dup",
+                "--details", "Dup details",
+            ])
+        assert exc.value.code == 1
+
+    def test_append_with_optional_fields(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--name", "Done task",
+            "--details", "Already done",
+            "--completed_at", "2026-05-30",
+            "--commit_title", "feat: done",
+        ])
+        result = _read(todo_file)
+        assert result[0]["completed_at"] == "2026-05-30"
+        assert result[0]["commit_title"] == "feat: done"
+
+
+# -----------------------------------------------------------------------
+# edit
+# -----------------------------------------------------------------------
+class TestEdit:
+    def test_update_specific_fields(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--name", "Updated name",
+        ])
+        result = _read(todo_file)
+        step2 = [i for i in result if i["id"] == "step-2"][0]
+        assert step2["name"] == "Updated name"
+        # Unchanged fields remain
+        assert step2["details"] == "Do the second thing"
+        assert step2["completed_at"] == ""
+
+    def test_unspecified_fields_unchanged(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        original = SAMPLE_DATA[0].copy()
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-1",
+            "--details", "New details",
+        ])
+        result = _read(todo_file)
+        step1 = [i for i in result if i["id"] == "step-1"][0]
+        assert step1["name"] == original["name"]
+        assert step1["completed_at"] == original["completed_at"]
+        assert step1["commit_title"] == original["commit_title"]
+        assert step1["details"] == "New details"
+
+    def test_id_not_found_fails(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "edit",
+                "--id", "no-such-id",
+                "--name", "X",
+            ])
+        assert exc.value.code == 1
+
+
+# -----------------------------------------------------------------------
+# remove
+# -----------------------------------------------------------------------
+class TestRemove:
+    def test_remove_by_id(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "remove",
+            "--id", "step-2",
+        ])
+        result = _read(todo_file)
+        assert len(result) == 2
+        ids = [i["id"] for i in result]
+        assert "step-2" not in ids
+
+    def test_id_not_found_fails(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "remove",
+                "--id", "no-such-id",
+            ])
+        assert exc.value.code == 1
+
+
+# -----------------------------------------------------------------------
+# show
+# -----------------------------------------------------------------------
+class TestShow:
+    def test_show_all_items_json(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 3
+
+    def test_show_done_filter(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show", "--done",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 2
+        assert all(i["completed_at"] for i in result)
+
+    def test_show_undone_filter(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show", "--undone",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 1
+        assert result[0]["id"] == "step-2"
+
+    def test_done_and_undone_mutual_exclusion(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit):
+            todo_helper.main([
+                "--todo-file", str(todo_file), "show",
+                "--done", "--undone",
+            ])
+
+    def test_show_format_json(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA[:1])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "json",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert result[0]["id"] == "step-1"
+
+    def test_show_format_markdown_done(self, todo_file, capsys):
+        data = [SAMPLE_DATA[0]]  # completed item
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "✅" in out  # checkmark
+        assert "step-1" in out
+        assert "completed_at:" in out
+        assert "commit_title:" in out
+
+    def test_show_format_markdown_undone(self, todo_file, capsys):
+        data = [SAMPLE_DATA[1]]  # incomplete item
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "⬜" in out  # white square
+        assert "step-2" in out
+        # Empty fields should be skipped
+        assert "completed_at:" not in out
+        assert "commit_title:" not in out
+
+    def test_show_markdown_empty_fields_skipped(
+        self, todo_file, capsys,
+    ):
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": "", "completed_at": "", "commit_title": "",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "details:" not in out
+        assert "completed_at:" not in out
+        assert "commit_title:" not in out
+
+    def test_show_markdown_long_text_wrapping(
+        self, todo_file, capsys,
+    ):
+        long_details = "word " * 30  # ~150 chars
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": long_details.strip(),
+            "completed_at": "", "commit_title": "",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        detail_lines = [
+            line for line in out.split("\n")
+            if "details:" in line
+            or (line.startswith("    ") and "word" in line)
+        ]
+        # The long text should have been wrapped to multiple lines
+        assert len(detail_lines) > 1
+
+
+# -----------------------------------------------------------------------
+# remove-undone
+# -----------------------------------------------------------------------
+class TestRemoveUndone:
+    def test_removes_incomplete_items(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "remove-undone",
+        ])
+        result = _read(todo_file)
+        assert len(result) == 2
+        assert all(i["completed_at"] for i in result)
+        out = capsys.readouterr().out
+        assert "1 undone" in out
+
+    def test_all_complete_no_change(self, todo_file, capsys):
+        data = [SAMPLE_DATA[0], SAMPLE_DATA[2]]  # both completed
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "remove-undone",
+        ])
+        result = _read(todo_file)
+        assert len(result) == 2
+        out = capsys.readouterr().out
+        assert "0 undone" in out
+
+
+# -----------------------------------------------------------------------
+# Help flag
+# -----------------------------------------------------------------------
+class TestHelp:
+    def test_main_help(self):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["-h"])
+        assert exc.value.code == 0
+
+
+# -----------------------------------------------------------------------
+# XML format
+# -----------------------------------------------------------------------
+SAMPLE_XML = """\
+<todo>
+  <step>
+    <step-id>step-1</step-id>
+    <step-name>First step</step-name>
+    <step-details>Do the first thing</step-details>
+    <completed-at>2026-01-01T10:00:00+08:00</completed-at>
+    <commit-title>feat: first step</commit-title>
+  </step>
+  <step>
+    <step-id>step-2</step-id>
+    <step-name>Second step</step-name>
+    <step-details>Do the second thing</step-details>
+    <completed-at></completed-at>
+    <commit-title></commit-title>
+  </step>
+  <step>
+    <step-id>step-3</step-id>
+    <step-name>Third step</step-name>
+    <step-details>Do the third thing</step-details>
+    <completed-at>2026-01-02T12:00:00+08:00</completed-at>
+    <commit-title>feat: third step</commit-title>
+  </step>
+</todo>
+"""
+
+
+# -----------------------------------------------------------------------
+# xml2json / json2xml conversion
+# -----------------------------------------------------------------------
+CONVERSION_XML = """\
+<todo>
+  <step>
+    <step-id>step-1</step-id>
+    <step-name>First</step-name>
+    <step-details>Details one</step-details>
+    <completed-at></completed-at>
+    <commit-title></commit-title>
+  </step>
+  <step>
+    <step-id>step-2</step-id>
+    <step-name>Second</step-name>
+    <step-details>Details two</step-details>
+    <completed-at>2026-01-01</completed-at>
+    <commit-title>feat: second</commit-title>
+  </step>
+</todo>
+"""
+
+CONVERSION_JSON = [
+    {
+        "id": "step-1",
+        "name": "First",
+        "details": "Details one",
+        "completed_at": "",
+        "commit_title": "",
+    },
+    {
+        "id": "step-2",
+        "name": "Second",
+        "details": "Details two",
+        "completed_at": "2026-01-01",
+        "commit_title": "feat: second",
+    },
+]
+
+
+class TestConversion:
+    def test_xml2json_converts(self, tmp_path, capsys):
+        xml_file = tmp_path / "todo.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        json_file = tmp_path / "todo.json"
+        assert json_file.exists()
+        result = _read(json_file)
+        assert len(result) == 2
+        assert result[0]["id"] == "step-1"
+        assert result[1]["id"] == "step-2"
+        assert result[1]["completed_at"] == "2026-01-01"
+        out = capsys.readouterr().out
+        assert "Converted" in out
+
+    def test_xml2json_rm(self, tmp_path):
+        xml_file = tmp_path / "todo.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json", "--rm",
+        ])
+        json_file = tmp_path / "todo.json"
+        assert json_file.exists()
+        assert not xml_file.exists()
+        result = _read(json_file)
+        assert len(result) == 2
+
+    def test_xml2json_output_path(self, tmp_path):
+        subdir = tmp_path / "sub"
+        subdir.mkdir()
+        xml_file = subdir / "tasks.xml"
+        xml_file.write_text(CONVERSION_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        expected = subdir / "tasks.json"
+        assert expected.exists()
+        assert not (tmp_path / "tasks.json").exists()
+
+    def test_json2xml_converts(self, tmp_path, capsys):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+        assert data[0]["id"] == "step-1"
+        assert data[1]["completed_at"] == "2026-01-01"
+        out = capsys.readouterr().out
+        assert "Converted" in out
+
+    def test_json2xml_rm(self, tmp_path):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml", "--rm",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        assert not json_file.exists()
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+
+    def test_json2xml_roundtrip(self, tmp_path):
+        json_file = tmp_path / "todo.json"
+        _write(json_file, CONVERSION_JSON)
+        # JSON -> XML
+        todo_helper.main([
+            "--todo-file", str(json_file), "json2xml",
+        ])
+        xml_file = tmp_path / "todo.xml"
+        assert xml_file.exists()
+        # XML -> JSON (writes back to todo.json via stem)
+        # Use the xml file as source
+        todo_helper.main([
+            "--todo-file", str(xml_file), "xml2json",
+        ])
+        # xml2json writes to todo.json (same stem)
+        result = _read(json_file)
+        assert len(result) == len(CONVERSION_JSON)
+        for i, expected in enumerate(CONVERSION_JSON):
+            for key in (
+                "id", "name", "details",
+                "completed_at", "commit_title",
+            ):
+                assert result[i][key] == expected[key]
+
+
+class TestXmlFormat:
+    @pytest.fixture()
+    def xml_file(self, tmp_path):
+        return tmp_path / "todo.xml"
+
+    def test_load_todo_xml_valid(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 3
+        assert data[0]["id"] == "step-1"
+        assert data[0]["name"] == "First step"
+        assert data[0]["details"] == "Do the first thing"
+        assert data[0]["completed_at"] == (
+            "2026-01-01T10:00:00+08:00"
+        )
+        assert data[0]["commit_title"] == "feat: first step"
+        assert data[1]["completed_at"] == ""
+        assert data[1]["commit_title"] == ""
+
+    def test_load_todo_xml_missing_file(self, tmp_path):
+        result = todo_helper.load_todo_xml(
+            tmp_path / "nonexistent.xml",
+        )
+        assert result == []
+
+    def test_load_todo_xml_empty_file(self, xml_file):
+        xml_file.write_text("", encoding="utf-8")
+        result = todo_helper.load_todo_xml(xml_file)
+        assert result == []
+
+    def test_load_todo_xml_wrong_root(self, xml_file):
+        xml_file.write_text(
+            "<steps><step/></steps>", encoding="utf-8",
+        )
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.load_todo_xml(xml_file)
+        assert exc.value.code == 1
+
+    def test_write_todo_xml_roundtrip(self, xml_file):
+        original = [
+            {
+                "id": "s1", "name": "Task one",
+                "details": "Details for one",
+                "completed_at": "2026-01-01",
+                "commit_title": "feat: one",
+            },
+            {
+                "id": "s2", "name": "Task two",
+                "details": "Details for two",
+                "completed_at": "",
+                "commit_title": "",
+            },
+        ]
+        todo_helper.write_todo_xml(xml_file, original)
+        loaded = todo_helper.load_todo_xml(xml_file)
+        assert len(loaded) == 2
+        for i in range(2):
+            for key in (
+                "id", "name", "details",
+                "completed_at", "commit_title",
+            ):
+                assert loaded[i][key] == original[i][key]
+
+    def test_validate_xml(self, xml_file, capsys):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
+
+    def test_append_to_xml(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "append",
+            "--id", "step-4",
+            "--name", "Fourth step",
+            "--details", "Do the fourth thing",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 4
+        assert data[-1]["id"] == "step-4"
+        assert data[-1]["name"] == "Fourth step"
+
+    def test_edit_xml_entry(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "edit",
+            "--id", "step-2",
+            "--name", "Updated name",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        step2 = [
+            e for e in data if e["id"] == "step-2"
+        ][0]
+        assert step2["name"] == "Updated name"
+        assert step2["details"] == "Do the second thing"
+
+    def test_show_from_xml(self, xml_file, capsys):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "show",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 3
+        assert result[0]["id"] == "step-1"
+
+    def test_remove_undone_xml(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "remove-undone",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+        assert all(e["completed_at"] for e in data)
+        ids = [e["id"] for e in data]
+        assert "step-2" not in ids
