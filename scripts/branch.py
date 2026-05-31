@@ -107,50 +107,6 @@ def merge_branch(
     )
 
 
-def validate_create_branch(
-    config: dict, cwd: str | Path | None = None,
-) -> str:
-    """Validate whether branch creation is enabled and feasible.
-
-    Prints errors to stderr and exits on failure.
-    Returns the current branch name on success.
-    """
-    try:
-        current = get_current_branch(cwd)
-    except subprocess.CalledProcessError as e:
-        print(f"Error: cannot determine current branch: {e}", file=sys.stderr)
-        sys.exit(1)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not bool(config["branch_management"]):
-        print("Note: branch management is not enabled in .spex.toml, "
-              "will not create new branch for spec.", file=sys.stderr)
-        return current
-
-
-    # 1. If main_branch_name is set, current branch must match it.
-    main_branch = config["main_branch_name"]
-    if main_branch and current != main_branch:
-        print(
-            f"Error: current branch '{current}' does not match main_branch_name '{main_branch}'.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # 2. Current branch must not start with the spex prefix.
-    if current.startswith(DEFAULT_SPEX_BRANCH_PREFIX):
-        print(
-            f"Error: current branch '{current}' starts with "
-            f"'{DEFAULT_SPEX_BRANCH_PREFIX}'.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    return current
-
-
 def _extract_topic_name_for_branch(topic_dir: Path, meta: dict) -> str:
     """Get the topic name to use for branch naming.
 
@@ -280,16 +236,6 @@ def _parse_topic_arg(argv) -> str:
             return args[i + 1]
     print("Error: --topic <name> is required", file=sys.stderr)
     sys.exit(1)
-
-
-def cli_create_validate() -> None:
-    """CLI: validate branch creation feasibility."""
-    import config as cfg
-
-    ctx = cfg.get_context()
-    current = validate_create_branch(ctx.config, cwd=ctx.main_worktree)
-    if current:
-        print(f"Valid: currently on branch '{current}'")
 
 
 def cli_apply_validate(argv=None) -> None:

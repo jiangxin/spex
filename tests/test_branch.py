@@ -8,12 +8,10 @@ from branch import (
     branch_exists,
     cli_apply_post_action,
     cli_apply_validate,
-    cli_create_validate,
     cli_submit,
     get_current_branch,
     merge_branch,
     validate_apply_branch,
-    validate_create_branch,
 )
 from common import strip_date_prefix
 from config import SpexContext
@@ -108,47 +106,6 @@ class TestMergeBranch:
             assert False, "Should have raised"
         except subprocess.CalledProcessError:
             pass
-
-
-class TestValidateCreateBranch:
-    @patch("branch.get_current_branch", return_value="main")
-    def test_returns_current_branch(self, _mock):
-        result = validate_create_branch(
-            {"branch_management": True, "main_branch_name": "", "submit_method": "merge"})
-        assert result == "main"
-
-    @patch("branch.get_current_branch", return_value="main")
-    def test_disabled_returns_current_branch(self, _mock):
-        result = validate_create_branch(
-            {"branch_management": False, "main_branch_name": "", "submit_method": "merge"})
-        assert result == "main"
-
-    @patch("branch.get_current_branch",
-           side_effect=subprocess.CalledProcessError(1, "git"))
-    def test_git_error_exits(self, _mock):
-        try:
-            validate_create_branch({"branch_management": True})
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
-
-    @patch("branch.get_current_branch", return_value="develop")
-    def test_wrong_main_branch_exits(self, _mock):
-        try:
-            validate_create_branch({"branch_management": True,
-                                    "main_branch_name": "main"})
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
-
-    @patch("branch.get_current_branch", return_value="spex/feature")
-    def test_spex_prefix_exits(self, _mock):
-        try:
-            validate_create_branch(
-                {"branch_management": True, "main_branch_name": "", "submit_method": "merge"})
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
 
 
 class TestValidateApplyBranch:
@@ -266,18 +223,6 @@ class TestValidateApplyBranch:
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
-
-
-class TestCliCreateValidate:
-    @patch("branch.get_current_branch", return_value="develop")
-    @patch("config.get_context", return_value=_fake_context(config={
-        "branch_management": True, "main_branch_name": "", "submit_method": "merge",
-        "spex_root": ".spex"}))
-    def test_outputs_success(self, _ctx, _branch, capsys):
-        cli_create_validate()
-        out = capsys.readouterr().out
-        assert "develop" in out
-        assert "Valid" in out
 
 
 class TestCliApplyValidate:

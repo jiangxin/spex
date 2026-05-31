@@ -30,7 +30,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper --validate
+$spex_skill_dir/scripts/spex create-helper precheck
 ```
 
 If the script exits with an error (non-zero), the error message is already
