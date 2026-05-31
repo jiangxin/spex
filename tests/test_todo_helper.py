@@ -381,8 +381,8 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "✅" in out  # checkmark
-        assert "step-1" in out
+        assert "1. ✅ step-1\n" in out
+        assert "   - name: First step\n" in out
         assert "completed_at:" in out
         assert "commit_title:" in out
 
@@ -394,11 +394,21 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "⬜" in out  # white square
-        assert "step-2" in out
-        # Empty fields should be skipped
+        assert "1. 🔲 step-2\n" in out
+        assert "   - name: Second step\n" in out
         assert "completed_at:" not in out
         assert "commit_title:" not in out
+
+    def test_show_markdown_numbered_list(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "1. ✅ step-1\n" in out
+        assert "2. 🔲 step-2\n" in out
+        assert "3. ✅ step-3\n" in out
 
     def test_show_markdown_empty_fields_skipped(
         self, todo_file, capsys,
@@ -413,11 +423,13 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
+        assert "1. 🔲 s1\n" in out
+        assert "   - name: Test\n" in out
         assert "details:" not in out
         assert "completed_at:" not in out
         assert "commit_title:" not in out
 
-    def test_show_markdown_long_text_wrapping(
+    def test_show_markdown_no_wrap_by_default(
         self, todo_file, capsys,
     ):
         long_details = "word " * 30  # ~150 chars
@@ -434,11 +446,76 @@ class TestShow:
         out = capsys.readouterr().out
         detail_lines = [
             line for line in out.split("\n")
-            if "details:" in line
-            or (line.startswith("    ") and "word" in line)
+            if "details:" in line or "word" in line
         ]
-        # The long text should have been wrapped to multiple lines
+        assert len(detail_lines) == 1
+        assert detail_lines[0].startswith("   - details: word")
+
+    def test_show_markdown_wrap(
+        self, todo_file, capsys,
+    ):
+        long_details = "word " * 30  # ~150 chars
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": long_details.strip(),
+            "completed_at": "", "commit_title": "",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown", "--wrap",
+        ])
+        out = capsys.readouterr().out
+        detail_lines = [
+            line for line in out.split("\n")
+            if "details:" in line
+            or (line.startswith("              ") and "word" in line)
+        ]
         assert len(detail_lines) > 1
+        for line in out.split("\n"):
+            assert len(line) <= 80
+
+    def test_show_markdown_multiline_details(
+        self, todo_file, capsys,
+    ):
+        details = "First line\nSecond line\nThird line"
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": details,
+            "completed_at": "", "commit_title": "",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "   - details: |\n" in out
+        assert "       First line\n" in out
+        assert "       Second line\n" in out
+        assert "       Third line" in out
+
+    def test_show_markdown_multiline_details_wrap(
+        self, todo_file, capsys,
+    ):
+        details = "First line\nSecond line\nThird line"
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": details,
+            "completed_at": "", "commit_title": "",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown", "--wrap",
+        ])
+        out = capsys.readouterr().out
+        assert "   - details: |\n" in out
+        assert "       First line\n" in out
+        assert "       Second line\n" in out
+        assert "       Third line" in out
+        for line in out.split("\n"):
+            assert len(line) <= 80
 
 
 # -----------------------------------------------------------------------

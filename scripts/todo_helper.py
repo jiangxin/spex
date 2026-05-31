@@ -323,37 +323,82 @@ def cmd_remove(todo_path, is_xml, argv):
     print(f"Removed '{args.id}'.")
 
 
-def _format_markdown(data):
-    """Format todo entries as markdown."""
+def _wrap_field(label, text, indent, width=10**9):
+    """Wrap a sub-bullet field."""
+    prefix = f"{indent}- {label}: "
+    cont = " " * len(prefix)
+    result = []
+    for i, paragraph in enumerate(text.split("\n")):
+        if i == 0:
+            result.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=prefix,
+                subsequent_indent=cont,
+            ))
+        else:
+            result.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=cont,
+                subsequent_indent=cont,
+            ) if paragraph.strip() else cont.rstrip())
+    return "\n".join(result)
+
+
+def _format_block_details(text, indent, width=10**9):
+    """Format multi-line details using block scalar syntax."""
+    content_indent = " " * (len(indent) + 4)
+    lines = [f"{indent}- details: |"]
+    for paragraph in text.split("\n"):
+        if paragraph.strip():
+            lines.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=content_indent,
+                subsequent_indent=content_indent,
+            ))
+        else:
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _format_markdown(data, width=0):
+    """Format todo entries as markdown.
+
+    width=0 disables wrapping (lines may exceed 80 chars).
+    """
+    w = width if width > 0 else 10**9
     lines = []
-    for item in data:
+    for idx, item in enumerate(data, 1):
         step_id = item.get("id", "")
-        name = item.get("name", "")
         completed = bool(item.get("completed_at"))
-        icon = "✅" if completed else "⬜"
-        lines.append(f"- {icon} {step_id}: {name}")
+        icon = "✅" if completed else "🔲"
+        prefix = f"{idx}. "
+        indent = " " * len(prefix)
+        lines.append(f"{prefix}{icon} {step_id}")
+
+        name = item.get("name", "")
+        if name:
+            lines.append(f"{indent}- name: {name}")
 
         details = item.get("details", "")
         if details:
-            wrapped = textwrap.fill(
-                details, width=80,
-                initial_indent="  - details: ",
-                subsequent_indent="    ",
-            )
-            lines.append(wrapped)
+            if "\n" in details:
+                lines.append(
+                    _format_block_details(details, indent, w),
+                )
+            else:
+                lines.append(
+                    _wrap_field("details", details, indent, w),
+                )
 
         completed_at = item.get("completed_at", "")
         if completed_at:
-            lines.append(f"  - completed_at: {completed_at}")
+            lines.append(f"{indent}- completed_at: {completed_at}")
 
         commit_title = item.get("commit_title", "")
         if commit_title:
-            wrapped = textwrap.fill(
-                commit_title, width=80,
-                initial_indent="  - commit_title: ",
-                subsequent_indent="    ",
+            lines.append(
+                _wrap_field("commit_title", commit_title, indent, w),
             )
-            lines.append(wrapped)
 
     return "\n".join(lines)
 
@@ -363,6 +408,7 @@ def cmd_show(todo_path, is_xml, argv):
     usage = (
         "Usage: spex todo-helper ... show"
         " [--done | --undone] [--format json|markdown]"
+        " [--wrap | --no-wrap]"
     )
     check_help_flag(usage, argv)
 
@@ -375,6 +421,13 @@ def cmd_show(todo_path, is_xml, argv):
     parser.add_argument(
         "--format", dest="fmt", choices=["json", "markdown"],
         default="json",
+    )
+    wrap_group = parser.add_mutually_exclusive_group()
+    wrap_group.add_argument(
+        "--wrap", action="store_true", default=False,
+    )
+    wrap_group.add_argument(
+        "--no-wrap", dest="wrap", action="store_false",
     )
     args = parser.parse(argv)
 
@@ -392,7 +445,7 @@ def cmd_show(todo_path, is_xml, argv):
         ]
 
     if args.fmt == "markdown":
-        print(_format_markdown(data))
+        print(_format_markdown(data, width=80 if args.wrap else 0))
     else:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
