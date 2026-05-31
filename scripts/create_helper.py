@@ -2,21 +2,83 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from common import DEFAULT_SPEX_BRANCH_PREFIX
+from common import (
+    DEFAULT_SPEX_BRANCH_PREFIX,
+    atomic_write_json,
+    strip_date_prefix,
+)
+
+TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
+DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
+MAX_TOPIC_BYTES = 64
 
 USAGE = """\
 Usage: spex create-helper <subcommand> [options]
 
 Subcommands:
-  precheck    Validate branch creation feasibility
+  precheck      Validate branch creation feasibility
+  prepare-spec  Create topic directory and return JSON metadata
 
 Options:
   -h, --help  Show this help message and exit
 """
+
+
+def create_topic(topic, specs_dir, auto_prefix=True):
+    """Create a topic directory under specs_dir.
+
+    Returns (topic_name, topic_dir) tuple.
+    Raises ValueError on invalid input, FileExistsError if topic exists.
+    """
+    specs_dir = Path(specs_dir)
+
+    if not DATE_PREFIX_PATTERN.match(topic) and auto_prefix:
+        prefix = datetime.now().strftime("%Y-%m-%d-%H-%M")
+        topic = f"{prefix}-{topic}"
+
+    if not TOPIC_PATTERN.match(topic):
+        raise ValueError(
+            f"invalid topic name '{topic}'. "
+            "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
+        )
+
+    if len(topic.encode("utf-8")) > MAX_TOPIC_BYTES:
+        raise ValueError(f"topic name '{topic}' exceeds {MAX_TOPIC_BYTES} bytes.")
+
+    topic_dir = specs_dir / topic
+    if topic_dir.exists():
+        raise FileExistsError(f"'{topic}' already exists, use a different name.")
+
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    topic_dir.mkdir()
+    return (topic, topic_dir)
+
+
+def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
+    """Write meta.json into topic_dir with git info and prompt."""
+    workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
+    main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
+    meta = {
+        "topic": strip_date_prefix(Path(topic_dir).name),
+        "workdir": workdir,
+        "main_worktree": main_worktree,
+        "remote_url": git_info.get("remote_url", ""),
+        "branch": git_info.get("branch", ""),
+        "user_name": git_info.get("user_name", ""),
+        "user_email": git_info.get("user_email", ""),
+        "created_at": timestamp,
+        "prompts": [prompt] if prompt else [],
+    }
+    if description:
+        meta["description"] = description
+    meta_path = Path(topic_dir) / "meta.json"
+    atomic_write_json(meta_path, meta)
 
 
 def validate_create_branch(
@@ -86,6 +148,59 @@ def cli_create_validate() -> None:
         print(f"Valid: currently on branch '{current}'")
 
 
+_PREPARE_SPEC_USAGE = """\
+Usage: spex create-helper prepare-spec --topic <name> [--description <text>]
+
+Create a topic directory, write meta.json, and output JSON metadata.
+Reads requirement text from stdin.
+
+Options:
+  --topic <name>         Topic name (required)
+  --description <text>   Brief description (saved to meta.json)
+  -h, --help             Show this help message and exit
+"""
+
+
+def cli_prepare_spec(argv=None):
+    """CLI: create topic directory and return JSON with metadata."""
+    import json
+
+    import config as cfg
+    from cli import ArgumentParser
+    from common import get_git_info, get_specs_dir, local_iso_timestamp
+
+    parser = ArgumentParser(
+        prog="spex create-helper prepare-spec",
+        usage=_PREPARE_SPEC_USAGE,
+    )
+    parser.add_argument("--topic", required=True)
+    parser.add_argument("--description", default="")
+    args = parser.parse(argv)
+
+    specs_dir = get_specs_dir()
+    prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
+
+    try:
+        topic_name, topic_dir = create_topic(args.topic, specs_dir)
+    except (ValueError, FileExistsError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    git_info = get_git_info()
+    ctx = cfg.get_context()
+    timestamp = local_iso_timestamp()
+    _write_meta(topic_dir, git_info, ctx, prompt, timestamp, args.description)
+
+    import prompt as prompt_mod
+
+    result = {
+        "topic_name": topic_name,
+        "topic_path": str(topic_dir),
+        "spec_template": prompt_mod.render_prompt("spec-template", topic_name),
+    }
+    print(json.dumps(result, indent=2))
+
+
 def main(argv=None):
     """Route create-helper subcommands."""
     if not argv:
@@ -93,12 +208,15 @@ def main(argv=None):
         sys.exit(1)
 
     subcmd = argv[0]
+    rest = argv[1:]
 
     if subcmd in ("-h", "--help"):
         print(USAGE, end="")
         sys.exit(0)
     elif subcmd == "precheck":
         cli_create_validate()
+    elif subcmd == "prepare-spec":
+        cli_prepare_spec(rest)
     else:
         print(f"Error: unknown create-helper subcommand"
               f" '{subcmd}'", file=sys.stderr)
