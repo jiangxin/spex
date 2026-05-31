@@ -124,39 +124,39 @@ Principles:
 Create `$topic_path/todo.xml` listing each step in order:
 
 ```xml
-<steps>
+<todo>
   <step>
     <step-id>step-1</step-id>
     <step-name>Short name for the step</step-name>
-    <step-markdown-details>
+    <step-details>
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
 - Use lists, bold, and inline code
 - Do not use headings (`#`, `##`, etc.)
-    </step-markdown-details>
+    </step-details>
   </step>
-</steps>
+</todo>
 ```
 
-- `<step-markdown-details>`: multi-line Markdown text describing the
-  step. No escaping needed — write Markdown directly inside the tag.
+- `<step-details>`: multi-line Markdown text describing the step.
+  No escaping needed — write Markdown directly inside the tag.
 - Number steps sequentially: `step-1`, `step-2`, etc.
 
 **CRITICAL — the xml2json parser will reject any deviation from this
 structure:**
 
-- Root element **MUST** be `<steps>` (not `<tasks>`, `<todo>`, etc.).
+- Root element **MUST** be `<todo>` (not `<steps>`, `<tasks>`, etc.).
 - Each step **MUST** be wrapped in `<step>` (not `<task>`, `<item>`, etc.).
 - Each `<step>` **MUST** contain exactly three children in order:
-  `<step-id>`, `<step-name>`, `<step-markdown-details>`.
+  `<step-id>`, `<step-name>`, `<step-details>`.
 
 ### Phase 7: Convert todo.xml to todo.json
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo xml2json --rm --post-action --event-type create $topic_path/todo.xml
+$spex_skill_dir/scripts/spex create-helper post-action --topic $topic_name
 ```
 
 If the script exits with an error, read the error message, fix the XML
