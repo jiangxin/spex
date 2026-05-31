@@ -20,7 +20,7 @@ class SpexConfig(TypedDict, total=False):
 
 _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("spex_root", ".spex", "Root directory for spec storage"),
-    ("branch_management", False, "Create and manage branches for specs"),
+    ("branch_management", True, "Create and manage branches for specs"),
     ("main_branch_name", "", "Restrict spec creation to this branch"),
     ("submit_method", "merge", "How to submit completed work: merge or pr"),
 ]
