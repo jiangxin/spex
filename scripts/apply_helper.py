@@ -160,7 +160,7 @@ def cli_precheck(argv=None):
 
     ctx = cfg.get_context()
     topic_dir = common.resolve_topic_dir(args.topic)
-    validate_apply_branch(ctx.config, topic_dir, cwd=ctx.main_worktree)
+    validate_apply_branch(ctx.config, topic_dir, cwd=ctx.top_workdir)
 
 
 _POST_ACTION_USAGE = """\
