@@ -388,6 +388,83 @@ class TestValidateCreateBranch:
         assert "Hint" in err
 
 
+class TestCliPostAction:
+    def _setup_topic(self, tmp_path, name, xml_content):
+        topic_dir = tmp_path / name
+        topic_dir.mkdir()
+        (topic_dir / "todo.xml").write_text(
+            xml_content, encoding="utf-8",
+        )
+        meta = {"topic": name, "workdir": str(tmp_path)}
+        (topic_dir / "meta.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+        return topic_dir
+
+    def test_converts_xml_to_json(self, tmp_path, monkeypatch):
+        """post-action converts todo.xml and deletes the XML file."""
+        topic_dir = self._setup_topic(tmp_path, "my-topic", (
+            "<todo>\n  <step>\n"
+            "    <step-id>step-1</step-id>\n"
+            "    <step-name>First</step-name>\n"
+            "    <step-details>Details here</step-details>\n"
+            "    <completed-at></completed-at>\n"
+            "    <commit-title></commit-title>\n"
+            "  </step>\n</todo>\n"
+        ))
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        with patch("hooks.run_post_action"):
+            create_helper.cli_post_action(
+                ["--topic", "my-topic"],
+            )
+
+        assert (topic_dir / "todo.json").is_file()
+        assert not (topic_dir / "todo.xml").exists()
+        data = json.loads(
+            (topic_dir / "todo.json").read_text(encoding="utf-8"),
+        )
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+
+    def test_missing_xml_fails(self, tmp_path, monkeypatch):
+        """post-action errors when todo.xml does not exist."""
+        topic_dir = tmp_path / "no-xml"
+        topic_dir.mkdir()
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+        with pytest.raises(SystemExit):
+            create_helper.cli_post_action(
+                ["--topic", "no-xml"],
+            )
+
+    def test_default_event_type_is_create(self, tmp_path, monkeypatch):
+        """post-action defaults event-type to 'create'."""
+        topic_dir = self._setup_topic(tmp_path, "evt-topic", (
+            "<todo>\n  <step>\n"
+            "    <step-id>s1</step-id>\n"
+            "    <step-name>N</step-name>\n"
+            "    <step-details>D</step-details>\n"
+            "  </step>\n</todo>\n"
+        ))
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        with patch("hooks.run_post_action") as mock_hook:
+            create_helper.cli_post_action(
+                ["--topic", "evt-topic"],
+            )
+            mock_hook.assert_called_once()
+            assert mock_hook.call_args[0][0] == "create"
+
+
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
     @patch("config.get_context", return_value=_fake_context(config={
