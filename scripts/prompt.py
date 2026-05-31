@@ -332,9 +332,57 @@ def cli_apply_commit(argv):
     _output_rendered(rendered, args.output)
 
 
+def cli_modify_spec(argv):
+    """CLI handler for modify-spec subcommand."""
+    import json
+
+    from jinja2 import TemplateError
+
+    parser = ArgumentParser(
+        prog="spex prompt modify-spec",
+        description="Render modify-spec template with topic metadata.",
+    )
+    parser.add_argument("--topic", required=True,
+                        help="Topic name (required)")
+    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
+                        help="Read raw text from stdin as prompt_context")
+    parser.add_argument("--json", action="store_true", dest="json_mode",
+                        help="Output JSON with rendered prompt")
+    parser.add_argument("-o", "--output",
+                        help="Output file path (default: stdout)")
+    args = parser.parse(argv)
+
+    extra_vars = _read_stdin_extra_vars(args.stdin_flag)
+
+    try:
+        metadata = _build_metadata("modify-spec", args.topic)
+        if extra_vars:
+            metadata.update(extra_vars)
+
+        # Side-effect: log prompt_context to meta.json
+        prompt_context = metadata.get("prompt_context", "")
+        if prompt_context:
+            topic_dir = resolve_topic_dir(args.topic)
+            _log_prompt_to_meta(topic_dir, prompt_context)
+
+        rendered = render_prompt("modify-spec", args.topic, metadata=metadata)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except TemplateError as e:
+        print(f"Error rendering template: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.json_mode:
+        print(json.dumps({"prompt": rendered}))
+    else:
+        _output_rendered(rendered, args.output)
+
+
 SUBCOMMANDS = {
     "apply-one-task": cli_apply_one_task,
     "apply-commit": cli_apply_commit,
+    "modify-spec": cli_modify_spec,
 }
 
 
