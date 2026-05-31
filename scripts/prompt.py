@@ -216,8 +216,82 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
     return strip_front_matter(rendered)
 
 
+def _output_rendered(rendered, output_path):
+    """Write rendered content to file or stdout."""
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered)
+
+
+def cli_apply_one_task(argv):
+    """CLI handler for apply-one-task subcommand."""
+    import json
+
+    from jinja2 import TemplateError
+
+    parser = ArgumentParser(
+        prog="spex prompt apply-one-task",
+        description="Render apply-one-task template with topic metadata.",
+    )
+    parser.add_argument("--topic", required=True,
+                        help="Topic name (required)")
+    parser.add_argument("--json", action="store_true", dest="json_mode",
+                        help="Output JSON with task_id and prompt")
+    parser.add_argument("-o", "--output",
+                        help="Output file path (default: stdout)")
+    args = parser.parse(argv)
+
+    try:
+        metadata = _build_metadata("apply-one-task", args.topic)
+
+        # Handle all-done in JSON mode
+        if args.json_mode and not metadata.get("next_task_text"):
+            print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
+            sys.exit(0)
+
+        # Handle all-done in non-JSON mode: exit(0) with empty stdout
+        if not args.json_mode and not metadata.get("next_task_text"):
+            sys.exit(0)
+
+        # Emit task_id to stderr for orchestrator to capture (non-JSON only)
+        if not args.json_mode:
+            next_task_id = metadata.get("next_task_id", "")
+            if next_task_id:
+                print(f"task_id={next_task_id}", file=sys.stderr)
+
+        rendered = render_prompt("apply-one-task", args.topic, metadata=metadata)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except TemplateError as e:
+        print(f"Error rendering template: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.json_mode:
+        task_id = metadata.get("next_task_id", "")
+        print(json.dumps({"task_id": task_id, "prompt": rendered}))
+    else:
+        _output_rendered(rendered, args.output)
+
+
+SUBCOMMANDS = {
+    "apply-one-task": cli_apply_one_task,
+}
+
+
 def main(argv=None):
     import json
+
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Route to subcommand handler if first arg matches
+    if argv and argv[0] in SUBCOMMANDS:
+        SUBCOMMANDS[argv[0]](argv[1:])
+        return
 
     parser = ArgumentParser(
         prog="spex prompt",
