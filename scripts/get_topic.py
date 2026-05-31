@@ -15,6 +15,7 @@ from cli import ArgumentParser
 from common import (
     check_help_flag,
     find_matching_topics,
+    get_archives_dir,
     get_current_workdir,
     get_specs_dir,
     get_spex_roots,
@@ -27,7 +28,7 @@ from common import (
 from config import set_spex_config_file
 
 USAGE = """\
-Usage: spex get-topic [--json] [--all] [--must-done | --must-undone] [topic]
+Usage: spex get-topic [--json] [--all] [--with-archives] [--must-done | --must-undone] [topic]
        spex get-topic --spex-roots | --spex-toml | --spex-tomls
 
 Resolve a topic directory under specs.
@@ -35,6 +36,8 @@ Resolve a topic directory under specs.
 Options:
   --json         Output in JSON format
   --all          Show all topics (ignore workspace filter)
+  --with-archives
+                 Also search archives directory
   --spex-config-file <path>
                  Use specified config file (overrides SPEX_CONFIG_FILE env var)
   --must-done    Only show completed topics
@@ -269,6 +272,10 @@ def main(argv=None):
         sys.exit(1)
     args = [a for a in args if a not in ("--must-done", "--must-undone")]
 
+    with_archives_flag = "--with-archives" in args
+    if with_archives_flag:
+        args = [a for a in args if a != "--with-archives"]
+
     topic_name = args[0] if args else ""
 
     if all_flag and topic_name:
@@ -278,14 +285,19 @@ def main(argv=None):
         )
         sys.exit(1)
 
+    workdir = get_current_workdir()
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
+    if with_archives_flag:
+        archives_dir = get_archives_dir(workdir)
+        if archives_dir.is_dir():
+            search_dirs.append(archives_dir)
 
     # Determine workspace filter
     if topic_name or all_flag:
         filter_workdir = None
     else:
-        filter_workdir = get_current_workdir()
+        filter_workdir = workdir
 
     results = resolve_topic(
         topic_name, search_dirs, filter_workdir=filter_workdir,
