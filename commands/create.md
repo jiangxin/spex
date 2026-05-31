@@ -68,7 +68,7 @@ Parse this JSON and save the values as `$topic` and `$description`.
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_dir/scripts/spex create-topic --json --description "$description" --get-prompt "spec-template" $topic
+echo "$requirement" | $spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --topic $topic
 ```
 
 The script creates the topic directory and `meta.json` (with the

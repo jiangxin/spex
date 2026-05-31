@@ -38,8 +38,6 @@ Internal commands (used by skill):
                 Show spex configuration variables
   get-topic [name]
                 Resolve a topic directory
-  create-topic [--json] [--get <keys>] [--get-prompt <names>] <topic>
-                Create a new topic directory
   prompt <name> [--topic <topic>] [-o <file>]
                 Render a Jinja2 template with metadata
   meta <topic_name> <key> [value]
@@ -49,7 +47,8 @@ Internal commands (used by skill):
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done, xml2json, json2xml)
   create-helper <subcommand>
-                Helper utilities for spec creation (precheck, ...)
+                Helper utilities for spec creation
+                (precheck, prepare-spec)
   apply-helper --validate|--post-action --topic <name>
                 Validate or report apply-branch status (JSON/text)
   submit --topic <name>
@@ -202,17 +201,6 @@ def _run_get_topic(argv=None):
     import get_topic
 
     get_topic.main(argv)
-
-
-def _run_create_topic(argv=None):
-    """Create a new topic directory."""
-    if not argv or len(argv) < 1:
-        print("Usage: spex create-topic <topic>", file=sys.stderr)
-        sys.exit(1)
-
-    import create_topic_dir
-
-    create_topic_dir.main(argv)
 
 
 def _run_prompt(argv=None):
@@ -436,8 +424,7 @@ DIRECT_COMMANDS = {
     "init": _run_init,
     "config": _run_config,
     "get-topic": _run_get_topic,
-    "create-topic": _run_create_topic,
-    "prompt": _run_prompt,
+"prompt": _run_prompt,
     "meta": _run_meta,
     "todo": _run_todo,
     "create-helper": _run_create_helper,
