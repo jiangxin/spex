@@ -121,37 +121,34 @@ Principles:
 - **Ordered by dependency**: list steps so that each builds on the
   previous one; no forward references.
 
-Create `$topic_path/todo.xml` listing each step in order:
+Create `$topic_path/todo.json` listing each step in order:
 
-```xml
-<todo>
-  <step>
-    <step-id>step-1</step-id>
-    <step-name>Short name for the step</step-name>
-    <step-details>
-Markdown-formatted description of what this step does,
-including file changes, logic, and acceptance criteria.
-
-- Use lists, bold, and inline code
-- Do not use headings (`#`, `##`, etc.)
-    </step-details>
-  </step>
-</todo>
+```json
+[
+  {
+    "id": "step-1",
+    "name": "Short name for the step",
+    "details": "Markdown-formatted description of what this step does,\nincluding file changes, logic, and acceptance criteria.\n\n- Use lists, bold, and inline code\n- Do not use headings (`#`, `##`, etc.)",
+    "completed_at": "",
+    "commit_title": ""
+  }
+]
 ```
 
-- `<step-details>`: multi-line Markdown text describing the step.
-  No escaping needed — write Markdown directly inside the tag.
+- `details`: Markdown-formatted text describing the step. Use `\n`
+  for newlines in the JSON string.
 - Number steps sequentially: `step-1`, `step-2`, etc.
 
-**CRITICAL — the xml2json parser will reject any deviation from this
+**CRITICAL — the validator will reject any deviation from this
 structure:**
 
-- Root element **MUST** be `<todo>` (not `<steps>`, `<tasks>`, etc.).
-- Each step **MUST** be wrapped in `<step>` (not `<task>`, `<item>`, etc.).
-- Each `<step>` **MUST** contain exactly three children in order:
-  `<step-id>`, `<step-name>`, `<step-details>`.
+- The file **MUST** be a valid JSON array.
+- Each element **MUST** contain exactly five fields:
+  `id`, `name`, `details`, `completed_at`, `commit_title`.
+- `id` values **MUST** be unique across all elements.
+- `completed_at` and `commit_title` **MUST** be empty strings `""`.
 
-### Phase 7: Convert todo.xml to todo.json
+### Phase 7: Post-Action
 
 Run:
 
@@ -159,8 +156,8 @@ Run:
 $spex_skill_dir/scripts/spex create-helper post-action --topic $topic_name
 ```
 
-If the script exits with an error, read the error message, fix the XML
-format in `todo.xml`, and re-run until conversion succeeds.
+If the script exits with an error, read the error message, fix the
+JSON format in `todo.json`, and re-run until validation succeeds.
 
 ### Phase 8: Output
 
