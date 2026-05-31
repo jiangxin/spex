@@ -379,10 +379,64 @@ def cli_modify_spec(argv):
         _output_rendered(rendered, args.output)
 
 
+def cli_modify_todo(argv):
+    """CLI handler for modify-todo subcommand."""
+    import json
+
+    from jinja2 import TemplateError
+
+    parser = ArgumentParser(
+        prog="spex prompt modify-todo",
+        description="Render modify-todo template with topic metadata.",
+    )
+    parser.add_argument("--topic", required=True,
+                        help="Topic name (required)")
+    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
+                        help="Read raw text from stdin as prompt_context")
+    parser.add_argument("--json", action="store_true", dest="json_mode",
+                        help="Output JSON with rendered prompt")
+    parser.add_argument("-o", "--output",
+                        help="Output file path (default: stdout)")
+    args = parser.parse(argv)
+
+    extra_vars = _read_stdin_extra_vars(args.stdin_flag)
+
+    try:
+        metadata = _build_metadata("modify-todo", args.topic)
+        if extra_vars:
+            metadata.update(extra_vars)
+
+        # Side-effect: clean undone todos from todo.json
+        topic_dir = resolve_topic_dir(args.topic)
+        todo_path = topic_dir / "todo.json"
+        if todo_path.exists():
+            try:
+                data = json.loads(todo_path.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    completed = _filter_completed_todos(data)
+                    atomic_write_json(todo_path, completed)
+            except json.JSONDecodeError:
+                pass  # Silently skip if JSON is invalid
+
+        rendered = render_prompt("modify-todo", args.topic, metadata=metadata)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except TemplateError as e:
+        print(f"Error rendering template: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.json_mode:
+        print(json.dumps({"prompt": rendered}))
+    else:
+        _output_rendered(rendered, args.output)
+
+
 SUBCOMMANDS = {
     "apply-one-task": cli_apply_one_task,
     "apply-commit": cli_apply_commit,
     "modify-spec": cli_modify_spec,
+    "modify-todo": cli_modify_todo,
 }
 
 
