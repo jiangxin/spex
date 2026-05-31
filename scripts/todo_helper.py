@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 import textwrap
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
     atomic_write_json,
     check_help_flag,
+    escape_xml_text,
     load_and_validate_todo_json,
     resolve_topic_dir,
     validate_unique_ids,
@@ -47,14 +51,86 @@ REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 # Load / write dispatchers
 # ---------------------------------------------------------------------------
 
+_XML_TO_DICT = {
+    "step-id": "id",
+    "step-name": "name",
+    "step-details": "details",
+    "completed-at": "completed_at",
+    "commit-title": "commit_title",
+}
+_DICT_TO_XML = {v: k for k, v in _XML_TO_DICT.items()}
+
+
 def load_todo_xml(path):
     """Load todo entries from an XML file."""
-    raise NotImplementedError("XML support not yet implemented")
+    path = Path(path)
+    if not path.is_file():
+        return []
+    content = path.read_text(encoding="utf-8").strip()
+    if not content:
+        return []
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        print(
+            f"Error: failed to parse XML '{path}': {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if root.tag != "todo":
+        print(
+            f"Error: expected root element <todo>,"
+            f" got <{root.tag}>.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    entries = []
+    for step in root.findall("step"):
+        entry = {}
+        for xml_name, dict_key in _XML_TO_DICT.items():
+            elem = step.find(xml_name)
+            entry[dict_key] = (
+                elem.text if elem is not None and elem.text
+                else ""
+            )
+        entries.append(entry)
+    return entries
 
 
 def write_todo_xml(path, data):
     """Write todo entries to an XML file."""
-    raise NotImplementedError("XML support not yet implemented")
+    path = Path(path)
+    lines = ["<todo>"]
+    for item in data:
+        lines.append("  <step>")
+        for dict_key in (
+            "id", "name", "details",
+            "completed_at", "commit_title",
+        ):
+            xml_name = _DICT_TO_XML[dict_key]
+            value = escape_xml_text(str(item.get(dict_key, "")))
+            lines.append(
+                f"    <{xml_name}>{value}</{xml_name}>",
+            )
+        lines.append("  </step>")
+    lines.append("</todo>\n")
+    content = "\n".join(lines)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        tmp_fd.write(content)
+        tmp_fd.close()
+        os.replace(tmp_fd.name, str(path))
+    except BaseException:
+        tmp_fd.close()
+        if os.path.exists(tmp_fd.name):
+            os.unlink(tmp_fd.name)
 
 
 def load_todo_json(path):

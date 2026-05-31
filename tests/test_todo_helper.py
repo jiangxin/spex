@@ -84,26 +84,35 @@ class TestFileLocating:
         with pytest.raises(SystemExit):
             todo_helper.main(["validate"])
 
-    def test_xml_flag_with_topic(self, tmp_path, monkeypatch):
+    def test_xml_flag_with_topic(
+        self, tmp_path, monkeypatch, capsys,
+    ):
         topic_dir = tmp_path / "my-topic"
         topic_dir.mkdir()
+        xml_file = topic_dir / "todo.xml"
+        xml_file.write_text(
+            "<todo></todo>\n", encoding="utf-8",
+        )
 
         monkeypatch.setattr(
             todo_helper, "resolve_topic_dir",
             lambda name, **kw: topic_dir,
         )
-        with pytest.raises(NotImplementedError, match="XML"):
-            todo_helper.main([
-                "--topic", "my-topic", "--xml", "validate",
-            ])
+        todo_helper.main([
+            "--topic", "my-topic", "--xml", "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
 
-    def test_todo_file_xml_extension_auto_detects(self, tmp_path):
+    def test_todo_file_xml_extension_auto_detects(
+        self, tmp_path,
+    ):
         xml_file = tmp_path / "todo.xml"
-        xml_file.write_text("<tasks/>", encoding="utf-8")
-        with pytest.raises(NotImplementedError, match="XML"):
+        xml_file.write_text("<steps/>", encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
             todo_helper.main([
                 "--todo-file", str(xml_file), "validate",
             ])
+        assert exc.value.code == 1
 
 
 # -----------------------------------------------------------------------
@@ -428,3 +437,152 @@ class TestHelp:
         with pytest.raises(SystemExit) as exc:
             todo_helper.main(["-h"])
         assert exc.value.code == 0
+
+
+# -----------------------------------------------------------------------
+# XML format
+# -----------------------------------------------------------------------
+SAMPLE_XML = """\
+<todo>
+  <step>
+    <step-id>step-1</step-id>
+    <step-name>First step</step-name>
+    <step-details>Do the first thing</step-details>
+    <completed-at>2026-01-01T10:00:00+08:00</completed-at>
+    <commit-title>feat: first step</commit-title>
+  </step>
+  <step>
+    <step-id>step-2</step-id>
+    <step-name>Second step</step-name>
+    <step-details>Do the second thing</step-details>
+    <completed-at></completed-at>
+    <commit-title></commit-title>
+  </step>
+  <step>
+    <step-id>step-3</step-id>
+    <step-name>Third step</step-name>
+    <step-details>Do the third thing</step-details>
+    <completed-at>2026-01-02T12:00:00+08:00</completed-at>
+    <commit-title>feat: third step</commit-title>
+  </step>
+</todo>
+"""
+
+
+class TestXmlFormat:
+    @pytest.fixture()
+    def xml_file(self, tmp_path):
+        return tmp_path / "todo.xml"
+
+    def test_load_todo_xml_valid(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 3
+        assert data[0]["id"] == "step-1"
+        assert data[0]["name"] == "First step"
+        assert data[0]["details"] == "Do the first thing"
+        assert data[0]["completed_at"] == (
+            "2026-01-01T10:00:00+08:00"
+        )
+        assert data[0]["commit_title"] == "feat: first step"
+        assert data[1]["completed_at"] == ""
+        assert data[1]["commit_title"] == ""
+
+    def test_load_todo_xml_missing_file(self, tmp_path):
+        result = todo_helper.load_todo_xml(
+            tmp_path / "nonexistent.xml",
+        )
+        assert result == []
+
+    def test_load_todo_xml_empty_file(self, xml_file):
+        xml_file.write_text("", encoding="utf-8")
+        result = todo_helper.load_todo_xml(xml_file)
+        assert result == []
+
+    def test_load_todo_xml_wrong_root(self, xml_file):
+        xml_file.write_text(
+            "<steps><step/></steps>", encoding="utf-8",
+        )
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.load_todo_xml(xml_file)
+        assert exc.value.code == 1
+
+    def test_write_todo_xml_roundtrip(self, xml_file):
+        original = [
+            {
+                "id": "s1", "name": "Task one",
+                "details": "Details for one",
+                "completed_at": "2026-01-01",
+                "commit_title": "feat: one",
+            },
+            {
+                "id": "s2", "name": "Task two",
+                "details": "Details for two",
+                "completed_at": "",
+                "commit_title": "",
+            },
+        ]
+        todo_helper.write_todo_xml(xml_file, original)
+        loaded = todo_helper.load_todo_xml(xml_file)
+        assert len(loaded) == 2
+        for i in range(2):
+            for key in (
+                "id", "name", "details",
+                "completed_at", "commit_title",
+            ):
+                assert loaded[i][key] == original[i][key]
+
+    def test_validate_xml(self, xml_file, capsys):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "validate",
+        ])
+        assert "OK" in capsys.readouterr().out
+
+    def test_append_to_xml(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "append",
+            "--id", "step-4",
+            "--name", "Fourth step",
+            "--details", "Do the fourth thing",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 4
+        assert data[-1]["id"] == "step-4"
+        assert data[-1]["name"] == "Fourth step"
+
+    def test_edit_xml_entry(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "edit",
+            "--id", "step-2",
+            "--name", "Updated name",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        step2 = [
+            e for e in data if e["id"] == "step-2"
+        ][0]
+        assert step2["name"] == "Updated name"
+        assert step2["details"] == "Do the second thing"
+
+    def test_show_from_xml(self, xml_file, capsys):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "show",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 3
+        assert result[0]["id"] == "step-1"
+
+    def test_remove_undone_xml(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "remove-undone",
+        ])
+        data = todo_helper.load_todo_xml(xml_file)
+        assert len(data) == 2
+        assert all(e["completed_at"] for e in data)
+        ids = [e["id"] for e in data]
+        assert "step-2" not in ids
