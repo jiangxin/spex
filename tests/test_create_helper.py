@@ -389,11 +389,11 @@ class TestValidateCreateBranch:
 
 
 class TestCliPostAction:
-    def _setup_topic(self, tmp_path, name, xml_content):
+    def _setup_topic(self, tmp_path, name, todo_data):
         topic_dir = tmp_path / name
         topic_dir.mkdir()
-        (topic_dir / "todo.xml").write_text(
-            xml_content, encoding="utf-8",
+        (topic_dir / "todo.json").write_text(
+            json.dumps(todo_data, indent=2), encoding="utf-8",
         )
         meta = {"topic": name, "workdir": str(tmp_path)}
         (topic_dir / "meta.json").write_text(
@@ -401,17 +401,14 @@ class TestCliPostAction:
         )
         return topic_dir
 
-    def test_converts_xml_to_json(self, tmp_path, monkeypatch):
-        """post-action converts todo.xml and deletes the XML file."""
-        topic_dir = self._setup_topic(tmp_path, "my-topic", (
-            "<todo>\n  <step>\n"
-            "    <step-id>step-1</step-id>\n"
-            "    <step-name>First</step-name>\n"
-            "    <step-details>Details here</step-details>\n"
-            "    <completed-at></completed-at>\n"
-            "    <commit-title></commit-title>\n"
-            "  </step>\n</todo>\n"
-        ))
+    def test_validates_json(self, tmp_path, monkeypatch):
+        """post-action validates todo.json successfully."""
+        todo = [{"id": "step-1", "name": "First",
+                 "details": "D", "completed_at": "",
+                 "commit_title": ""}]
+        topic_dir = self._setup_topic(
+            tmp_path, "my-topic", todo,
+        )
         monkeypatch.setattr(
             "create_helper.resolve_topic_dir",
             lambda _name: topic_dir,
@@ -423,16 +420,10 @@ class TestCliPostAction:
             )
 
         assert (topic_dir / "todo.json").is_file()
-        assert not (topic_dir / "todo.xml").exists()
-        data = json.loads(
-            (topic_dir / "todo.json").read_text(encoding="utf-8"),
-        )
-        assert len(data) == 1
-        assert data[0]["id"] == "step-1"
 
-    def test_missing_xml_fails(self, tmp_path, monkeypatch):
-        """post-action errors when todo.xml does not exist."""
-        topic_dir = tmp_path / "no-xml"
+    def test_missing_json_fails(self, tmp_path, monkeypatch):
+        """post-action errors when todo.json does not exist."""
+        topic_dir = tmp_path / "no-json"
         topic_dir.mkdir()
         monkeypatch.setattr(
             "create_helper.resolve_topic_dir",
@@ -440,18 +431,55 @@ class TestCliPostAction:
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "no-xml"],
+                ["--topic", "no-json"],
             )
 
-    def test_default_event_type_is_create(self, tmp_path, monkeypatch):
+    def test_missing_required_field_fails(
+        self, tmp_path, monkeypatch,
+    ):
+        """post-action fails when a required field is missing."""
+        todo = [{"id": "step-1", "name": "First"}]
+        topic_dir = self._setup_topic(
+            tmp_path, "bad-field", todo,
+        )
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+        with pytest.raises(SystemExit):
+            create_helper.cli_post_action(
+                ["--topic", "bad-field"],
+            )
+
+    def test_duplicate_id_fails(self, tmp_path, monkeypatch):
+        """post-action fails when step IDs are duplicated."""
+        todo = [
+            {"id": "step-1", "name": "A", "details": "D",
+             "completed_at": "", "commit_title": ""},
+            {"id": "step-1", "name": "B", "details": "D",
+             "completed_at": "", "commit_title": ""},
+        ]
+        topic_dir = self._setup_topic(
+            tmp_path, "dup-id", todo,
+        )
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+        with pytest.raises(SystemExit):
+            create_helper.cli_post_action(
+                ["--topic", "dup-id"],
+            )
+
+    def test_default_event_type_is_create(
+        self, tmp_path, monkeypatch,
+    ):
         """post-action defaults event-type to 'create'."""
-        topic_dir = self._setup_topic(tmp_path, "evt-topic", (
-            "<todo>\n  <step>\n"
-            "    <step-id>s1</step-id>\n"
-            "    <step-name>N</step-name>\n"
-            "    <step-details>D</step-details>\n"
-            "  </step>\n</todo>\n"
-        ))
+        todo = [{"id": "s1", "name": "N", "details": "D",
+                 "completed_at": "", "commit_title": ""}]
+        topic_dir = self._setup_topic(
+            tmp_path, "evt-topic", todo,
+        )
         monkeypatch.setattr(
             "create_helper.resolve_topic_dir",
             lambda _name: topic_dir,

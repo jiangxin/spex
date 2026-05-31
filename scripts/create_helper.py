@@ -206,7 +206,7 @@ def cli_prepare_spec(argv=None):
 _POST_ACTION_USAGE = """\
 Usage: spex create-helper post-action --topic <name> [--event-type <type>]
 
-Convert todo.xml to todo.json (deleting the XML) and run post-action hook.
+Validate todo.json format and run post-action hook.
 
 Options:
   --topic <name>       Topic name (required)
@@ -214,14 +214,17 @@ Options:
   -h, --help           Show this help message and exit
 """
 
+REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
+
 
 def cli_post_action(argv=None):
-    """CLI: convert todo.xml to todo.json and trigger post-action hook."""
+    """CLI: validate todo.json and trigger post-action hook."""
     from cli import ArgumentParser
     from common import (
-        atomic_write_json,
         get_current_workdir,
+        load_and_validate_todo_json,
         load_meta,
+        validate_unique_ids,
     )
 
     parser = ArgumentParser(
@@ -233,19 +236,24 @@ def cli_post_action(argv=None):
     args = parser.parse(argv)
 
     topic_dir = resolve_topic_dir(args.topic)
-    xml_path = topic_dir / "todo.xml"
     json_path = topic_dir / "todo.json"
 
-    if not xml_path.is_file():
-        print(f"Error: {xml_path} not found.", file=sys.stderr)
+    if not json_path.is_file():
+        print(f"Error: {json_path} not found.", file=sys.stderr)
         sys.exit(1)
 
-    import todo_helper
-
-    data = todo_helper.load_todo_xml(xml_path)
-    atomic_write_json(json_path, data)
-    xml_path.unlink()
-    print(f"OK: {len(data)} step(s) converted.")
+    data = load_and_validate_todo_json(json_path)
+    validate_unique_ids(data)
+    for i, item in enumerate(data):
+        for field in REQUIRED_FIELDS:
+            if field not in item:
+                print(
+                    f"Error: item[{i}]: missing required"
+                    f" field '{field}'.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+    print(f"OK: {len(data)} step(s) validated.")
 
     import hooks
 

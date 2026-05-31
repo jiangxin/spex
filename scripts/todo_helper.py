@@ -188,7 +188,8 @@ def cmd_append(todo_path, is_xml, argv):
     """Append a new entry to the todo file."""
     usage = (
         "Usage: spex todo-helper ... append"
-        " --id <id> --name <name> --details <details>"
+        " --id <id> --name <name>"
+        " [--details <details> | --details-from-stdin]"
         " [--completed_at <ts>] [--commit_title <title>]"
     )
     check_help_flag(usage, argv)
@@ -198,14 +199,27 @@ def cmd_append(todo_path, is_xml, argv):
     )
     parser.add_argument("--id", required=True)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--details", required=True)
+    parser.add_argument("--details", default=None)
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+    )
     parser.add_argument("--completed_at", default="")
     parser.add_argument("--commit_title", default="")
     args = parser.parse(argv)
 
+    if args.details_from_stdin:
+        details = sys.stdin.read()
+    elif args.details is not None:
+        details = args.details
+    else:
+        print(
+            "Error: --details or --details-from-stdin required.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     data = load_todo_file(todo_path, is_xml)
 
-    # Check for duplicate ID
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
             print(
@@ -217,7 +231,7 @@ def cmd_append(todo_path, is_xml, argv):
     entry = {
         "id": args.id,
         "name": args.name,
-        "details": args.details,
+        "details": details,
         "completed_at": args.completed_at,
         "commit_title": args.commit_title,
     }
@@ -230,7 +244,8 @@ def cmd_edit(todo_path, is_xml, argv):
     """Edit an existing entry by ID."""
     usage = (
         "Usage: spex todo-helper ... edit"
-        " --id <id> [--name <n>] [--details <d>]"
+        " --id <id> [--name <n>]"
+        " [--details <d> | --details-from-stdin]"
         " [--completed_at <ts>] [--commit_title <title>]"
     )
     check_help_flag(usage, argv)
@@ -241,9 +256,16 @@ def cmd_edit(todo_path, is_xml, argv):
     parser.add_argument("--id", required=True)
     parser.add_argument("--name", default=None)
     parser.add_argument("--details", default=None)
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+    )
     parser.add_argument("--completed_at", default=None)
     parser.add_argument("--commit_title", default=None)
     args = parser.parse(argv)
+
+    details = args.details
+    if args.details_from_stdin:
+        details = sys.stdin.read()
 
     data = load_todo_file(todo_path, is_xml)
 
@@ -252,8 +274,8 @@ def cmd_edit(todo_path, is_xml, argv):
         if isinstance(item, dict) and item.get("id") == args.id:
             if args.name is not None:
                 item["name"] = args.name
-            if args.details is not None:
-                item["details"] = args.details
+            if details is not None:
+                item["details"] = details
             if args.completed_at is not None:
                 item["completed_at"] = args.completed_at
             if args.commit_title is not None:
@@ -301,37 +323,82 @@ def cmd_remove(todo_path, is_xml, argv):
     print(f"Removed '{args.id}'.")
 
 
-def _format_markdown(data):
-    """Format todo entries as markdown."""
+def _wrap_field(label, text, indent, width=10**9):
+    """Wrap a sub-bullet field."""
+    prefix = f"{indent}- {label}: "
+    cont = " " * len(prefix)
+    result = []
+    for i, paragraph in enumerate(text.split("\n")):
+        if i == 0:
+            result.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=prefix,
+                subsequent_indent=cont,
+            ))
+        else:
+            result.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=cont,
+                subsequent_indent=cont,
+            ) if paragraph.strip() else cont.rstrip())
+    return "\n".join(result)
+
+
+def _format_block_details(text, indent, width=10**9):
+    """Format multi-line details using block scalar syntax."""
+    content_indent = " " * (len(indent) + 4)
+    lines = [f"{indent}- details: |"]
+    for paragraph in text.split("\n"):
+        if paragraph.strip():
+            lines.append(textwrap.fill(
+                paragraph, width=width,
+                initial_indent=content_indent,
+                subsequent_indent=content_indent,
+            ))
+        else:
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _format_markdown(data, width=0):
+    """Format todo entries as markdown.
+
+    width=0 disables wrapping (lines may exceed 80 chars).
+    """
+    w = width if width > 0 else 10**9
     lines = []
-    for item in data:
+    for idx, item in enumerate(data, 1):
         step_id = item.get("id", "")
-        name = item.get("name", "")
         completed = bool(item.get("completed_at"))
-        icon = "✅" if completed else "⬜"
-        lines.append(f"- {icon} {step_id}: {name}")
+        icon = "✅" if completed else "🔲"
+        prefix = f"{idx}. "
+        indent = " " * len(prefix)
+        lines.append(f"{prefix}{icon} {step_id}")
+
+        name = item.get("name", "")
+        if name:
+            lines.append(f"{indent}- name: {name}")
 
         details = item.get("details", "")
         if details:
-            wrapped = textwrap.fill(
-                details, width=80,
-                initial_indent="  - details: ",
-                subsequent_indent="    ",
-            )
-            lines.append(wrapped)
+            if "\n" in details:
+                lines.append(
+                    _format_block_details(details, indent, w),
+                )
+            else:
+                lines.append(
+                    _wrap_field("details", details, indent, w),
+                )
 
         completed_at = item.get("completed_at", "")
         if completed_at:
-            lines.append(f"  - completed_at: {completed_at}")
+            lines.append(f"{indent}- completed_at: {completed_at}")
 
         commit_title = item.get("commit_title", "")
         if commit_title:
-            wrapped = textwrap.fill(
-                commit_title, width=80,
-                initial_indent="  - commit_title: ",
-                subsequent_indent="    ",
+            lines.append(
+                _wrap_field("commit_title", commit_title, indent, w),
             )
-            lines.append(wrapped)
 
     return "\n".join(lines)
 
@@ -341,6 +408,7 @@ def cmd_show(todo_path, is_xml, argv):
     usage = (
         "Usage: spex todo-helper ... show"
         " [--done | --undone] [--format json|markdown]"
+        " [--wrap | --no-wrap]"
     )
     check_help_flag(usage, argv)
 
@@ -353,6 +421,13 @@ def cmd_show(todo_path, is_xml, argv):
     parser.add_argument(
         "--format", dest="fmt", choices=["json", "markdown"],
         default="json",
+    )
+    wrap_group = parser.add_mutually_exclusive_group()
+    wrap_group.add_argument(
+        "--wrap", action="store_true", default=False,
+    )
+    wrap_group.add_argument(
+        "--no-wrap", dest="wrap", action="store_false",
     )
     args = parser.parse(argv)
 
@@ -370,7 +445,7 @@ def cmd_show(todo_path, is_xml, argv):
         ]
 
     if args.fmt == "markdown":
-        print(_format_markdown(data))
+        print(_format_markdown(data, width=80 if args.wrap else 0))
     else:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
