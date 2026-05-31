@@ -31,8 +31,11 @@ select = ["E", "F", "W", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: marks tests as slow (skip with '-m \"not slow\"')"]
-addopts = ["-m", "not slow"]
+markers = [
+    "slow: marks tests as slow (skip with '-m \"not slow\"')",
+    "e2e: end-to-end tests (run via make test-e2e)",
+]
+addopts = ["-m", "not slow and not e2e"]
 
 [tool.coverage.run]
 source = ["scripts"]
