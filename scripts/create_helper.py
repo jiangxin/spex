@@ -66,7 +66,9 @@ def validate_create_branch(
     if current.startswith(DEFAULT_SPEX_BRANCH_PREFIX):
         print(
             f"Error: current branch '{current}' starts with "
-            f"'{DEFAULT_SPEX_BRANCH_PREFIX}'.",
+            f"'{DEFAULT_SPEX_BRANCH_PREFIX}'.\n"
+            f"Hint: configure 'main_branch_name' in .spex.toml "
+            f"to enable automatic branch switching.",
             file=sys.stderr,
         )
         sys.exit(1)
