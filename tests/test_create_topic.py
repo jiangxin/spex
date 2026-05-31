@@ -82,8 +82,9 @@ class TestCreateTopic:
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
+        import create_helper
         with patch.object(
-            create_topic_dir, "datetime"
+            create_helper, "datetime"
         ) as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-05-24-20-00"
             topic_name, topic_dir = create_topic("my-topic", specs_dir)

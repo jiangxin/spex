@@ -1,87 +1,26 @@
 #!/usr/bin/env python3
-"""Create a topic directory under the spex root."""
+"""Create a topic directory under the spex root.
+
+DEPRECATED: This module is a thin wrapper around create_helper.
+Use create_helper.create_topic and create_helper._write_meta instead.
+"""
 
 from __future__ import annotations
 
 import json
-import re
 import sys
-from datetime import datetime
-from pathlib import Path
 
 import common
 import config as cfg
 from cli import ArgumentParser
-from common import (
-    atomic_write_json,
-    get_git_info,
-    get_specs_dir,
-    local_iso_timestamp,
-    strip_date_prefix,
-)
+from common import get_git_info, get_specs_dir, local_iso_timestamp
+from create_helper import _write_meta, create_topic
 
 SUPPORTED_GET_KEYS = {
     "spex_root": "get_spex_root",
     "specs_dir": "get_specs_dir",
     "archives_dir": "get_archives_dir",
 }
-
-TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
-DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
-MAX_TOPIC_BYTES = 64
-
-
-def create_topic(topic, specs_dir, auto_prefix=True):
-    """Create a topic directory under specs_dir.
-
-    Returns (topic_name, topic_dir) tuple.
-    Raises ValueError on invalid input, FileExistsError if topic exists.
-    """
-    specs_dir = Path(specs_dir)
-
-    if not DATE_PREFIX_PATTERN.match(topic) and auto_prefix:
-        prefix = datetime.now().strftime("%Y-%m-%d-%H-%M")
-        topic = f"{prefix}-{topic}"
-
-    if not TOPIC_PATTERN.match(topic):
-        raise ValueError(
-            f"invalid topic name '{topic}'. "
-            "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
-        )
-
-    if len(topic.encode("utf-8")) > MAX_TOPIC_BYTES:
-        raise ValueError(f"topic name '{topic}' exceeds {MAX_TOPIC_BYTES} bytes.")
-
-    topic_dir = specs_dir / topic
-    if topic_dir.exists():
-        raise FileExistsError(f"'{topic}' already exists, use a different name.")
-
-    specs_dir.mkdir(parents=True, exist_ok=True)
-    topic_dir.mkdir()
-    return (topic, topic_dir)
-
-
-
-
-def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
-    """Write meta.json into topic_dir with git info and prompt."""
-    workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
-    main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
-    meta = {
-        "topic": strip_date_prefix(Path(topic_dir).name),
-        "workdir": workdir,
-        "main_worktree": main_worktree,
-        "remote_url": git_info.get("remote_url", ""),
-        "branch": git_info.get("branch", ""),
-        "user_name": git_info.get("user_name", ""),
-        "user_email": git_info.get("user_email", ""),
-        "created_at": timestamp,
-        "prompts": [prompt] if prompt else [],
-    }
-    if description:
-        meta["description"] = description
-    meta_path = Path(topic_dir) / "meta.json"
-    atomic_write_json(meta_path, meta)
 
 
 def main(argv=None):
