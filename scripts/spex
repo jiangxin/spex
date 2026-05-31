@@ -48,8 +48,8 @@ Internal commands (used by skill):
   todo <subcommand> ...
                 Operate on todo.json (validate, get-next-undone,
                 get-done, mark-done, xml2json, json2xml)
-  create-helper --validate
-                Validate branch creation feasibility (JSON output)
+  create-helper <subcommand>
+                Helper utilities for spec creation (precheck, ...)
   apply-helper --validate|--post-action --topic <name>
                 Validate or report apply-branch status (JSON/text)
   submit --topic <name>
@@ -229,30 +229,11 @@ def _run_meta(argv=None):
     meta.main(argv)
 
 
-_CREATE_HELPER_USAGE = """\
-Usage: spex create-helper --validate
-
-Validate branch creation feasibility.
-
-Options:
-  -h, --help  Show this help message and exit
-"""
-
-
 def _run_create_helper(argv=None):
     """Route create-helper subcommand."""
-    import branch
+    import create_helper
 
-    parser = ArgumentParser(prog="spex create-helper",
-                            usage=_CREATE_HELPER_USAGE)
-    parser.add_argument("--validate", action="store_true")
-    args = parser.parse(argv)
-
-    if args.validate:
-        branch.cli_create_validate()
-    else:
-        print("Usage: spex create-helper --validate", file=sys.stderr)
-        sys.exit(1)
+    create_helper.main(argv)
 
 
 _APPLY_HELPER_USAGE = """\
