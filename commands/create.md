@@ -124,11 +124,21 @@ Principles:
 Use `spex todo-helper` to build `todo.json` step by step.
 Number steps sequentially: `step-1`, `step-2`, etc.
 
-**Append** a step:
+**Append** a step — use `--details-from-stdin` with a heredoc for
+multi-line Markdown details:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --topic $topic_name append \
-  --id step-1 --name "Short name" --details "Markdown details..."
+  --id step-1 --name "Short name" --details-from-stdin <<'DETAILS'
+Markdown-formatted description of what this step does,
+including file changes, logic, and acceptance criteria.
+
+- Create `src/auth.py` with login endpoint
+- Add input validation for email and password
+- Write unit tests in `tests/test_auth.py`
+
+**Acceptance criteria**: all tests pass, endpoint returns JWT
+DETAILS
 ```
 
 **Show** current steps (to review before adding more):
@@ -142,7 +152,12 @@ $spex_skill_dir/scripts/spex todo-helper --topic $topic_name show \
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
-  --id step-1 --details "Updated details..."
+  --id step-1 --details-from-stdin <<'DETAILS'
+Updated multi-line details for this step.
+
+- Revised implementation approach
+- Added error handling requirements
+DETAILS
 ```
 
 **Remove** a step:
@@ -154,7 +169,8 @@ $spex_skill_dir/scripts/spex todo-helper --topic $topic_name remove \
 
 The `details` field supports multi-line Markdown:
 
-- Use lists, bold, and inline code
+- Including file changes, logic, and acceptance criteria, etc.
+- Use lists, bold, and inline code.
 - Do not use headings (`#`, `##`, etc.)
 
 ### Phase 7: Post-Action

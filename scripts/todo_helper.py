@@ -188,7 +188,8 @@ def cmd_append(todo_path, is_xml, argv):
     """Append a new entry to the todo file."""
     usage = (
         "Usage: spex todo-helper ... append"
-        " --id <id> --name <name> --details <details>"
+        " --id <id> --name <name>"
+        " [--details <details> | --details-from-stdin]"
         " [--completed_at <ts>] [--commit_title <title>]"
     )
     check_help_flag(usage, argv)
@@ -198,14 +199,27 @@ def cmd_append(todo_path, is_xml, argv):
     )
     parser.add_argument("--id", required=True)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--details", required=True)
+    parser.add_argument("--details", default=None)
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+    )
     parser.add_argument("--completed_at", default="")
     parser.add_argument("--commit_title", default="")
     args = parser.parse(argv)
 
+    if args.details_from_stdin:
+        details = sys.stdin.read()
+    elif args.details is not None:
+        details = args.details
+    else:
+        print(
+            "Error: --details or --details-from-stdin required.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     data = load_todo_file(todo_path, is_xml)
 
-    # Check for duplicate ID
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
             print(
@@ -217,7 +231,7 @@ def cmd_append(todo_path, is_xml, argv):
     entry = {
         "id": args.id,
         "name": args.name,
-        "details": args.details,
+        "details": details,
         "completed_at": args.completed_at,
         "commit_title": args.commit_title,
     }
@@ -230,7 +244,8 @@ def cmd_edit(todo_path, is_xml, argv):
     """Edit an existing entry by ID."""
     usage = (
         "Usage: spex todo-helper ... edit"
-        " --id <id> [--name <n>] [--details <d>]"
+        " --id <id> [--name <n>]"
+        " [--details <d> | --details-from-stdin]"
         " [--completed_at <ts>] [--commit_title <title>]"
     )
     check_help_flag(usage, argv)
@@ -241,9 +256,16 @@ def cmd_edit(todo_path, is_xml, argv):
     parser.add_argument("--id", required=True)
     parser.add_argument("--name", default=None)
     parser.add_argument("--details", default=None)
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+    )
     parser.add_argument("--completed_at", default=None)
     parser.add_argument("--commit_title", default=None)
     args = parser.parse(argv)
+
+    details = args.details
+    if args.details_from_stdin:
+        details = sys.stdin.read()
 
     data = load_todo_file(todo_path, is_xml)
 
@@ -252,8 +274,8 @@ def cmd_edit(todo_path, is_xml, argv):
         if isinstance(item, dict) and item.get("id") == args.id:
             if args.name is not None:
                 item["name"] = args.name
-            if args.details is not None:
-                item["details"] = args.details
+            if details is not None:
+                item["details"] = details
             if args.completed_at is not None:
                 item["completed_at"] = args.completed_at
             if args.commit_title is not None:

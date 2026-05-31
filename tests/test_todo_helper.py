@@ -213,11 +213,50 @@ class TestAppend:
         assert result[0]["completed_at"] == "2026-05-30"
         assert result[0]["commit_title"] == "feat: done"
 
+    def test_append_details_from_stdin(self, todo_file, monkeypatch):
+        _write(todo_file, [])
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            "Multi-line details\n\n- Item 1\n- Item 2\n",
+        ))
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1", "--name", "Stdin step",
+            "--details-from-stdin",
+        ])
+        result = _read(todo_file)
+        assert "Multi-line details" in result[0]["details"]
+        assert "- Item 1" in result[0]["details"]
+
+    def test_append_no_details_fails(self, todo_file):
+        _write(todo_file, [])
+        with pytest.raises(SystemExit):
+            todo_helper.main([
+                "--todo-file", str(todo_file), "append",
+                "--id", "s1", "--name", "No details",
+            ])
+
 
 # -----------------------------------------------------------------------
 # edit
 # -----------------------------------------------------------------------
 class TestEdit:
+    def test_edit_details_from_stdin(self, todo_file, monkeypatch):
+        _write(todo_file, SAMPLE_DATA)
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            "Updated multi-line\n\n- New item\n",
+        ))
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-1", "--details-from-stdin",
+        ])
+        result = _read(todo_file)
+        step1 = [i for i in result if i["id"] == "step-1"][0]
+        assert "Updated multi-line" in step1["details"]
+        assert "- New item" in step1["details"]
+        assert step1["name"] == SAMPLE_DATA[0]["name"]
+
     def test_update_specific_fields(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
