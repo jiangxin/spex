@@ -432,101 +432,28 @@ def cli_modify_todo(argv):
         _output_rendered(rendered, args.output)
 
 
-SUBCOMMANDS = {
-    "apply-one-task": cli_apply_one_task,
-    "apply-commit": cli_apply_commit,
-    "modify-spec": cli_modify_spec,
-    "modify-todo": cli_modify_todo,
-}
-
-
-def main(argv=None):
-    import json
-
-    if argv is None:
-        argv = sys.argv[1:]
-
-    # Route to subcommand handler if first arg matches
-    if argv and argv[0] in SUBCOMMANDS:
-        SUBCOMMANDS[argv[0]](argv[1:])
-        return
+def cli_render(argv):
+    """Fallback CLI handler for generic template rendering."""
+    from jinja2 import TemplateError
 
     parser = ArgumentParser(
         prog="spex prompt",
-        description="Render a Jinja2 template with metadata."
+        description="Render a Jinja2 template with metadata.",
     )
     parser.add_argument("name", help="Template name (without .md extension)")
     parser.add_argument("--topic", help="Topic name for topic-specific metadata")
-    parser.add_argument("--stdin", action="store_true",
+    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
-    parser.add_argument("--json", action="store_true",
-                        help="Output JSON with rendered prompt to stdout")
-    parser.add_argument("-o", "--output", help="Output file path (default: stdout)")
+    parser.add_argument("-o", "--output",
+                        help="Output file path (default: stdout)")
     args = parser.parse(argv)
 
-    try:
-        from jinja2 import TemplateError
-    except ImportError:
-        print("Error: jinja2 is required. Install with: pip install jinja2", file=sys.stderr)
-        sys.exit(1)
-
-    extra_vars = None
-    if not sys.stdin.isatty():
-        stdin_data = sys.stdin.read().strip()
-        if stdin_data:
-            if args.stdin:
-                extra_vars = {"prompt_context": stdin_data}
-            else:
-                try:
-                    extra_vars = json.loads(stdin_data)
-                except json.JSONDecodeError:
-                    print("Error: stdin must be valid JSON", file=sys.stderr)
-                    sys.exit(1)
+    extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
         metadata = _build_metadata(args.name, args.topic)
         if extra_vars:
             metadata.update(extra_vars)
-
-        # Log prompt to meta.json for modify-spec template
-        prompt_context = metadata.get("prompt_context", "")
-        if args.name == "modify-spec" and prompt_context and args.topic:
-            topic_dir = resolve_topic_dir(args.topic)
-            _log_prompt_to_meta(topic_dir, prompt_context)
-
-        # Pre-render side-effects for modify-todo: clean undone todos
-        if args.name == "modify-todo" and args.topic:
-            topic_dir = resolve_topic_dir(args.topic)
-            todo_path = topic_dir / "todo.json"
-            if todo_path.exists():
-                try:
-                    data = json.loads(todo_path.read_text(encoding="utf-8"))
-                    if isinstance(data, list):
-                        completed = _filter_completed_todos(data)
-                        atomic_write_json(todo_path, completed)
-                except json.JSONDecodeError:
-                    pass  # Silently skip if JSON is invalid
-
-        json_mode = args.json and args.name in ("apply-one-task", "modify-spec", "modify-todo")
-
-        # Handle all-done in JSON mode before render_prompt can exit
-        if json_mode and args.name == "apply-one-task" and not metadata.get("next_task_text"):
-            print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
-            sys.exit(0)
-
-        # Handle all-done in non-JSON mode: exit(0) with empty stdout
-        if (
-            not json_mode
-            and args.name in ("apply-one-task", "apply-commit")
-            and not metadata.get("next_task_text")
-        ):
-            sys.exit(0)
-
-        # Emit task_id to stderr for orchestrator to capture (non-JSON only)
-        if args.name == "apply-one-task" and not json_mode:
-            next_task_id = metadata.get("next_task_id", "")
-            if next_task_id:
-                print(f"task_id={next_task_id}", file=sys.stderr)
 
         rendered = render_prompt(args.name, args.topic, metadata=metadata)
     except FileNotFoundError as e:
@@ -536,20 +463,50 @@ def main(argv=None):
         print(f"Error rendering template: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if json_mode:
-        if args.name == "apply-one-task":
-            task_id = metadata.get("next_task_id", "")
-            print(json.dumps({"task_id": task_id, "prompt": rendered}))
-        elif args.name == "modify-spec":
-            print(json.dumps({"prompt": rendered}))
-        elif args.name == "modify-todo":
-            print(json.dumps({"prompt": rendered}))
-    elif args.output:
-        out_path = Path(args.output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(rendered, encoding="utf-8")
+    _output_rendered(rendered, args.output)
+
+
+SUBCOMMANDS = {
+    "apply-one-task": cli_apply_one_task,
+    "apply-commit": cli_apply_commit,
+    "modify-spec": cli_modify_spec,
+    "modify-todo": cli_modify_todo,
+}
+
+USAGE = """\
+Usage: spex prompt <subcommand> [options]
+
+Subcommands:
+  apply-one-task  Render prompt for the next undone task
+  apply-commit    Render commit instructions for the current task
+  modify-spec     Render prompt for modifying a spec
+  modify-todo     Render prompt for modifying a todo list
+  <template-name> Render a generic template (fallback)
+
+Options:
+  -h, --help  Show this help message and exit
+"""
+
+
+def main(argv=None):
+    """Route prompt subcommands to their handlers."""
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv:
+        print(USAGE, end="", file=sys.stderr)
+        sys.exit(1)
+
+    subcmd = argv[0]
+    if subcmd in ("-h", "--help"):
+        print(USAGE, end="")
+        sys.exit(0)
+
+    handler = SUBCOMMANDS.get(subcmd)
+    if handler:
+        handler(argv[1:])
     else:
-        print(rendered)
+        cli_render(argv)  # fallback: treat argv[0] as template name
 
 
 if __name__ == "__main__":
