@@ -59,6 +59,11 @@ Internal commands (used by skill):
 LLM_COMMANDS = {"apply", "create", "new", "modify"}
 
 
+def _normalize_subcmd(name):
+    """Normalize subcommand name: hyphens → underscores."""
+    return name.replace("-", "_")
+
+
 def _extract_global_options(argv):
     """Extract --version and -V from argv.
 
@@ -346,15 +351,15 @@ DIRECT_COMMANDS = {
     "open": _run_open,
     "init": _run_init,
     "config": _run_config,
-    "get-topic": _run_get_topic,
-"prompt": _run_prompt,
+    "get_topic": _run_get_topic,
+    "prompt": _run_prompt,
     "meta": _run_meta,
-    "todo-helper": _run_todo_helper,
-    "create-helper": _run_create_helper,
-    "apply-helper": _run_apply_helper,
+    "todo_helper": _run_todo_helper,
+    "create_helper": _run_create_helper,
+    "apply_helper": _run_apply_helper,
     "merge": _run_merge,
     "submit": _run_merge,
-    "run-hook": _run_hook,
+    "run_hook": _run_hook,
     "version": _run_version,
 }
 
@@ -371,6 +376,8 @@ def main(argv=None):
         sys.exit(0)
 
     command = argv[0]
+    if not command.startswith("-"):
+        command = _normalize_subcmd(command)
 
     if command in ("-h", "--help"):
         print(USAGE, end="")
