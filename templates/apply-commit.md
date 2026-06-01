@@ -35,9 +35,7 @@ Stage the relevant file changes and create a single git commit.
 ### Completed Steps
 
 <completed-steps>
-{% for task in completed_tasks.splitlines() -%}
-- {{ task }}
-{% endfor -%}
+{{ completed_tasks }}
 </completed-steps>
 
 {% endif -%}

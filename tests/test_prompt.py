@@ -158,8 +158,8 @@ class TestFutureTasks:
         assert metadata["next_task_id"] == "step-2"
         assert "step-2" in metadata["next_task_text"]
         # future_tasks should contain step-3 and step-4
-        assert "- step-3: Third step" in metadata["future_tasks"]
-        assert "- step-4: Fourth step" in metadata["future_tasks"]
+        assert "- **step-3**: Third step" in metadata["future_tasks"]
+        assert "- **step-4**: Fourth step" in metadata["future_tasks"]
         # step-2 should NOT be in future_tasks
         assert "step-2" not in metadata["future_tasks"]
 
@@ -227,8 +227,8 @@ class TestFutureTasks:
 
         metadata = _build_metadata("apply-one-task", "test-topic")
 
-        expected = "- step-2: Do B\n- step-3: Do C"
-        assert metadata["future_tasks"] == expected
+        assert "- **step-2**: Do B" in metadata["future_tasks"]
+        assert "- **step-3**: Do C" in metadata["future_tasks"]
 
 
 @pytest.mark.slow
@@ -281,8 +281,8 @@ class TestApplyOneTaskRendering:
 
         rendered = render_prompt("apply-one-task", "test-topic")
         assert "## Future Steps" in rendered
-        assert "- step-2: Second step" in rendered
-        assert "- step-3: Third step" in rendered
+        assert "- **step-2**: Second step" in rendered
+        assert "- **step-3**: Third step" in rendered
 
     def test_future_steps_section_absent_when_empty(
         self, tmp_path, monkeypatch
@@ -497,12 +497,11 @@ class TestBuildTaskContext:
         result = _build_task_context(topic_dir)
 
         assert result["spec_content"] == "# My Spec\n\nSpec body."
-        assert "- step-1: First step" in result["completed_tasks"]
+        assert "- **step-1**: First step" in result["completed_tasks"]
         assert result["next_task_id"] == "step-2"
-        assert "**Task**: step-2 - Second step" in result["next_task_text"]
+        assert "- **step-2**: Second step" in result["next_task_text"]
         assert "Do second thing" in result["next_task_text"]
-        assert "<details>" in result["next_task_text"]
-        assert "- step-3: Third step" in result["future_tasks"]
+        assert "- **step-3**: Third step" in result["future_tasks"]
         # Current task should NOT appear in future_tasks
         assert "step-2" not in result["future_tasks"]
 
@@ -532,8 +531,8 @@ class TestBuildTaskContext:
         result = _build_task_context(topic_dir)
 
         assert result["spec_content"] == "# Done Spec\n"
-        assert "- step-1: First step" in result["completed_tasks"]
-        assert "- step-2: Second step" in result["completed_tasks"]
+        assert "- **step-1**: First step" in result["completed_tasks"]
+        assert "- **step-2**: Second step" in result["completed_tasks"]
         assert result["next_task_id"] == ""
         assert result["next_task_text"] == ""
         assert result["future_tasks"] == ""
@@ -562,11 +561,11 @@ class TestApplyCommitWithTopic:
         assert "<specification>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
-        assert "step-1: First step" in rendered
+        assert "**step-1**: First step" in rendered
         assert "<current-task>" in rendered
         assert "Add login API" in rendered
         assert "Implement /login endpoint" in rendered
-        assert "step-3: Add tests" in rendered
+        assert "**step-3**: Add tests" in rendered
 
     def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
         """apply-commit with --topic but all tasks done returns None."""
@@ -699,7 +698,7 @@ class TestModifySpecTemplate:
         assert "Add caching to the API" in rendered
         assert "<specification>" in rendered
         assert "# Test Spec" in rendered
-        assert "step-1: First step" in rendered
+        assert "**step-1**: First step" in rendered
 
     def test_modify_spec_missing_prompt_context_fails(self, tmp_path, monkeypatch):
         """modify-spec without prompt_context fails validation."""
@@ -802,7 +801,7 @@ class TestModifyTodoTemplate:
         assert "<specification>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
-        assert "step-1: First step" in rendered
+        assert "**step-1**: First step" in rendered
 
     def test_modify_todo_no_completed_tasks(self, tmp_path, monkeypatch):
         """modify-todo without completed tasks omits completed-steps section."""

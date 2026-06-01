@@ -53,13 +53,32 @@ def validate_required_meta(content, metadata):
         sys.exit(1)
 
 
-def _build_task_context(topic_dir):
+def _format_item_verbose(item):
+    """Format a single todo item in verbose markdown style."""
+    task_id = item.get("id", "")
+    name = item.get("name", "")
+    details = item.get("details", "")
+    lines = [f"- **{task_id}**: {name}"]
+    if details:
+        for line in details.splitlines():
+            lines.append(f"  {line}" if line else "")
+    return "\n".join(lines)
+
+
+def _format_item_brief(item):
+    """Format a single todo item as a brief one-liner."""
+    return f"- {item.get('id', '')}: {item.get('name', '')} *(details omitted)*"
+
+
+def _build_task_context(topic_dir, verbose_items=20):
     """Extract task context from a topic directory.
 
     Reads spec.md and todo.json, computes completed/current/future task info.
 
     Args:
         topic_dir: Path to the topic directory.
+        verbose_items: Max number of items to show with full details.
+            Items beyond this limit are shown in brief format.
 
     Returns:
         Dict with keys: spec_content, completed_tasks, next_task_id,
@@ -74,30 +93,42 @@ def _build_task_context(topic_dir):
     todo = load_todo(topic_dir)
     if todo:
         done = [item for item in todo if item.get("completed_at")]
-        completed_tasks = "\n".join(
-            f"- {item.get('id', '')}: {item.get('name', '')}" for item in done
-        )
+        if len(done) <= verbose_items:
+            completed_tasks = "\n\n".join(
+                _format_item_verbose(item) for item in done
+            )
+        else:
+            brief_items = done[:-verbose_items]
+            verbose_part = done[-verbose_items:]
+            parts = [_format_item_brief(item) for item in brief_items]
+            parts.extend(_format_item_verbose(item) for item in verbose_part)
+            completed_tasks = "\n\n".join(parts)
+
         undone = [item for item in todo if not item.get("completed_at")]
         if undone:
             current = undone[0]
             task_id = current.get("id", "")
-            name = current.get("name", "")
-            details = current.get("details", "")
             next_task_id = task_id
-            next_task_text = (
-                f"**Task**: {task_id} - {name}\n\n"
-                f"**Implementation Details**:\n\n"
-                f"<details>\n{details}\n\n</details>"
-            )
+            next_task_text = _format_item_verbose(current)
+
             future = undone[1:]
-            future_tasks = (
-                "\n".join(
-                    f"- {item.get('id', '')}: {item.get('name', '')}"
-                    for item in future
-                )
-                if future
-                else ""
-            )
+            if future:
+                if len(future) <= verbose_items:
+                    future_tasks = "\n\n".join(
+                        _format_item_verbose(item) for item in future
+                    )
+                else:
+                    verbose_part = future[:verbose_items]
+                    brief_items = future[verbose_items:]
+                    parts = [
+                        _format_item_verbose(item) for item in verbose_part
+                    ]
+                    parts.extend(
+                        _format_item_brief(item) for item in brief_items
+                    )
+                    future_tasks = "\n\n".join(parts)
+            else:
+                future_tasks = ""
         else:
             next_task_id = ""
             next_task_text = ""
@@ -174,13 +205,8 @@ def _build_metadata(template_name, topic_name=None):
         if topic_name:
             metadata.update(_build_task_context(topic_dir))
 
-    if template_name == "apply-one-task" and topic_name:
-        metadata.update(_build_task_context(topic_dir))
-
-    if template_name == "modify-spec" and topic_name:
-        metadata.update(_build_task_context(topic_dir))
-
-    if template_name == "modify-todo" and topic_name:
+    if template_name in ("apply-one-task", "modify-spec", "modify-todo") \
+            and topic_name:
         metadata.update(_build_task_context(topic_dir))
 
     return metadata

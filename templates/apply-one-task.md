@@ -19,9 +19,7 @@ edge cases, and testability. Read the specification and completed steps
 ## Completed Steps
 
 <completed-steps>
-{% for task in completed_tasks.splitlines() -%}
-- {{ task }}
-{% endfor -%}
+{{ completed_tasks }}
 </completed-steps>
 
 {% endif -%}
