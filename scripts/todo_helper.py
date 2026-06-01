@@ -17,6 +17,7 @@ from common import (
     check_help_flag,
     escape_xml_text,
     load_and_validate_todo_json,
+    local_iso_timestamp,
     resolve_topic_dir,
     validate_unique_ids,
 )
@@ -47,6 +48,13 @@ Options:
 """
 
 REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
+
+
+def _resolve_completed_at(value):
+    """Resolve the special value 'now' to a local ISO timestamp."""
+    if isinstance(value, str) and value.lower() == "now":
+        return local_iso_timestamp()
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +240,7 @@ def cmd_append(todo_path, is_xml, argv):
         "id": args.id,
         "name": args.name,
         "details": details,
-        "completed_at": args.completed_at,
+        "completed_at": _resolve_completed_at(args.completed_at),
         "commit_title": args.commit_title,
     }
     data.append(entry)
@@ -266,6 +274,9 @@ def cmd_edit(todo_path, is_xml, argv):
     details = args.details
     if args.details_from_stdin:
         details = sys.stdin.read()
+
+    if args.completed_at is not None:
+        args.completed_at = _resolve_completed_at(args.completed_at)
 
     data = load_todo_file(todo_path, is_xml)
 

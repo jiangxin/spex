@@ -298,6 +298,50 @@ class TestEdit:
 
 
 # -----------------------------------------------------------------------
+# edit --completed_at now
+# -----------------------------------------------------------------------
+class TestEditCompletedAtNow:
+    def test_edit_completed_at_now(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--completed_at", "now",
+        ])
+        result = _read(todo_file)
+        step2 = [i for i in result if i["id"] == "step-2"][0]
+        assert step2["completed_at"].startswith("2026-")
+
+    def test_edit_completed_at_explicit_value(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--completed_at", "2026-01-01T00:00:00",
+        ])
+        result = _read(todo_file)
+        step2 = [i for i in result if i["id"] == "step-2"][0]
+        assert step2["completed_at"] == "2026-01-01T00:00:00"
+
+
+# -----------------------------------------------------------------------
+# append --completed_at now
+# -----------------------------------------------------------------------
+class TestAppendCompletedAtNow:
+    def test_append_completed_at_now(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--name", "Task done now",
+            "--details", "Details",
+            "--completed_at", "now",
+        ])
+        result = _read(todo_file)
+        assert result[0]["completed_at"].startswith("2026-")
+
+
+# -----------------------------------------------------------------------
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:
