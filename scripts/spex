@@ -43,12 +43,9 @@ Internal commands (used by skill):
   meta <topic_name> <key> [value]
                 Set key/value in meta.json (appends if key is "prompts")
                 Reads value from stdin if not provided
-  todo <subcommand> ...
-                Operate on todo.json (validate, get-next-undone,
-                get-done, xml2json, json2xml)
   todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
                 Operate on todo files (validate, append, edit, remove,
-                show, remove-undone, xml2json, json2xml)
+                show, xml2json, json2xml)
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
@@ -268,51 +265,6 @@ def _run_todo_helper(argv=None):
     todo_helper.main(argv)
 
 
-def _run_todo(argv=None):
-    """Route todo subcommands."""
-    if not argv or len(argv) < 1:
-        print(
-            "Usage: spex todo <subcommand> ...\n"
-            "Subcommands: validate, get-next-undone, get-done,"
-            " xml2json, json2xml, remove-undone",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    subcmd = argv[0]
-    rest = argv[1:]
-
-    if subcmd in ("-h", "--help"):
-        import parse_todo
-
-        print(parse_todo.USAGE, end="")
-        sys.exit(0)
-    elif subcmd == "xml2json":
-        import xml2json_todo
-
-        xml2json_todo.main(rest)
-    elif subcmd == "json2xml":
-        import json2xml_todo
-
-        json2xml_todo.main(rest)
-    elif subcmd == "remove-undone":
-        import remove_undone_todo
-
-        remove_undone_todo.main(rest)
-    elif subcmd in ("validate", "get-next-undone", "get-done"):
-        import parse_todo
-
-        parse_todo.main([subcmd] + rest)
-    else:
-        print(f"Error: unknown todo subcommand '{subcmd}'", file=sys.stderr)
-        print(
-            "Subcommands: validate, get-next-undone, get-done,"
-            " xml2json, json2xml, remove-undone",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-
 def _get_version():
     """Extract version from SKILL.md front-matter metadata."""
     skill_md = _skill_dir / "SKILL.md"
@@ -397,7 +349,6 @@ DIRECT_COMMANDS = {
     "get-topic": _run_get_topic,
 "prompt": _run_prompt,
     "meta": _run_meta,
-    "todo": _run_todo,
     "todo-helper": _run_todo_helper,
     "create-helper": _run_create_helper,
     "apply-helper": _run_apply_helper,

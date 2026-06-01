@@ -1,6 +1,5 @@
 """Tests for the spex CLI entry point."""
 
-import json
 import re
 import subprocess
 import sys
@@ -272,111 +271,6 @@ class TestCreateTopicCommand:
 
         assert result.returncode == 1
         assert "Usage:" in result.stderr
-
-
-class TestTodoCommand:
-    """Tests for the todo subcommand."""
-
-    def test_no_subcommand_exit_1(self):
-        """spex todo (no subcommand) exits 1."""
-        result = _run_spex("todo")
-
-        assert result.returncode == 1
-        assert "Usage:" in result.stderr
-
-    def test_validate_valid_file(self, tmp_path):
-        """spex todo validate <valid-file> exits 0."""
-        todo_file = tmp_path / "todo.json"
-        todo_file.write_text(
-            json.dumps([
-                {
-                    "id": "task-1",
-                    "name": "Test task",
-                    "details": "Some details",
-                    "completed_at": None,
-                    "commit_title": None,
-                }
-            ]),
-            encoding="utf-8",
-        )
-
-        result = subprocess.run(
-            [sys.executable, SPEX_SCRIPT, "todo", "validate", str(todo_file)],
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-        assert "OK:" in result.stdout
-
-    def test_todo_h_exits_zero_with_usage(self):
-        """spex todo -h exits 0 with usage."""
-        result = _run_spex("todo", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_help_exits_zero_with_usage(self):
-        """spex todo --help exits 0 with usage."""
-        result = _run_spex("todo", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_validate_h_exits_zero_with_usage(self):
-        """spex todo validate -h exits 0 with usage."""
-        result = _run_spex("todo", "validate", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_validate_help_exits_zero_with_usage(self):
-        """spex todo validate --help exits 0 with usage."""
-        result = _run_spex("todo", "validate", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_get_next_undone_h_exits_zero_with_usage(self):
-        """spex todo get-next-undone -h exits 0 with usage."""
-        result = _run_spex("todo", "get-next-undone", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_get_next_undone_help_exits_zero_with_usage(self):
-        """spex todo get-next-undone --help exits 0 with usage."""
-        result = _run_spex("todo", "get-next-undone", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_get_done_h_exits_zero_with_usage(self):
-        """spex todo get-done -h exits 0 with usage."""
-        result = _run_spex("todo", "get-done", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_get_done_help_exits_zero_with_usage(self):
-        """spex todo get-done --help exits 0 with usage."""
-        result = _run_spex("todo", "get-done", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_xml2json_h_exits_zero_with_usage(self):
-        """spex todo xml2json -h exits 0 with usage."""
-        result = _run_spex("todo", "xml2json", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_xml2json_help_exits_zero(self):
-        """spex todo xml2json --help exits 0."""
-        result = _run_spex("todo", "xml2json", "--help")
-
-        assert result.returncode == 0
 
 
 

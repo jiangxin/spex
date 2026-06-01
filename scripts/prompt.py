@@ -20,7 +20,7 @@ from common import (
     resolve_topic_dir,
     strip_front_matter,
 )
-from remove_undone_todo import filter_completed_todos as _filter_completed_todos
+from common import filter_completed_todos as _filter_completed_todos
 
 
 def validate_required_meta(content, metadata):
