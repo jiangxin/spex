@@ -65,7 +65,7 @@ Parse the JSON output from stdout:
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
 - Otherwise, save `$prompt` from the `"prompt"` field and
-  `$next_task_id` from the `"task_id"` field.
+  `$current_task_id` from the `"task_id"` field.
 
 ### Phase 4: Execute Task
 
@@ -105,7 +105,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit --id "$next_task_id" --completed_at now --commit_title "$commit_title"
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit --id "$current_task_id" --completed_at now --commit_title "$commit_title"
 ```
 
 If the command fails, report the error and stop.

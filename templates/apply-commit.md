@@ -2,7 +2,7 @@
 version: "0.1.0"
 required:
   - spec_content_concise
-  - next_task_text
+  - current_task_description
 optional:
   - spex_root
   - completed_tasks_concise
@@ -54,7 +54,7 @@ The current working tree changes are based on the following task
 description. The commit message should describe THIS work specifically.
 
 <current-task>
-{{ next_task_text }}
+{{ current_task_description }}
 </current-task>
 {% if future_tasks_concise %}
 

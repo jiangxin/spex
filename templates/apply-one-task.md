@@ -2,7 +2,7 @@
 version: "0.1.0"
 required:
   - spec_content
-  - next_task_text
+  - current_task_description
 optional:
   - completed_tasks
   - future_tasks_concise
@@ -49,7 +49,7 @@ Read the task description carefully — it specifies what to build, which
 files to change, and the acceptance criteria.
 
 <implement-step>
-{{ next_task_text }}
+{{ current_task_description }}
 </implement-step>
 
 ### Implementation Guidelines
