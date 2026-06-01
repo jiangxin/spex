@@ -1055,6 +1055,90 @@ class TestCliModifySpec:
         assert "prompt" in data
         assert "Refactor module" in data["prompt"]
 
+    def test_remove_undone_filters_todo_json(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec --remove-undone removes undone tasks from todo.json."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Update the spec"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+
+        # Verify todo.json only contains completed tasks
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "step-1"
+
+    def test_remove_undone_metadata_reflects_filtered_state(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """cli_modify_spec --remove-undone rebuilds metadata after filtering."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+            _make_task("step-3", name="Third step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Revise the plan"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone", "--json"])
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        rendered = data["prompt"]
+        # After filtering, step-2 and step-3 should NOT appear as future tasks
+        assert "step-2" not in rendered or "Second step" not in rendered
+        assert "step-3" not in rendered or "Third step" not in rendered
+
+    def test_remove_undone_all_undone(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec --remove-undone handles all tasks being undone."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Start fresh"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+
+        # Verify todo.json is empty list
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert data == []
+
+    def test_without_remove_undone_preserves_todo(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec without --remove-undone does not modify todo.json."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Second step", completed=False),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = topic_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("Just modify spec"))
+
+        from prompt import cli_modify_spec
+
+        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+
+        # Verify todo.json is unchanged
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 2
+        assert data[1]["id"] == "step-2"
+
 
 @pytest.mark.slow
 class TestCliModifyTodo:

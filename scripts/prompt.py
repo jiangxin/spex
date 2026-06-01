@@ -347,6 +347,9 @@ def cli_modify_spec(argv):
                         help="Topic name (required)")
     parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
+    parser.add_argument("--remove-undone", action="store_true",
+                        dest="remove_undone",
+                        help="Remove undone tasks from todo.json before rendering")
     parser.add_argument("--json", action="store_true", dest="json_mode",
                         help="Output JSON with rendered prompt")
     parser.add_argument("-o", "--output",
@@ -356,6 +359,19 @@ def cli_modify_spec(argv):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
+        # Side-effect: remove undone tasks from todo.json before building metadata
+        if args.remove_undone:
+            topic_dir = resolve_topic_dir(args.topic)
+            todo_path = topic_dir / "todo.json"
+            if todo_path.exists():
+                try:
+                    data = json.loads(todo_path.read_text(encoding="utf-8"))
+                    if isinstance(data, list):
+                        completed = _filter_completed_todos(data)
+                        atomic_write_json(todo_path, completed)
+                except json.JSONDecodeError:
+                    pass  # Silently skip if JSON is invalid
+
         metadata = _build_metadata("modify-spec", args.topic)
         if extra_vars:
             metadata.update(extra_vars)
