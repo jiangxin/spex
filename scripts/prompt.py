@@ -75,6 +75,81 @@ def _format_item_concise(item):
     return f"- **{item.get('id', '')}**: {item.get('name', '')}"
 
 
+def _trim_spec_content(spec_content):
+    """Trim spec content for commit context using include/exclude strategy.
+
+    Include (primary): if requirement or user-clarification sections exist,
+    keep only those. Exclude (fallback): otherwise drop detailed-design,
+    test-plan, constraints and keep the rest.
+    """
+    if not spec_content:
+        return ""
+
+    from common import parse_front_matter_description, strip_front_matter
+
+    description = parse_front_matter_description(spec_content)
+
+    include_sections = {"requirement", "user-clarification"}
+    exclude_sections = {"detailed-design", "test-plan", "constraints"}
+    marker_pattern = re.compile(r"<!--\s*spex:begin:([a-z-]+)\s*-->")
+
+    markers = list(marker_pattern.finditer(spec_content))
+    if markers:
+        parsed = []
+        for i, m in enumerate(markers):
+            name = m.group(1)
+            start = m.end()
+            end = markers[i + 1].start() if i + 1 < len(markers) else len(
+                spec_content
+            )
+            parsed.append((name, spec_content[start:end].strip()))
+
+        found_include = any(n in include_sections for n, _ in parsed)
+        if found_include:
+            seen = set()
+            kept = []
+            for name, content in parsed:
+                if name in include_sections and name not in seen:
+                    seen.add(name)
+                    kept.append(content)
+        else:
+            kept = [c for n, c in parsed if n not in exclude_sections]
+    else:
+        body = strip_front_matter(spec_content)
+        heading_pattern = re.compile(r"^(# .+)", re.MULTILINE)
+        splits = heading_pattern.split(body)
+
+        include_headings = {"# Requirement", "# User Clarification"}
+        exclude_headings = {"# Detailed Design", "# Test Plan",
+                            "# Constraints"}
+
+        all_sections = []
+        i = 1
+        while i < len(splits):
+            heading = splits[i].strip()
+            content = splits[i + 1] if i + 1 < len(splits) else ""
+            all_sections.append((heading, heading + content.rstrip()))
+            i += 2
+
+        found_include = any(h in include_headings for h, _ in all_sections)
+        if found_include:
+            seen = set()
+            kept = []
+            for h, s in all_sections:
+                if h in include_headings and h not in seen:
+                    seen.add(h)
+                    kept.append(s)
+        else:
+            kept = [s for h, s in all_sections if h not in exclude_headings]
+
+    parts = []
+    if description:
+        parts.append(description)
+    if kept:
+        parts.append("\n\n".join(kept))
+    return "\n\n".join(parts)
+
+
 def _build_task_context(topic_dir, verbose_items=20):
     """Extract task context from a topic directory.
 
@@ -94,6 +169,7 @@ def _build_task_context(topic_dir, verbose_items=20):
         spec_content = spec_path.read_text(encoding="utf-8")
     else:
         spec_content = ""
+    spec_content_concise = _trim_spec_content(spec_content)
 
     todo = load_todo(topic_dir)
     if todo:
@@ -156,6 +232,7 @@ def _build_task_context(topic_dir, verbose_items=20):
 
     return {
         "spec_content": spec_content,
+        "spec_content_concise": spec_content_concise,
         "completed_tasks": completed_tasks,
         "completed_tasks_concise": completed_tasks_concise,
         "next_task_id": next_task_id,

@@ -505,6 +505,47 @@ class TestBuildTaskContext:
         # Current task should NOT appear in future_tasks
         assert "step-2" not in result["future_tasks"]
 
+    def test_build_task_context_includes_spec_content_concise(self, tmp_path):
+        """Verifies spec_content_concise is present and trimmed."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(json.dumps(tasks), encoding="utf-8")
+
+        spec_path = topic_dir / "spec.md"
+        spec_path.write_text(
+            "---\ndescription: My desc.\n---\n\n"
+            "<!-- spex:begin:requirement -->\n# Requirement\n\nDo X.\n\n"
+            "<!-- spex:begin:user-clarification -->\n# User Clarification\n\nNone.\n\n"
+            "<!-- spex:begin:detailed-design -->\n# Detailed Design\n\nDesign Y.\n\n"
+            "<!-- spex:begin:test-plan -->\n# Test Plan\n\nTest Z.\n\n"
+            "<!-- spex:begin:constraints -->\n# Constraints\n\nBe simple.\n",
+            encoding="utf-8",
+        )
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(topic_dir)
+
+        assert "spec_content_concise" in result
+        concise = result["spec_content_concise"]
+        assert "My desc." in concise
+        assert "# Requirement" in concise
+        assert "# User Clarification" in concise
+        assert "# Detailed Design" not in concise
+        assert "# Test Plan" not in concise
+        assert "# Constraints" not in concise
+
     def test_build_task_context_all_done(self, tmp_path):
         """Verifies behavior when all tasks are completed."""
         tasks = [
@@ -536,6 +577,142 @@ class TestBuildTaskContext:
         assert result["next_task_id"] == ""
         assert result["next_task_text"] == ""
         assert result["future_tasks"] == ""
+
+
+class TestTrimSpecContent:
+    """Test _trim_spec_content helper function."""
+
+    def test_include_strategy_with_markers(self):
+        """Include: when requirement/user-clarification found, keep only those."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: |\n"
+            "  My project description.\n"
+            "---\n\n"
+            "<!-- spex:begin:requirement -->\n"
+            "# Requirement\n\n"
+            "Build the login API.\n\n"
+            "<!-- spex:begin:user-clarification -->\n"
+            "# User Clarification\n\n"
+            "Use JWT tokens.\n\n"
+            "<!-- spex:begin:detailed-design -->\n"
+            "# Detailed Design\n\n"
+            "Create /login endpoint.\n\n"
+            "<!-- spex:begin:test-plan -->\n"
+            "# Test Plan\n\n"
+            "Test with pytest.\n\n"
+            "<!-- spex:begin:constraints -->\n"
+            "# Constraints\n\n"
+            "Keep it simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "My project description." in result
+        assert "# Requirement" in result
+        assert "Build the login API." in result
+        assert "# User Clarification" in result
+        assert "Use JWT tokens." in result
+        assert "# Detailed Design" not in result
+        assert "Create /login endpoint." not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_exclude_strategy_with_markers(self):
+        """Exclude: when no requirement/user-clarification, drop excluded sections."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: My desc.\n"
+            "---\n\n"
+            "<!-- spex:begin:overview -->\n"
+            "# Overview\n\n"
+            "General overview.\n\n"
+            "<!-- spex:begin:detailed-design -->\n"
+            "# Detailed Design\n\n"
+            "Design details.\n\n"
+            "<!-- spex:begin:test-plan -->\n"
+            "# Test Plan\n\n"
+            "Test stuff.\n\n"
+            "<!-- spex:begin:constraints -->\n"
+            "# Constraints\n\n"
+            "Be simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "My desc." in result
+        assert "# Overview" in result
+        assert "General overview." in result
+        assert "# Detailed Design" not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_include_strategy_without_markers(self):
+        """Include fallback: heading-based, keep Requirement/User Clarification."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: Short desc.\n"
+            "---\n\n"
+            "# Requirement\n\n"
+            "Do the thing.\n\n"
+            "# User Clarification\n\n"
+            "None needed.\n\n"
+            "# Detailed Design\n\n"
+            "Design here.\n\n"
+            "# Test Plan\n\n"
+            "Test stuff.\n\n"
+            "# Constraints\n\n"
+            "Be simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "Short desc." in result
+        assert "# Requirement" in result
+        assert "Do the thing." in result
+        assert "# User Clarification" in result
+        assert "# Detailed Design" not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_exclude_strategy_without_markers(self):
+        """Exclude fallback: heading-based, no Requirement/User Clarification."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: Fallback desc.\n"
+            "---\n\n"
+            "# Overview\n\n"
+            "Some overview.\n\n"
+            "# Detailed Design\n\n"
+            "Design.\n\n"
+            "# Test Plan\n\n"
+            "Tests.\n\n"
+            "# Constraints\n\n"
+            "Simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "Fallback desc." in result
+        assert "# Overview" in result
+        assert "Some overview." in result
+        assert "# Detailed Design" not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_empty_input(self):
+        """Empty input returns empty string."""
+        from prompt import _trim_spec_content
+
+        assert _trim_spec_content("") == ""
+
+    def test_only_front_matter(self):
+        """Spec with only front-matter returns description."""
+        from prompt import _trim_spec_content
+
+        spec = "---\ndescription: Just a description.\n---\n"
+        result = _trim_spec_content(spec)
+        assert "Just a description." in result
 
 
 @pytest.mark.slow

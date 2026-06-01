@@ -1,7 +1,7 @@
 ---
 version: "0.1.0"
 required:
-  - spec_content
+  - spec_content_concise
   - next_task_text
 optional:
   - spex_root
@@ -27,15 +27,14 @@ single commit with a well-crafted message.
 - **Do NOT stage or commit any files under `{{ spex_root }}/`.**
 {% endif %}
 
-## Specification
+## Requirement
 
-The following is the full specification. Use it as the authoritative
-reference for understanding the project scope and deriving commit
-context.
+The following is the user's requirement description. Use it to
+understand the project scope and derive commit context.
 
-<specification>
-{{ spec_content }}
-</specification>
+<requirement>
+{{ spec_content_concise }}
+</requirement>
 
 {% if completed_tasks_concise -%}
 ## Completed Steps
@@ -49,10 +48,10 @@ context but should not duplicate their content.
 </completed-steps>
 
 {% endif -%}
-## Current Task
+## Current Changes
 
-The commit is for implementing the following task. The commit message
-should describe THIS work specifically.
+The current working tree changes are based on the following task
+description. The commit message should describe THIS work specifically.
 
 <current-task>
 {{ next_task_text }}
@@ -61,8 +60,10 @@ should describe THIS work specifically.
 
 ## Future Steps
 
-The following steps have NOT been implemented yet.
-Do NOT include them in the commit message.
+The following steps have NOT been implemented yet. They provide
+context for understanding why the current change is structured the
+way it is (e.g., preparing for a future refactor), but typically
+do not need to appear in the commit message.
 
 {{ future_tasks_concise }}
 {% endif %}
