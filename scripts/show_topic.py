@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from common import (
 from list_specs import _get_icon
 
 USAGE = """\
-Usage: spex show [topic] [-v]
+Usage: spex show [topic] [-l]
 
 Show detailed information about a spec topic.
 
@@ -27,9 +29,22 @@ If no topic is given and only one exists, it is shown automatically.
 If multiple topics exist, an interactive list is displayed.
 
 Options:
-  -v, --verbose  Show full spec and structured todo details
+  -l, --list     Show brief list format instead of full details
   -h, --help     Show this help message and exit
 """
+
+
+def _paged_output(text):
+    """Output text through a pager if stdout is a tty."""
+    if not sys.stdout.isatty():
+        print(text)
+        return
+    pager = os.environ.get("PAGER", "less -R")
+    try:
+        proc = subprocess.Popen(pager, shell=True, stdin=subprocess.PIPE)
+        proc.communicate(input=text.encode())
+    except (BrokenPipeError, OSError):
+        print(text)
 
 
 def _format_default(topic_dir):
@@ -132,8 +147,9 @@ def main(argv=None):
 
     parser = ArgumentParser(prog="spex show", usage=USAGE)
     parser.add_argument("topic", nargs="?", help="Topic name or substring")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Show full spec and structured todo details")
+    parser.add_argument("-l", "--list", action="store_true",
+                        dest="brief",
+                        help="Show brief list format instead of full details")
     args = parser.parse(argv)
 
     if args.topic:
@@ -141,10 +157,10 @@ def main(argv=None):
     else:
         topic_dir = _select_topic_interactive()
 
-    if args.verbose:
-        print(_format_verbose(topic_dir))
-    else:
+    if args.brief:
         print(_format_default(topic_dir))
+    else:
+        _paged_output(_format_verbose(topic_dir))
 
 
 if __name__ == "__main__":

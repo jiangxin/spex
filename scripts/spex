@@ -29,7 +29,7 @@ Commands (run directly):
   merge --topic <name>
                 Merge a spex branch back to target (alias: submit)
   open          Open spec directory in file browser
-  show <topic>  Show detailed topic information (-v for full spec)
+  show [topic]  Show detailed topic information (-l for brief)
 
 Commands (LLM skill only — invoked via /spex, not directly):
   apply       Apply all steps of a spec (or apply-one-step for single step)
