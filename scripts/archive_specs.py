@@ -8,12 +8,14 @@ into the archives directory.
 from __future__ import annotations
 
 import shutil
+import sys
 from pathlib import Path
 
 from branch import branch_exists
 from cli import ArgumentParser
 from common import (
     check_help_flag,
+    find_matching_topics,
     get_archives_dir,
     get_current_workdir,
     get_specs_dir,
@@ -127,6 +129,47 @@ def archive_single_topic(
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
     print(f"Archived: {topic_dir.name} -> {dest}")
+    return dest
+
+
+def restore_single_topic(
+    topic_name: str,
+    specs_dir: Path,
+    archives_dir: Path,
+) -> Path | None:
+    """Restore a single topic from archives back to specs.
+
+    Uses fuzzy substring matching against archives_dir. Exits with error
+    if no match or multiple matches.
+
+    Returns the destination path in specs_dir, or None on error.
+    """
+    if not archives_dir.is_dir():
+        print(
+            f"Error: archives directory does not exist: {archives_dir}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    matches = find_matching_topics(topic_name, archives_dir)
+    if not matches:
+        print(
+            f"Error: no topic matching '{topic_name}' found in archives.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if len(matches) > 1:
+        names = "\n  ".join(m.name for m in matches)
+        print(
+            f"Error: multiple topics match '{topic_name}' in archives:"
+            f"\n  {names}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    dest = move_topic_with_conflict(matches[0], specs_dir)
+    print(f"Restored: {matches[0].name} -> {dest}")
     return dest
 
 

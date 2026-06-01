@@ -10,6 +10,7 @@ from archive_specs import (
     has_active_branch,
     move_topic,
     move_topic_with_conflict,
+    restore_single_topic,
 )
 from common import is_topic_completed
 
@@ -689,3 +690,84 @@ class TestMainWithBranchGuard:
         output = capsys.readouterr().out
         assert "2026-05-27-14-11-archive-branch-guard" in output
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
+
+
+class TestRestoreSingleTopic:
+    """Tests for restore_single_topic."""
+
+    def test_restore_single_match(self, tmp_path, capsys):
+        """Single match in archives → moved to specs."""
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = restore_single_topic("my-topic", specs, archives)
+
+        assert dest == specs / "my-topic"
+        assert dest.is_dir()
+        assert not (archives / "my-topic").exists()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert "my-topic" in output
+
+    def test_restore_no_match(self, tmp_path, capsys):
+        """No match → exit 1 with error."""
+        archives = tmp_path / "archives"
+        archives.mkdir()
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        with pytest.raises(SystemExit) as exc_info:
+            restore_single_topic("nonexistent", specs, archives)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "no topic matching" in err
+
+    def test_restore_multiple_matches(self, tmp_path, capsys):
+        """Multiple matches → exit 1 listing candidates."""
+        archives = tmp_path / "archives"
+        (archives / "2026-01-01-topic-a").mkdir(parents=True)
+        (archives / "2026-01-02-topic-b").mkdir(parents=True)
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        with pytest.raises(SystemExit) as exc_info:
+            restore_single_topic("topic", specs, archives)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "multiple topics match" in err
+        assert "topic-a" in err
+        assert "topic-b" in err
+
+    def test_restore_name_conflict(self, tmp_path, capsys):
+        """Conflict in specs → topic moved as <name>-2."""
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        specs = tmp_path / "specs"
+        (specs / "my-topic").mkdir(parents=True)
+
+        dest = restore_single_topic("my-topic", specs, archives)
+
+        assert dest == specs / "my-topic-2"
+        assert dest.is_dir()
+        assert not (archives / "my-topic").exists()
+
+    def test_restore_partial_match(self, tmp_path, capsys):
+        """Partial match finds unique topic."""
+        archives = tmp_path / "archives"
+        _write_todo(
+            archives / "2026-05-27-14-11-archive-branch-guard",
+            [_make_task("1")],
+        )
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = restore_single_topic("branch-guard", specs, archives)
+
+        expected = specs / "2026-05-27-14-11-archive-branch-guard"
+        assert dest == expected
+        assert dest.is_dir()
+        assert not (
+            archives / "2026-05-27-14-11-archive-branch-guard"
+        ).exists()
