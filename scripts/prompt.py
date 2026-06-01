@@ -21,6 +21,7 @@ from common import (
     strip_front_matter,
 )
 from common import filter_completed_todos as _filter_completed_todos
+from config import get_context
 
 
 def validate_required_meta(content, metadata):
@@ -262,28 +263,26 @@ def _log_prompt_to_meta(topic_dir, prompt_text):
     meta["prompts"] = prompts
     atomic_write_json(topic_dir / "meta.json", meta)
 
-
 def _build_metadata(template_name, topic_name=None):
     """Build the metadata dict for template rendering.
 
     Different template names may produce different metadata.
     """
-    git_info = get_git_info()
-    metadata = {
-        "timestamp": local_iso_timestamp(),
-        "workdir": git_info["workdir"],
-        "git_remote": git_info["remote_url"],
-        "git_branch": git_info["branch"],
-        "git_user": git_info["user_name"],
-        "git_email": git_info["user_email"],
-    }
-
+    metadata = {}
     if topic_name:
         topic_dir = resolve_topic_dir(topic_name)
         metadata["topic_name"] = topic_dir.name
         meta = load_meta(topic_dir)
         if meta:
             metadata.update(meta)
+    if not metadata:
+        git_info = get_git_info()
+        metadata.update(git_info)
+        ctx = get_context(git_info["workdir"])
+        if ctx and ctx.main_worktree:
+            metadata["main_worktree"] = ctx.main_worktree
+        metadata["created_at"] = local_iso_timestamp()
+        metadata["topic"] = ""
 
     if template_name == "apply-commit":
         metadata["spex_root"] = ""
