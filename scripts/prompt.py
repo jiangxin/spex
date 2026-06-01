@@ -161,8 +161,8 @@ def _build_task_context(topic_dir, verbose_items=20):
             Items beyond this limit are shown in brief format.
 
     Returns:
-        Dict with keys: spec_content, completed_tasks, next_task_id,
-        next_task_text, future_tasks.
+        Dict with keys: spec_content, completed_tasks, current_task_id,
+        current_task_description, future_tasks.
     """
     spec_path = topic_dir / "spec.md"
     if spec_path.exists():
@@ -192,8 +192,8 @@ def _build_task_context(topic_dir, verbose_items=20):
         if undone:
             current = undone[0]
             task_id = current.get("id", "")
-            next_task_id = task_id
-            next_task_text = _format_item_verbose(current)
+            current_task_id = task_id
+            current_task_description = _format_item_verbose(current)
 
             future = undone[1:]
             if future:
@@ -218,15 +218,15 @@ def _build_task_context(topic_dir, verbose_items=20):
                 future_tasks = ""
                 future_tasks_concise = ""
         else:
-            next_task_id = ""
-            next_task_text = ""
+            current_task_id = ""
+            current_task_description = ""
             future_tasks = ""
             future_tasks_concise = ""
     else:
         completed_tasks = ""
         completed_tasks_concise = ""
-        next_task_id = ""
-        next_task_text = ""
+        current_task_id = ""
+        current_task_description = ""
         future_tasks = ""
         future_tasks_concise = ""
 
@@ -235,8 +235,8 @@ def _build_task_context(topic_dir, verbose_items=20):
         "spec_content_concise": spec_content_concise,
         "completed_tasks": completed_tasks,
         "completed_tasks_concise": completed_tasks_concise,
-        "next_task_id": next_task_id,
-        "next_task_text": next_task_text,
+        "current_task_id": current_task_id,
+        "current_task_description": current_task_description,
         "future_tasks": future_tasks,
         "future_tasks_concise": future_tasks_concise,
     }
@@ -326,7 +326,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
 
     # All-done detection for task-based templates
     if name in ("apply-one-task", "apply-commit") and not metadata.get(
-        "next_task_text"
+        "current_task_description"
     ):
         return ""
 
@@ -367,19 +367,19 @@ def cli_apply_one_task(argv):
         metadata = _build_metadata("apply-one-task", args.topic)
 
         # Handle all-done in JSON mode
-        if args.json_mode and not metadata.get("next_task_text"):
+        if args.json_mode and not metadata.get("current_task_description"):
             print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
             sys.exit(0)
 
         # Handle all-done in non-JSON mode: exit(0) with empty stdout
-        if not args.json_mode and not metadata.get("next_task_text"):
+        if not args.json_mode and not metadata.get("current_task_description"):
             sys.exit(0)
 
         # Emit task_id to stderr for orchestrator to capture (non-JSON only)
         if not args.json_mode:
-            next_task_id = metadata.get("next_task_id", "")
-            if next_task_id:
-                print(f"task_id={next_task_id}", file=sys.stderr)
+            current_task_id = metadata.get("current_task_id", "")
+            if current_task_id:
+                print(f"task_id={current_task_id}", file=sys.stderr)
 
         rendered = render_prompt("apply-one-task", args.topic, metadata=metadata)
     except FileNotFoundError as e:
@@ -390,7 +390,7 @@ def cli_apply_one_task(argv):
         sys.exit(1)
 
     if args.json_mode:
-        task_id = metadata.get("next_task_id", "")
+        task_id = metadata.get("current_task_id", "")
         print(json.dumps({"task_id": task_id, "prompt": rendered}))
     else:
         _output_rendered(rendered, args.output)
@@ -437,7 +437,7 @@ def cli_apply_commit(argv):
             metadata.update(extra_vars)
 
         # Handle all-done: exit(0) with empty stdout
-        if not metadata.get("next_task_text"):
+        if not metadata.get("current_task_description"):
             sys.exit(0)
 
         rendered = render_prompt("apply-commit", args.topic, metadata=metadata)

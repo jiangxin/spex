@@ -155,8 +155,8 @@ class TestFutureTasks:
         metadata = _build_metadata("apply-one-task", "test-topic")
 
         # Current task should be step-2
-        assert metadata["next_task_id"] == "step-2"
-        assert "step-2" in metadata["next_task_text"]
+        assert metadata["current_task_id"] == "step-2"
+        assert "step-2" in metadata["current_task_description"]
         # future_tasks should contain step-3 and step-4
         assert "- **step-3**: Third step" in metadata["future_tasks"]
         assert "- **step-4**: Fourth step" in metadata["future_tasks"]
@@ -179,7 +179,7 @@ class TestFutureTasks:
         metadata = _build_metadata("apply-one-task", "test-topic")
 
         # Current task should be step-2
-        assert "step-2" in metadata["next_task_text"]
+        assert "step-2" in metadata["current_task_description"]
         # future_tasks should be empty string
         assert metadata["future_tasks"] == ""
 
@@ -209,7 +209,7 @@ class TestFutureTasks:
 
         metadata = _build_metadata("apply-one-task", "test-topic")
 
-        assert metadata["next_task_id"] == ""
+        assert metadata["current_task_id"] == ""
         assert metadata["future_tasks"] == ""
 
     def test_future_tasks_format(self, tmp_path, monkeypatch):
@@ -449,7 +449,7 @@ class TestStdinExtraVars:
 
         json_input = json.dumps({
             "spec_content": "My spec",
-            "next_task_text": "Build feature X",
+            "current_task_description": "Build feature X",
         })
         monkeypatch.setattr(
             "sys.argv", ["prompt", "apply-commit"]
@@ -498,9 +498,9 @@ class TestBuildTaskContext:
 
         assert result["spec_content"] == "# My Spec\n\nSpec body."
         assert "- **step-1**: First step" in result["completed_tasks"]
-        assert result["next_task_id"] == "step-2"
-        assert "- **step-2**: Second step" in result["next_task_text"]
-        assert "Do second thing" in result["next_task_text"]
+        assert result["current_task_id"] == "step-2"
+        assert "- **step-2**: Second step" in result["current_task_description"]
+        assert "Do second thing" in result["current_task_description"]
         assert "- **step-3**: Third step" in result["future_tasks"]
         # Current task should NOT appear in future_tasks
         assert "step-2" not in result["future_tasks"]
@@ -574,8 +574,8 @@ class TestBuildTaskContext:
         assert result["spec_content"] == "# Done Spec\n"
         assert "- **step-1**: First step" in result["completed_tasks"]
         assert "- **step-2**: Second step" in result["completed_tasks"]
-        assert result["next_task_id"] == ""
-        assert result["next_task_text"] == ""
+        assert result["current_task_id"] == ""
+        assert result["current_task_description"] == ""
         assert result["future_tasks"] == ""
 
 
