@@ -1,73 +1,109 @@
 ---
-version: "0.0.1"
+version: "0.1.0"
 required:
   - spec_content
+  - topic_name
+optional:
+  - completed_tasks
 ---
 
-Act as a senior software architect. You are generating new development
-steps (todo.xml) for an existing specification that has been modified.
-Only generate NEW steps — completed steps already exist in todo.json
-and will be preserved separately.
+Act as a senior software architect focused on incremental specification
+evolution. Your task is to redesign the development steps for a
+specification that has been modified.
+
+Analyze the updated specification below, consider any already-completed
+work, and produce a new set of implementation steps that will bring the
+codebase in line with the revised requirements.
 
 ## Specification
 
-<specification>
+The following is the updated specification. All new development steps
+must fully satisfy its requirements.
+
+<updated-specification>
 {{ spec_content }}
-</specification>
+</updated-specification>
 
 {% if completed_tasks -%}
-## Completed Steps (already in todo.json, do NOT regenerate)
+## Completed Steps
+
+The following steps have already been implemented and committed.
+Do NOT regenerate or duplicate them. Use them to:
+
+- Determine the next available step ID for numbering.
+- Understand what has already been built (avoid redundant work).
+- Identify conflicts — if a completed step contradicts the updated
+  specification, add a corrective step to fix it.
 
 <completed-steps>
-{% for task in completed_tasks.splitlines() -%}
-- {{ task }}
-{% endfor -%}
+{{ completed_tasks }}
 </completed-steps>
 
 {% endif -%}
 
+## Planning Principles
+
+1. **No completed steps**: Do NOT include steps that are already done.
+2. **Corrective steps**: If completed steps have implementation errors
+   or conflict with the updated specification, add corrective steps
+   to fix the divergence.
+3. **Small batches**: Each step delivers a minimal, working increment
+   that can be independently committed and verified.
+4. **Self-contained**: Group production code and its tests in the same
+   step — never split them into separate steps.
+5. **Ordered by dependency**: List steps so that each builds on the
+   previous one; no forward references.
+6. **Sequential IDs**: Number steps starting from the next available ID
+   after the last completed step (e.g., if step-2 is completed, start
+   from `step-3`).
+
 ## Instructions
 
-Generate ONLY the new development steps needed to complete this spec,
-in `todo.xml` format. Follow these rules:
+Using the updated specification and completed steps above, design the remaining
+implementation steps and add them using `spex todo-helper`.
 
-1. **Do NOT include completed steps**: They already exist in todo.json.
-   Only generate steps for the remaining work.
-2. **Corrective steps**: If prior completed steps have implementation
-   errors or now conflict with the updated spec, add corrective steps.
-3. **Small batches**: each step delivers a minimal, working increment.
-4. **Self-contained**: group production code and its tests in the same
-   step -- never split them into separate steps.
-5. **Ordered by dependency**: list steps so that each builds on the
-   previous one; no forward references.
+Before appending steps, run `show` to see the current state of the
+todo list. After adding all steps, run `show` again to verify the
+final plan is coherent and complete.
 
-Write the new steps in `todo.xml` format:
+### Using spex todo-helper
 
-```xml
-<steps>
-  <step>
-    <step-id>step-N</step-id>
-    <step-name>Short name for the step</step-name>
-    <step-markdown-details>
+**Append** a new step — use `--details-from-stdin` with a heredoc for
+multi-line Markdown details:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} append \
+  --id step-N --name "Short name" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
 - Use lists, bold, and inline code
 - Do not use headings (`#`, `##`, etc.)
-    </step-markdown-details>
-  </step>
-</steps>
+DETAILS
 ```
 
-**CRITICAL — the xml2json parser will reject any deviation from this
-structure:**
+**Show** current steps (to review before adding more):
 
-- Root element **MUST** be `<steps>` (not `<tasks>`, `<todo>`, etc.).
-- Each step **MUST** be wrapped in `<step>` (not `<task>`, `<item>`, etc.).
-- Each `<step>` **MUST** contain exactly three children in order:
-  `<step-id>`, `<step-name>`, `<step-markdown-details>`.
-- Number steps sequentially: `step-N`, `step-N+1`, etc. Write ONLY new
-  steps — completed steps already exist in todo.json and must NOT be
-  included in todo.xml. Number steps from the next available ID after
-  completed ones (e.g., if step-1 and step-2 are completed, start from
-  `step-3`).
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} show \
+  --format markdown
+```
+
+**Edit** a step (only specified fields are updated):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} edit \
+  --id step-N --name "Updated name" --details-from-stdin <<'DETAILS'
+Updated multi-line details for this step.
+
+- Revised implementation approach
+- Added error handling requirements
+DETAILS
+```
+
+**Remove** a step:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} remove \
+  --id step-N
+```
