@@ -772,6 +772,52 @@ class TestApplyCommitWithTopic:
 
 
 @pytest.mark.slow
+class TestApplyCommitUserIdentity:
+    """Test apply-commit template renders user identity in git command."""
+
+    def test_user_identity_in_commit_command(self, tmp_path, monkeypatch):
+        """When meta.json has user_name and user_email, commit uses -c flags."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature", details="Implement X"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+
+        # Add user_name and user_email to meta.json
+        meta_path = topic_dir / "meta.json"
+        meta_path.write_text(
+            json.dumps({
+                "workdir": str(repo),
+                "user_name": "John Doe",
+                "user_email": "john@example.com",
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(repo)
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-commit", "test-topic")
+        assert 'git -c user.name="John Doe"' in rendered
+        assert '-c user.email="john@example.com"' in rendered
+
+    def test_no_user_identity_uses_default(self, tmp_path, monkeypatch):
+        """When meta.json has no user_name/user_email, uses plain git commit."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature", details="Implement X"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-commit", "test-topic")
+        assert "git commit -F-" in rendered
+        assert "-c user.name" not in rendered
+
+
+@pytest.mark.slow
 class TestLogPromptToMeta:
     """Test _log_prompt_to_meta helper function."""
 
