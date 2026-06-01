@@ -21,8 +21,8 @@ If `$topic_name` is `--all`:
 - Parse the output as a JSON array of objects, each containing
   `topic_name` and `topic_path`.
 - For each entry, set `$topic_name` and `$topic_path` and execute
-  Phases 2 through 6.
-- After completing all topics, stop.
+  Phases 2 through 7.
+- After completing all topics, proceed to Phase 8.
 
 Otherwise, run:
 
@@ -61,38 +61,47 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $topic_name
 Parse the JSON output from stdout:
 
 - If the response contains `"all_done": true`, all tasks are
-  completed — report completion to the user and stop.
+  completed — proceed to Phase 7.
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
 - Otherwise, save `$prompt` from the `"prompt"` field and
   `$current_task_id` from the `"task_id"` field.
 
+**Sub-agent boundary.** Launch a sub-agent to execute Phases 4
+through 6. The sub-agent receives `$prompt`, `$current_task_id`,
+and `$topic_name` as context. Ensure the sub-agent's working
+directory is set to the topic's workdir (read from `meta.json` via
+`$topic_path/meta.json` or `spex get-topic` output). If the
+sub-agent fails, report the error to the user and retry. After it
+completes, continue with Phase 7 in the main context.
+
 ### Phase 4: Execute Task
 
-Launch a subagent with `$prompt` to implement the current task.
-Ensure the subagent's working directory is set to the topic's
-workdir (read from `meta.json` via `$topic_path/meta.json` or
-`spex get-topic` output).
-If the subagent fails or produces no file changes, report the error
-to the user and retry.
+Using `$prompt` as the implementation guide, implement the current
+task. Follow the instructions in the rendered prompt precisely —
+it contains the specification, completed steps context, the task
+description, and implementation guidelines.
+
+If the implementation produces no file changes, report the issue
+and stop.
 
 ### Phase 5: Commit
 
-Load the commit prompt:
+Run:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
 ```
 
-The prompt output will contain explicit instructions for creating the git
-commit. Read the output and follow it exactly:
+Save the output to `$commit_prompt`. Using `$commit_prompt` as the
+guide, stage the relevant file changes and create a git commit:
 
-- Stage the relevant file changes (do NOT stage any files under
-  `$spex_root/`).
+- Do NOT stage any files under `$spex_root/`.
 - Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
-- If the commit fails (e.g., pre-commit hook), fix the issues and retry.
+- If the commit fails (e.g., pre-commit hook), fix the issues and
+  retry.
 
-After a successful commit, run:
+After the commit succeeds, run:
 
 ```bash
 git log -1 --pretty="%h: %s"
@@ -105,18 +114,23 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit --id "$current_task_id" --completed_at now --commit_title "$commit_title"
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+  --id "$current_task_id" --completed_at now \
+  --commit_title "$commit_title"
 ```
 
 If the command fails, report the error and stop.
 
 ### Phase 7: Loop
 
-If running in `--all` mode (Phase 1), return to Phase 3 to process
-the next topic in the current batch — or stop if all topics are done.
+Go back to Phase 3. Each iteration launches a fresh sub-agent,
+keeping token usage independent between steps.
 
-Otherwise, go back to Phase 3. Do **not** stop while `todo.json`
-still has undone tasks.
+Stop looping when Phase 3 reports `"all_done": true`.
+
+If running in `--all` mode (Phase 1), after completing all steps
+for the current topic, move to the next topic and repeat from
+Phase 2.
 
 ### Phase 8: Post Action
 
@@ -128,6 +142,6 @@ $spex_skill_dir/scripts/spex apply-helper post-action --topic $topic_name
 
 Display the output to the user.
 
-> **STOP.** All topics and steps in this run are complete. Do NOT start
-> implementing additional steps or modifying project files beyond what
-> was already committed.
+**STOP.** All topics and steps in this run are complete. Do NOT start
+implementing additional steps or modifying project files beyond what
+was already committed.

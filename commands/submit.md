@@ -73,5 +73,5 @@ Display the following summary to the user:
 - Archived: yes
 ```
 
-> **STOP.** The submit is complete. Do NOT start implementing any
-> further changes.
+**STOP.** The submit is complete. Do NOT start implementing any
+further changes.

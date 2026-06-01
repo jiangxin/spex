@@ -36,6 +36,12 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
+**Sub-agent boundary.** Launch a sub-agent to execute Phases 3
+through 7. The sub-agent receives `$prompt`, `$topic_name`, and
+`$topic_path` as context. If the sub-agent fails, report the error
+to the user and retry. After it completes, continue with Phase 8
+in the main context.
+
 ### Phase 3: Build Prompt
 
 Run:
