@@ -146,6 +146,7 @@ def _build_task_context(topic_dir, verbose_items=20):
         spec_content = spec_path.read_text(encoding="utf-8")
     else:
         spec_content = ""
+    spec_content_concise = _trim_spec_content(spec_content)
 
     todo = load_todo(topic_dir)
     if todo:
@@ -208,6 +209,7 @@ def _build_task_context(topic_dir, verbose_items=20):
 
     return {
         "spec_content": spec_content,
+        "spec_content_concise": spec_content_concise,
         "completed_tasks": completed_tasks,
         "completed_tasks_concise": completed_tasks_concise,
         "next_task_id": next_task_id,

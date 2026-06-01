@@ -505,6 +505,46 @@ class TestBuildTaskContext:
         # Current task should NOT appear in future_tasks
         assert "step-2" not in result["future_tasks"]
 
+    def test_build_task_context_includes_spec_content_concise(self, tmp_path):
+        """Verifies spec_content_concise is present and trimmed."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=False),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+
+        spex_root = repo / ".spex"
+        specs_dir = spex_root / "specs"
+        topic_dir = specs_dir / "test-topic"
+        topic_dir.mkdir(parents=True)
+
+        todo_path = topic_dir / "todo.json"
+        todo_path.write_text(json.dumps(tasks), encoding="utf-8")
+
+        spec_path = topic_dir / "spec.md"
+        spec_path.write_text(
+            "---\ndescription: My desc.\n---\n\n"
+            "<!-- spex:begin:requirement -->\n# Requirement\n\nDo X.\n\n"
+            "<!-- spex:begin:user-clarification -->\n# User Clarification\n\nNone.\n\n"
+            "<!-- spex:begin:detailed-design -->\n# Detailed Design\n\nDesign Y.\n\n"
+            "<!-- spex:begin:test-plan -->\n# Test Plan\n\nTest Z.\n\n"
+            "<!-- spex:begin:constraints -->\n# Constraints\n\nBe simple.\n",
+            encoding="utf-8",
+        )
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(topic_dir)
+
+        assert "spec_content_concise" in result
+        concise = result["spec_content_concise"]
+        assert "My desc." in concise
+        assert "# Requirement" in concise
+        assert "# Detailed Design" in concise
+        assert "# Test Plan" not in concise
+        assert "# Constraints" not in concise
+
     def test_build_task_context_all_done(self, tmp_path):
         """Verifies behavior when all tasks are completed."""
         tasks = [
