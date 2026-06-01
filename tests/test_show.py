@@ -2,7 +2,7 @@ import json
 import sys
 
 import pytest
-import show_topic
+import show as spex_show
 
 
 def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None):
@@ -34,7 +34,7 @@ class TestFormatDefault:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = show_topic._format_default(topic_dir)
+        output = spex_show._format_default(topic_dir)
         lines = output.splitlines()
         assert "[1/2]" in lines[0]
         assert "my-topic" in lines[0]
@@ -44,7 +44,7 @@ class TestFormatDefault:
 
     def test_no_spec_no_steps(self, tmp_path):
         topic_dir = _make_topic(tmp_path)
-        output = show_topic._format_default(topic_dir)
+        output = spex_show._format_default(topic_dir)
         assert "[0/0]" in output
         assert "step-" not in output
 
@@ -60,7 +60,7 @@ class TestFormatVerbose:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = show_topic._format_verbose(topic_dir)
+        output = spex_show._format_verbose(topic_dir)
         lines = output.splitlines()
         assert "[0/1]" in lines[0]
         assert "my-topic" in lines[0]
@@ -74,28 +74,28 @@ class TestFormatVerbose:
 
     def test_no_spec_file(self, tmp_path):
         topic_dir = _make_topic(tmp_path)
-        output = show_topic._format_verbose(topic_dir)
+        output = spex_show._format_verbose(topic_dir)
         assert "(no spec.md found)" in output
 
     def test_no_todo(self, tmp_path):
         spec = '---\nversion: "0.0.1"\n---\n\n# Spec'
         topic_dir = _make_topic(tmp_path, spec_content=spec)
-        output = show_topic._format_verbose(topic_dir)
+        output = spex_show._format_verbose(topic_dir)
         assert "(no tasks)" in output
 
 
 class TestMain:
     def test_no_args_no_topics_exits(self, monkeypatch, tmp_path):
         (tmp_path / "specs").mkdir()
-        monkeypatch.setattr("show_topic.get_specs_dir", lambda: str(tmp_path / "specs"))
+        monkeypatch.setattr("show.get_specs_dir", lambda: str(tmp_path / "specs"))
         with pytest.raises(SystemExit) as exc_info:
-            show_topic.main([])
+            spex_show.main([])
         assert exc_info.value.code == 1
 
     def test_help_flag(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["prog", "-h"])
         with pytest.raises(SystemExit) as exc_info:
-            show_topic.main()
+            spex_show.main()
         assert exc_info.value.code == 0
 
     def test_nonexistent_topic(self, monkeypatch, tmp_path):
@@ -114,5 +114,5 @@ class TestMain:
         clear_spex_root_cache()
         monkeypatch.setattr(sys, "argv", ["prog", "nonexistent"])
         with pytest.raises(SystemExit) as exc_info:
-            show_topic.main()
+            spex_show.main()
         assert exc_info.value.code == 1

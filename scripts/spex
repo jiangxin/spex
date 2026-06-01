@@ -79,30 +79,30 @@ def _extract_global_options(argv):
 
 def _run_list(argv=None):
     """Run the list command."""
-    import list_specs
+    import list as spex_list
 
-    list_specs.main(argv)
+    spex_list.main(argv)
 
 
 def _run_archive(argv=None):
     """Run the archive command."""
-    import archive_specs
+    import archive
 
-    archive_specs.main(argv)
+    archive.main(argv)
 
 
 def _run_show(argv=None):
     """Show detailed topic information."""
-    import show_topic
+    import show as spex_show
 
-    show_topic.main(argv)
+    spex_show.main(argv)
 
 
 def _run_open(argv=None):
     """Open a topic directory in the system file browser."""
-    import open_topic
+    import open as spex_open
 
-    open_topic.main(argv)
+    spex_open.main(argv)
 
 
 _CONFIG_USAGE = """\

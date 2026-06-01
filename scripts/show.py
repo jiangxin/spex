@@ -18,7 +18,7 @@ from common import (
     resolve_topic_dir,
     strip_front_matter,
 )
-from list_specs import _get_icon
+from list import _get_icon  # noqa: E402
 
 USAGE = """\
 Usage: spex show [topic] [-l]

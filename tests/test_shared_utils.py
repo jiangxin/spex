@@ -178,7 +178,7 @@ class TestArchiveSingleTopicIncomplete:
     """Test that archive_single_topic refuses incomplete topics."""
 
     def test_refuses_incomplete_without_force(self, tmp_path, capsys):
-        from archive_specs import archive_single_topic
+        from archive import archive_single_topic
 
         specs = tmp_path / "specs"
         topic = specs / "wip-topic"
@@ -202,7 +202,7 @@ class TestArchiveSingleTopicIncomplete:
         assert "not completed" in output
 
     def test_archives_incomplete_with_force(self, tmp_path, capsys):
-        from archive_specs import archive_single_topic
+        from archive import archive_single_topic
 
         specs = tmp_path / "specs"
         topic = specs / "wip-topic"
@@ -218,7 +218,7 @@ class TestArchiveSingleTopicIncomplete:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive_specs.branch_exists", return_value=False):
+        with patch("archive.branch_exists", return_value=False):
             result = archive_single_topic(
                 "wip-topic", specs, archives, force=True
             )

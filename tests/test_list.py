@@ -1,7 +1,7 @@
 import json
 
 from common import get_todo_progress, load_meta
-from list_specs import (
+from list import (  # noqa: A004
     _parse_verbosity,
     _wrap_text,
     collect_topics,
