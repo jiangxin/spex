@@ -14,14 +14,13 @@ and test plan.
 
 ## Procedure
 
-- **Execution**: Run in a dedicated sub-agent to keep the main context clean.
 - **Role**: Act as a senior software architect. Focus on requirement
   completeness, edge cases, and testability.
 
-> **SCOPE: This command creates documents only — `spec.md`, `todo.json`,
-> `meta.json` inside the topic directory. NO application code is written.
-> NO existing project files are modified. Implementation happens later
-> via `/spex apply` or `/spex apply-one-step`.**
+**SCOPE: This command creates documents only — `spec.md`, `todo.json`,
+`meta.json` inside the topic directory. NO application code is written.
+NO existing project files are modified. Implementation happens later
+via `/spex apply` or `/spex apply-one-step`.**
 
 Follow these steps in order. Do not skip or reorder.
 
@@ -93,6 +92,12 @@ Example JSON output:
   "spec_template": "# [Title]\n..."
 }
 ```
+
+**Sub-agent boundary.** Launch a sub-agent to execute Phases 5
+through 7. The sub-agent receives `$requirement`, `$topic_name`,
+`$topic_path`, and `$spec_template` as context. If the sub-agent
+fails, report the error to the user and retry. After it completes,
+continue with Phase 8 in the main context.
 
 ### Phase 5: Design Specification
 
