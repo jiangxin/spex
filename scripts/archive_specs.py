@@ -39,7 +39,7 @@ def has_active_branch(topic_dir: Path) -> bool:
 
 
 USAGE = """\
-Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f]
+Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--not]
 
 Archive completed spec topics.
 
@@ -47,6 +47,7 @@ Options:
   --topic <topic>  Archive a single topic by name
   --dry-run, -n    Preview without moving
   --force, -f      Bypass spex_branch existence check
+  --not            Restore a topic from archives back to specs
   -h, --help       Show this help message and exit
 """
 
@@ -182,10 +183,22 @@ def main(argv=None):
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
+    parser.add_argument("--not", action="store_true", dest="not_flag",
+                        help="Restore a topic from archives back to specs")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
+
+    if args.not_flag:
+        if not args.topic:
+            print(
+                "Error: --not requires --topic to specify what to restore.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        restore_single_topic(args.topic, specs_dir, archives_dir)
+        return
 
     if args.topic:
         archive_single_topic(args.topic, specs_dir, archives_dir, args.force)

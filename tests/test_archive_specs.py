@@ -771,3 +771,74 @@ class TestRestoreSingleTopic:
         assert not (
             archives / "2026-05-27-14-11-archive-branch-guard"
         ).exists()
+
+
+class TestNotFlagCLI:
+    """Integration tests for --not flag in main()."""
+
+    def test_not_without_topic_errors(self, tmp_path, capsys, monkeypatch):
+        """--not without --topic → error."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        archives.mkdir()
+        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--not"])
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                archive_specs.main()
+            assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "--not" in err
+        assert "--topic" in err
+
+    def test_not_restores_from_archives(self, tmp_path, capsys, monkeypatch):
+        """--not --topic restores topic from archives to specs."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        monkeypatch.setattr(
+            sys, "argv", ["archive_specs.py", "--not", "--topic", "my-topic"]
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert "my-topic" in output
+        assert (specs / "my-topic").is_dir()
+        assert not (archives / "my-topic").exists()
+
+    def test_not_partial_match_restores(self, tmp_path, capsys, monkeypatch):
+        """--not with partial topic name restores unique match."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(
+            archives / "2026-05-27-14-11-archive-branch-guard",
+            [_make_task("1")],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["archive_specs.py", "--not", "--topic", "branch-guard"],
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert (specs / "2026-05-27-14-11-archive-branch-guard").is_dir()
+        assert not (
+            archives / "2026-05-27-14-11-archive-branch-guard"
+        ).exists()
