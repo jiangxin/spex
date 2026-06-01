@@ -565,30 +565,6 @@ class TestShow:
 # -----------------------------------------------------------------------
 # remove-undone
 # -----------------------------------------------------------------------
-class TestRemoveUndone:
-    def test_removes_incomplete_items(self, todo_file, capsys):
-        _write(todo_file, SAMPLE_DATA)
-        todo_helper.main([
-            "--todo-file", str(todo_file), "remove-undone",
-        ])
-        result = _read(todo_file)
-        assert len(result) == 2
-        assert all(i["completed_at"] for i in result)
-        out = capsys.readouterr().out
-        assert "1 undone" in out
-
-    def test_all_complete_no_change(self, todo_file, capsys):
-        data = [SAMPLE_DATA[0], SAMPLE_DATA[2]]  # both completed
-        _write(todo_file, data)
-        todo_helper.main([
-            "--todo-file", str(todo_file), "remove-undone",
-        ])
-        result = _read(todo_file)
-        assert len(result) == 2
-        out = capsys.readouterr().out
-        assert "0 undone" in out
-
-
 # -----------------------------------------------------------------------
 # Help flag
 # -----------------------------------------------------------------------
@@ -909,13 +885,3 @@ class TestXmlFormat:
         assert len(result) == 3
         assert result[0]["id"] == "step-1"
 
-    def test_remove_undone_xml(self, xml_file):
-        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
-        todo_helper.main([
-            "--todo-file", str(xml_file), "remove-undone",
-        ])
-        data = todo_helper.load_todo_xml(xml_file)
-        assert len(data) == 2
-        assert all(e["completed_at"] for e in data)
-        ids = [e["id"] for e in data]
-        assert "step-2" not in ids

@@ -26,7 +26,7 @@ USAGE = """\
 Usage: spex todo-helper [--topic <name> | --todo-file <path>] [--xml] \
 <subcmd>
 
-Operate on todo files (validate, append, edit, remove, show, remove-undone).
+Operate on todo files (validate, append, edit, remove, show).
 
 Global options:
   --topic <name>    Resolve topic dir, use <topic_dir>/todo.json (or .xml)
@@ -39,7 +39,6 @@ Subcommands:
   edit              Edit an existing entry by ID
   remove            Remove an entry by ID
   show              Display entries with filtering and format options
-  remove-undone     Remove all incomplete entries
   xml2json          Convert XML todo file to JSON format
   json2xml          Convert JSON todo file to XML format
 
@@ -461,20 +460,6 @@ def cmd_show(todo_path, is_xml, argv):
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def cmd_remove_undone(todo_path, is_xml):
-    """Remove all incomplete entries."""
-    from common import filter_completed_todos
-
-    data = load_todo_file(todo_path, is_xml)
-    completed = filter_completed_todos(data)
-    removed = len(data) - len(completed)
-    write_todo_file(todo_path, completed, is_xml)
-    print(
-        f"Removed {removed} undone task(s),"
-        f" {len(completed)} completed task(s) remain."
-    )
-
-
 def cmd_xml2json(todo_path, is_xml, argv):
     """Convert an XML todo file to JSON format."""
     usage = "Usage: spex todo-helper ... xml2json [--rm]"
@@ -545,7 +530,7 @@ def main(argv=None):
     # Subcommand handlers have their own check_help_flag calls.
     subcmds = {
         "validate", "append", "edit", "remove",
-        "show", "remove-undone", "xml2json", "json2xml",
+        "show", "xml2json", "json2xml",
     }
     if not subcmds.intersection(argv) and (
         not argv or {"-h", "--help"}.intersection(argv)
@@ -562,7 +547,7 @@ def main(argv=None):
     parser.add_argument("--xml", action="store_true")
     parser.add_argument("subcmd", choices=[
         "validate", "append", "edit", "remove",
-        "show", "remove-undone", "xml2json", "json2xml",
+        "show", "xml2json", "json2xml",
     ])
     args, rest = parser.parse_known(argv)
 
@@ -578,8 +563,6 @@ def main(argv=None):
         cmd_remove(todo_path, is_xml, rest)
     elif args.subcmd == "show":
         cmd_show(todo_path, is_xml, rest)
-    elif args.subcmd == "remove-undone":
-        cmd_remove_undone(todo_path, is_xml)
     elif args.subcmd == "xml2json":
         cmd_xml2json(todo_path, is_xml, rest)
     elif args.subcmd == "json2xml":
