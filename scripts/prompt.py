@@ -37,6 +37,7 @@ def validate_required_meta(content, metadata):
             in_required = True
             continue
         if in_required:
+            # Match YAML list item format: "  - item_name"
             m = re.match(r"\s+-\s+(.+)", line)
             if m:
                 required.append(m.group(1).strip().strip("\"'"))
