@@ -76,10 +76,11 @@ def _format_item_concise(item):
 
 
 def _trim_spec_content(spec_content):
-    """Trim spec content to keep only essential sections for commit context.
+    """Trim spec content for commit context using include/exclude strategy.
 
-    Keeps: description (from front-matter), Requirement, User Clarification,
-    Detailed Design. Drops: Test Plan, Constraints.
+    Include (primary): if requirement or user-clarification sections exist,
+    keep only those. Exclude (fallback): otherwise drop detailed-design,
+    test-plan, constraints and keep the rest.
     """
     if not spec_content:
         return ""
@@ -88,7 +89,8 @@ def _trim_spec_content(spec_content):
 
     description = parse_front_matter_description(spec_content)
 
-    keep_sections = {"requirement", "user-clarification", "detailed-design"}
+    include_sections = {"requirement", "user-clarification"}
+    exclude_sections = {"detailed-design", "test-plan", "constraints"}
     marker_pattern = re.compile(r"<!--\s*spex:begin:([a-z-]+)\s*-->")
 
     markers = list(marker_pattern.finditer(spec_content))
@@ -102,22 +104,36 @@ def _trim_spec_content(spec_content):
             )
             sections[name] = spec_content[start:end].rstrip()
 
-        kept = [sections[k] for k in keep_sections if k in sections]
+        found_include = [k for k in include_sections if k in sections]
+        if found_include:
+            kept = [sections[k] for k in include_sections if k in sections]
+        else:
+            kept = [
+                sections[k] for k in sections
+                if k not in exclude_sections
+            ]
     else:
         body = strip_front_matter(spec_content)
         heading_pattern = re.compile(r"^(# .+)", re.MULTILINE)
         splits = heading_pattern.split(body)
 
-        keep_headings = {"# Requirement", "# User Clarification",
-                         "# Detailed Design"}
-        kept = []
+        include_headings = {"# Requirement", "# User Clarification"}
+        exclude_headings = {"# Detailed Design", "# Test Plan",
+                            "# Constraints"}
+
+        all_sections = []
         i = 1
         while i < len(splits):
             heading = splits[i].strip()
             content = splits[i + 1] if i + 1 < len(splits) else ""
-            if heading in keep_headings:
-                kept.append(heading + content.rstrip())
+            all_sections.append((heading, heading + content.rstrip()))
             i += 2
+
+        found_include = [s for h, s in all_sections if h in include_headings]
+        if found_include:
+            kept = found_include
+        else:
+            kept = [s for h, s in all_sections if h not in exclude_headings]
 
     parts = []
     if description:

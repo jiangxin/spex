@@ -541,7 +541,8 @@ class TestBuildTaskContext:
         concise = result["spec_content_concise"]
         assert "My desc." in concise
         assert "# Requirement" in concise
-        assert "# Detailed Design" in concise
+        assert "# User Clarification" in concise
+        assert "# Detailed Design" not in concise
         assert "# Test Plan" not in concise
         assert "# Constraints" not in concise
 
@@ -581,8 +582,8 @@ class TestBuildTaskContext:
 class TestTrimSpecContent:
     """Test _trim_spec_content helper function."""
 
-    def test_with_markers_keeps_correct_sections(self):
-        """Sections with markers: keeps requirement, user-clarification, detailed-design."""
+    def test_include_strategy_with_markers(self):
+        """Include: when requirement/user-clarification found, keep only those."""
         from prompt import _trim_spec_content
 
         spec = (
@@ -612,15 +613,42 @@ class TestTrimSpecContent:
         assert "Build the login API." in result
         assert "# User Clarification" in result
         assert "Use JWT tokens." in result
-        assert "# Detailed Design" in result
-        assert "Create /login endpoint." in result
+        assert "# Detailed Design" not in result
+        assert "Create /login endpoint." not in result
         assert "# Test Plan" not in result
-        assert "Test with pytest." not in result
         assert "# Constraints" not in result
-        assert "Keep it simple." not in result
 
-    def test_fallback_without_markers(self):
-        """Without markers, falls back to heading-based split."""
+    def test_exclude_strategy_with_markers(self):
+        """Exclude: when no requirement/user-clarification, drop excluded sections."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: My desc.\n"
+            "---\n\n"
+            "<!-- spex:begin:overview -->\n"
+            "# Overview\n\n"
+            "General overview.\n\n"
+            "<!-- spex:begin:detailed-design -->\n"
+            "# Detailed Design\n\n"
+            "Design details.\n\n"
+            "<!-- spex:begin:test-plan -->\n"
+            "# Test Plan\n\n"
+            "Test stuff.\n\n"
+            "<!-- spex:begin:constraints -->\n"
+            "# Constraints\n\n"
+            "Be simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "My desc." in result
+        assert "# Overview" in result
+        assert "General overview." in result
+        assert "# Detailed Design" not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_include_strategy_without_markers(self):
+        """Include fallback: heading-based, keep Requirement/User Clarification."""
         from prompt import _trim_spec_content
 
         spec = (
@@ -642,8 +670,33 @@ class TestTrimSpecContent:
         assert "Short desc." in result
         assert "# Requirement" in result
         assert "Do the thing." in result
-        assert "# Detailed Design" in result
-        assert "Design here." in result
+        assert "# User Clarification" in result
+        assert "# Detailed Design" not in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_exclude_strategy_without_markers(self):
+        """Exclude fallback: heading-based, no Requirement/User Clarification."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: Fallback desc.\n"
+            "---\n\n"
+            "# Overview\n\n"
+            "Some overview.\n\n"
+            "# Detailed Design\n\n"
+            "Design.\n\n"
+            "# Test Plan\n\n"
+            "Tests.\n\n"
+            "# Constraints\n\n"
+            "Simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "Fallback desc." in result
+        assert "# Overview" in result
+        assert "Some overview." in result
+        assert "# Detailed Design" not in result
         assert "# Test Plan" not in result
         assert "# Constraints" not in result
 
