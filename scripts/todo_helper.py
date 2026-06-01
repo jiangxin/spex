@@ -551,6 +551,25 @@ def main(argv=None):
     ])
     args, rest = parser.parse_known(argv)
 
+    if {"-h", "--help"}.intersection(rest):
+        if args.subcmd == "validate":
+            print("Usage: spex todo-helper ... validate\n\n"
+                  "Validate todo file format and check for duplicate IDs.")
+            sys.exit(0)
+        elif args.subcmd == "append":
+            cmd_append(None, False, rest)
+        elif args.subcmd == "edit":
+            cmd_edit(None, False, rest)
+        elif args.subcmd == "remove":
+            cmd_remove(None, False, rest)
+        elif args.subcmd == "show":
+            cmd_show(None, False, rest)
+        elif args.subcmd == "xml2json":
+            cmd_xml2json(None, False, rest)
+        elif args.subcmd == "json2xml":
+            cmd_json2xml(None, False, rest)
+        return
+
     todo_path, is_xml = _resolve_todo_path(args)
 
     if args.subcmd == "validate":

@@ -11,6 +11,7 @@ from pathlib import Path
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     atomic_write_json,
+    check_help_flag,
     resolve_topic_dir,
     strip_date_prefix,
 )
@@ -290,6 +291,13 @@ def main(argv=None):
         print(USAGE, end="")
         sys.exit(0)
     elif subcmd == "precheck":
+        check_help_flag(
+            "Usage: spex create-helper precheck\n\n"
+            "Validate branch creation feasibility.\n\n"
+            "Options:\n"
+            "  -h, --help  Show this help message and exit\n",
+            rest,
+        )
         cli_create_validate()
     elif subcmd == "prepare-spec":
         cli_prepare_spec(rest)
