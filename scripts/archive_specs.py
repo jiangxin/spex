@@ -75,23 +75,32 @@ def find_completed_topics(
     return sorted(results)
 
 
-def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
-    """Move topic_dir into archives_dir, appending suffix on conflict.
+def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
+    """Move source_dir into dest_dir, appending suffix on conflict.
 
     Returns the final destination path.
     """
-    dest = archives_dir / topic_dir.name
+    dest = dest_dir / source_dir.name
     if not dest.exists():
-        shutil.move(str(topic_dir), str(dest))
+        shutil.move(str(source_dir), str(dest))
         return dest
 
     counter = 2
     while True:
-        candidate = archives_dir / f"{topic_dir.name}-{counter}"
+        candidate = dest_dir / f"{source_dir.name}-{counter}"
         if not candidate.exists():
-            shutil.move(str(topic_dir), str(candidate))
+            shutil.move(str(source_dir), str(candidate))
             return candidate
         counter += 1
+
+
+def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
+    """Move topic_dir into archives_dir, appending suffix on conflict.
+
+    Thin wrapper around move_topic_with_conflict for backward compatibility.
+    Returns the final destination path.
+    """
+    return move_topic_with_conflict(topic_dir, archives_dir)
 
 
 def archive_single_topic(

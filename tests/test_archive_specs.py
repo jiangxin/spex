@@ -9,6 +9,7 @@ from archive_specs import (
     find_completed_topics,
     has_active_branch,
     move_topic,
+    move_topic_with_conflict,
 )
 from common import is_topic_completed
 
@@ -184,6 +185,63 @@ class TestMoveTopic:
         assert dest == archives / "my-topic-3"
         assert dest.is_dir()
         assert not topic.exists()
+
+
+class TestMoveTopicWithConflict:
+    """Tests for move_topic_with_conflict (bidirectional)."""
+
+    def test_specs_to_archives(self, tmp_path):
+        """Move from specs to archives direction."""
+        topic = tmp_path / "specs" / "my-topic"
+        _write_todo(topic, [_make_task("1")])
+        archives = tmp_path / "archives"
+        archives.mkdir()
+
+        dest = move_topic_with_conflict(topic, archives)
+
+        assert dest == archives / "my-topic"
+        assert dest.is_dir()
+        assert not topic.exists()
+
+    def test_archives_to_specs(self, tmp_path):
+        """Move from archives to specs direction."""
+        archives = tmp_path / "archives" / "my-topic"
+        _write_todo(archives, [_make_task("1")])
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = move_topic_with_conflict(archives, specs)
+
+        assert dest == specs / "my-topic"
+        assert dest.is_dir()
+        assert not archives.exists()
+
+    def test_conflict_appends_suffix(self, tmp_path):
+        """Conflict in dest_dir appends -2 suffix."""
+        src = tmp_path / "src" / "my-topic"
+        _write_todo(src, [_make_task("1")])
+        dest_dir = tmp_path / "dest"
+        (dest_dir / "my-topic").mkdir(parents=True)
+
+        dest = move_topic_with_conflict(src, dest_dir)
+
+        assert dest == dest_dir / "my-topic-2"
+        assert dest.is_dir()
+        assert not src.exists()
+
+    def test_multiple_conflicts_increment(self, tmp_path):
+        """Multiple conflicts increment suffix to -3."""
+        src = tmp_path / "src" / "my-topic"
+        _write_todo(src, [_make_task("1")])
+        dest_dir = tmp_path / "dest"
+        (dest_dir / "my-topic").mkdir(parents=True)
+        (dest_dir / "my-topic-2").mkdir(parents=True)
+
+        dest = move_topic_with_conflict(src, dest_dir)
+
+        assert dest == dest_dir / "my-topic-3"
+        assert dest.is_dir()
+        assert not src.exists()
 
 
 class TestMain:
