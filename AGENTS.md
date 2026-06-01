@@ -31,6 +31,38 @@ Specification documented in `references/SKILLS-SPEC.md`.
 - `references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
 
+## Naming Conventions
+
+### Script Files
+
+Script filenames in `scripts/` MUST use **underscores** (`_`) as the word
+separator. Do NOT use hyphens in filenames. This follows the Python module
+naming convention.
+
+| Subcommand (user sees) | Script file |
+|------------------------|-------------|
+| `spex todo-helper` | `todo_helper.py` |
+| `spex get-topic` | `get_topic.py` |
+| `spex archive` | `archive.py` |
+
+### CLI Display
+
+CLI help and user-facing output MUST use **hyphens** (`-`) as the word
+separator for multi-word subcommands. For example, the USAGE text shows
+`spex todo-helper`, not `spex todo_helper`.
+
+### CLI Parsing
+
+The CLI accepts both hyphens and underscores as equivalent separators for
+subcommand names. Internally, hyphens are normalized to underscores before
+dispatch, to match Python module names and internal method names.
+For example, `spex todo-helper` and `spex todo_helper` are equivalent.
+
+### Excluded Modules
+
+Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
+`hooks.py`, `version.py`, `init.py`) are not subject to these naming rules.
+
 ## Shared Library (`scripts/common.py`)
 
 | Function | Description |
