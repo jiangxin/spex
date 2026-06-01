@@ -623,6 +623,11 @@ Options:
 """
 
 
+def _normalize_subcmd(name):
+    """Normalize subcommand/template name: underscores → hyphens."""
+    return name.replace("_", "-")
+
+
 def main(argv=None):
     """Route prompt subcommands to their handlers."""
     if argv is None:
@@ -637,11 +642,16 @@ def main(argv=None):
         print(USAGE, end="")
         sys.exit(0)
 
+    # Normalize: accept both underscores and hyphens
+    subcmd = _normalize_subcmd(subcmd)
+
     handler = SUBCOMMANDS.get(subcmd)
     if handler:
         handler(argv[1:])
     else:
-        cli_render(argv)  # fallback: treat argv[0] as template name
+        # Normalize template name before fallback render
+        argv[0] = subcmd
+        cli_render(argv)
 
 
 if __name__ == "__main__":
