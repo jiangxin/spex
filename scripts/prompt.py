@@ -75,6 +75,58 @@ def _format_item_concise(item):
     return f"- **{item.get('id', '')}**: {item.get('name', '')}"
 
 
+def _trim_spec_content(spec_content):
+    """Trim spec content to keep only essential sections for commit context.
+
+    Keeps: description (from front-matter), Requirement, User Clarification,
+    Detailed Design. Drops: Test Plan, Constraints.
+    """
+    if not spec_content:
+        return ""
+
+    from common import parse_front_matter_description, strip_front_matter
+
+    description = parse_front_matter_description(spec_content)
+
+    keep_sections = {"requirement", "user-clarification", "detailed-design"}
+    marker_pattern = re.compile(r"<!--\s*spex:begin:([a-z-]+)\s*-->")
+
+    markers = list(marker_pattern.finditer(spec_content))
+    if markers:
+        sections = {}
+        for i, m in enumerate(markers):
+            name = m.group(1)
+            start = m.start()
+            end = markers[i + 1].start() if i + 1 < len(markers) else len(
+                spec_content
+            )
+            sections[name] = spec_content[start:end].rstrip()
+
+        kept = [sections[k] for k in keep_sections if k in sections]
+    else:
+        body = strip_front_matter(spec_content)
+        heading_pattern = re.compile(r"^(# .+)", re.MULTILINE)
+        splits = heading_pattern.split(body)
+
+        keep_headings = {"# Requirement", "# User Clarification",
+                         "# Detailed Design"}
+        kept = []
+        i = 1
+        while i < len(splits):
+            heading = splits[i].strip()
+            content = splits[i + 1] if i + 1 < len(splits) else ""
+            if heading in keep_headings:
+                kept.append(heading + content.rstrip())
+            i += 2
+
+    parts = []
+    if description:
+        parts.append(description)
+    if kept:
+        parts.append("\n\n".join(kept))
+    return "\n\n".join(parts)
+
+
 def _build_task_context(topic_dir, verbose_items=20):
     """Extract task context from a topic directory.
 

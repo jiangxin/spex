@@ -538,6 +538,90 @@ class TestBuildTaskContext:
         assert result["future_tasks"] == ""
 
 
+class TestTrimSpecContent:
+    """Test _trim_spec_content helper function."""
+
+    def test_with_markers_keeps_correct_sections(self):
+        """Sections with markers: keeps requirement, user-clarification, detailed-design."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: |\n"
+            "  My project description.\n"
+            "---\n\n"
+            "<!-- spex:begin:requirement -->\n"
+            "# Requirement\n\n"
+            "Build the login API.\n\n"
+            "<!-- spex:begin:user-clarification -->\n"
+            "# User Clarification\n\n"
+            "Use JWT tokens.\n\n"
+            "<!-- spex:begin:detailed-design -->\n"
+            "# Detailed Design\n\n"
+            "Create /login endpoint.\n\n"
+            "<!-- spex:begin:test-plan -->\n"
+            "# Test Plan\n\n"
+            "Test with pytest.\n\n"
+            "<!-- spex:begin:constraints -->\n"
+            "# Constraints\n\n"
+            "Keep it simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "My project description." in result
+        assert "# Requirement" in result
+        assert "Build the login API." in result
+        assert "# User Clarification" in result
+        assert "Use JWT tokens." in result
+        assert "# Detailed Design" in result
+        assert "Create /login endpoint." in result
+        assert "# Test Plan" not in result
+        assert "Test with pytest." not in result
+        assert "# Constraints" not in result
+        assert "Keep it simple." not in result
+
+    def test_fallback_without_markers(self):
+        """Without markers, falls back to heading-based split."""
+        from prompt import _trim_spec_content
+
+        spec = (
+            "---\n"
+            "description: Short desc.\n"
+            "---\n\n"
+            "# Requirement\n\n"
+            "Do the thing.\n\n"
+            "# User Clarification\n\n"
+            "None needed.\n\n"
+            "# Detailed Design\n\n"
+            "Design here.\n\n"
+            "# Test Plan\n\n"
+            "Test stuff.\n\n"
+            "# Constraints\n\n"
+            "Be simple.\n"
+        )
+        result = _trim_spec_content(spec)
+        assert "Short desc." in result
+        assert "# Requirement" in result
+        assert "Do the thing." in result
+        assert "# Detailed Design" in result
+        assert "Design here." in result
+        assert "# Test Plan" not in result
+        assert "# Constraints" not in result
+
+    def test_empty_input(self):
+        """Empty input returns empty string."""
+        from prompt import _trim_spec_content
+
+        assert _trim_spec_content("") == ""
+
+    def test_only_front_matter(self):
+        """Spec with only front-matter returns description."""
+        from prompt import _trim_spec_content
+
+        spec = "---\ndescription: Just a description.\n---\n"
+        result = _trim_spec_content(spec)
+        assert "Just a description." in result
+
+
 @pytest.mark.slow
 class TestApplyCommitWithTopic:
     """Test apply-commit loads spec and task context from topic."""
