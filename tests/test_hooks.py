@@ -186,6 +186,9 @@ class TestBuildEventData:
     def test_builds_envelope(self, monkeypatch, tmp_path):
         """_build_event_data builds correct structure."""
         monkeypatch.chdir(tmp_path)
+        # Prevent GIT_CONFIG_PARAMETERS (set by git -c) from overriding
+        # the local repo config in subprocess calls.
+        monkeypatch.delenv("GIT_CONFIG_PARAMETERS", raising=False)
 
         # Create a minimal git repo for git config to work
         import subprocess

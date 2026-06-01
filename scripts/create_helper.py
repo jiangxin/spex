@@ -14,6 +14,7 @@ from common import (
     check_help_flag,
     resolve_topic_dir,
     strip_date_prefix,
+    wrap_text,
 )
 
 TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
@@ -79,7 +80,7 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
         "prompts": [prompt] if prompt else [],
     }
     if description:
-        meta["description"] = description
+        meta["description"] = wrap_text(description)
     meta_path = Path(topic_dir) / "meta.json"
     atomic_write_json(meta_path, meta)
 
@@ -225,6 +226,7 @@ def cli_post_action(argv=None):
         get_current_workdir,
         load_and_validate_todo_json,
         load_meta,
+        parse_front_matter_description,
         validate_unique_ids,
     )
 
@@ -255,6 +257,17 @@ def cli_post_action(argv=None):
                 )
                 sys.exit(1)
     print(f"OK: {len(data)} step(s) validated.")
+
+    # Update description from spec.md front-matter
+    spec_path = topic_dir / "spec.md"
+    if spec_path.is_file():
+        spec_content = spec_path.read_text(encoding="utf-8")
+        desc = parse_front_matter_description(spec_content)
+        if desc:
+            meta_path = topic_dir / "meta.json"
+            meta_data = load_meta(topic_dir) or {}
+            meta_data["description"] = wrap_text(desc)
+            atomic_write_json(meta_path, meta_data)
 
     import hooks
 

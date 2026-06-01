@@ -425,6 +425,20 @@ def parse_front_matter_description(content: str) -> str:
     return ""
 
 
+def wrap_text(text: str, width: int = 68) -> str:
+    """Wrap text to specified width at word boundaries.
+
+    Joins all lines into a single line (collapsing whitespace), then
+    wraps at word boundaries so no line exceeds `width` characters.
+    """
+    if not text or not text.strip():
+        return ""
+    import textwrap
+
+    single_line = " ".join(text.split())
+    return textwrap.fill(single_line, width=width, break_long_words=False)
+
+
 def get_spec_description(topic_dir: Path) -> str:
     """Return the topic's description.
 
