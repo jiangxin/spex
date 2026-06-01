@@ -106,6 +106,7 @@ Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
 results. Fill the "User Clarification" section with clarifications
 gathered in Phase 2. Keep the Constraints section as-is.
+Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 
 ### Phase 6: Plan Implementation Steps
 

@@ -70,6 +70,7 @@ following these rules:
 6. **Language**: Use the same language as the user's modification request.
 7. **Front-matter**: Keep the `description` field and update it to
    reflect the modified specification content.
+8. **Markers**: Preserve all `<!-- spex:begin:* -->` HTML comment markers.
 
 Before writing, analyze the current repository structure, architecture,
 and existing code to ensure the updated design integrates properly.
