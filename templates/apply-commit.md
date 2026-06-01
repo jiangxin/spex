@@ -1,8 +1,11 @@
 ---
-version: "0.0.1"
+version: "0.1.0"
 required:
   - spec_content
   - next_task_text
+optional:
+  - completed_tasks_concise
+  - future_tasks_concise
 ---
 
 ## Goal
@@ -31,11 +34,11 @@ Stage the relevant file changes and create a single git commit.
 {{ spec_content }}
 </specification>
 
-{% if completed_tasks -%}
+{% if completed_tasks_concise -%}
 ### Completed Steps
 
 <completed-steps>
-{{ completed_tasks }}
+{{ completed_tasks_concise }}
 </completed-steps>
 
 {% endif -%}
@@ -46,13 +49,13 @@ The commit is for implementing the following task:
 <current-task>
 {{ next_task_text }}
 </current-task>
-{% if future_tasks %}
+{% if future_tasks_concise %}
 
 ### Future Steps
 
 The following steps have NOT been implemented yet.
 Do NOT include them in the commit message.
 
-{{ future_tasks }}
+{{ future_tasks_concise }}
 {% endif %}
 </output>

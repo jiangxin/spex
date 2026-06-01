@@ -70,6 +70,11 @@ def _format_item_brief(item):
     return f"- {item.get('id', '')}: {item.get('name', '')} *(details omitted)*"
 
 
+def _format_item_concise(item):
+    """Format a single todo item as a concise one-liner (id + name only)."""
+    return f"- **{item.get('id', '')}**: {item.get('name', '')}"
+
+
 def _build_task_context(topic_dir, verbose_items=20):
     """Extract task context from a topic directory.
 
@@ -103,6 +108,9 @@ def _build_task_context(topic_dir, verbose_items=20):
             parts = [_format_item_brief(item) for item in brief_items]
             parts.extend(_format_item_verbose(item) for item in verbose_part)
             completed_tasks = "\n\n".join(parts)
+        completed_tasks_concise = "\n".join(
+            _format_item_concise(item) for item in done
+        )
 
         undone = [item for item in todo if not item.get("completed_at")]
         if undone:
@@ -127,24 +135,33 @@ def _build_task_context(topic_dir, verbose_items=20):
                         _format_item_brief(item) for item in brief_items
                     )
                     future_tasks = "\n\n".join(parts)
+                future_tasks_concise = "\n".join(
+                    _format_item_concise(item) for item in future
+                )
             else:
                 future_tasks = ""
+                future_tasks_concise = ""
         else:
             next_task_id = ""
             next_task_text = ""
             future_tasks = ""
+            future_tasks_concise = ""
     else:
         completed_tasks = ""
+        completed_tasks_concise = ""
         next_task_id = ""
         next_task_text = ""
         future_tasks = ""
+        future_tasks_concise = ""
 
     return {
         "spec_content": spec_content,
         "completed_tasks": completed_tasks,
+        "completed_tasks_concise": completed_tasks_concise,
         "next_task_id": next_task_id,
         "next_task_text": next_task_text,
         "future_tasks": future_tasks,
+        "future_tasks_concise": future_tasks_concise,
     }
 
 

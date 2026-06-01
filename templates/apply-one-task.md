@@ -5,7 +5,7 @@ required:
   - next_task_text
 optional:
   - completed_tasks
-  - future_tasks
+  - future_tasks_concise
 ---
 
 Act as a senior software engineer focused on incremental, high-quality
@@ -62,7 +62,7 @@ files to change, and the acceptance criteria.
   Run lint and tests after implementation to ensure everything passes.
 - **Commits**: Create a commit after the task is complete, following
   Conventional Commits format.
-{% if future_tasks %}
+{% if future_tasks_concise %}
 
 ## Future Steps
 
@@ -71,5 +71,5 @@ They are included here for awareness only — do NOT implement them now.
 Avoid making design choices that would conflict with or complicate
 these upcoming steps.
 
-{{ future_tasks }}
+{{ future_tasks_concise }}
 {% endif %}
