@@ -17,6 +17,7 @@ from common import (
     check_help_flag,
     escape_xml_text,
     load_and_validate_todo_json,
+    local_iso_timestamp,
     resolve_topic_dir,
     validate_unique_ids,
 )
@@ -47,6 +48,13 @@ Options:
 """
 
 REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
+
+
+def _resolve_completed_at(value):
+    """Resolve the special value 'now' to a local ISO timestamp."""
+    if isinstance(value, str) and value.lower() == "now":
+        return local_iso_timestamp()
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +240,7 @@ def cmd_append(todo_path, is_xml, argv):
         "id": args.id,
         "name": args.name,
         "details": details,
-        "completed_at": args.completed_at,
+        "completed_at": _resolve_completed_at(args.completed_at),
         "commit_title": args.commit_title,
     }
     data.append(entry)
@@ -266,6 +274,9 @@ def cmd_edit(todo_path, is_xml, argv):
     details = args.details
     if args.details_from_stdin:
         details = sys.stdin.read()
+
+    if args.completed_at is not None:
+        args.completed_at = _resolve_completed_at(args.completed_at)
 
     data = load_todo_file(todo_path, is_xml)
 
@@ -527,10 +538,23 @@ def _resolve_todo_path(args):
 
 def main(argv=None):
     """Parse global args, resolve todo path, route to subcommand."""
-    check_help_flag(USAGE, argv)
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Show top-level help only when no subcommand is present.
+    # Subcommand handlers have their own check_help_flag calls.
+    subcmds = {
+        "validate", "append", "edit", "remove",
+        "show", "remove-undone", "xml2json", "json2xml",
+    }
+    if not subcmds.intersection(argv) and (
+        not argv or {"-h", "--help"}.intersection(argv)
+    ):
+        print(USAGE, end="")
+        sys.exit(0)
 
     parser = ArgumentParser(
-        prog="spex todo-helper", usage=USAGE,
+        prog="spex todo-helper", usage=USAGE, add_help=False,
     )
     locator = parser.add_mutually_exclusive_group(required=True)
     locator.add_argument("--topic")

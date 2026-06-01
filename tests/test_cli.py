@@ -309,13 +309,6 @@ class TestTodoCommand:
         assert result.returncode == 0
         assert "OK:" in result.stdout
 
-    def test_mark_done_wrong_args_exit_1(self):
-        """spex todo mark-done (wrong args) exits non-zero."""
-        result = _run_spex("todo", "mark-done")
-
-        assert result.returncode in (1, 2)
-        assert "Usage:" in result.stderr
-
     def test_todo_h_exits_zero_with_usage(self):
         """spex todo -h exits 0 with usage."""
         result = _run_spex("todo", "-h")
@@ -368,20 +361,6 @@ class TestTodoCommand:
     def test_todo_get_done_help_exits_zero_with_usage(self):
         """spex todo get-done --help exits 0 with usage."""
         result = _run_spex("todo", "get-done", "--help")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_mark_done_h_exits_zero_with_usage(self):
-        """spex todo mark-done -h exits 0 with usage."""
-        result = _run_spex("todo", "mark-done", "-h")
-
-        assert result.returncode == 0
-        assert "Usage:" in result.stdout
-
-    def test_todo_mark_done_help_exits_zero_with_usage(self):
-        """spex todo mark-done --help exits 0 with usage."""
-        result = _run_spex("todo", "mark-done", "--help")
 
         assert result.returncode == 0
         assert "Usage:" in result.stdout

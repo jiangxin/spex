@@ -105,7 +105,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo mark-done "$next_task_id" "$commit_title" $topic_path/todo.json
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit --id "$next_task_id" --completed_at now --commit_title "$commit_title"
 ```
 
 If the command fails, report the error and stop.
