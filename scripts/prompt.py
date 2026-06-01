@@ -95,23 +95,25 @@ def _trim_spec_content(spec_content):
 
     markers = list(marker_pattern.finditer(spec_content))
     if markers:
-        sections = {}
+        parsed = []
         for i, m in enumerate(markers):
             name = m.group(1)
             start = m.end()
             end = markers[i + 1].start() if i + 1 < len(markers) else len(
                 spec_content
             )
-            sections[name] = spec_content[start:end].strip()
+            parsed.append((name, spec_content[start:end].strip()))
 
-        found_include = [k for k in sections if k in include_sections]
+        found_include = any(n in include_sections for n, _ in parsed)
         if found_include:
-            kept = [sections[k] for k in sections if k in include_sections]
+            seen = set()
+            kept = []
+            for name, content in parsed:
+                if name in include_sections and name not in seen:
+                    seen.add(name)
+                    kept.append(content)
         else:
-            kept = [
-                sections[k] for k in sections
-                if k not in exclude_sections
-            ]
+            kept = [c for n, c in parsed if n not in exclude_sections]
     else:
         body = strip_front_matter(spec_content)
         heading_pattern = re.compile(r"^(# .+)", re.MULTILINE)
@@ -129,9 +131,14 @@ def _trim_spec_content(spec_content):
             all_sections.append((heading, heading + content.rstrip()))
             i += 2
 
-        found_include = [s for h, s in all_sections if h in include_headings]
+        found_include = any(h in include_headings for h, _ in all_sections)
         if found_include:
-            kept = found_include
+            seen = set()
+            kept = []
+            for h, s in all_sections:
+                if h in include_headings and h not in seen:
+                    seen.add(h)
+                    kept.append(s)
         else:
             kept = [s for h, s in all_sections if h not in exclude_headings]
 
