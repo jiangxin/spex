@@ -497,7 +497,7 @@ class TestBuildTaskContext:
         result = _build_task_context(topic_dir)
 
         assert result["spec_content"] == "# My Spec\n\nSpec body."
-        assert "step-1: First step" in result["completed_tasks"]
+        assert "- step-1: First step" in result["completed_tasks"]
         assert result["next_task_id"] == "step-2"
         assert "**Task**: step-2 - Second step" in result["next_task_text"]
         assert "Do second thing" in result["next_task_text"]
@@ -532,8 +532,8 @@ class TestBuildTaskContext:
         result = _build_task_context(topic_dir)
 
         assert result["spec_content"] == "# Done Spec\n"
-        assert "step-1: First step" in result["completed_tasks"]
-        assert "step-2: Second step" in result["completed_tasks"]
+        assert "- step-1: First step" in result["completed_tasks"]
+        assert "- step-2: Second step" in result["completed_tasks"]
         assert result["next_task_id"] == ""
         assert result["next_task_text"] == ""
         assert result["future_tasks"] == ""

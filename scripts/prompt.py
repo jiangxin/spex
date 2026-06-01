@@ -74,7 +74,7 @@ def _build_task_context(topic_dir):
     if todo:
         done = [item for item in todo if item.get("completed_at")]
         completed_tasks = "\n".join(
-            f"{item.get('id', '')}: {item.get('name', '')}" for item in done
+            f"- {item.get('id', '')}: {item.get('name', '')}" for item in done
         )
         undone = [item for item in todo if not item.get("completed_at")]
         if undone:
