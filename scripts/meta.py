@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import sys
 
-from common import atomic_write_json, check_help_flag, get_specs_dir
+from common import atomic_write_json, check_help_flag, resolve_topic_dir
 
 USAGE = """\
 Usage: spex meta <topic_name> [key] [value] [--stdin]
@@ -101,8 +101,8 @@ def main(argv=None):
     key = args[1] if len(args) >= 2 else None
     value = args[2] if len(args) >= 3 else None
 
-    specs_dir = get_specs_dir()
-    meta_path = specs_dir / topic_name / "meta.json"
+    topic_dir = resolve_topic_dir(topic_name)
+    meta_path = topic_dir / "meta.json"
 
     if not meta_path.is_file():
         print(f"Error: file not found: {meta_path}", file=sys.stderr)

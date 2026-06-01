@@ -169,7 +169,7 @@ class TestErrorOnMissingTopic:
         result = _run_script(tmp_path, "nonexistent", "key", "value")
 
         assert result.returncode == 1
-        assert "file not found" in result.stderr
+        assert "no topic matching" in result.stderr
 
     def test_missing_topic_via_main(self, monkeypatch, tmp_path):
         from config import SpexContext
