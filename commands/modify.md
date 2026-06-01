@@ -59,7 +59,7 @@ before rendering, so the prompt only includes completed step context.
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
 according to the instructions rendered in the prompt.
 
-### Phase 5: Regenerate Development Steps
+### Phase 5: Build Todo Prompt
 
 Run:
 
@@ -73,10 +73,13 @@ Parse the JSON output from stdout:
   message and stop.
 - Otherwise, save `$todo_prompt` from the `"prompt"` field.
 
-Using `$todo_prompt` as the prompt, add new development steps using
-`spex todo-helper` commands (`append`, `edit`, `remove`, `show`).
+### Phase 6: Regenerate Development Steps
 
-### Phase 6: Post-Action
+Using `$todo_prompt` as the prompt, add new development steps to
+`todo.json` via `spex todo-helper` commands (`append`, `edit`, `remove`,
+`show`) as described in the rendered prompt.
+
+### Phase 7: Post-Action
 
 Run:
 
@@ -87,7 +90,7 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 
 If the script exits with an error, report the error and stop.
 
-### Phase 7: Output
+### Phase 8: Output
 
 Display the following summary to the user:
 
@@ -99,7 +102,7 @@ Display the following summary to the user:
 - Meta: `$topic_path/meta.json`
 ```
 
-### Phase 8: STOP — Do NOT Implement
+### Phase 9: STOP — Do NOT Implement
 
 **This is a hard stop. Do NOT write any application code, modify any
 project files, or begin implementing the updated plan.**
