@@ -147,6 +147,11 @@ def cli_submit(argv=None) -> None:
             print(json.dumps({"action": method, "source": source,
                               "target": target, "errors": errors}))
             sys.exit(1)
+    else:
+        errors.append(f"submit method '{method}' is not implemented")
+        print(json.dumps({"action": method, "source": source,
+                          "target": target, "errors": errors}))
+        sys.exit(1)
 
     # Run post-action hook on success
     short_name = strip_date_prefix(topic_dir.name)
