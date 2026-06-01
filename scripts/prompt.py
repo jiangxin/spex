@@ -98,15 +98,15 @@ def _trim_spec_content(spec_content):
         sections = {}
         for i, m in enumerate(markers):
             name = m.group(1)
-            start = m.start()
+            start = m.end()
             end = markers[i + 1].start() if i + 1 < len(markers) else len(
                 spec_content
             )
-            sections[name] = spec_content[start:end].rstrip()
+            sections[name] = spec_content[start:end].strip()
 
-        found_include = [k for k in include_sections if k in sections]
+        found_include = [k for k in sections if k in include_sections]
         if found_include:
-            kept = [sections[k] for k in include_sections if k in sections]
+            kept = [sections[k] for k in sections if k in include_sections]
         else:
             kept = [
                 sections[k] for k in sections
