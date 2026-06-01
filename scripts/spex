@@ -20,43 +20,41 @@ Global options:
   --version, -V       Show version and exit
 
 Commands (run directly):
-  list [--all]  List spec topics with progress (--all includes archived)
-  show <topic>  Show detailed topic information (-v for full spec)
   archive [-n] [--topic <topic>]
               Archive completed spec topics (--dry-run to preview)
-  open          Open spec directory in file browser
-  init          Initialize spex environment
   config [get] [--all] [var ...]
                 Show spex configuration variables
+  init          Initialize spex environment
+  list [--all]  List spec topics with progress (--all includes archived)
   merge --topic <name>
                 Merge a spex branch back to target (alias: submit)
+  open          Open spec directory in file browser
+  show <topic>  Show detailed topic information (-v for full spec)
 
-Commands (planning — documents only, no code changes):
-  create      Create a new spec (aliases: init, new)
+Commands (LLM skill only — invoked via /spex, not directly):
+  apply       Apply all steps of a spec (or apply-one-step for single step)
+  create      Create a new spec
   modify      Modify an existing spec
 
-Commands (implementation — modifies code):
-  apply       Apply a spec step-by-step
-
 Internal commands (used by skill):
-  get-topic [name]
-                Resolve a topic directory
-  prompt <name> [--topic <topic>] [-o <file>]
-                Render a Jinja2 template with metadata
-  meta <topic_name> <key> [value]
-                Set key/value in meta.json (appends if key is "prompts")
-                Reads value from stdin if not provided
-  todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
-                Operate on todo files (validate, append, edit, remove,
-                show, xml2json, json2xml)
-  create-helper <subcommand>
-                Helper utilities for spec creation
-                (precheck, prepare-spec)
   apply-helper <subcommand>
                 Helper utilities for applying specs
                 (precheck, post-action)
+  create-helper <subcommand>
+                Helper utilities for spec creation
+                (precheck, prepare-spec)
+  get-topic [name]
+                Resolve a topic directory
+  meta <topic_name> <key> [value]
+                Set key/value in meta.json (appends if key is "prompts")
+                Reads value from stdin if not provided
+  prompt <name> [--topic <topic>] [-o <file>]
+                Render a Jinja2 template with metadata
   run-hook <hook_name> --event-type <type> --topic <name>
                 Execute a hook script with event data
+  todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
+                Operate on todo files (validate, append, edit, remove,
+                show, xml2json, json2xml)
 """
 
 LLM_COMMANDS = {"apply", "create", "new", "modify"}
