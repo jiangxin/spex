@@ -5,7 +5,7 @@ Archive completed specification topics.
 ## Usage
 
 ```text
-/spex archive [--topic <topic>] [--dry-run | -n] [--force | -f]
+/spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--not]
 ```
 
 ## Options
@@ -15,6 +15,7 @@ Archive completed specification topics.
 | `--topic`      | Archive a single topic by name         |
 | `--dry-run, -n`| Preview without moving                 |
 | `--force, -f`  | Bypass spex_branch existence check     |
+| `--not`        | Restore a topic from archives to specs |
 
 ## Behavior
 
@@ -22,6 +23,11 @@ Topics are only archived if all tasks in `todo.json` are completed.
 Additionally, if a topic has `spex_branch` in `meta.json` and the
 referenced git branch still exists, the topic is skipped with a warning
 unless `--force` is provided.
+
+When `--not` is used with `--topic <name>`, the operation is reversed:
+the topic is searched in `archives_dir` with fuzzy substring matching.
+If exactly one topic matches, it is moved back to `specs_dir`. Errors
+out if no match or multiple matches are found.
 
 ## Procedure
 

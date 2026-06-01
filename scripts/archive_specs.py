@@ -8,12 +8,14 @@ into the archives directory.
 from __future__ import annotations
 
 import shutil
+import sys
 from pathlib import Path
 
 from branch import branch_exists
 from cli import ArgumentParser
 from common import (
     check_help_flag,
+    find_matching_topics,
     get_archives_dir,
     get_current_workdir,
     get_specs_dir,
@@ -37,7 +39,7 @@ def has_active_branch(topic_dir: Path) -> bool:
 
 
 USAGE = """\
-Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f]
+Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--not]
 
 Archive completed spec topics.
 
@@ -45,6 +47,7 @@ Options:
   --topic <topic>  Archive a single topic by name
   --dry-run, -n    Preview without moving
   --force, -f      Bypass spex_branch existence check
+  --not            Restore a topic from archives back to specs
   -h, --help       Show this help message and exit
 """
 
@@ -75,23 +78,32 @@ def find_completed_topics(
     return sorted(results)
 
 
-def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
-    """Move topic_dir into archives_dir, appending suffix on conflict.
+def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
+    """Move source_dir into dest_dir, appending suffix on conflict.
 
     Returns the final destination path.
     """
-    dest = archives_dir / topic_dir.name
+    dest = dest_dir / source_dir.name
     if not dest.exists():
-        shutil.move(str(topic_dir), str(dest))
+        shutil.move(str(source_dir), str(dest))
         return dest
 
     counter = 2
     while True:
-        candidate = archives_dir / f"{topic_dir.name}-{counter}"
+        candidate = dest_dir / f"{source_dir.name}-{counter}"
         if not candidate.exists():
-            shutil.move(str(topic_dir), str(candidate))
+            shutil.move(str(source_dir), str(candidate))
             return candidate
         counter += 1
+
+
+def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
+    """Move topic_dir into archives_dir, appending suffix on conflict.
+
+    Thin wrapper around move_topic_with_conflict for backward compatibility.
+    Returns the final destination path.
+    """
+    return move_topic_with_conflict(topic_dir, archives_dir)
 
 
 def archive_single_topic(
@@ -121,6 +133,47 @@ def archive_single_topic(
     return dest
 
 
+def restore_single_topic(
+    topic_name: str,
+    specs_dir: Path,
+    archives_dir: Path,
+) -> Path | None:
+    """Restore a single topic from archives back to specs.
+
+    Uses fuzzy substring matching against archives_dir. Exits with error
+    if no match or multiple matches.
+
+    Returns the destination path in specs_dir, or None on error.
+    """
+    if not archives_dir.is_dir():
+        print(
+            f"Error: archives directory does not exist: {archives_dir}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    matches = find_matching_topics(topic_name, archives_dir)
+    if not matches:
+        print(
+            f"Error: no topic matching '{topic_name}' found in archives.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if len(matches) > 1:
+        names = "\n  ".join(m.name for m in matches)
+        print(
+            f"Error: multiple topics match '{topic_name}' in archives:"
+            f"\n  {names}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    dest = move_topic_with_conflict(matches[0], specs_dir)
+    print(f"Restored: {matches[0].name} -> {dest}")
+    return dest
+
+
 def main(argv=None):
     check_help_flag(USAGE, argv)
 
@@ -130,10 +183,22 @@ def main(argv=None):
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
+    parser.add_argument("--not", action="store_true", dest="not_flag",
+                        help="Restore a topic from archives back to specs")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
+
+    if args.not_flag:
+        if not args.topic:
+            print(
+                "Error: --not requires --topic to specify what to restore.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        restore_single_topic(args.topic, specs_dir, archives_dir)
+        return
 
     if args.topic:
         archive_single_topic(args.topic, specs_dir, archives_dir, args.force)

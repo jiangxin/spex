@@ -30,18 +30,23 @@ def _setup_spex_toml(tmp_path):
         )
 
 
-def _run_script(tmp_path, topic_name, key, value=None):
+def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
+                input_data=None):
     """Run meta.py as a subprocess with .spex.toml pointing to tmp_path."""
     _setup_spex_toml(tmp_path)
-    args = [sys.executable, SCRIPT, topic_name, key]
+    args = [sys.executable, SCRIPT, topic_name]
+    if key is not None:
+        args.append(key)
     if value is not None:
         args.append(value)
+    if stdin_flag:
+        args.append("--stdin")
     return subprocess.run(
         args,
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        input="" if value is not None else None,
+        input=input_data,
     )
 
 
@@ -130,19 +135,13 @@ class TestSetNonPromptsKey:
 
 
 class TestReadValueFromStdin:
-    """Verify value is read from stdin when not provided as argument."""
+    """Verify value is read from stdin when --stdin flag is used."""
 
     def test_read_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": []})
-        _setup_spex_toml(tmp_path)
 
-        result = subprocess.run(
-            [sys.executable, SCRIPT, "my-topic", "prompts"],
-            capture_output=True,
-            text=True,
-            input="stdin value",
-            cwd=str(tmp_path),
-        )
+        result = _run_script(tmp_path, "my-topic", "prompts",
+                             stdin_flag=True, input_data="stdin value")
 
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
@@ -151,15 +150,9 @@ class TestReadValueFromStdin:
 
     def test_read_key_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {})
-        _setup_spex_toml(tmp_path)
 
-        result = subprocess.run(
-            [sys.executable, SCRIPT, "my-topic", "branch"],
-            capture_output=True,
-            text=True,
-            input="feature-x",
-            cwd=str(tmp_path),
-        )
+        result = _run_script(tmp_path, "my-topic", "branch",
+                             stdin_flag=True, input_data="feature-x")
 
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
@@ -176,7 +169,7 @@ class TestErrorOnMissingTopic:
         result = _run_script(tmp_path, "nonexistent", "key", "value")
 
         assert result.returncode == 1
-        assert "file not found" in result.stderr
+        assert "no topic matching" in result.stderr
 
     def test_missing_topic_via_main(self, monkeypatch, tmp_path):
         from config import SpexContext
@@ -208,20 +201,64 @@ class TestErrorOnInsufficientArgs:
             text=True,
         )
         assert result.returncode == 1
-        assert "Usage" in result.stderr
 
-    def test_one_arg_exits_1(self):
-        result = subprocess.run(
-            [sys.executable, SCRIPT, "my-topic"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 1
-        assert "Usage" in result.stderr
-
-    def test_insufficient_args_via_main(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", "my-topic"])
+    def test_no_args_via_main(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["prog"])
 
         with pytest.raises(SystemExit) as exc_info:
             meta.main()
         assert exc_info.value.code == 1
+
+
+class TestGetMode:
+    """Verify get mode displays meta contents."""
+
+    def test_get_all_keys(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {
+            "topic": "my-topic",
+            "branch": "main",
+        })
+
+        result = _run_script(tmp_path, "my-topic")
+
+        assert result.returncode == 0
+        assert "topic: my-topic" in result.stdout
+        assert "branch: main" in result.stdout
+
+    def test_get_single_key(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {"branch": "feature-x"})
+
+        result = _run_script(tmp_path, "my-topic", "branch")
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == "feature-x"
+
+    def test_get_missing_key_exits_1(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {"branch": "main"})
+
+        result = _run_script(tmp_path, "my-topic", "nonexistent")
+
+        assert result.returncode == 1
+        assert "not found" in result.stderr
+
+    def test_get_list_key(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {"prompts": ["first", "second"]})
+
+        result = _run_script(tmp_path, "my-topic", "prompts")
+
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert output == ["first", "second"]
+
+    def test_get_all_with_list(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {
+            "topic": "test",
+            "prompts": ["hello"],
+        })
+
+        result = _run_script(tmp_path, "my-topic")
+
+        assert result.returncode == 0
+        assert "topic: test" in result.stdout
+        assert "prompts:" in result.stdout
+        assert "- hello" in result.stdout

@@ -9,6 +9,8 @@ from archive_specs import (
     find_completed_topics,
     has_active_branch,
     move_topic,
+    move_topic_with_conflict,
+    restore_single_topic,
 )
 from common import is_topic_completed
 
@@ -184,6 +186,63 @@ class TestMoveTopic:
         assert dest == archives / "my-topic-3"
         assert dest.is_dir()
         assert not topic.exists()
+
+
+class TestMoveTopicWithConflict:
+    """Tests for move_topic_with_conflict (bidirectional)."""
+
+    def test_specs_to_archives(self, tmp_path):
+        """Move from specs to archives direction."""
+        topic = tmp_path / "specs" / "my-topic"
+        _write_todo(topic, [_make_task("1")])
+        archives = tmp_path / "archives"
+        archives.mkdir()
+
+        dest = move_topic_with_conflict(topic, archives)
+
+        assert dest == archives / "my-topic"
+        assert dest.is_dir()
+        assert not topic.exists()
+
+    def test_archives_to_specs(self, tmp_path):
+        """Move from archives to specs direction."""
+        archives = tmp_path / "archives" / "my-topic"
+        _write_todo(archives, [_make_task("1")])
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = move_topic_with_conflict(archives, specs)
+
+        assert dest == specs / "my-topic"
+        assert dest.is_dir()
+        assert not archives.exists()
+
+    def test_conflict_appends_suffix(self, tmp_path):
+        """Conflict in dest_dir appends -2 suffix."""
+        src = tmp_path / "src" / "my-topic"
+        _write_todo(src, [_make_task("1")])
+        dest_dir = tmp_path / "dest"
+        (dest_dir / "my-topic").mkdir(parents=True)
+
+        dest = move_topic_with_conflict(src, dest_dir)
+
+        assert dest == dest_dir / "my-topic-2"
+        assert dest.is_dir()
+        assert not src.exists()
+
+    def test_multiple_conflicts_increment(self, tmp_path):
+        """Multiple conflicts increment suffix to -3."""
+        src = tmp_path / "src" / "my-topic"
+        _write_todo(src, [_make_task("1")])
+        dest_dir = tmp_path / "dest"
+        (dest_dir / "my-topic").mkdir(parents=True)
+        (dest_dir / "my-topic-2").mkdir(parents=True)
+
+        dest = move_topic_with_conflict(src, dest_dir)
+
+        assert dest == dest_dir / "my-topic-3"
+        assert dest.is_dir()
+        assert not src.exists()
 
 
 class TestMain:
@@ -631,3 +690,155 @@ class TestMainWithBranchGuard:
         output = capsys.readouterr().out
         assert "2026-05-27-14-11-archive-branch-guard" in output
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
+
+
+class TestRestoreSingleTopic:
+    """Tests for restore_single_topic."""
+
+    def test_restore_single_match(self, tmp_path, capsys):
+        """Single match in archives → moved to specs."""
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = restore_single_topic("my-topic", specs, archives)
+
+        assert dest == specs / "my-topic"
+        assert dest.is_dir()
+        assert not (archives / "my-topic").exists()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert "my-topic" in output
+
+    def test_restore_no_match(self, tmp_path, capsys):
+        """No match → exit 1 with error."""
+        archives = tmp_path / "archives"
+        archives.mkdir()
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        with pytest.raises(SystemExit) as exc_info:
+            restore_single_topic("nonexistent", specs, archives)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "no topic matching" in err
+
+    def test_restore_multiple_matches(self, tmp_path, capsys):
+        """Multiple matches → exit 1 listing candidates."""
+        archives = tmp_path / "archives"
+        (archives / "2026-01-01-topic-a").mkdir(parents=True)
+        (archives / "2026-01-02-topic-b").mkdir(parents=True)
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        with pytest.raises(SystemExit) as exc_info:
+            restore_single_topic("topic", specs, archives)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "multiple topics match" in err
+        assert "topic-a" in err
+        assert "topic-b" in err
+
+    def test_restore_name_conflict(self, tmp_path, capsys):
+        """Conflict in specs → topic moved as <name>-2."""
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        specs = tmp_path / "specs"
+        (specs / "my-topic").mkdir(parents=True)
+
+        dest = restore_single_topic("my-topic", specs, archives)
+
+        assert dest == specs / "my-topic-2"
+        assert dest.is_dir()
+        assert not (archives / "my-topic").exists()
+
+    def test_restore_partial_match(self, tmp_path, capsys):
+        """Partial match finds unique topic."""
+        archives = tmp_path / "archives"
+        _write_todo(
+            archives / "2026-05-27-14-11-archive-branch-guard",
+            [_make_task("1")],
+        )
+        specs = tmp_path / "specs"
+        specs.mkdir()
+
+        dest = restore_single_topic("branch-guard", specs, archives)
+
+        expected = specs / "2026-05-27-14-11-archive-branch-guard"
+        assert dest == expected
+        assert dest.is_dir()
+        assert not (
+            archives / "2026-05-27-14-11-archive-branch-guard"
+        ).exists()
+
+
+class TestNotFlagCLI:
+    """Integration tests for --not flag in main()."""
+
+    def test_not_without_topic_errors(self, tmp_path, capsys, monkeypatch):
+        """--not without --topic → error."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        archives.mkdir()
+        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--not"])
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                archive_specs.main()
+            assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "--not" in err
+        assert "--topic" in err
+
+    def test_not_restores_from_archives(self, tmp_path, capsys, monkeypatch):
+        """--not --topic restores topic from archives to specs."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        monkeypatch.setattr(
+            sys, "argv", ["archive_specs.py", "--not", "--topic", "my-topic"]
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert "my-topic" in output
+        assert (specs / "my-topic").is_dir()
+        assert not (archives / "my-topic").exists()
+
+    def test_not_partial_match_restores(self, tmp_path, capsys, monkeypatch):
+        """--not with partial topic name restores unique match."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(
+            archives / "2026-05-27-14-11-archive-branch-guard",
+            [_make_task("1")],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["archive_specs.py", "--not", "--topic", "branch-guard"],
+        )
+        with patch.object(
+            archive_specs, "get_specs_dir", return_value=specs
+        ), patch.object(
+            archive_specs, "get_archives_dir", return_value=archives
+        ):
+            archive_specs.main()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert (specs / "2026-05-27-14-11-archive-branch-guard").is_dir()
+        assert not (
+            archives / "2026-05-27-14-11-archive-branch-guard"
+        ).exists()

@@ -45,9 +45,8 @@ Internal commands (used by skill):
                 (precheck, prepare-spec)
   get-topic [name]
                 Resolve a topic directory
-  meta <topic_name> <key> [value]
-                Set key/value in meta.json (appends if key is "prompts")
-                Reads value from stdin if not provided
+  meta <topic_name> [key] [value] [--stdin]
+                Get or set key/value in meta.json
   prompt <name> [--topic <topic>] [-o <file>]
                 Render a Jinja2 template with metadata
   run-hook <hook_name> --event-type <type> --topic <name>
@@ -213,7 +212,7 @@ def _run_prompt(argv=None):
 
 
 def _run_meta(argv=None):
-    """Set key/value in meta.json."""
+    """Get or set key/value in meta.json."""
     import meta
 
     meta.main(argv)
