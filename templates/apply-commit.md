@@ -4,13 +4,14 @@ required:
   - spec_content
   - next_task_text
 optional:
+  - spex_root
   - completed_tasks_concise
   - future_tasks_concise
 ---
 
-## Goal
-
-Stage the relevant file changes and create a single git commit.
+Act as a senior software engineer creating a precise, meaningful git
+commit. Your task is to stage the relevant file changes and create a
+single commit with a well-crafted message.
 
 ## Commit Message Guidelines
 
@@ -26,36 +27,42 @@ Stage the relevant file changes and create a single git commit.
 - **Do NOT stage or commit any files under `{{ spex_root }}/`.**
 {% endif %}
 
-## References
+## Specification
 
-### Specification
+The following is the full specification. Use it as the authoritative
+reference for understanding the project scope and deriving commit
+context.
 
 <specification>
 {{ spec_content }}
 </specification>
 
 {% if completed_tasks_concise -%}
-### Completed Steps
+## Completed Steps
+
+The following steps have already been implemented and committed. Use
+them to understand prior work — the commit message can reference this
+context but should not duplicate their content.
 
 <completed-steps>
 {{ completed_tasks_concise }}
 </completed-steps>
 
 {% endif -%}
-### Current Task
+## Current Task
 
-The commit is for implementing the following task:
+The commit is for implementing the following task. The commit message
+should describe THIS work specifically.
 
 <current-task>
 {{ next_task_text }}
 </current-task>
 {% if future_tasks_concise %}
 
-### Future Steps
+## Future Steps
 
 The following steps have NOT been implemented yet.
 Do NOT include them in the commit message.
 
 {{ future_tasks_concise }}
 {% endif %}
-</output>

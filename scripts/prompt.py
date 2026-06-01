@@ -219,11 +219,9 @@ def _build_metadata(template_name, topic_name=None):
                     metadata["spex_root"] = rel
             except (ValueError, RuntimeError):
                 pass
-        if topic_name:
-            metadata.update(_build_task_context(topic_dir))
-
-    if template_name in ("apply-one-task", "modify-spec", "modify-todo") \
-            and topic_name:
+    # All topic-based templates except spec-template need task context:
+    # apply-commit, apply-one-task, modify-spec, modify-todo
+    if template_name != "spec-template" and topic_name:
         metadata.update(_build_task_context(topic_dir))
 
     return metadata
