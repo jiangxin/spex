@@ -541,7 +541,7 @@ def main(argv=None):
     parser = ArgumentParser(
         prog="spex todo-helper", usage=USAGE, add_help=False,
     )
-    locator = parser.add_mutually_exclusive_group(required=True)
+    locator = parser.add_mutually_exclusive_group()
     locator.add_argument("--topic")
     locator.add_argument("--todo-file")
     parser.add_argument("--xml", action="store_true")
@@ -569,6 +569,13 @@ def main(argv=None):
         elif args.subcmd == "json2xml":
             cmd_json2xml(None, False, rest)
         return
+
+    if not args.topic and not args.todo_file:
+        print(
+            "Error: one of the arguments --topic --todo-file is required.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     todo_path, is_xml = _resolve_todo_path(args)
 

@@ -885,3 +885,40 @@ class TestXmlFormat:
         assert len(result) == 3
         assert result[0]["id"] == "step-1"
 
+
+
+class TestSubcommandHelp:
+    """Tests for subcommand -h/--help working without --topic/--todo-file."""
+
+    def test_validate_help_exits_0(self, capsys):
+        """validate -h should show help and exit 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["validate", "-h"])
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "validate" in out.lower()
+
+    def test_append_help_exits_0(self, capsys):
+        """append -h should show usage and exit 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["append", "-h"])
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "--id" in out
+
+    def test_show_help_exits_0(self, capsys):
+        """show -h should show usage and exit 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["show", "-h"])
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "--format" in out
+
+    def test_no_locator_errors(self, capsys):
+        """Without --topic or --todo-file, should error with exit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["validate"])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "--topic" in err
+        assert "--todo-file" in err
