@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(_scripts_dir))
 
 SPEX_SCRIPT = str(_scripts_dir / "spex")
 
@@ -38,7 +39,7 @@ def _make_context(**overrides):
         "spex_root": "/test/repo/.spex",
         "config": {
             "spex_root": ".spex",
-            "branch_management": False,
+            "create_branch": False,
             "main_branch_name": "",
             "submit_method": "merge",
         },
@@ -58,7 +59,7 @@ class TestBuildConfigVars:
 
         expected_keys = [
             "top_workdir", "main_worktree", "spex_root",
-            "config.spex_root", "config.branch_management",
+            "config.spex_root", "config.create_branch",
             "config.main_branch_name", "config.submit_method",
             "spex_tomls", "spex_roots",
         ]
@@ -104,7 +105,7 @@ class TestPrintConfigVars:
         # followed by "- ")
         scalar_keys = [
             "top_workdir", "main_worktree", "spex_root",
-            "config.spex_root", "config.branch_management",
+            "config.spex_root", "config.create_branch",
             "config.main_branch_name", "config.submit_method",
         ]
         list_keys = ["spex_tomls", "spex_roots"]
@@ -113,12 +114,11 @@ class TestPrintConfigVars:
         last_scalar_idx = -1
         first_list_idx = len(lines)
         for i, line in enumerate(lines):
-            for sk in scalar_keys:
-                if line.startswith(f"{sk}:"):
-                    last_scalar_idx = max(last_scalar_idx, i)
-            for lk in list_keys:
-                if line.startswith(f"{lk}:"):
-                    first_list_idx = min(first_list_idx, i)
+            key = line.split()[0] if line.split() else ""
+            if key in scalar_keys:
+                last_scalar_idx = max(last_scalar_idx, i)
+            if key in list_keys:
+                first_list_idx = min(first_list_idx, i)
 
         assert last_scalar_idx < first_list_idx
 
@@ -127,14 +127,14 @@ class TestPrintConfigVars:
         _print_config_vars(all_vars, None)
 
         out = capsys.readouterr().out
-        assert "myvar: (none)" in out
+        assert "myvar : (none)" in out
 
     def test_empty_list_shows_empty(self, capsys):
         all_vars = {"mylist": ([], True)}
         _print_config_vars(all_vars, None)
 
         out = capsys.readouterr().out
-        assert "mylist: (empty)" in out
+        assert "mylist : (empty)" in out
 
     def test_list_items_use_dash_prefix(self, capsys):
         all_vars = {"paths": (["/a", "/b"], True)}
@@ -142,9 +142,9 @@ class TestPrintConfigVars:
 
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
-        assert lines[0] == "paths:"
-        assert lines[1] == "- /a"
-        assert lines[2] == "- /b"
+        assert lines[0] == "paths :"
+        assert lines[1] == "  - /a"
+        assert lines[2] == "  - /b"
 
     def test_unknown_variable_errors(self, capsys):
         all_vars = {"known": ("val", False)}
@@ -165,9 +165,9 @@ class TestPrintConfigVars:
         _print_config_vars(all_vars, ["b"])
 
         out = capsys.readouterr().out
-        assert "b: val_b" in out
-        assert "a:" not in out
-        assert "c:" not in out
+        assert "b : val_b" in out
+        assert "a " not in out
+        assert "c " not in out
 
 
 class TestRunConfig:
@@ -179,15 +179,11 @@ class TestRunConfig:
             _run_config([])
 
         out = capsys.readouterr().out
-        assert "top_workdir:" in out
-        assert "main_worktree:" in out
-        assert "spex_root:" in out
-        assert "config.spex_root:" in out
-        assert "config.branch_management:" in out
-        assert "config.main_branch_name:" in out
-        assert "config.submit_method:" in out
-        assert "spex_tomls:" in out
-        assert "spex_roots:" in out
+        for key in ("top_workdir", "main_worktree", "spex_root",
+                     "config.spex_root", "config.create_branch",
+                     "config.main_branch_name", "config.submit_method",
+                     "spex_tomls", "spex_roots"):
+            assert key in out, f"{key} not found in output"
 
     def test_default_output_lists_last(self, capsys):
         ctx = _make_context()
@@ -200,11 +196,11 @@ class TestRunConfig:
         # Find line indices for spex_root (scalar) and spex_tomls (list)
         spex_root_idx = next(
             i for i, line in enumerate(lines)
-            if line.startswith("spex_root:")
+            if line.startswith("spex_root")
         )
         spex_tomls_idx = next(
             i for i, line in enumerate(lines)
-            if line.startswith("spex_tomls:")
+            if line.startswith("spex_tomls")
         )
         assert spex_root_idx < spex_tomls_idx
 
@@ -216,7 +212,7 @@ class TestRunConfig:
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
         assert len(lines) == 1
-        assert lines[0].startswith("spex_root:")
+        assert lines[0].startswith("spex_root")
 
     def test_multi_variable_query_in_order(self, capsys):
         ctx = _make_context()
@@ -227,8 +223,8 @@ class TestRunConfig:
         lines = out.strip().splitlines()
         assert len(lines) == 2
         # Canonical order: top_workdir before spex_root
-        assert lines[0].startswith("top_workdir:")
-        assert lines[1].startswith("spex_root:")
+        assert lines[0].startswith("top_workdir")
+        assert lines[1].startswith("spex_root")
 
     def test_list_variable_format(self, capsys):
         ctx = _make_context(
@@ -239,9 +235,9 @@ class TestRunConfig:
 
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
-        assert lines[0] == "spex_tomls:"
-        assert lines[1] == "- /a/.spex.toml"
-        assert lines[2] == "- /b/.spex.toml"
+        assert lines[0] == "spex_tomls :"
+        assert lines[1] == "  - /a/.spex.toml"
+        assert lines[2] == "  - /b/.spex.toml"
 
     def test_empty_list_shows_empty(self, capsys):
         ctx = _make_context(spex_tomls=[])
@@ -249,7 +245,7 @@ class TestRunConfig:
             _run_config(["spex_tomls"])
 
         out = capsys.readouterr().out
-        assert "spex_tomls: (empty)" in out
+        assert "spex_tomls : (empty)" in out
 
     def test_none_value_shows_none(self, capsys):
         ctx = _make_context(top_workdir=None)
@@ -257,7 +253,7 @@ class TestRunConfig:
             _run_config(["top_workdir"])
 
         out = capsys.readouterr().out
-        assert "top_workdir: (none)" in out
+        assert "top_workdir : (none)" in out
 
     def test_unknown_variable_error(self, capsys):
         ctx = _make_context()
@@ -275,7 +271,8 @@ class TestRunConfig:
             _run_config(["spex-root"])
 
         out = capsys.readouterr().out
-        assert "spex_root:" in out
+        assert "spex_root" in out
+        assert " : " in out
 
     def test_hyphen_to_underscore_config_key(self, capsys):
         ctx = _make_context()
@@ -283,7 +280,8 @@ class TestRunConfig:
             _run_config(["config.main-branch-name"])
 
         out = capsys.readouterr().out
-        assert "config.main_branch_name:" in out
+        assert "config.main_branch_name" in out
+        assert " : " in out
 
 
 class TestOldGetCommandRemoved:

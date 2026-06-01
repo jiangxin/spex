@@ -2,9 +2,9 @@ import json
 import sys
 from unittest.mock import patch
 
-import archive_specs
+import archive as spex_archive
 import pytest
-from archive_specs import (
+from archive import (
     archive_single_topic,
     find_completed_topics,
     has_active_branch,
@@ -253,11 +253,11 @@ class TestMain:
         specs.mkdir()
         archives = tmp_path / "archives"
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main([])
+            spex_archive.main([])
         output = capsys.readouterr().out
         assert "No completed topics" in output
 
@@ -270,11 +270,11 @@ class TestMain:
         )
         archives = tmp_path / "archives"
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main([])
+            spex_archive.main([])
         output = capsys.readouterr().out
         assert "done-topic" in output
         assert "wip-topic" not in output
@@ -285,13 +285,13 @@ class TestMain:
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--dry-run"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--dry-run"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "Would archive 1 topic(s)" in output
         assert "done-topic" in output
@@ -302,13 +302,13 @@ class TestMain:
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "-n"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "-n"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "Would archive" in output
         assert (specs / "done-topic").is_dir()
@@ -319,14 +319,14 @@ class TestMain:
         _write_todo(specs / "other-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive_specs.py", "--topic", "target-topic"]
+            sys, "argv", ["archive.py", "--topic", "target-topic"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "target-topic" in output
         assert (archives / "target-topic").is_dir()
@@ -338,14 +338,14 @@ class TestMain:
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--topic"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--topic"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
             with pytest.raises(SystemExit) as exc_info:
-                archive_specs.main()
+                spex_archive.main()
             assert exc_info.value.code == 2
         err = capsys.readouterr().err
         assert "--topic" in err
@@ -401,7 +401,7 @@ class TestHasActiveBranch:
         (topic / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/some-branch"}), encoding="utf-8"
         )
-        with patch("archive_specs.branch_exists", return_value=True):
+        with patch("archive.branch_exists", return_value=True):
             assert has_active_branch(topic) is True
 
     def test_returns_false_when_branch_missing(self, tmp_path):
@@ -410,7 +410,7 @@ class TestHasActiveBranch:
         (topic / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/gone-branch"}), encoding="utf-8"
         )
-        with patch("archive_specs.branch_exists", return_value=False):
+        with patch("archive.branch_exists", return_value=False):
             assert has_active_branch(topic) is False
 
     def test_returns_false_when_no_spex_branch(self, tmp_path):
@@ -442,7 +442,7 @@ class TestFindCompletedTopicsWithBranchGuard:
         topic_b = specs / "no-branch-topic"
         _write_todo(topic_b, [_make_task("1")])
 
-        with patch("archive_specs.branch_exists", return_value=True):
+        with patch("archive.branch_exists", return_value=True):
             result = find_completed_topics(specs, force=False)
 
         names = [d.name for d in result]
@@ -457,7 +457,7 @@ class TestFindCompletedTopicsWithBranchGuard:
             json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
         )
 
-        with patch("archive_specs.branch_exists", return_value=True):
+        with patch("archive.branch_exists", return_value=True):
             result = find_completed_topics(specs, force=True)
 
         assert len(result) == 1
@@ -471,7 +471,7 @@ class TestFindCompletedTopicsWithBranchGuard:
             json.dumps({"spex_branch": "spex/merged"}), encoding="utf-8"
         )
 
-        with patch("archive_specs.branch_exists", return_value=False):
+        with patch("archive.branch_exists", return_value=False):
             result = find_completed_topics(specs, force=False)
 
         assert len(result) == 1
@@ -491,7 +491,7 @@ class TestArchiveSingleWithBranchGuard:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive_specs.branch_exists", return_value=True):
+        with patch("archive.branch_exists", return_value=True):
             result = archive_single_topic("active-topic", specs, archives)
 
         assert result is None
@@ -505,7 +505,7 @@ class TestArchiveSingleWithBranchGuard:
         _write_todo(specs / "merged-topic", [_make_task("1")])
         archives = tmp_path / "archives"
 
-        with patch("archive_specs.branch_exists", return_value=False):
+        with patch("archive.branch_exists", return_value=False):
             result = archive_single_topic("merged-topic", specs, archives)
 
         assert result == archives / "merged-topic"
@@ -521,7 +521,7 @@ class TestArchiveSingleWithBranchGuard:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive_specs.branch_exists", return_value=True):
+        with patch("archive.branch_exists", return_value=True):
             result = archive_single_topic(
                 "active-topic", specs, archives, force=True
             )
@@ -536,7 +536,7 @@ class TestArchiveSingleWithBranchGuard:
         _write_todo(topic, [_make_task("1")])
         archives = tmp_path / "archives"
 
-        with patch("archive_specs.branch_exists", return_value=False):
+        with patch("archive.branch_exists", return_value=False):
             result = archive_single_topic("branch-guard", specs, archives)
 
         assert result == archives / "2026-05-27-14-11-archive-branch-guard"
@@ -571,16 +571,16 @@ class TestMainWithBranchGuard:
         )
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive_specs.py", "--force"]
+            sys, "argv", ["archive.py", "--force"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive_specs.branch_exists", return_value=True
+            "archive.branch_exists", return_value=True
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "active-topic" in output
         assert (archives / "active-topic").is_dir()
@@ -595,16 +595,16 @@ class TestMainWithBranchGuard:
         )
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive_specs.py", "-f"]
+            sys, "argv", ["archive.py", "-f"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive_specs.branch_exists", return_value=True
+            "archive.branch_exists", return_value=True
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "active-topic" in output
 
@@ -622,17 +622,17 @@ class TestMainWithBranchGuard:
         _write_todo(topic_merged, [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive_specs.py", "--dry-run"]
+            sys, "argv", ["archive.py", "--dry-run"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive_specs.branch_exists",
+            "archive.branch_exists",
             side_effect=lambda name: name == "spex/active",
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "Would archive 1 topic(s)" in output
         assert "merged-topic" in output
@@ -653,16 +653,16 @@ class TestMainWithBranchGuard:
         topic_merged = specs / "merged-topic"
         _write_todo(topic_merged, [_make_task("1")])
         archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive_specs.py"])
+        monkeypatch.setattr(sys, "argv", ["archive.py"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive_specs.branch_exists",
+            "archive.branch_exists",
             side_effect=lambda name: name == "spex/active",
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "merged-topic" in output
         assert "active-topic" not in output
@@ -677,16 +677,16 @@ class TestMainWithBranchGuard:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive_specs.py", "--topic", "branch-guard"],
+            ["archive.py", "--topic", "branch-guard"],
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive_specs.branch_exists", return_value=False
+            "archive.branch_exists", return_value=False
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "2026-05-27-14-11-archive-branch-guard" in output
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
@@ -782,14 +782,14 @@ class TestNotFlagCLI:
         specs.mkdir()
         archives = tmp_path / "archives"
         archives.mkdir()
-        monkeypatch.setattr(sys, "argv", ["archive_specs.py", "--not"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--not"])
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
             with pytest.raises(SystemExit) as exc_info:
-                archive_specs.main()
+                spex_archive.main()
             assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "--not" in err
@@ -802,14 +802,14 @@ class TestNotFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive_specs.py", "--not", "--topic", "my-topic"]
+            sys, "argv", ["archive.py", "--not", "--topic", "my-topic"]
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "Restored:" in output
         assert "my-topic" in output
@@ -828,14 +828,14 @@ class TestNotFlagCLI:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive_specs.py", "--not", "--topic", "branch-guard"],
+            ["archive.py", "--not", "--topic", "branch-guard"],
         )
         with patch.object(
-            archive_specs, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
-            archive_specs, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", return_value=archives
         ):
-            archive_specs.main()
+            spex_archive.main()
         output = capsys.readouterr().out
         assert "Restored:" in output
         assert (specs / "2026-05-27-14-11-archive-branch-guard").is_dir()

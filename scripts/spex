@@ -59,6 +59,11 @@ Internal commands (used by skill):
 LLM_COMMANDS = {"apply", "create", "new", "modify"}
 
 
+def _normalize_subcmd(name):
+    """Normalize subcommand name: hyphens → underscores."""
+    return name.replace("-", "_")
+
+
 def _extract_global_options(argv):
     """Extract --version and -V from argv.
 
@@ -79,30 +84,30 @@ def _extract_global_options(argv):
 
 def _run_list(argv=None):
     """Run the list command."""
-    import list_specs
+    import list as spex_list
 
-    list_specs.main(argv)
+    spex_list.main(argv)
 
 
 def _run_archive(argv=None):
     """Run the archive command."""
-    import archive_specs
+    import archive
 
-    archive_specs.main(argv)
+    archive.main(argv)
 
 
 def _run_show(argv=None):
     """Show detailed topic information."""
-    import show_topic
+    import show as spex_show
 
-    show_topic.main(argv)
+    spex_show.main(argv)
 
 
 def _run_open(argv=None):
     """Open a topic directory in the system file browser."""
-    import open_topic
+    import open as spex_open
 
-    open_topic.main(argv)
+    spex_open.main(argv)
 
 
 _CONFIG_USAGE = """\
@@ -155,19 +160,23 @@ def _print_config_vars(all_vars, requested):
     non_list = [(k, v) for k, (v, is_list) in items if not is_list]
     list_items = [(k, v) for k, (v, is_list) in items if is_list]
 
+    max_key = max((len(k) for k, _ in items), default=0)
+
     for k, v in non_list:
+        label = k.ljust(max_key)
         if v is None:
-            print(f"{k}: (none)")
+            print(f"{label} : (none)")
         else:
-            print(f"{k}: {v}")
+            print(f"{label} : {v}")
 
     for k, v in list_items:
+        label = k.ljust(max_key)
         if not v:
-            print(f"{k}: (empty)")
+            print(f"{label} : (empty)")
         else:
-            print(f"{k}:")
+            print(f"{label} :")
             for item in v:
-                print(f"- {item}")
+                print(f"  - {item}")
 
 
 def _run_config(argv=None):
@@ -346,15 +355,15 @@ DIRECT_COMMANDS = {
     "open": _run_open,
     "init": _run_init,
     "config": _run_config,
-    "get-topic": _run_get_topic,
-"prompt": _run_prompt,
+    "get_topic": _run_get_topic,
+    "prompt": _run_prompt,
     "meta": _run_meta,
-    "todo-helper": _run_todo_helper,
-    "create-helper": _run_create_helper,
-    "apply-helper": _run_apply_helper,
+    "todo_helper": _run_todo_helper,
+    "create_helper": _run_create_helper,
+    "apply_helper": _run_apply_helper,
     "merge": _run_merge,
     "submit": _run_merge,
-    "run-hook": _run_hook,
+    "run_hook": _run_hook,
     "version": _run_version,
 }
 
@@ -371,6 +380,8 @@ def main(argv=None):
         sys.exit(0)
 
     command = argv[0]
+    if not command.startswith("-"):
+        command = _normalize_subcmd(command)
 
     if command in ("-h", "--help"):
         print(USAGE, end="")

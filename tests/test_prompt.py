@@ -448,7 +448,7 @@ class TestStdinExtraVars:
         monkeypatch.chdir(repo)
 
         json_input = json.dumps({
-            "spec_content": "My spec",
+            "spec_content_concise": "My spec",
             "current_task_description": "Build feature X",
         })
         monkeypatch.setattr(
@@ -461,7 +461,7 @@ class TestStdinExtraVars:
         main()
 
         captured = capsys.readouterr()
-        assert "<specification>" in captured.out
+        assert "<requirement>" in captured.out
         assert "My spec" in captured.out
         assert "<current-task>" in captured.out
         assert "Build feature X" in captured.out
@@ -735,7 +735,7 @@ class TestApplyCommitWithTopic:
         from prompt import render_prompt
 
         rendered = render_prompt("apply-commit", "test-topic")
-        assert "<specification>" in rendered
+        assert "<requirement>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
         assert "**step-1**: First step" in rendered
@@ -871,9 +871,9 @@ class TestModifySpecTemplate:
             "modify-spec", "test-topic",
             extra_vars={"prompt_context": "Add caching to the API"},
         )
-        assert "<prompt-context>" in rendered
+        assert "<user-request>" in rendered
         assert "Add caching to the API" in rendered
-        assert "<specification>" in rendered
+        assert "<old-specification>" in rendered
         assert "# Test Spec" in rendered
         assert "**step-1**: First step" in rendered
 
@@ -913,7 +913,7 @@ class TestModifySpecTemplate:
         main()
 
         captured = capsys.readouterr()
-        assert "<prompt-context>" in captured.out
+        assert "<user-request>" in captured.out
         assert "Refactor the auth module" in captured.out
 
         # Verify meta.json was updated
@@ -975,7 +975,7 @@ class TestModifyTodoTemplate:
         from prompt import render_prompt
 
         rendered = render_prompt("modify-todo", "test-topic")
-        assert "<specification>" in rendered
+        assert "<updated-specification>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
         assert "**step-1**: First step" in rendered
@@ -992,7 +992,7 @@ class TestModifyTodoTemplate:
         from prompt import render_prompt
 
         rendered = render_prompt("modify-todo", "test-topic")
-        assert "<specification>" in rendered
+        assert "<updated-specification>" in rendered
         assert "<completed-steps>" not in rendered
 
     def test_modify_todo_cleans_undone_todos_before_render(

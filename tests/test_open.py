@@ -2,9 +2,9 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import open_topic
+import open as spex_open  # noqa: A004
 import pytest
-from open_topic import find_topic, main, open_directory
+from open import find_topic, main, open_directory  # noqa: A004
 
 
 def _make_dir(base, name):
@@ -119,24 +119,24 @@ class TestOpenDirectory:
     """Tests for open_directory."""
 
     def test_darwin(self):
-        with patch("open_topic.subprocess.run") as mock_run, patch(
-            "open_topic.sys.platform", "darwin"
+        with patch("open.subprocess.run") as mock_run, patch(
+            "open.sys.platform", "darwin"
         ):
             open_directory("/some/path")
 
         mock_run.assert_called_once_with(["open", "/some/path"])
 
     def test_linux(self):
-        with patch("open_topic.subprocess.run") as mock_run, patch(
-            "open_topic.sys.platform", "linux"
+        with patch("open.subprocess.run") as mock_run, patch(
+            "open.sys.platform", "linux"
         ):
             open_directory("/some/path")
 
         mock_run.assert_called_once_with(["xdg-open", "/some/path"])
 
     def test_win32(self):
-        with patch("open_topic.sys.platform", "win32"), patch(
-            "open_topic.os.startfile", create=True
+        with patch("open.sys.platform", "win32"), patch(
+            "open.os.startfile", create=True
         ) as mock_startfile:
             open_directory("C:\\some\\path")
 
@@ -148,9 +148,9 @@ class TestMain:
 
     def test_no_topic_opens_spex_root(self, tmp_path):
         spex_root = str(tmp_path / "root")
-        with patch.object(sys, "argv", ["open_topic.py"]), patch.object(
-            open_topic, "get_spex_root", return_value=spex_root
-        ), patch.object(open_topic, "open_directory") as mock_open:
+        with patch.object(sys, "argv", ["open.py"]), patch.object(
+            spex_open, "get_spex_root", return_value=spex_root
+        ), patch.object(spex_open, "open_directory") as mock_open:
             main()
 
         mock_open.assert_called_once_with(spex_root)
@@ -161,13 +161,13 @@ class TestMain:
         topic_dir = _make_dir(specs, "2026-05-20-14-30-my-topic")
 
         with patch.object(
-            sys, "argv", ["open_topic.py", "my-topic"]
+            sys, "argv", ["open.py", "my-topic"]
         ), patch.object(
-            open_topic, "get_specs_dir", return_value=str(specs)
+            spex_open, "get_specs_dir", return_value=str(specs)
         ), patch.object(
-            open_topic, "get_archives_dir", return_value=str(archives)
+            spex_open, "get_archives_dir", return_value=str(archives)
         ), patch.object(
-            open_topic, "open_directory"
+            spex_open, "open_directory"
         ) as mock_open:
             main()
 
@@ -179,11 +179,11 @@ class TestMain:
         specs.mkdir()
 
         with patch.object(
-            sys, "argv", ["open_topic.py", "nonexistent"]
+            sys, "argv", ["open.py", "nonexistent"]
         ), patch.object(
-            open_topic, "get_specs_dir", return_value=str(specs)
+            spex_open, "get_specs_dir", return_value=str(specs)
         ), patch.object(
-            open_topic, "get_archives_dir", return_value=str(archives)
+            spex_open, "get_archives_dir", return_value=str(archives)
         ), pytest.raises(SystemExit, match="1"):
             main()
 
@@ -197,11 +197,11 @@ class TestMain:
         _make_dir(archives, "2026-05-20-14-30-edit-beta")
 
         with patch.object(
-            sys, "argv", ["open_topic.py", "edit"]
+            sys, "argv", ["open.py", "edit"]
         ), patch.object(
-            open_topic, "get_specs_dir", return_value=str(specs)
+            spex_open, "get_specs_dir", return_value=str(specs)
         ), patch.object(
-            open_topic, "get_archives_dir", return_value=str(archives)
+            spex_open, "get_archives_dir", return_value=str(archives)
         ), pytest.raises(SystemExit, match="1"):
             main()
 
