@@ -503,3 +503,136 @@ class TestCliCreateValidate:
         out = capsys.readouterr().out
         assert "develop" in out
         assert "Valid" in out
+
+
+class TestDescriptionWrapping:
+    def test_write_meta_wraps_long_description(self, tmp_path):
+        """_write_meta wraps descriptions longer than 68 chars."""
+        topic_dir = tmp_path / "2026-01-01-10-00-wrap-test"
+        topic_dir.mkdir()
+
+        long_desc = (
+            "This is a very long description that should definitely "
+            "exceed the sixty-eight character limit and be wrapped "
+            "into multiple lines by the wrap_text function"
+        )
+        git_info = {
+            "workdir": "/home/user/project",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Alice",
+            "user_email": "alice@example.com",
+        }
+        ctx = MockSpexContext(
+            top_workdir=Path("/home/user/project"),
+            main_worktree=Path("/home/user/project"),
+        )
+        create_helper._write_meta(
+            topic_dir, git_info, ctx, "",
+            "2026-01-01T10:00:00+08:00", long_desc,
+        )
+
+        meta = json.loads((topic_dir / "meta.json").read_text())
+        desc = meta["description"]
+        assert "\n" in desc
+        for line in desc.splitlines():
+            assert len(line) <= 68
+
+    def test_post_action_updates_description_from_spec(
+        self, tmp_path, monkeypatch,
+    ):
+        """post-action updates meta.json description from spec.md."""
+        topic_dir = tmp_path / "desc-topic"
+        topic_dir.mkdir()
+
+        # Write spec.md with front-matter description
+        spec_content = (
+            "---\n"
+            "description: >\n"
+            "  This is a long description from the spec front-matter"
+            " that should be wrapped properly when saved to meta\n"
+            "---\n"
+            "\n# Spec content\n"
+        )
+        (topic_dir / "spec.md").write_text(
+            spec_content, encoding="utf-8",
+        )
+
+        # Write valid todo.json
+        todo = [{"id": "s1", "name": "Step 1", "details": "D",
+                 "completed_at": "", "commit_title": ""}]
+        (topic_dir / "todo.json").write_text(
+            json.dumps(todo, indent=2), encoding="utf-8",
+        )
+
+        # Write initial meta.json
+        meta = {"topic": "desc-topic", "workdir": str(tmp_path)}
+        (topic_dir / "meta.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        with patch("hooks.run_post_action"):
+            create_helper.cli_post_action(
+                ["--topic", "desc-topic"],
+            )
+
+        updated_meta = json.loads(
+            (topic_dir / "meta.json").read_text(),
+        )
+        assert "description" in updated_meta
+        assert updated_meta["description"] != ""
+
+    def test_post_action_no_description_leaves_meta_unchanged(
+        self, tmp_path, monkeypatch,
+    ):
+        """post-action leaves meta.json unchanged if no description."""
+        topic_dir = tmp_path / "no-desc-topic"
+        topic_dir.mkdir()
+
+        # Write spec.md without description in front-matter
+        spec_content = (
+            "---\n"
+            "title: My Spec\n"
+            "---\n"
+            "\n# Spec content\n"
+        )
+        (topic_dir / "spec.md").write_text(
+            spec_content, encoding="utf-8",
+        )
+
+        # Write valid todo.json
+        todo = [{"id": "s1", "name": "Step 1", "details": "D",
+                 "completed_at": "", "commit_title": ""}]
+        (topic_dir / "todo.json").write_text(
+            json.dumps(todo, indent=2), encoding="utf-8",
+        )
+
+        # Write initial meta.json with existing description
+        meta = {
+            "topic": "no-desc-topic",
+            "workdir": str(tmp_path),
+            "description": "original description",
+        }
+        (topic_dir / "meta.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        with patch("hooks.run_post_action"):
+            create_helper.cli_post_action(
+                ["--topic", "no-desc-topic"],
+            )
+
+        updated_meta = json.loads(
+            (topic_dir / "meta.json").read_text(),
+        )
+        assert updated_meta["description"] == "original description"
