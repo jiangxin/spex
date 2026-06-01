@@ -527,10 +527,23 @@ def _resolve_todo_path(args):
 
 def main(argv=None):
     """Parse global args, resolve todo path, route to subcommand."""
-    check_help_flag(USAGE, argv)
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Show top-level help only when no subcommand is present.
+    # Subcommand handlers have their own check_help_flag calls.
+    subcmds = {
+        "validate", "append", "edit", "remove",
+        "show", "remove-undone", "xml2json", "json2xml",
+    }
+    if not subcmds.intersection(argv) and (
+        not argv or {"-h", "--help"}.intersection(argv)
+    ):
+        print(USAGE, end="")
+        sys.exit(0)
 
     parser = ArgumentParser(
-        prog="spex todo-helper", usage=USAGE,
+        prog="spex todo-helper", usage=USAGE, add_help=False,
     )
     locator = parser.add_mutually_exclusive_group(required=True)
     locator.add_argument("--topic")

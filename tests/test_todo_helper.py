@@ -554,6 +554,46 @@ class TestHelp:
             todo_helper.main(["-h"])
         assert exc.value.code == 0
 
+    def test_main_help_long(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["--help"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Subcommands:" in out
+
+    def test_no_args_shows_help(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Subcommands:" in out
+
+    def test_subcmd_help_shows_subcmd_usage(self, capsys, todo_file):
+        """--help after a subcommand shows subcommand-specific help."""
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file),
+                "edit", "--help",
+            ])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "edit" in out
+        assert "Subcommands:" not in out
+
+    def test_subcmd_help_short_flag(self, capsys, todo_file):
+        """Short -h after a subcommand shows subcommand-specific help."""
+        _write(todo_file, SAMPLE_DATA)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file),
+                "append", "-h",
+            ])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "append" in out
+        assert "Subcommands:" not in out
+
 
 # -----------------------------------------------------------------------
 # XML format
