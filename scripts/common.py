@@ -681,5 +681,20 @@ def escape_xml_preserving_entities(text: str) -> str:
     return "".join(result)
 
 
+def filter_completed_todos(data):
+    """Filter a list of todo dicts, returning only completed ones.
+
+    Args:
+        data: List of todo item dicts.
+
+    Returns:
+        List of only the completed items.
+    """
+    return [
+        item for item in data
+        if isinstance(item, dict) and item.get("completed_at")
+    ]
+
+
 if __name__ == "__main__":
     print(get_spex_root())

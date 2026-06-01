@@ -463,7 +463,7 @@ def cmd_show(todo_path, is_xml, argv):
 
 def cmd_remove_undone(todo_path, is_xml):
     """Remove all incomplete entries."""
-    from remove_undone_todo import filter_completed_todos
+    from common import filter_completed_todos
 
     data = load_todo_file(todo_path, is_xml)
     completed = filter_completed_todos(data)
