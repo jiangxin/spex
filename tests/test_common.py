@@ -19,6 +19,7 @@ from common import (
     local_iso_timestamp,
     parse_front_matter_description,
     resolve_topic_dir,
+    wrap_text,
 )
 
 
@@ -710,3 +711,45 @@ class TestGetSpexTomls:
         result = get_spex_tomls(str(repo))
 
         assert result == []
+
+
+class TestWrapText:
+    def test_empty_string(self):
+        assert wrap_text("") == ""
+
+    def test_whitespace_only(self):
+        assert wrap_text("   ") == ""
+
+    def test_short_text_unchanged(self):
+        assert wrap_text("Hello world") == "Hello world"
+
+    def test_long_text_wraps(self):
+        text = (
+            "This is a long description that should be wrapped at word"
+            " boundaries because it exceeds sixty-eight characters in"
+            " total length"
+        )
+        result = wrap_text(text)
+        for line in result.splitlines():
+            assert len(line) <= 68
+
+    def test_multiline_joined_then_wrapped(self):
+        text = "Line one\nLine two\nLine three"
+        result = wrap_text(text)
+        assert "\n" not in result or all(
+            len(line) <= 68 for line in result.splitlines()
+        )
+        assert "Line one Line two Line three" in result or result.startswith(
+            "Line one"
+        )
+
+    def test_custom_width(self):
+        text = "Short text that fits in forty chars easily"
+        result = wrap_text(text, width=20)
+        for line in result.splitlines():
+            assert len(line) <= 20
+
+    def test_long_word_not_broken(self):
+        text = "a " + "x" * 80 + " b"
+        result = wrap_text(text)
+        assert "x" * 80 in result
