@@ -40,6 +40,14 @@ $spex_skill_dir/scripts/spex apply-helper precheck --topic $topic_name
 If the script exits with an error (non-zero), the error message is already
 printed to stderr. Stop execution. On success, continue to the next phase.
 
+**Sub-agent boundary.** Launch a sub-agent to execute Phases 3
+through 6. The sub-agent receives `$topic_name` and `$topic_path`
+as context. Ensure the sub-agent's working directory is set to the
+topic's workdir (read from `meta.json` via `$topic_path/meta.json`
+or `spex get-topic` output). If the sub-agent fails, report the
+error to the user and retry. After it completes, continue with
+Phase 7 in the main context.
+
 ### Phase 3: Build Prompt
 
 Run:
@@ -59,30 +67,31 @@ Parse the JSON output from stdout:
 
 ### Phase 4: Execute Task
 
-Launch a subagent with `$prompt` to implement the current task.
-Ensure the subagent's working directory is set to the topic's
-workdir (read from `meta.json` via `$topic_path/meta.json` or
-`spex get-topic` output).
-If the subagent fails or produces no file changes, report the error
-to the user and retry.
+Using `$prompt` as the implementation guide, implement the current
+task. Follow the instructions in the rendered prompt precisely —
+it contains the specification, completed steps context, the task
+description, and implementation guidelines.
+
+If the implementation produces no file changes, report the issue
+and stop.
 
 ### Phase 5: Commit
 
-Load the commit prompt:
+Run:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
 ```
 
-The prompt output will contain explicit instructions for creating the git
-commit. Read the output and follow it exactly:
+Save the output to `$commit_prompt`. Using `$commit_prompt` as the
+guide, stage the relevant file changes and create a git commit:
 
-- Stage the relevant file changes (do NOT stage any files under
-  `$spex_root/`).
+- Do NOT stage any files under `$spex_root/`.
 - Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
-- If the commit fails (e.g., pre-commit hook), fix the issues and retry.
+- If the commit fails (e.g., pre-commit hook), fix the issues and
+  retry.
 
-After a successful commit, run:
+After the commit succeeds, run:
 
 ```bash
 git log -1 --pretty="%h: %s"
@@ -95,21 +104,23 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit --id "$current_task_id" --completed_at now --commit_title "$commit_title"
+$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+  --id "$current_task_id" --completed_at now \
+  --commit_title "$commit_title"
 ```
 
 If the command fails, report the error and stop.
 
-### Phase 7: STOP — One Step Only
+### Phase 7: Output
 
 Display a summary to the user:
 
 - The completed step name and `$commit_title`
 - The number of remaining undone tasks in `todo.json`
 
-> **This command implements exactly one step. Stop here.**
-> Do NOT loop back to Phase 3 or implement additional steps.
-> The user must invoke `/spex apply-one-step` again to continue.
+**This command implements exactly one step. Stop here.**
+Do NOT loop back to Phase 3 or implement additional steps.
+The user must invoke `/spex apply-one-step` again to continue.
 
 ### Phase 8: Post Action
 
