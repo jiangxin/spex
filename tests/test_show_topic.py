@@ -85,11 +85,12 @@ class TestFormatVerbose:
 
 
 class TestMain:
-    def test_no_args_exits(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog"])
+    def test_no_args_no_topics_exits(self, monkeypatch, tmp_path):
+        (tmp_path / "specs").mkdir()
+        monkeypatch.setattr("show_topic.get_specs_dir", lambda: str(tmp_path / "specs"))
         with pytest.raises(SystemExit) as exc_info:
-            show_topic.main()
-        assert exc_info.value.code == 2
+            show_topic.main([])
+        assert exc_info.value.code == 1
 
     def test_help_flag(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["prog", "-h"])

@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from cli import ArgumentParser
 from common import (
     check_help_flag,
     format_topic,
+    get_specs_dir,
     get_todo_progress,
     load_todo,
     resolve_topic_dir,
@@ -15,9 +19,12 @@ from common import (
 from list_specs import _get_icon
 
 USAGE = """\
-Usage: spex show <topic> [-v]
+Usage: spex show [topic] [-v]
 
 Show detailed information about a spec topic.
+
+If no topic is given and only one exists, it is shown automatically.
+If multiple topics exist, an interactive list is displayed.
 
 Options:
   -v, --verbose  Show full spec and structured todo details
@@ -74,16 +81,65 @@ def _format_verbose(topic_dir):
     return "\n".join(parts).rstrip()
 
 
+def _select_topic_interactive():
+    """List topics and prompt user to select one."""
+    specs_dir = Path(get_specs_dir())
+    if not specs_dir.is_dir():
+        print("Error: no topics found.", file=sys.stderr)
+        sys.exit(1)
+
+    topics = sorted(
+        [d for d in specs_dir.iterdir() if d.is_dir() and (d / "meta.json").exists()],
+        key=lambda d: d.name,
+        reverse=True,
+    )
+
+    if not topics:
+        print("Error: no topics found.", file=sys.stderr)
+        sys.exit(1)
+    if len(topics) == 1:
+        return topics[0]
+
+    display = topics[:10]
+    for i, topic_dir in enumerate(display, 1):
+        print(f"  [{i}] {format_topic(topic_dir)}", file=sys.stderr)
+    if len(topics) > 10:
+        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
+
+    try:
+        sys.stderr.write("Enter number to show: ")
+        sys.stderr.flush()
+        choice = sys.stdin.readline().strip()
+    except (EOFError, KeyboardInterrupt):
+        sys.exit(1)
+    if not choice:
+        sys.exit(1)
+
+    try:
+        idx = int(choice) - 1
+    except ValueError:
+        print(f"Error: invalid number '{choice}'", file=sys.stderr)
+        sys.exit(1)
+    if idx < 0 or idx >= len(display):
+        print(f"Error: number out of range (1-{len(display)})", file=sys.stderr)
+        sys.exit(1)
+
+    return display[idx]
+
+
 def main(argv=None):
     check_help_flag(USAGE, argv)
 
     parser = ArgumentParser(prog="spex show", usage=USAGE)
-    parser.add_argument("topic", help="Topic name or substring")
+    parser.add_argument("topic", nargs="?", help="Topic name or substring")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Show full spec and structured todo details")
     args = parser.parse(argv)
 
-    topic_dir = resolve_topic_dir(args.topic)
+    if args.topic:
+        topic_dir = resolve_topic_dir(args.topic)
+    else:
+        topic_dir = _select_topic_interactive()
 
     if args.verbose:
         print(_format_verbose(topic_dir))
