@@ -941,6 +941,35 @@ class TestProjectContext:
         assert ctx.spex_roots == ["/work/.spex"]
 
 
+# ===================== in_git_workdir =====================
+
+
+class TestInGitWorkDir:
+    def test_returns_true_when_top_workdir_is_path(self):
+        ctx = ProjectContext(
+            cwd=Path("/work"),
+            top_workdir=Path("/work"),
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.in_git_workdir() is True
+
+    def test_returns_false_when_top_workdir_is_none(self):
+        ctx = ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=None,
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.in_git_workdir() is False
+
+
 # ===================== get_project_context =====================
 
 

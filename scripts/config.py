@@ -43,6 +43,9 @@ class ProjectContext:
     spex_root: str = ""
     spex_roots: list[str] = field(default_factory=list)
 
+    def in_git_workdir(self) -> bool:
+        return self.top_workdir is not None
+
 _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}
