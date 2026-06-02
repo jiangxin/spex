@@ -7,43 +7,10 @@ import pytest
 from common import (
     escape_xml_preserving_entities,
     escape_xml_text,
-    get_git_info,
     load_and_validate_todo_json,
     validate_unique_ids,
 )
 from config import safe_update_toml
-
-# ===================== get_git_info =====================
-
-
-class TestGetGitInfo:
-    """Tests for get_git_info() shared utility."""
-
-    def test_returns_expected_keys(self):
-        with patch("common.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "value\n"
-            mock_run.return_value.returncode = 0
-            result = get_git_info()
-
-        assert "workdir" in result
-        assert "remote_url" in result
-        assert "branch" in result
-        assert "user_name" in result
-        assert "user_email" in result
-
-    def test_returns_empty_on_nonzero_returncode(self):
-        with patch("common.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = ""
-            mock_run.return_value.returncode = 1
-            result = get_git_info()
-
-        # Should return empty strings when git commands fail
-        assert result["workdir"] == ""
-        assert result["remote_url"] == ""
-        assert result["branch"] == ""
-        assert result["user_name"] == ""
-        assert result["user_email"] == ""
-
 
 # ===================== escape_xml_text =====================
 

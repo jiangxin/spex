@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass, field, fields
 from datetime import datetime
@@ -17,9 +16,6 @@ from config import (
     clear_config_cache,
     generate_default_toml,
     get_project_context,
-)
-from config import (
-    get_top_workdir as _cfg_get_top_workdir,
 )
 
 TODO_FILE = "todo.json"
@@ -278,7 +274,7 @@ def ensure_initialized(spex_root, verbose=False):
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Resolution order (delegated to config.get_context):
+    Resolution order (delegated to config.get_project_context):
       1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
          ~/.spex.toml).
       2. Default: .spex inside the git toplevel.
@@ -332,12 +328,6 @@ def get_specs_dir(workdir=None) -> Path:
 def get_archives_dir(workdir=None) -> Path:
     """Return the archives directory: <spex_root>/archives/."""
     return Path(get_spex_root(workdir)) / "archives"
-
-
-def get_current_workdir():
-    """Return the current git toplevel path, or None if not in a repo."""
-    root = _cfg_get_top_workdir()
-    return str(root) if root else None
 
 
 def same_path(a: str, b: str) -> bool:
@@ -757,7 +747,7 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     Args:
         topic_name: Topic name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
-            get_specs_dir(get_current_workdir()).
+            get_specs_dir(get_project_context().top_workdir).
 
     Returns:
         Path to the resolved topic directory.
@@ -814,22 +804,6 @@ def format_topic(topic_dir: Path, verbose: int = 0) -> str:
                 lines.append(f"    {step_id}: {step_name}")
 
     return "\n".join(lines)
-
-
-def get_git_info():
-    """Retrieve git repository metadata via subprocess calls."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "remote_url": ["git", "remote", "get-url", "origin"],
-        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "user_name": ["git", "config", "user.name"],
-        "user_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        info[key] = result.stdout.strip() if result.returncode == 0 else ""
-    return info
 
 
 def escape_xml_text(text: str) -> str:

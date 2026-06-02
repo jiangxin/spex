@@ -28,17 +28,6 @@ _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
 _DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
 
 @dataclass
-class SpexContext:
-    """Resolved spex configuration context."""
-
-    spex_tomls: list[Path]
-    config: dict
-    spex_root: str
-    spex_roots: list[str]
-    top_workdir: Path | None
-    main_worktree: Path | None
-
-@dataclass
 class ProjectContext:
     """Full project context including git metadata and spex configuration."""
 
@@ -58,7 +47,6 @@ _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}
 _config_cache: dict | None = None
-_context_cache: SpexContext | None = None
 _project_context_cache: dict[str, ProjectContext] = {}
 _spex_config_file_override: str | None = None
 
@@ -349,34 +337,6 @@ def resolve_spex_root_and_roots(
     return ("", [])
 
 
-def get_context(workdir: str | Path | None = None) -> SpexContext:
-    """Return a resolved SpexContext, cached after first call.
-
-    Aggregates worktree root, discovered TOML paths, merged config, and
-    resolved spex_root/spex_roots into a single object.
-    """
-    global _context_cache
-
-    if _context_cache is not None:
-        return _context_cache
-
-    top_workdir = _get_top_workdir(workdir)
-    main_worktree = _get_main_worktree(workdir)
-    spex_tomls = _find_spex_tomls(main_worktree, workdir)
-    config = load_config(workdir)
-    spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
-
-    _context_cache = SpexContext(
-        spex_tomls=spex_tomls,
-        config=config,
-        spex_root=spex_root,
-        spex_roots=spex_roots,
-        top_workdir=top_workdir,
-        main_worktree=main_worktree,
-    )
-    return _context_cache
-
-
 def _git_field(cmd: list[str], cwd: str | Path | None = None) -> str:
     """Run a git command and return stripped stdout, or "" on failure."""
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
@@ -512,10 +472,9 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _config_cache, _top_workdir_cache, _main_worktree_cache
-    global _context_cache, _project_context_cache, _spex_config_file_override
+    global _project_context_cache, _spex_config_file_override
     _config_cache = None
     _top_workdir_cache = {}
     _main_worktree_cache = {}
-    _context_cache = None
     _project_context_cache = {}
     _spex_config_file_override = None
