@@ -228,6 +228,65 @@ class TestWriteMeta:
         assert meta["workdir"] == "/fallback/project"
         assert meta["main_worktree"] == "/fallback/project"
 
+    def test_json_field_order_without_description(self, tmp_path):
+        """Verify JSON field order from TopicMeta matches legacy format."""
+        topic_dir = tmp_path / "2026-01-01-10-00-order-test"
+        topic_dir.mkdir()
+
+        git_info = {
+            "workdir": "/work",
+            "remote_url": "git@example.com:r.git",
+            "branch": "main",
+            "user_name": "Alice",
+            "user_email": "a@e.com",
+        }
+        ctx = MockSpexContext(
+            top_workdir=Path("/work"),
+            main_worktree=Path("/work"),
+        )
+        create_helper._write_meta(
+            topic_dir, git_info, ctx, "hello",
+            "2026-01-01T10:00:00+08:00",
+        )
+
+        meta = json.loads((topic_dir / "meta.json").read_text())
+        keys = list(meta.keys())
+        expected_keys = [
+            "topic", "workdir", "main_worktree", "remote_url",
+            "branch", "user_name", "user_email", "created_at",
+            "prompts",
+        ]
+        assert keys == expected_keys
+        assert "description" not in meta
+        assert "spex_branch" not in meta
+
+    def test_json_field_order_with_description(self, tmp_path):
+        """Verify description appears in correct position."""
+        topic_dir = tmp_path / "2026-01-01-10-00-desc-order"
+        topic_dir.mkdir()
+
+        git_info = {
+            "workdir": "/work",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Alice",
+            "user_email": "a@e.com",
+        }
+        ctx = MockSpexContext(
+            top_workdir=Path("/work"),
+            main_worktree=Path("/work"),
+        )
+        create_helper._write_meta(
+            topic_dir, git_info, ctx, "",
+            "2026-01-01T10:00:00+08:00",
+            description="My feature desc",
+        )
+
+        meta = json.loads((topic_dir / "meta.json").read_text())
+        keys = list(meta.keys())
+        assert "description" in keys
+        assert keys.index("description") == keys.index("prompts") + 1
+
 
 class TestCliPrepareSpec:
     def test_missing_topic_exits(self, monkeypatch):

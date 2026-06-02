@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import fields
 
-from common import atomic_write_json, check_help_flag, resolve_topic_dir
+from common import TopicMeta, atomic_write_json, check_help_flag, resolve_topic_dir
 
 USAGE = """\
 Usage: spex meta <topic_name> [key] [value] [--stdin]
@@ -70,15 +71,20 @@ def _display_key(data, key):
         print(value)
 
 
-def _set_key(data, key, value, meta_path):
-    """Set a key in meta.json and write back."""
+def _set_key(meta, key, value, meta_path):
+    """Set a key in TopicMeta and write back."""
     if key == "prompts":
-        if not isinstance(data.get("prompts"), list):
-            data["prompts"] = []
-        data["prompts"].append(value)
+        if not isinstance(meta.prompts, list):
+            meta.prompts = []
+        meta.prompts.append(value)
     else:
-        data[key] = value
+        known = {f.name for f in fields(TopicMeta)} - {"extras"}
+        if key in known:
+            setattr(meta, key, value)
+        else:
+            meta.extras[key] = value
 
+    data = meta.to_dict()
     atomic_write_json(meta_path, data)
     content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     print(content, end="")
@@ -114,15 +120,17 @@ def main(argv=None):
         print(f"Error: invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
 
+    meta = TopicMeta.from_dict(data)
+
     if key is None:
-        _display_all(data)
+        _display_all(meta.to_dict())
     elif value is not None:
-        _set_key(data, key, value, meta_path)
+        _set_key(meta, key, value, meta_path)
     elif stdin_flag:
         value = sys.stdin.read()
-        _set_key(data, key, value, meta_path)
+        _set_key(meta, key, value, meta_path)
     else:
-        _display_key(data, key)
+        _display_key(meta.to_dict(), key)
 
 
 if __name__ == "__main__":
