@@ -1,13 +1,16 @@
 import json
 from pathlib import Path
 
+import list as list_mod  # noqa: A004
 from common import Topic, TopicMeta, get_todo_progress, load_meta
+from config import ProjectContext
 from list import (  # noqa: A004
     _parse_verbosity,
     _wrap_text,
     collect_topics,
     format_output,
     format_verbose_output,
+    main,
     parse_prompt_log,
 )
 
@@ -491,7 +494,7 @@ class TestVerboseOutput:
 
 class TestParseVerbosity:
     def test_no_flag(self):
-        assert _parse_verbosity(["--all"]) == 0
+        assert _parse_verbosity(["--archives"]) == 0
 
     def test_single_v(self):
         assert _parse_verbosity(["-v"]) == 1
@@ -505,8 +508,11 @@ class TestParseVerbosity:
     def test_multiple_v_flags(self):
         assert _parse_verbosity(["-v", "-v"]) == 2
 
-    def test_combined_with_all(self):
-        assert _parse_verbosity(["--all", "-vv"]) == 2
+    def test_combined_with_archives(self):
+        assert _parse_verbosity(["--archives", "-vv"]) == 2
+
+    def test_all_projects_with_vv(self):
+        assert _parse_verbosity(["--all-projects", "-vv"]) == 2
 
 
 class TestWrapText:
@@ -527,3 +533,132 @@ class TestWrapText:
         text = "a" * 76  # exactly 76 + 4 indent = 80
         result = _wrap_text(text, width=80, indent=4)
         assert result == "    " + text
+
+
+def _setup_topic(topic_dir, workdir, main_worktree=None):
+    """Create a topic directory with meta.json and todo.json."""
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "created_at": "2026-05-20T10:00:00+08:00",
+        "prompts": ["prompt for " + topic_dir.name],
+        "workdir": workdir,
+        "main_worktree": main_worktree or workdir,
+    }
+    (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (topic_dir / "todo.json").write_text("[]", encoding="utf-8")
+
+
+def _make_project_context(top_workdir, main_worktree=None):
+    """Create a ProjectContext for testing."""
+    tw = Path(top_workdir)
+    mw = Path(main_worktree) if main_worktree else tw
+    return ProjectContext(
+        cwd=tw,
+        top_workdir=tw,
+        main_worktree=mw,
+        remote_url="",
+        branch="main",
+        user_name="test",
+        user_email="test@test.com",
+    )
+
+
+class TestMainFlags:
+    """Test main() with --archives, --all-projects, and --all flags."""
+
+    def _setup(self, tmp_path, monkeypatch):
+        """Set up specs/archives dirs and monkeypatches."""
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        project_workdir = str(tmp_path / "project-a")
+        other_workdir = str(tmp_path / "project-b")
+
+        # Related topics (same workdir as project context)
+        _setup_topic(specs / "related-spec", project_workdir)
+        _setup_topic(archives / "related-archive", project_workdir)
+
+        # Unrelated topics (different workdir)
+        _setup_topic(specs / "other-spec", other_workdir)
+        _setup_topic(archives / "other-archive", other_workdir)
+
+        ctx = _make_project_context(project_workdir)
+
+        monkeypatch.setattr(list_mod, "get_specs_dir", lambda: specs)
+        monkeypatch.setattr(list_mod, "get_archives_dir", lambda: archives)
+        monkeypatch.setattr(list_mod, "get_project_context", lambda: ctx)
+
+        return specs, archives
+
+    def test_default_only_related_specs(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main([])
+
+        out = capsys.readouterr().out
+        assert "related-spec" in out
+        assert "related-archive" not in out
+        assert "other-spec" not in out
+        assert "other-archive" not in out
+        # No [repo] prefix in default mode
+        assert "[project-a]" not in out
+
+    def test_archives_includes_related_archives(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--archives"])
+
+        out = capsys.readouterr().out
+        assert "related-spec" in out
+        assert "related-archive" in out
+        assert "other-spec" not in out
+        assert "other-archive" not in out
+
+    def test_all_projects_shows_all_with_repo_prefix(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--all-projects"])
+
+        out = capsys.readouterr().out
+        assert "related-spec" in out
+        assert "other-spec" in out
+        # Archives not included without --archives
+        assert "related-archive" not in out
+        assert "other-archive" not in out
+        # [repo] prefix visible
+        assert "[project-a]" in out
+        assert "[project-b]" in out
+
+    def test_all_projects_with_archives(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--all-projects", "--archives"])
+
+        out = capsys.readouterr().out
+        assert "related-spec" in out
+        assert "related-archive" in out
+        assert "other-spec" in out
+        assert "other-archive" in out
+        # [repo] prefix visible
+        assert "[project-a]" in out
+        assert "[project-b]" in out
+
+    def test_old_all_flag_does_not_include_archives(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--all"])
+
+        out = capsys.readouterr().out
+        # --all is no longer a recognized flag; it should not enable archives
+        assert "related-archive" not in out
+        assert "other-archive" not in out
