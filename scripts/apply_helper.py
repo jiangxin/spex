@@ -158,7 +158,7 @@ def cli_precheck(argv=None):
     parser.add_argument("--topic", required=True)
     args = parser.parse(argv)
 
-    ctx = cfg.get_context()
+    ctx = cfg.get_project_context()
     topic_dir = common.resolve_topic_dir(args.topic)
     validate_apply_branch(ctx.config, topic_dir, cwd=ctx.top_workdir)
 
@@ -177,6 +177,7 @@ Options:
 def cli_post_action(argv=None):
     """CLI: run post-action hook, and show hint."""
     import common
+    import config as cfg
     import hooks
     from cli import ArgumentParser
 
@@ -195,7 +196,8 @@ def cli_post_action(argv=None):
         return
 
     target = meta.branch or "main"
-    workdir = common.get_current_workdir()
+    ctx = cfg.get_project_context()
+    workdir = ctx.top_workdir
 
     hooks.run_post_action(
         "apply",

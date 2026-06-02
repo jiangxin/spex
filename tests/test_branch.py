@@ -16,21 +16,26 @@ from branch import (
     merge_branch,
 )
 from common import TopicMeta, strip_date_prefix
-from config import SpexContext
+from config import ProjectContext
 
 
 def _fake_context(**overrides):
-    """Build a SpexContext with sensible defaults, overriding as needed."""
+    """Build a ProjectContext with sensible defaults, overriding as needed."""
     defaults = {
+        "cwd": Path.cwd(),
+        "top_workdir": None,
+        "main_worktree": None,
+        "remote_url": "",
+        "branch": "",
+        "user_name": "",
+        "user_email": "",
         "spex_tomls": [],
         "config": {},
         "spex_root": "",
         "spex_roots": [],
-        "top_workdir": None,
-        "main_worktree": None,
     }
     defaults.update(overrides)
-    return SpexContext(**defaults)
+    return ProjectContext(**defaults)
 
 
 class TestStripDatePrefix:
@@ -229,7 +234,7 @@ class TestValidateApplyBranch:
 
 class TestCliPrecheck:
     @patch("common.resolve_topic_dir")
-    @patch("config.get_context", return_value=_fake_context(
+    @patch("config.get_project_context", return_value=_fake_context(
         config={"branch_management": False}))
     def test_disabled_no_output(self, _ctx, mock_resolve, tmp_path,
                                 capsys):
@@ -242,8 +247,10 @@ class TestCliPrecheck:
 
 
 class TestCliPostAction:
+    @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
-    def test_outputs_text_with_branch(self, mock_resolve, tmp_path, capsys):
+    def test_outputs_text_with_branch(self, mock_resolve, _ctx,
+                                      tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
@@ -255,9 +262,10 @@ class TestCliPostAction:
         assert "Development completed" in out
         assert "main" in out
 
+    @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
     @patch("common.load_meta", return_value=TopicMeta())
-    def test_no_branch_no_output(self, _meta, _resolve, capsys,
+    def test_no_branch_no_output(self, _meta, _resolve, _ctx, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
         cli_post_action(["--topic", "no-branch"])
@@ -267,7 +275,7 @@ class TestCliPostAction:
 
 class TestCliSubmit:
     @patch("branch.merge_branch")
-    @patch("config.get_context", return_value=_fake_context(
+    @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.resolve_topic_dir")
     def test_merge_success(self, mock_resolve, _ctx, mock_merge, tmp_path,
@@ -288,7 +296,7 @@ class TestCliSubmit:
 
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
-    @patch("config.get_context", return_value=_fake_context(
+    @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.resolve_topic_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _ctx, _merge,

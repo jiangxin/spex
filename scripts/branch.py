@@ -124,7 +124,7 @@ def cli_submit(argv=None) -> None:
     import hooks
 
     topic_name = _parse_topic_arg(argv)
-    ctx = cfg.get_context()
+    ctx = cfg.get_project_context()
     conf = ctx.config
     topic_dir = common.resolve_topic_dir(topic_name)
     meta = common.load_meta(topic_dir)
@@ -156,7 +156,7 @@ def cli_submit(argv=None) -> None:
     # Run post-action hook on success
     short_name = strip_date_prefix(topic_dir.name)
     done, total = common.get_todo_progress(topic_dir)
-    workdir = common.get_current_workdir()
+    workdir = ctx.top_workdir
     hooks.run_post_action(
         "submit",
         {
