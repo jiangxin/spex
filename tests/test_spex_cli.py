@@ -24,7 +24,7 @@ _spec = importlib.util.spec_from_file_location(
 _spex_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_spex_mod)
 
-from config import SpexContext  # noqa: E402
+from config import ProjectContext  # noqa: E402
 
 _build_config_vars = _spex_mod._build_config_vars
 _print_config_vars = _spex_mod._print_config_vars
@@ -32,10 +32,15 @@ _run_config = _spex_mod._run_config
 
 
 def _make_context(**overrides):
-    """Create a SpexContext with sensible defaults, applying overrides."""
+    """Create a ProjectContext with sensible defaults, applying overrides."""
     defaults = {
+        "cwd": Path("/test/repo"),
         "top_workdir": Path("/test/repo"),
         "main_worktree": Path("/test/repo"),
+        "remote_url": "https://github.com/test/repo.git",
+        "branch": "main",
+        "user_name": "Test User",
+        "user_email": "test@example.com",
         "spex_root": "/test/repo/.spex",
         "config": {
             "spex_root": ".spex",
@@ -47,7 +52,7 @@ def _make_context(**overrides):
         "spex_roots": ["/test/repo/.spex"],
     }
     defaults.update(overrides)
-    return SpexContext(**defaults)
+    return ProjectContext(**defaults)
 
 
 class TestBuildConfigVars:
@@ -58,7 +63,9 @@ class TestBuildConfigVars:
         result = _build_config_vars(ctx)
 
         expected_keys = [
-            "top_workdir", "main_worktree", "spex_root",
+            "cwd", "top_workdir", "main_worktree",
+            "remote_url", "branch", "user_name", "user_email",
+            "spex_root",
             "config.spex_root", "config.create_branch",
             "config.main_branch_name", "config.submit_method",
             "spex_tomls", "spex_roots",
@@ -69,8 +76,9 @@ class TestBuildConfigVars:
         ctx = _make_context()
         result = _build_config_vars(ctx)
 
-        for key in ("top_workdir", "main_worktree", "spex_root",
-                     "config.spex_root"):
+        for key in ("cwd", "top_workdir", "main_worktree",
+                     "remote_url", "branch", "user_name", "user_email",
+                     "spex_root", "config.spex_root"):
             _, is_list = result[key]
             assert is_list is False, f"{key} should not be a list"
 
@@ -175,11 +183,13 @@ class TestRunConfig:
 
     def test_default_output_shows_all_fields(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config([])
 
         out = capsys.readouterr().out
-        for key in ("top_workdir", "main_worktree", "spex_root",
+        for key in ("cwd", "top_workdir", "main_worktree",
+                     "remote_url", "branch", "user_name", "user_email",
+                     "spex_root",
                      "config.spex_root", "config.create_branch",
                      "config.main_branch_name", "config.submit_method",
                      "spex_tomls", "spex_roots"):
@@ -187,7 +197,7 @@ class TestRunConfig:
 
     def test_default_output_lists_last(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config([])
 
         out = capsys.readouterr().out
@@ -206,7 +216,7 @@ class TestRunConfig:
 
     def test_get_subcommand_filters(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["get", "spex_root"])
 
         out = capsys.readouterr().out
@@ -216,7 +226,7 @@ class TestRunConfig:
 
     def test_multi_variable_query_in_order(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex_root", "top_workdir"])
 
         out = capsys.readouterr().out
@@ -230,7 +240,7 @@ class TestRunConfig:
         ctx = _make_context(
             spex_tomls=[Path("/a/.spex.toml"), Path("/b/.spex.toml")],
         )
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex_tomls"])
 
         out = capsys.readouterr().out
@@ -241,7 +251,7 @@ class TestRunConfig:
 
     def test_empty_list_shows_empty(self, capsys):
         ctx = _make_context(spex_tomls=[])
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex_tomls"])
 
         out = capsys.readouterr().out
@@ -249,7 +259,7 @@ class TestRunConfig:
 
     def test_none_value_shows_none(self, capsys):
         ctx = _make_context(top_workdir=None)
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["top_workdir"])
 
         out = capsys.readouterr().out
@@ -257,7 +267,7 @@ class TestRunConfig:
 
     def test_unknown_variable_error(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             with pytest.raises(SystemExit) as exc_info:
                 _run_config(["no_such_var"])
 
@@ -267,7 +277,7 @@ class TestRunConfig:
 
     def test_hyphen_to_underscore_spex_root(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex-root"])
 
         out = capsys.readouterr().out
@@ -276,7 +286,7 @@ class TestRunConfig:
 
     def test_hyphen_to_underscore_config_key(self, capsys):
         ctx = _make_context()
-        with patch("config.get_context", return_value=ctx):
+        with patch("config.get_project_context", return_value=ctx):
             _run_config(["config.main-branch-name"])
 
         out = capsys.readouterr().out

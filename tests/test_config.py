@@ -1,11 +1,12 @@
 """Tests for config.py: hierarchical TOML discovery, merging, and caching."""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from config import (
-    SpexContext,
+    ProjectContext,
     _deep_merge,
     _find_spex_tomls,
     _get_main_worktree,
@@ -16,8 +17,8 @@ from config import (
     clear_config_cache,
     generate_default_toml,
     generate_updated_toml,
-    get_context,
     get_effective_user_config,
+    get_project_context,
     load_config,
     resolve_spex_root_and_roots,
     set_spex_config_file,
@@ -546,93 +547,6 @@ class TestResolveSpexRootAndRoots:
         assert roots.count(home_spex) == 1
 
 
-# ===================== get_context =====================
-
-
-class TestGetContext:
-    def test_returns_spex_context(self, tmp_path, monkeypatch):
-        """get_context returns a SpexContext dataclass."""
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr(
-            "config._get_top_workdir", lambda w=None: tmp_path
-        )
-        monkeypatch.setattr(
-            "config._get_main_worktree", lambda w=None: tmp_path
-        )
-        (tmp_path / ".spex").mkdir()
-        (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
-        )
-
-        ctx = get_context()
-
-        assert isinstance(ctx, SpexContext)
-        assert ctx.top_workdir == tmp_path
-        assert ctx.spex_root == str((tmp_path / ".spex").resolve())
-        assert str((tmp_path / ".spex").resolve()) in ctx.spex_roots
-        assert any(
-            str(p) == str(tmp_path / ".spex.toml") for p in ctx.spex_tomls
-        )
-        assert ctx.config.get("spex_root") == ".spex"
-
-    def test_caching(self, tmp_path, monkeypatch):
-        """get_context returns cached result on subsequent calls."""
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr(
-            "config._get_top_workdir", lambda w=None: tmp_path
-        )
-        monkeypatch.setattr(
-            "config._get_main_worktree", lambda w=None: tmp_path
-        )
-        (tmp_path / ".spex").mkdir()
-        (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
-        )
-
-        first = get_context()
-        second = get_context()
-
-        assert first is second
-
-    def test_cache_cleared_on_clear_config_cache(self, tmp_path, monkeypatch):
-        """clear_config_cache resets the context cache."""
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr(
-            "config._get_top_workdir", lambda w=None: tmp_path
-        )
-        monkeypatch.setattr(
-            "config._get_main_worktree", lambda w=None: tmp_path
-        )
-        (tmp_path / ".spex").mkdir()
-        (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
-        )
-
-        first = get_context()
-        clear_config_cache()
-        second = get_context()
-
-        assert first is not second
-
-    def test_no_git_repo(self, tmp_path, monkeypatch):
-        """get_context works when not in a git repo (top_workdir is None)."""
-        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
-        monkeypatch.setattr(
-            "config._get_top_workdir", lambda w=None: None
-        )
-        monkeypatch.setattr(
-            "config._get_main_worktree", lambda w=None: None
-        )
-        monkeypatch.chdir(tmp_path)
-
-        ctx = get_context()
-
-        assert ctx.top_workdir is None
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert ctx.spex_root == home_default
-        assert ctx.spex_roots == [home_default]
-
-
 # ===================== SPEX_CONFIG_FILE override =====================
 
 
@@ -686,7 +600,7 @@ class TestSpexConfigFileOverride:
             _find_spex_tomls(None)
 
     def test_spex_root_from_config_file(self, tmp_path, monkeypatch):
-        """Config file overrides spex_root in get_context."""
+        """Config file overrides spex_root in get_project_context."""
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
             "config._get_top_workdir", lambda w=None: tmp_path
@@ -703,7 +617,7 @@ class TestSpexConfigFileOverride:
         custom.write_text('[spex]\nspex_root = "/custom-root"\n', encoding="utf-8")
         set_spex_config_file(str(custom))
 
-        ctx = get_context()
+        ctx = get_project_context(str(tmp_path))
 
         assert ctx.spex_root == "/custom-root"
         assert ctx.spex_tomls == [custom.resolve()]
@@ -975,4 +889,268 @@ class TestGetEffectiveUserConfig:
 
         assert result["spex_root"] == "proj"
         assert result["branch_management"] is True
+
+
+# ===================== ProjectContext =====================
+
+
+class TestProjectContext:
+    def test_default_field_values(self):
+        """Fields with factory defaults are initialized correctly."""
+        ctx = ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=None,
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.spex_tomls == []
+        assert ctx.config == {}
+        assert ctx.spex_root == ""
+        assert ctx.spex_roots == []
+
+    def test_all_fields_accessible(self):
+        """All fields are stored and accessible as attributes."""
+        cwd = Path("/work")
+        top = Path("/work")
+        ctx = ProjectContext(
+            cwd=cwd,
+            top_workdir=top,
+            main_worktree=top,
+            remote_url="https://github.com/test/repo.git",
+            branch="main",
+            user_name="Test User",
+            user_email="test@example.com",
+            spex_tomls=[Path("/work/.spex.toml")],
+            config={"spex_root": ".spex"},
+            spex_root="/work/.spex",
+            spex_roots=["/work/.spex"],
+        )
+        assert ctx.cwd == cwd
+        assert ctx.top_workdir == top
+        assert ctx.main_worktree == top
+        assert ctx.remote_url == "https://github.com/test/repo.git"
+        assert ctx.branch == "main"
+        assert ctx.user_name == "Test User"
+        assert ctx.user_email == "test@example.com"
+        assert len(ctx.spex_tomls) == 1
+        assert ctx.config["spex_root"] == ".spex"
+        assert ctx.spex_root == "/work/.spex"
+        assert ctx.spex_roots == ["/work/.spex"]
+
+
+# ===================== in_git_workdir =====================
+
+
+class TestInGitWorkDir:
+    def test_returns_true_when_top_workdir_is_path(self):
+        ctx = ProjectContext(
+            cwd=Path("/work"),
+            top_workdir=Path("/work"),
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.in_git_workdir() is True
+
+    def test_returns_false_when_top_workdir_is_none(self):
+        ctx = ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=None,
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.in_git_workdir() is False
+
+
+# ===================== get_project_context =====================
+
+
+class TestGetProjectContext:
+    @pytest.mark.slow
+    def test_git_repo_populates_all_fields(self, tmp_path):
+        """In a git repo, all fields are populated from git metadata."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin",
+             "https://github.com/test/repo.git"],
+            capture_output=True, check=True,
+        )
+
+        ctx = get_project_context(str(repo))
+
+        assert ctx.cwd == repo.resolve()
+        assert ctx.top_workdir == repo.resolve()
+        assert ctx.main_worktree == repo.resolve()
+        assert ctx.remote_url == "https://github.com/test/repo.git"
+        assert ctx.branch in ("main", "master")
+        assert ctx.user_name == "Test User"
+        assert ctx.user_email == "test@example.com"
+
+    @pytest.mark.slow
+    def test_non_git_repo_returns_none_and_empty(self, tmp_path, monkeypatch):
+        """Outside a git repo, top_workdir is None and string fields are empty."""
+        no_git = tmp_path / "not-a-repo"
+        no_git.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+
+        ctx = get_project_context(str(no_git))
+
+        assert ctx.cwd == no_git.resolve()
+        assert ctx.top_workdir is None
+        assert ctx.main_worktree is None
+        assert ctx.remote_url == ""
+        assert ctx.branch == ""
+        assert ctx.user_name == ""
+        assert ctx.user_email == ""
+
+    def test_caching_returns_same_object(self, tmp_path, monkeypatch):
+        """Two calls with same workdir return the identical cached object."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: None)
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: None)
+
+        first = get_project_context(str(tmp_path))
+        second = get_project_context(str(tmp_path))
+
+        assert first is second
+
+    def test_cache_cleared_by_clear_config_cache(self, tmp_path, monkeypatch):
+        """clear_config_cache() invalidates the project context cache."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: None)
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: None)
+
+        first = get_project_context(str(tmp_path))
+        clear_config_cache()
+        second = get_project_context(str(tmp_path))
+
+        assert first is not second
+
+
+# ===================== is_related_to =====================
+
+
+class TestIsRelatedTo:
+    """Tests for ProjectContext.is_related_to() method."""
+
+    def _make_ctx(self, top_workdir=None, main_worktree=None):
+        return ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=top_workdir,
+            main_worktree=main_worktree,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+
+    def test_top_workdir_matches(self, tmp_path):
+        """top_workdir matches topic's workdir -> True."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": str(tmp_path), "main_worktree": ""}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_main_worktree_matches(self, tmp_path):
+        """main_worktree matches topic's main_worktree -> True."""
+        other = tmp_path / "other"
+        other.mkdir()
+        ctx = self._make_ctx(top_workdir=other, main_worktree=tmp_path)
+        topic_dict = {"workdir": "/nonexistent/path", "main_worktree": str(tmp_path)}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_neither_matches(self, tmp_path):
+        """Neither top_workdir nor main_worktree matches -> False."""
+        ctx = self._make_ctx(
+            top_workdir=tmp_path / "a", main_worktree=tmp_path / "b"
+        )
+        topic_dict = {
+            "workdir": str(tmp_path / "x"),
+            "main_worktree": str(tmp_path / "y"),
+        }
+        assert ctx.is_related_to(topic_dict) is False
+
+    def test_not_in_git_repo(self):
+        """Both top_workdir and main_worktree are None -> True."""
+        ctx = self._make_ctx(top_workdir=None, main_worktree=None)
+        topic_dict = {"workdir": "/some/path", "main_worktree": "/other"}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_topic_workdir_empty(self, tmp_path):
+        """Topic's workdir is empty string -> True."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": "", "main_worktree": ""}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_accepts_dict(self, tmp_path):
+        """Accepts a dict (like load_meta().to_dict() result)."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_accepts_object_with_attributes(self, tmp_path):
+        """Accepts object with .workdir/.main_worktree attributes."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+
+        class FakeMeta:
+            workdir = str(tmp_path)
+            main_worktree = str(tmp_path)
+
+        assert ctx.is_related_to(FakeMeta()) is True
+
+    def test_accepts_topic_with_meta_attribute(self, tmp_path):
+        """Accepts Topic-like object with .meta attribute."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+
+        class FakeMeta:
+            workdir = str(tmp_path)
+            main_worktree = str(tmp_path)
+
+        class FakeTopic:
+            meta = FakeMeta()
+
+        assert ctx.is_related_to(FakeTopic()) is True
+
+    def test_accepts_path(self, tmp_path):
+        """Accepts Path as parameter (reads meta.json from directory)."""
+        import json
+
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        meta = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
+        (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+        assert ctx.is_related_to(topic_dir) is True
+
+    def test_path_with_no_meta_json(self, tmp_path):
+        """Path with no meta.json returns True (no filtering possible)."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dir = tmp_path / "empty-topic"
+        topic_dir.mkdir()
+
+        assert ctx.is_related_to(topic_dir) is True
 

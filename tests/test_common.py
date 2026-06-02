@@ -379,7 +379,7 @@ class TestGetTemplate:
             _get_skill_path,
             clear_spex_root_cache,
         )
-        from config import SpexContext
+        from config import ProjectContext
 
         clear_spex_root_cache()
 
@@ -387,16 +387,21 @@ class TestGetTemplate:
         test_template = skill_path / TEMPLATE_DIR / "test-tpl.md"
         test_template.write_text('---\nversion: "1.0.0"\n---\n\n# Test TPL')
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
         try:
-            with patch("common.get_context", return_value=ctx):
+            with patch("common.get_project_context", return_value=ctx):
                 result = get_template("test-tpl.md")
             assert "# Test TPL" in result
             assert "---" in result
@@ -410,19 +415,24 @@ class TestGetTemplate:
         from unittest.mock import patch
 
         from common import TEMPLATE_DIR, _get_skill_path
-        from config import SpexContext
+        from config import ProjectContext
 
         clear_spex_root_cache()
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             roots = _resolve_template_roots()
 
         assert len(roots) == 2
@@ -434,7 +444,7 @@ class TestGetTemplate:
         from unittest.mock import patch
 
         from common import TEMPLATE_DIR, _get_skill_path
-        from config import SpexContext
+        from config import ProjectContext
 
         clear_spex_root_cache()
 
@@ -445,15 +455,20 @@ class TestGetTemplate:
         skill_path = _get_skill_path()
         (skill_path / TEMPLATE_DIR / "prio-tpl.md").write_text("skill content")
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             result = get_template("prio-tpl.md")
         assert result == "spex_root content"
 
@@ -466,7 +481,7 @@ class TestGetTemplate:
         from unittest.mock import patch
 
         from common import TEMPLATE_DIR, _get_skill_path
-        from config import SpexContext
+        from config import ProjectContext
 
         clear_spex_root_cache()
 
@@ -474,16 +489,21 @@ class TestGetTemplate:
         test_src = skill_path / TEMPLATE_DIR / "fallback-tpl.md"
         test_src.write_text("skill fallback content")
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
         try:
-            with patch("common.get_context", return_value=ctx):
+            with patch("common.get_project_context", return_value=ctx):
                 result = get_template("fallback-tpl.md")
             assert result == "skill fallback content"
         finally:
@@ -494,22 +514,27 @@ class TestGetTemplate:
         from unittest.mock import patch
 
         from common import TEMPLATE_DIR, _get_skill_path
-        from config import SpexContext
+        from config import ProjectContext
 
         clear_spex_root_cache()
 
         skill_path = _get_skill_path()
         unlikely = "__nonexistent-template-xyz__"
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             with pytest.raises(FileNotFoundError, match=unlikely):
                 get_template(f"{unlikely}.md")
 

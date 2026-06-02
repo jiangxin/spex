@@ -105,17 +105,22 @@ class TestMain:
         assert exc_info.value.code == 0
 
     def test_nonexistent_topic(self, monkeypatch, tmp_path):
-        from config import SpexContext
+        from config import ProjectContext
         (tmp_path / "specs").mkdir()
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=None,
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=None,
-            main_worktree=None,
         )
-        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
         from common import clear_spex_root_cache
         clear_spex_root_cache()
         monkeypatch.setattr(sys, "argv", ["prog", "nonexistent"])

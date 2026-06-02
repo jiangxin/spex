@@ -10,7 +10,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from common import _resolve_hook_roots, get_current_workdir
+from common import _resolve_hook_roots
+from config import get_project_context
 
 
 def find_hook(hook_name: str, workdir=None) -> Path | None:
@@ -31,27 +32,25 @@ def find_hook(hook_name: str, workdir=None) -> Path | None:
 
 
 def _build_event_data(event_type: str, payload: dict, workdir=None) -> dict:
-    """Build the JSON event envelope from git config and payload.
+    """Build the JSON event envelope from ProjectContext and payload.
 
     Args:
         event_type: The spex command that triggered this hook.
         payload: Command-specific audit information.
-        workdir: Working directory for git config lookup.
+        workdir: Working directory for context resolution.
 
     Returns:
         Dict with user, email, workdir, event_type, and payload fields.
     """
-    def _git_config(key: str) -> str:
-        r = subprocess.run(
-            ["git", "config", key],
-            capture_output=True, text=True, cwd=workdir,
-        )
-        return r.stdout.strip()
+    ctx = get_project_context(workdir)
+    effective_workdir = workdir or (
+        str(ctx.top_workdir) if ctx.in_git_workdir() else str(Path.cwd())
+    )
 
     return {
-        "user": _git_config("user.name"),
-        "email": _git_config("user.email"),
-        "workdir": str(workdir or get_current_workdir() or Path.cwd()),
+        "user": ctx.user_name,
+        "email": ctx.user_email,
+        "workdir": str(effective_workdir),
         "event_type": event_type,
         "time": datetime.now().astimezone().isoformat(),
         "payload": payload,

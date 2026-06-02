@@ -122,11 +122,16 @@ Options:
 
 
 def _build_config_vars(ctx):
-    """Build ordered dict of (value, is_list) tuples from SpexContext."""
+    """Build ordered dict of (value, is_list) tuples from ProjectContext."""
     all_vars = {}
     # Scalar fields
+    all_vars["cwd"] = (ctx.cwd, False)
     all_vars["top_workdir"] = (ctx.top_workdir, False)
     all_vars["main_worktree"] = (ctx.main_worktree, False)
+    all_vars["remote_url"] = (ctx.remote_url, False)
+    all_vars["branch"] = (ctx.branch, False)
+    all_vars["user_name"] = (ctx.user_name, False)
+    all_vars["user_email"] = (ctx.user_email, False)
     all_vars["spex_root"] = (ctx.spex_root, False)
     # Expand config dict entries
     for key, val in ctx.config.items():
@@ -195,7 +200,7 @@ def _run_config(argv=None):
     parser.add_argument("names", nargs="*")
     args = parser.parse(argv)
 
-    ctx = spex_config.get_context()
+    ctx = spex_config.get_project_context()
     all_vars = _build_config_vars(ctx)
 
     if args.names:

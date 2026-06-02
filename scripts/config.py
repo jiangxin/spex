@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
@@ -28,21 +28,76 @@ _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
 _DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
 
 @dataclass
-class SpexContext:
-    """Resolved spex configuration context."""
+class ProjectContext:
+    """Full project context including git metadata and spex configuration."""
 
-    spex_tomls: list[Path]
-    config: dict
-    spex_root: str
-    spex_roots: list[str]
+    cwd: Path
     top_workdir: Path | None
     main_worktree: Path | None
+    remote_url: str
+    branch: str
+    user_name: str
+    user_email: str
+    spex_tomls: list[Path] = field(default_factory=list)
+    config: dict = field(default_factory=dict)
+    spex_root: str = ""
+    spex_roots: list[str] = field(default_factory=list)
+
+    def in_git_workdir(self) -> bool:
+        return self.top_workdir is not None
+
+    def is_related_to(self, topic) -> bool:
+        """Check if this project context is related to the given topic.
+
+        Accepts a TopicMeta instance, a Topic instance (with .meta attribute),
+        a dict (like load_meta().to_dict()), or a Path (topic directory).
+        """
+        from common import load_meta, same_path
+
+        # Not in a git repo — matches everything
+        if self.top_workdir is None and self.main_worktree is None:
+            return True
+
+        # Extract workdir and main_worktree from the topic parameter
+        if isinstance(topic, Path):
+            meta = load_meta(topic)
+            if meta is None:
+                return True
+            topic_workdir = meta.workdir
+            topic_main_worktree = meta.main_worktree
+        elif hasattr(topic, "meta"):
+            # Topic instance with .meta attribute
+            topic_workdir = topic.meta.workdir
+            topic_main_worktree = topic.meta.main_worktree
+        elif isinstance(topic, dict):
+            topic_workdir = topic.get("workdir", "")
+            topic_main_worktree = topic.get("main_worktree", "")
+        else:
+            # Assume object with .workdir and .main_worktree attributes
+            topic_workdir = getattr(topic, "workdir", "")
+            topic_main_worktree = getattr(topic, "main_worktree", "")
+
+        # No workdir record means matches any project
+        if not topic_workdir:
+            return True
+
+        # Compare top_workdir
+        if self.top_workdir is not None and topic_workdir:
+            if same_path(str(self.top_workdir), topic_workdir):
+                return True
+
+        # Compare main_worktree
+        if self.main_worktree is not None and topic_main_worktree:
+            if same_path(str(self.main_worktree), topic_main_worktree):
+                return True
+
+        return False
 
 _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}
 _config_cache: dict | None = None
-_context_cache: SpexContext | None = None
+_project_context_cache: dict[str, ProjectContext] = {}
 _spex_config_file_override: str | None = None
 
 
@@ -332,32 +387,60 @@ def resolve_spex_root_and_roots(
     return ("", [])
 
 
-def get_context(workdir: str | Path | None = None) -> SpexContext:
-    """Return a resolved SpexContext, cached after first call.
+def _git_field(cmd: list[str], cwd: str | Path | None = None) -> str:
+    """Run a git command and return stripped stdout, or "" on failure."""
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+    return result.stdout.strip() if result.returncode == 0 else ""
 
-    Aggregates worktree root, discovered TOML paths, merged config, and
+
+def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
+    """Return a fully resolved ProjectContext, cached by resolved workdir.
+
+    Aggregates git metadata, discovered TOML paths, merged config, and
     resolved spex_root/spex_roots into a single object.
     """
-    global _context_cache
+    cwd = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+    cache_key = str(cwd)
 
-    if _context_cache is not None:
-        return _context_cache
+    if cache_key in _project_context_cache:
+        return _project_context_cache[cache_key]
 
     top_workdir = _get_top_workdir(workdir)
     main_worktree = _get_main_worktree(workdir)
+    user_name = _git_field(["git", "config", "user.name"], cwd=workdir)
+    user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
+
+    if top_workdir is not None:
+        remote_url = _git_field(
+            ["git", "remote", "get-url", "origin"], cwd=workdir,
+        )
+        branch = _git_field(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=workdir,
+        )
+    else:
+        remote_url = ""
+        branch = ""
+
     spex_tomls = _find_spex_tomls(main_worktree, workdir)
     config = load_config(workdir)
-    spex_root, spex_roots = resolve_spex_root_and_roots(workdir)
+    spex_roots = _resolve_spex_roots(spex_tomls, main_worktree, workdir)
+    spex_root = spex_roots[0] if spex_roots else ""
 
-    _context_cache = SpexContext(
+    ctx = ProjectContext(
+        cwd=cwd,
+        top_workdir=top_workdir,
+        main_worktree=main_worktree,
+        remote_url=remote_url,
+        branch=branch,
+        user_name=user_name,
+        user_email=user_email,
         spex_tomls=spex_tomls,
         config=config,
         spex_root=spex_root,
         spex_roots=spex_roots,
-        top_workdir=top_workdir,
-        main_worktree=main_worktree,
     )
-    return _context_cache
+    _project_context_cache[cache_key] = ctx
+    return ctx
 
 
 def generate_default_toml() -> str:
@@ -439,9 +522,9 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _config_cache, _top_workdir_cache, _main_worktree_cache
-    global _context_cache, _spex_config_file_override
+    global _project_context_cache, _spex_config_file_override
     _config_cache = None
     _top_workdir_cache = {}
     _main_worktree_cache = {}
-    _context_cache = None
+    _project_context_cache = {}
     _spex_config_file_override = None

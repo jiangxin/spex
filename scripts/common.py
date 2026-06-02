@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass, field, fields
 from datetime import datetime
@@ -16,10 +15,7 @@ from pathlib import Path
 from config import (
     clear_config_cache,
     generate_default_toml,
-    get_context,
-)
-from config import (
-    get_top_workdir as _cfg_get_top_workdir,
+    get_project_context,
 )
 
 TODO_FILE = "todo.json"
@@ -253,7 +249,7 @@ def _resolve_hook_roots(workdir=None):
 
     Builds from all resolved spex_roots: <spex_root>/hooks/ for each.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
     return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
@@ -278,7 +274,7 @@ def ensure_initialized(spex_root, verbose=False):
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Resolution order (delegated to config.get_context):
+    Resolution order (delegated to config.get_project_context):
       1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
          ~/.spex.toml).
       2. Default: .spex inside the git toplevel.
@@ -294,12 +290,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     Returns:
         Absolute path to the spex root directory.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
 
     if auto_init and not ctx.spex_tomls:
         _create_default_toml()
         clear_config_cache()
-        ctx = get_context(workdir)
+        ctx = get_project_context(workdir)
 
     if not ctx.spex_root:
         raise RuntimeError(
@@ -316,12 +312,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
 
 def get_spex_roots(workdir=None) -> list[str]:
     """Return all resolved spex root directories (highest priority first)."""
-    return get_context(workdir).spex_roots
+    return get_project_context(workdir).spex_roots
 
 
 def get_spex_tomls(workdir=None) -> list[str]:
     """Return discovered .spex.toml config paths as strings."""
-    return [str(p) for p in get_context(workdir).spex_tomls]
+    return [str(p) for p in get_project_context(workdir).spex_tomls]
 
 
 def get_specs_dir(workdir=None) -> Path:
@@ -332,12 +328,6 @@ def get_specs_dir(workdir=None) -> Path:
 def get_archives_dir(workdir=None) -> Path:
     """Return the archives directory: <spex_root>/archives/."""
     return Path(get_spex_root(workdir)) / "archives"
-
-
-def get_current_workdir():
-    """Return the current git toplevel path, or None if not in a repo."""
-    root = _cfg_get_top_workdir()
-    return str(root) if root else None
 
 
 def same_path(a: str, b: str) -> bool:
@@ -679,7 +669,7 @@ def _resolve_template_roots(workdir=None):
     Builds from all resolved spex_roots: <spex_root>/templates/ for each,
     then appends the skill's built-in templates directory last.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
     roots = [Path(sr) / TEMPLATE_DIR for sr in ctx.spex_roots]
     roots.append(_get_skill_path() / TEMPLATE_DIR)
     return roots
@@ -757,13 +747,14 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     Args:
         topic_name: Topic name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
-            get_specs_dir(get_current_workdir()).
+            get_specs_dir(get_project_context().top_workdir).
 
     Returns:
         Path to the resolved topic directory.
     """
     if specs_dir is None:
-        specs_dir = get_specs_dir(get_current_workdir())
+        ctx = get_project_context()
+        specs_dir = get_specs_dir(str(ctx.top_workdir) if ctx.in_git_workdir() else None)
     else:
         specs_dir = Path(specs_dir)
 
@@ -813,22 +804,6 @@ def format_topic(topic_dir: Path, verbose: int = 0) -> str:
                 lines.append(f"    {step_id}: {step_name}")
 
     return "\n".join(lines)
-
-
-def get_git_info():
-    """Retrieve git repository metadata via subprocess calls."""
-    commands = {
-        "workdir": ["git", "rev-parse", "--show-toplevel"],
-        "remote_url": ["git", "remote", "get-url", "origin"],
-        "branch": ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        "user_name": ["git", "config", "user.name"],
-        "user_email": ["git", "config", "user.email"],
-    }
-    info = {}
-    for key, cmd in commands.items():
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        info[key] = result.stdout.strip() if result.returncode == 0 else ""
-    return info
 
 
 def escape_xml_text(text: str) -> str:

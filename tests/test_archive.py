@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import archive as spex_archive
@@ -13,6 +14,21 @@ from archive import (
     restore_single_topic,
 )
 from common import is_topic_completed
+from config import ProjectContext
+
+
+def _mock_project_context(top_workdir=None):
+    """Create a ProjectContext with the given top_workdir for mocking."""
+    tw = Path(top_workdir) if top_workdir else None
+    return ProjectContext(
+        cwd=Path.cwd(),
+        top_workdir=tw,
+        main_worktree=tw,
+        remote_url="",
+        branch="",
+        user_name="",
+        user_email="",
+    )
 
 
 def _write_todo(topic_dir, tasks):
@@ -83,13 +99,15 @@ class TestFindCompletedTopics:
         # No todo.json
         (specs / "empty-topic").mkdir(parents=True)
 
-        result = find_completed_topics(specs)
+        ctx = _mock_project_context()
+        result = find_completed_topics(specs, ctx)
 
         assert len(result) == 1
         assert result[0].name == "done-topic"
 
     def test_nonexistent_dir_returns_empty(self, tmp_path):
-        result = find_completed_topics(tmp_path / "nonexistent")
+        ctx = _mock_project_context()
+        result = find_completed_topics(tmp_path / "nonexistent", ctx)
 
         assert result == []
 
@@ -98,7 +116,8 @@ class TestFindCompletedTopics:
         _write_todo(specs / "beta-topic", [_make_task("1")])
         _write_todo(specs / "alpha-topic", [_make_task("1")])
 
-        result = find_completed_topics(specs)
+        ctx = _mock_project_context()
+        result = find_completed_topics(specs, ctx)
 
         assert [d.name for d in result] == ["alpha-topic", "beta-topic"]
 
@@ -120,7 +139,8 @@ class TestFindCompletedTopics:
         topic_c = specs / "topic-c"
         _write_todo(topic_c, [_make_task("1")])
 
-        result = find_completed_topics(specs, current_workdir="/repo/a")
+        ctx = _mock_project_context(top_workdir="/repo/a")
+        result = find_completed_topics(specs, ctx)
 
         names = [d.name for d in result]
         assert "topic-a" in names
@@ -140,7 +160,8 @@ class TestFindCompletedTopics:
             json.dumps({"workdir": "/repo/b"}), encoding="utf-8"
         )
 
-        result = find_completed_topics(specs, current_workdir=None)
+        ctx = _mock_project_context()
+        result = find_completed_topics(specs, ctx)
 
         assert len(result) == 2
 
@@ -442,8 +463,9 @@ class TestFindCompletedTopicsWithBranchGuard:
         topic_b = specs / "no-branch-topic"
         _write_todo(topic_b, [_make_task("1")])
 
+        ctx = _mock_project_context()
         with patch("archive.branch_exists", return_value=True):
-            result = find_completed_topics(specs, force=False)
+            result = find_completed_topics(specs, ctx, force=False)
 
         names = [d.name for d in result]
         assert "no-branch-topic" in names
@@ -457,8 +479,9 @@ class TestFindCompletedTopicsWithBranchGuard:
             json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
         )
 
+        ctx = _mock_project_context()
         with patch("archive.branch_exists", return_value=True):
-            result = find_completed_topics(specs, force=True)
+            result = find_completed_topics(specs, ctx, force=True)
 
         assert len(result) == 1
         assert result[0].name == "active-topic"
@@ -471,8 +494,9 @@ class TestFindCompletedTopicsWithBranchGuard:
             json.dumps({"spex_branch": "spex/merged"}), encoding="utf-8"
         )
 
+        ctx = _mock_project_context()
         with patch("archive.branch_exists", return_value=False):
-            result = find_completed_topics(specs, force=False)
+            result = find_completed_topics(specs, ctx, force=False)
 
         assert len(result) == 1
         assert result[0].name == "merged-topic"

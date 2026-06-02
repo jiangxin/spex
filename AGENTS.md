@@ -75,7 +75,6 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `get_spex_tomls(workdir)` | Return discovered `.spex.toml` config paths. |
 | `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
-| `get_current_workdir()` | Return git toplevel of cwd, or `None` if not in a repo. |
 | `same_path(a, b)` | True if two path strings resolve to the same location (symlink-safe). |
 | `load_meta(topic_dir)` | Load and parse `meta.json`; returns dict or `None`. |
 | `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
@@ -92,12 +91,19 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `get_template(name, workdir)` | Return template content (front-matter stripped). |
 | `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
 | `format_topic(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
-| `get_git_info()` | Retrieve git metadata (workdir, remote_url, branch, user_name, user_email). |
 | `escape_xml_text(text)` | Escape &, <, > unconditionally in text content. |
 | `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
 | `validate_unique_ids(data)` | Check unique non-empty 'id' fields, exit on duplicates. |
 | `find_matching_topics(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
+
+## Project Context (`scripts/config.py`)
+
+| Symbol | Description |
+|--------|-------------|
+| `ProjectContext` | Dataclass with unified project metadata: `cwd`, `top_workdir`, `main_worktree`, `remote_url`, `branch`, `user_name`, `user_email`, `spex_tomls`, `config`, `spex_root`, `spex_roots`. |
+| `get_project_context(workdir)` | Return a cached `ProjectContext` for the given workdir (default: cwd). |
+| `clear_config_cache()` | Clear all module-level caches including `ProjectContext`. |
 
 ## Version Management
 

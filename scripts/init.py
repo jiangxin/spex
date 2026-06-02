@@ -11,13 +11,13 @@ from common import (
     _create_default_toml,
     _sync_all_templates,
     ensure_initialized,
-    get_current_workdir,
 )
 from config import (
     clear_config_cache,
     generate_updated_toml,
-    get_context,
     get_main_worktree,
+    get_project_context,
+    get_top_workdir,
     load_config,
     safe_update_toml,
 )
@@ -28,7 +28,7 @@ def is_initialized(workdir=None):
 
     Returns True if a spex_root is resolved and its specs/ directory exists.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
     if not ctx.spex_tomls:
         return False
     if ctx.spex_root and not Path(ctx.spex_root).is_dir():
@@ -117,7 +117,7 @@ def _init_target_toml(target_dir, verbose=False):
 
 def _create_toml_config(workdir=None, verbose=False):
     """Create or safely update .spex.toml files with the latest config schema."""
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
 
     if ctx.spex_tomls:
         changed = False
@@ -141,7 +141,8 @@ def _create_toml_config(workdir=None, verbose=False):
 def run_init(workdir=None, target_dir=None, verbose=False):
     """Run full spex initialization."""
     if workdir is None:
-        workdir = get_current_workdir()
+        top = get_top_workdir()
+        workdir = str(top) if top else None
 
     _install_deps(verbose=verbose)
 
@@ -153,7 +154,7 @@ def run_init(workdir=None, target_dir=None, verbose=False):
 
     _create_toml_config(workdir=workdir, verbose=verbose)
 
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
 
     spex_root = Path(ctx.spex_root)
     ensure_initialized(str(spex_root), verbose=verbose)

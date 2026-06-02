@@ -1,10 +1,26 @@
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from common import has_undone_tasks
+from config import ProjectContext
 from get_topic import main, resolve_topic
+
+
+def _mock_project_context(top_workdir=None):
+    """Create a ProjectContext with the given top_workdir for mocking."""
+    tw = Path(top_workdir) if top_workdir else None
+    return ProjectContext(
+        cwd=Path.cwd(),
+        top_workdir=tw,
+        main_worktree=tw,
+        remote_url="",
+        branch="",
+        user_name="",
+        user_email="",
+    )
 
 
 def _make_topic(specs_dir, name, completed=False, workdir=None):
@@ -208,7 +224,8 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-alpha", workdir=str(workspace_a))
         _make_topic(specs, "2026-05-20-14-30-beta", workdir=str(workspace_b))
 
-        result = resolve_topic("", specs, filter_workdir=str(workspace_a))
+        ctx = _mock_project_context(top_workdir=str(workspace_a))
+        result = resolve_topic("", specs, ctx=ctx)
         assert result == [("2026-05-20-14-30-alpha", specs)]
 
     def test_filter_returns_multiple(self, tmp_path):
@@ -218,7 +235,8 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-one", workdir=str(workspace))
         _make_topic(specs, "2026-05-20-14-30-two", workdir=str(workspace))
 
-        result = resolve_topic("", specs, filter_workdir=str(workspace))
+        ctx = _mock_project_context(top_workdir=str(workspace))
+        result = resolve_topic("", specs, ctx=ctx)
         assert result == [
             ("2026-05-20-14-30-one", specs),
             ("2026-05-20-14-30-two", specs),
@@ -232,8 +250,9 @@ class TestResolveTopicWorkdirFilter:
         workspace_b.mkdir()
         _make_topic(specs, "2026-05-20-14-30-alpha", workdir=str(workspace_a))
 
+        ctx = _mock_project_context(top_workdir=str(workspace_b))
         with pytest.raises(SystemExit):
-            resolve_topic("", specs, filter_workdir=str(workspace_b))
+            resolve_topic("", specs, ctx=ctx)
         err = capsys.readouterr().err
         assert "--all" in err
 
@@ -244,8 +263,12 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-has-meta", workdir=str(workspace))
         _make_topic(specs, "2026-05-20-14-30-no-meta")  # no workdir
 
-        result = resolve_topic("", specs, filter_workdir=str(workspace))
-        assert result == [("2026-05-20-14-30-has-meta", specs)]
+        ctx = _mock_project_context(top_workdir=str(workspace))
+        result = resolve_topic("", specs, ctx=ctx)
+        assert result == [
+            ("2026-05-20-14-30-has-meta", specs),
+            ("2026-05-20-14-30-no-meta", specs),
+        ]
 
     def test_no_filter_returns_all(self, tmp_path):
         specs = tmp_path / "specs"
@@ -256,7 +279,7 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-alpha", workdir=str(workspace_a))
         _make_topic(specs, "2026-05-20-14-30-beta", workdir=str(workspace_b))
 
-        result = resolve_topic("", specs, filter_workdir=None)
+        result = resolve_topic("", specs, ctx=None)
         assert result == [
             ("2026-05-20-14-30-alpha", specs),
             ("2026-05-20-14-30-beta", specs),
@@ -270,12 +293,13 @@ class TestResolveTopicWorkdirFilter:
         link.symlink_to(workspace)
         _make_topic(specs, "2026-05-20-14-30-sym", workdir=str(workspace))
 
-        # Filter using the symlink path — same_path should resolve it
-        result = resolve_topic("", specs, filter_workdir=str(link))
+        # Filter using the symlink path — is_related_to should resolve it
+        ctx = _mock_project_context(top_workdir=str(link))
+        result = resolve_topic("", specs, ctx=ctx)
         assert result == [("2026-05-20-14-30-sym", specs)]
 
     def test_topic_name_ignores_filter(self, tmp_path):
-        """When topic_name is given, filter_workdir is not applied."""
+        """When topic_name is given, ctx filter is not applied."""
         specs = tmp_path / "specs"
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -285,9 +309,10 @@ class TestResolveTopicWorkdirFilter:
             specs, "2026-05-20-14-30-target", workdir=str(other)
         )
 
-        # Even though filter_workdir doesn't match, topic_name takes precedence
+        # Even though ctx doesn't match, topic_name takes precedence
+        ctx = _mock_project_context(top_workdir=str(workspace))
         result = resolve_topic(
-            "2026-05-20-14-30-target", specs, filter_workdir=str(workspace)
+            "2026-05-20-14-30-target", specs, ctx=ctx
         )
         assert result == [("2026-05-20-14-30-target", specs)]
 
@@ -323,9 +348,10 @@ class TestMainAllFlag:
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        # Mock get_current_workdir to return workspace_a (should be ignored)
+        # Mock get_project_context to return workspace_a (should be ignored)
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: str(workspace_a)
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(workspace_a)),
         )
         main()
         out = capsys.readouterr().out
@@ -346,7 +372,8 @@ class TestMainAllFlag:
             "get_topic.get_specs_dir", lambda: specs
         )
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: str(workspace_a)
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(workspace_a)),
         )
         main()
         out = capsys.readouterr().out
@@ -363,9 +390,10 @@ class TestMainAllFlag:
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        # Not in a git repo — get_current_workdir returns None
+        # Not in a git repo — get_project_context returns top_workdir=None
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: None
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
         )
         main()
         out = capsys.readouterr().out
@@ -651,7 +679,10 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
@@ -670,7 +701,10 @@ class TestMainWithArchives:
             sys, "argv", ["get_topic", "--all"]
         )
         monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
@@ -693,7 +727,10 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         items = json.loads(out)

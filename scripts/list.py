@@ -12,10 +12,9 @@ from common import (
     check_help_flag,
     format_topic,
     get_archives_dir,
-    get_current_workdir,
     get_specs_dir,
-    same_path,
 )
+from config import get_project_context
 
 USAGE = """\
 Usage: spex list [--all] [-v|-vv]
@@ -219,15 +218,9 @@ def main(argv=None):
 
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
-    current_workdir = get_current_workdir()
-    if current_workdir:
-        topics = [
-            t for t in topics
-            if not t.workdir or same_path(t.workdir, current_workdir)
-        ]
-        show_repo = False
-    else:
-        show_repo = True
+    ctx = get_project_context()
+    topics = [t for t in topics if ctx.is_related_to(t)]
+    show_repo = not ctx.in_git_workdir()
 
     verbosity = _parse_verbosity(full_argv)
     if verbosity > 0:
