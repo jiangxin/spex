@@ -23,17 +23,22 @@ class TestResolveHookRoots:
         """_resolve_hook_roots returns <spex_root>/hooks for each spex_root."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             roots = hooks._resolve_hook_roots()
 
         assert len(roots) >= 1
@@ -48,7 +53,7 @@ class TestFindHook:
         """Hook found in spex_root/hooks/ takes priority."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -56,15 +61,20 @@ class TestFindHook:
         hook_file.write_text("#!/bin/bash\necho ok")
         os.chmod(hook_file, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result == hook_file
 
@@ -72,7 +82,7 @@ class TestFindHook:
         """Hook found in secondary spex_root/hooks/ when primary has none."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         # Primary spex_root has no hooks, secondary does
         primary = tmp_path / "primary"
@@ -86,15 +96,20 @@ class TestFindHook:
         hook_file.write_text("#!/bin/bash\necho ok")
         os.chmod(hook_file, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             clear_spex_root_cache()
             result = hooks.find_hook("post-action")
             assert result == hook_file
@@ -103,7 +118,7 @@ class TestFindHook:
         """Primary spex_root hook wins over secondary spex_root hook."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         primary = tmp_path / "primary"
         secondary = tmp_path / "secondary"
@@ -123,15 +138,20 @@ class TestFindHook:
         secondary_hook.write_text("#!/bin/bash\necho secondary")
         os.chmod(secondary_hook, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             clear_spex_root_cache()
             result = hooks.find_hook("post-action")
             assert result == primary_hook
@@ -140,7 +160,7 @@ class TestFindHook:
         """Non-executable file is skipped."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -148,15 +168,20 @@ class TestFindHook:
         hook_file.write_text("#!/bin/bash")
         # Do NOT chmod +x
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result is None
 
@@ -164,17 +189,22 @@ class TestFindHook:
         """No hook found anywhere returns None."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result is None
 
@@ -220,7 +250,7 @@ class TestRunHook:
         """run_hook executes hook and passes JSON to stdin."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -234,15 +264,20 @@ class TestRunHook:
         )
         os.chmod(hook_file, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             hooks.run_hook(
                 "post-action",
                 {"event_type": "apply", "payload": {}},
@@ -255,7 +290,7 @@ class TestRunHook:
         """run_hook logs stderr when hook exits non-zero."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         hooks_dir = tmp_path / "hooks"
         hooks_dir.mkdir()
@@ -265,15 +300,20 @@ class TestRunHook:
         )
         os.chmod(hook_file, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             hooks.run_hook(
                 "post-action",
                 {"event_type": "create", "payload": {}},
@@ -288,17 +328,22 @@ class TestRunHook:
         """run_hook is silent when no hook exists."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             hooks.run_hook(
                 "post-action",
                 {"event_type": "init", "payload": {}},
@@ -317,7 +362,7 @@ class TestRunPostAction:
         """run_post_action calls run_hook with 'post-action' name."""
         from unittest.mock import patch
 
-        from config import SpexContext
+        from config import ProjectContext
 
         monkeypatch.setattr(
             "hooks._build_event_data",
@@ -342,15 +387,20 @@ class TestRunPostAction:
         )
         os.chmod(hook_file, 0o755)
 
-        ctx = SpexContext(
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
         )
-        with patch("common.get_context", return_value=ctx):
+        with patch("common.get_project_context", return_value=ctx):
             hooks.run_post_action(
                 "apply", {"foo": "bar"}, str(tmp_path), topic_name="my-topic"
             )

@@ -16,7 +16,7 @@ from pathlib import Path
 from config import (
     clear_config_cache,
     generate_default_toml,
-    get_context,
+    get_project_context,
 )
 from config import (
     get_top_workdir as _cfg_get_top_workdir,
@@ -253,7 +253,7 @@ def _resolve_hook_roots(workdir=None):
 
     Builds from all resolved spex_roots: <spex_root>/hooks/ for each.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
     return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
@@ -294,12 +294,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     Returns:
         Absolute path to the spex root directory.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
 
     if auto_init and not ctx.spex_tomls:
         _create_default_toml()
         clear_config_cache()
-        ctx = get_context(workdir)
+        ctx = get_project_context(workdir)
 
     if not ctx.spex_root:
         raise RuntimeError(
@@ -316,12 +316,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
 
 def get_spex_roots(workdir=None) -> list[str]:
     """Return all resolved spex root directories (highest priority first)."""
-    return get_context(workdir).spex_roots
+    return get_project_context(workdir).spex_roots
 
 
 def get_spex_tomls(workdir=None) -> list[str]:
     """Return discovered .spex.toml config paths as strings."""
-    return [str(p) for p in get_context(workdir).spex_tomls]
+    return [str(p) for p in get_project_context(workdir).spex_tomls]
 
 
 def get_specs_dir(workdir=None) -> Path:
@@ -679,7 +679,7 @@ def _resolve_template_roots(workdir=None):
     Builds from all resolved spex_roots: <spex_root>/templates/ for each,
     then appends the skill's built-in templates directory last.
     """
-    ctx = get_context(workdir)
+    ctx = get_project_context(workdir)
     roots = [Path(sr) / TEMPLATE_DIR for sr in ctx.spex_roots]
     roots.append(_get_skill_path() / TEMPLATE_DIR)
     return roots

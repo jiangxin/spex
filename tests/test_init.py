@@ -224,7 +224,7 @@ class TestEnsureInitialized:
         ctx = _make_context(
             spex_root=str(spex_root), spex_roots=[str(spex_root)]
         )
-        monkeypatch.setattr("common.get_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
         clear_spex_root_cache()
 
         from common import get_spex_root
