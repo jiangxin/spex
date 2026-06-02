@@ -12,7 +12,6 @@ from cli import ArgumentParser
 from common import (
     TopicMeta,
     atomic_write_json,
-    get_git_info,
     get_spex_root,
     get_template,
     load_meta,
@@ -22,7 +21,7 @@ from common import (
     strip_front_matter,
 )
 from common import filter_completed_todos as _filter_completed_todos
-from config import get_context
+from config import get_project_context
 
 
 def validate_required_meta(content, metadata):
@@ -275,10 +274,13 @@ def _build_metadata(template_name, topic_name=None):
         if meta:
             metadata.update(meta.to_dict())
     if not metadata:
-        git_info = get_git_info()
-        metadata.update(git_info)
-        ctx = get_context(git_info["workdir"])
-        if ctx and ctx.main_worktree:
+        ctx = get_project_context()
+        metadata["workdir"] = str(ctx.top_workdir) if ctx.top_workdir else ""
+        metadata["remote_url"] = ctx.remote_url
+        metadata["branch"] = ctx.branch
+        metadata["user_name"] = ctx.user_name
+        metadata["user_email"] = ctx.user_email
+        if ctx.main_worktree:
             metadata["main_worktree"] = ctx.main_worktree
         metadata["created_at"] = local_iso_timestamp()
         metadata["topic"] = ""
