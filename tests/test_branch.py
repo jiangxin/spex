@@ -15,7 +15,7 @@ from branch import (
     get_current_branch,
     merge_branch,
 )
-from common import strip_date_prefix
+from common import TopicMeta, strip_date_prefix
 from config import SpexContext
 
 
@@ -256,7 +256,7 @@ class TestCliPostAction:
         assert "main" in out
 
     @patch("common.resolve_topic_dir")
-    @patch("common.load_meta", return_value={})
+    @patch("common.load_meta", return_value=TopicMeta())
     def test_no_branch_no_output(self, _meta, _resolve, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
