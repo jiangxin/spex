@@ -1,6 +1,7 @@
 import json
+from pathlib import Path
 
-from common import get_todo_progress, load_meta
+from common import Topic, get_todo_progress, load_meta
 from list import (  # noqa: A004
     _parse_verbosity,
     _wrap_text,
@@ -148,11 +149,14 @@ class TestFormatOutput:
         assert format_output([]) == "No specs found."
 
     def test_sort_descending(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "older", "timestamp": "2026-05-01T10:00:00+08:00",
-             "n": 1, "m": 2, "prompt": "old"},
-            {"name": "newer", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "new"},
+            Topic(name="older", path=p,
+                  created_at="2026-05-01T10:00:00+08:00",
+                  done=1, total=2, prompt="old"),
+            Topic(name="newer", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="new"),
         ]
         output = format_output(topics)
         lines = output.splitlines()
@@ -160,19 +164,23 @@ class TestFormatOutput:
         assert "older" in lines[1]
 
     def test_topic_truncation(self):
+        p = Path("/tmp")
         long_name = "a" * 40
         topics = [
-            {"name": long_name, "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "test"},
+            Topic(name=long_name, path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="test"),
         ]
         output = format_output(topics)
         assert "..." in output
         assert len(output.splitlines()[0]) <= 80
 
     def test_line_width_limit(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 1, "m": 3, "prompt": "x" * 200},
+            Topic(name="topic", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=1, total=3, prompt="x" * 200),
         ]
         output = format_output(topics)
         for line in output.splitlines():
@@ -189,10 +197,11 @@ class TestCollectTopics:
         result = collect_topics([specs])
 
         assert len(result) == 1
-        assert result[0]["name"] == "my-topic"
-        assert result[0]["n"] == 0
-        assert result[0]["m"] == 1
-        assert result[0]["prompt"] == "hello"
+        assert isinstance(result[0], Topic)
+        assert result[0].name == "my-topic"
+        assert result[0].done == 0
+        assert result[0].total == 1
+        assert result[0].prompt == "hello"
 
     def test_prefers_meta_over_prompt_log(self, tmp_path):
         specs = tmp_path / "specs"
@@ -203,8 +212,8 @@ class TestCollectTopics:
         result = collect_topics([specs])
 
         assert len(result) == 1
-        assert result[0]["timestamp"] == "2026-05-24T20:00:00+08:00"
-        assert result[0]["prompt"] == "from meta"
+        assert result[0].created_at == "2026-05-24T20:00:00+08:00"
+        assert result[0].prompt == "from meta"
 
     def test_falls_back_to_prompt_log(self, tmp_path):
         specs = tmp_path / "specs"
@@ -214,8 +223,8 @@ class TestCollectTopics:
         result = collect_topics([specs])
 
         assert len(result) == 1
-        assert result[0]["timestamp"] == "2026-05-20T10:00:00+08:00"
-        assert result[0]["prompt"] == "legacy prompt"
+        assert result[0].created_at == "2026-05-20T10:00:00+08:00"
+        assert result[0].prompt == "legacy prompt"
 
     def test_workdir_stored(self, tmp_path):
         specs = tmp_path / "specs"
@@ -232,42 +241,51 @@ class TestCollectTopics:
 
         result = collect_topics([specs])
 
-        assert result[0]["workdir"] == "/home/user/project-a"
+        assert result[0].workdir == "/home/user/project-a"
 
 
 class TestFormatOutputRepoPrefix:
     def test_show_repo_false(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/bar"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="x", workdir="/foo/bar"),
         ]
         output = format_output(topics, show_repo=False)
         assert "[" not in output
 
     def test_show_repo_true_short_name(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/bar"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="x", workdir="/foo/bar"),
         ]
         output = format_output(topics, show_repo=True)
         assert "[bar]" in output
 
     def test_show_repo_true_long_name(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "x",
-             "workdir": "/foo/my-very-long-project-name"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="x",
+                  workdir="/foo/my-very-long-project-name"),
         ]
         output = format_output(topics, show_repo=True)
         assert "[my-very-..." in output
 
     def test_show_repo_alignment(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-21T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "x", "workdir": "/foo/ab"},
-            {"name": "topic-b", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 1, "m": 1, "prompt": "y",
-             "workdir": "/foo/longername"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-21T10:00:00+08:00",
+                  done=0, total=1, prompt="x", workdir="/foo/ab"),
+            Topic(name="topic-b", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=1, total=1, prompt="y",
+                  workdir="/foo/longername"),
         ]
         output = format_output(topics, show_repo=True)
         lines = output.splitlines()
@@ -279,28 +297,34 @@ class TestFormatOutputRepoPrefix:
 
 class TestDescriptionDisplay:
     def test_description_shown_over_prompt(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "old prompt",
-             "description": "Better description"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="old prompt",
+                  description="Better description"),
         ]
         output = format_output(topics)
         assert "Better description" in output
         assert "old prompt" not in output
 
     def test_prompt_fallback_when_no_description(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "fallback prompt",
-             "description": ""},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="fallback prompt",
+                  description=""),
         ]
         output = format_output(topics)
         assert "fallback prompt" in output
 
     def test_prompt_fallback_when_description_missing(self):
+        p = Path("/tmp")
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "shown prompt"},
+            Topic(name="topic-a", path=p,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="shown prompt"),
         ]
         output = format_output(topics)
         assert "shown prompt" in output
@@ -316,7 +340,7 @@ class TestDescriptionDisplay:
             encoding="utf-8",
         )
         topics = collect_topics([specs])
-        assert topics[0]["description"] == "From spec"
+        assert topics[0].description == "From spec"
 
 
 class TestVerboseOutput:
@@ -328,13 +352,14 @@ class TestVerboseOutput:
             encoding="utf-8",
         )
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 1, "m": 3, "prompt": "old prompt", "path": topic_dir,
-             "description": "Full description text here"},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=1, total=3, prompt="old prompt",
+                  description="Full description text here"),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic reads n/m from filesystem (no todo.json → 0/0)
+        # format_topic reads done/total from filesystem (no todo.json -> 0/0)
         assert "[0/0]" in lines[0]
         assert "topic" in lines[0]
         assert lines[1] == "    Full description text here"
@@ -342,11 +367,12 @@ class TestVerboseOutput:
     def test_level1_prompt_fallback(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
-        # No spec.md → no description
+        # No spec.md -> no description
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "fallback prompt", "path": topic_dir,
-             "description": ""},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="fallback prompt",
+                  description=""),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
@@ -366,10 +392,12 @@ class TestVerboseOutput:
             '---\ndescription: "D2"\n---\n', encoding="utf-8",
         )
         topics = [
-            {"name": "topic-a", "timestamp": "2026-05-21T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "p1", "path": dir1, "description": "D1"},
-            {"name": "topic-b", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 1, "m": 1, "prompt": "p2", "path": dir2, "description": "D2"},
+            Topic(name="topic-a", path=dir1,
+                  created_at="2026-05-21T10:00:00+08:00",
+                  done=0, total=1, prompt="p1", description="D1"),
+            Topic(name="topic-b", path=dir2,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=1, total=1, prompt="p2", description="D2"),
         ]
         output = format_verbose_output(topics, verbosity=1)
         assert "\n\n" in output
@@ -383,13 +411,14 @@ class TestVerboseOutput:
             encoding="utf-8",
         )
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "", "path": topic_dir,
-             "description": long_desc.strip()},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="",
+                  description=long_desc.strip()),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic doesn't wrap — description is raw from spec front-matter
+        # format_topic doesn't wrap -- description is raw from spec front-matter
         assert any("word word" in line for line in lines[1:])
 
     def test_level2_shows_steps(self, tmp_path):
@@ -403,9 +432,10 @@ class TestVerboseOutput:
             _task("step-2", completed=False),
         ])
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 1, "m": 2, "prompt": "some prompt", "path": topic_dir,
-             "description": "Desc"},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=1, total=2, prompt="some prompt",
+                  description="Desc"),
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
@@ -422,9 +452,10 @@ class TestVerboseOutput:
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 0, "prompt": "p", "path": topic_dir,
-             "description": "Desc"},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=0, prompt="p",
+                  description="Desc"),
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
@@ -435,9 +466,10 @@ class TestVerboseOutput:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         topics = [
-            {"name": "my-topic", "timestamp": "2026-05-20T10:00:00+08:00",
-             "n": 0, "m": 1, "prompt": "p", "path": topic_dir,
-             "description": "D"},
+            Topic(name="my-topic", path=topic_dir,
+                  created_at="2026-05-20T10:00:00+08:00",
+                  done=0, total=1, prompt="p",
+                  description="D"),
         ]
         output = format_verbose_output(topics, verbosity=3)
         assert "spex show" in output

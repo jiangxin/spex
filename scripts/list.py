@@ -8,9 +8,7 @@ import sys
 from pathlib import Path
 
 from common import (
-    ICON_ARCHIVED,
-    ICON_COMPLETED,
-    ICON_IN_PROGRESS,
+    Topic,
     check_help_flag,
     format_topic,
     get_archives_dir,
@@ -58,10 +56,10 @@ def parse_prompt_log(log_path: Path) -> tuple:
     return (timestamp, prompt_text)
 
 
-def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
+def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
     """Collect topic info from given directories."""
     archive_dirs = set(archive_dirs or [])
-    topics = []
+    topics: list[Topic] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -79,19 +77,19 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
                 ts_prompt = parse_prompt_log(sub / PROMPT_LOG)
                 timestamp, prompt = ts_prompt
                 workdir = ""
-            n, m = get_todo_progress(sub)
+            done, total = get_todo_progress(sub)
             description = get_spec_description(sub)
-            topics.append({
-                "name": sub.name,
-                "path": sub,
-                "timestamp": timestamp,
-                "n": n,
-                "m": m,
-                "prompt": prompt,
-                "description": description,
-                "workdir": workdir,
-                "archived": archived,
-            })
+            topics.append(Topic(
+                name=sub.name,
+                path=sub,
+                created_at=timestamp,
+                done=done,
+                total=total,
+                prompt=prompt,
+                description=description,
+                workdir=workdir,
+                archived=archived,
+            ))
     return topics
 
 
@@ -103,15 +101,6 @@ def _truncate(text: str, width: int) -> str:
 
 
 MAX_REPO_WIDTH = 11
-
-
-def _get_icon(topic: dict) -> str:
-    """Return status emoji for a topic."""
-    if topic.get("archived"):
-        return ICON_ARCHIVED
-    if topic["m"] > 0 and topic["n"] == topic["m"]:
-        return ICON_COMPLETED
-    return ICON_IN_PROGRESS
 
 
 def _repo_label(workdir: str) -> str:
@@ -129,14 +118,14 @@ def format_output(
     if not topics:
         return "No specs found."
 
-    topics.sort(key=lambda t: t["timestamp"], reverse=True)
+    topics.sort(key=lambda t: t.created_at, reverse=True)
 
-    progress_strs = [f"{t['n']}/{t['m']}" for t in topics]
+    progress_strs = [f"{t.done}/{t.total}" for t in topics]
     progress_width = max(len(s) for s in progress_strs)
 
     repo_labels = []
     if show_repo:
-        repo_labels = [_repo_label(t.get("workdir", "")) for t in topics]
+        repo_labels = [_repo_label(t.workdir) for t in topics]
         max_label_width = max(len(lb) for lb in repo_labels)
         repo_col_width = max_label_width + 3  # brackets + trailing space
     else:
@@ -148,11 +137,11 @@ def format_output(
 
     lines = []
     for i, (topic, prog_str) in enumerate(zip(topics, progress_strs)):
-        icon = _get_icon(topic)
-        name = _truncate(topic["name"], MAX_TOPIC_WIDTH)
+        icon = topic.icon
+        name = _truncate(topic.name, MAX_TOPIC_WIDTH)
         name_col = name.ljust(MAX_TOPIC_WIDTH)
         prog_col = prog_str.rjust(progress_width)
-        display_text = topic.get("description") or topic["prompt"]
+        display_text = topic.display_text
         prompt_col = _truncate(display_text, prompt_width) if prompt_width > 3 else ""
 
         if show_repo:
@@ -201,21 +190,21 @@ def format_verbose_output(
     if verbosity >= 3:
         return "Use 'spex show <topic>' for detailed view."
 
-    topics.sort(key=lambda t: t["timestamp"], reverse=True)
+    topics.sort(key=lambda t: t.created_at, reverse=True)
 
     blocks = []
     for topic in topics:
         if show_repo:
-            label = _repo_label(topic.get("workdir", ""))
-            icon = _get_icon(topic)
-            prog = f"[{topic['n']}/{topic['m']}]"
-            line1 = f"[{label}] {icon} {prog} {topic['name']}"
-            display_text = topic.get("description") or topic.get("prompt", "")
+            label = _repo_label(topic.workdir)
+            icon = topic.icon
+            prog = f"[{topic.done}/{topic.total}]"
+            line1 = f"[{label}] {icon} {prog} {topic.name}"
+            display_text = topic.display_text
             parts = [line1]
             if display_text:
                 parts.append(_wrap_text(display_text))
             if verbosity >= 2:
-                todo = load_todo(topic["path"]) if topic.get("path") else None
+                todo = load_todo(topic.path)
                 if todo:
                     parts.append("")
                     for item in todo:
@@ -224,7 +213,7 @@ def format_verbose_output(
                         parts.append(f"    {step_id}: {step_name}")
             blocks.append("\n".join(parts))
         else:
-            blocks.append(format_topic(topic["path"], verbose=verbosity))
+            blocks.append(format_topic(topic.path, verbose=verbosity))
 
     return "\n\n".join(blocks)
 
@@ -258,7 +247,7 @@ def main(argv=None):
     if current_workdir:
         topics = [
             t for t in topics
-            if not t.get("workdir") or same_path(t["workdir"], current_workdir)
+            if not t.workdir or same_path(t.workdir, current_workdir)
         ]
         show_repo = False
     else:

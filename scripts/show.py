@@ -10,6 +10,7 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
+    Topic,
     check_help_flag,
     format_topic,
     get_specs_dir,
@@ -18,7 +19,6 @@ from common import (
     resolve_topic_dir,
     strip_front_matter,
 )
-from list import _get_icon  # noqa: E402
 
 USAGE = """\
 Usage: spex show [topic] [-l]
@@ -56,8 +56,8 @@ def _format_verbose(topic_dir):
     """Format topic with full spec and structured todo."""
     name = topic_dir.name
     n, m = get_todo_progress(topic_dir)
-    topic = {"n": n, "m": m, "archived": False}
-    icon = _get_icon(topic)
+    t = Topic(name=name, path=topic_dir, done=n, total=m)
+    icon = t.icon
 
     spec_path = topic_dir / "spec.md"
     parts = []

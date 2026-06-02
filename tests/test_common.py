@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 from common import (
+    ICON_ARCHIVED,
+    ICON_COMPLETED,
+    ICON_IN_PROGRESS,
+    Topic,
     TopicMeta,
     _resolve_template_roots,
     check_help_flag,
@@ -848,6 +852,51 @@ class TestTopicMeta:
         assert m.prompts == prompts
         result = m.to_dict()
         assert result["prompts"] == prompts
+
+
+class TestTopic:
+    def test_topic_defaults(self, tmp_path):
+        t = Topic(name="t", path=tmp_path)
+        assert t.name == "t"
+        assert t.path == tmp_path
+        assert t.created_at == ""
+        assert t.done == 0
+        assert t.total == 0
+        assert t.prompt == ""
+        assert t.description == ""
+        assert t.workdir == ""
+        assert t.archived is False
+
+    def test_topic_is_completed(self):
+        p = Path("/tmp")
+        assert Topic(name="t", path=p, done=0, total=0).is_completed is False
+        assert Topic(name="t", path=p, done=1, total=3).is_completed is False
+        assert Topic(name="t", path=p, done=3, total=3).is_completed is True
+
+    def test_topic_icon(self):
+        p = Path("/tmp")
+        assert Topic(name="t", path=p, archived=True).icon == ICON_ARCHIVED
+        assert (
+            Topic(name="t", path=p, done=3, total=3).icon == ICON_COMPLETED
+        )
+        assert (
+            Topic(name="t", path=p, done=1, total=3).icon == ICON_IN_PROGRESS
+        )
+        assert (
+            Topic(name="t", path=p, done=0, total=0).icon == ICON_IN_PROGRESS
+        )
+
+    def test_topic_display_text(self):
+        p = Path("/tmp")
+        t1 = Topic(
+            name="t", path=p,
+            description="desc", prompt="prompt",
+        )
+        assert t1.display_text == "desc"
+        t2 = Topic(name="t", path=p, prompt="prompt")
+        assert t2.display_text == "prompt"
+        t3 = Topic(name="t", path=p)
+        assert t3.display_text == ""
 
 
 class TestLoadMetaTopicMeta:

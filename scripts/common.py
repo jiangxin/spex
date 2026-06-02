@@ -79,6 +79,35 @@ class TopicMeta:
         return result
 
 
+@dataclass
+class Topic:
+    """In-memory representation of a topic for display."""
+
+    name: str
+    path: Path
+    created_at: str = ""
+    done: int = 0
+    total: int = 0
+    prompt: str = ""
+    description: str = ""
+    workdir: str = ""
+    archived: bool = False
+
+    @property
+    def is_completed(self) -> bool:
+        return self.total > 0 and self.done == self.total
+
+    @property
+    def icon(self) -> str:
+        if self.archived:
+            return ICON_ARCHIVED
+        return ICON_COMPLETED if self.is_completed else ICON_IN_PROGRESS
+
+    @property
+    def display_text(self) -> str:
+        return self.description or self.prompt
+
+
 def _create_default_toml():
     """Create ~/.spex.toml with default content."""
     target = Path.home() / ".spex.toml"
