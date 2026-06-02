@@ -13,11 +13,7 @@ from common import (
     format_topic,
     get_archives_dir,
     get_current_workdir,
-    get_spec_description,
     get_specs_dir,
-    get_todo_progress,
-    load_meta,
-    load_todo,
     same_path,
 )
 
@@ -67,29 +63,9 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            meta = load_meta(sub)
-            if meta is not None:
-                timestamp = meta.created_at
-                prompts = meta.prompts
-                prompt = prompts[0] if prompts else ""
-                workdir = meta.workdir
-            else:
-                ts_prompt = parse_prompt_log(sub / PROMPT_LOG)
-                timestamp, prompt = ts_prompt
-                workdir = ""
-            done, total = get_todo_progress(sub)
-            description = get_spec_description(sub)
-            topics.append(Topic(
-                name=sub.name,
-                path=sub,
-                created_at=timestamp,
-                done=done,
-                total=total,
-                prompt=prompt,
-                description=description,
-                workdir=workdir,
-                archived=archived,
-            ))
+            topic = Topic.from_dir(sub, archived=archived)
+            if topic is not None:
+                topics.append(topic)
     return topics
 
 
@@ -204,7 +180,7 @@ def format_verbose_output(
             if display_text:
                 parts.append(_wrap_text(display_text))
             if verbosity >= 2:
-                todo = load_todo(topic.path)
+                todo = topic.todo_data
                 if todo:
                     parts.append("")
                     for item in todo:

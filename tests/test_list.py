@@ -191,7 +191,7 @@ class TestCollectTopics:
     def test_collects_from_dirs(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "my-topic"
-        _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "hello")
+        _make_meta(topic, "2026-05-20T10:00:00+08:00", ["hello"])
         _make_todo(topic, [_task("1", completed=False)])
 
         result = collect_topics([specs])
@@ -215,16 +215,14 @@ class TestCollectTopics:
         assert result[0].created_at == "2026-05-24T20:00:00+08:00"
         assert result[0].prompt == "from meta"
 
-    def test_falls_back_to_prompt_log(self, tmp_path):
+    def test_skips_dirs_without_meta(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "old-topic"
         _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "legacy prompt")
 
         result = collect_topics([specs])
 
-        assert len(result) == 1
-        assert result[0].created_at == "2026-05-20T10:00:00+08:00"
-        assert result[0].prompt == "legacy prompt"
+        assert len(result) == 0
 
     def test_workdir_stored(self, tmp_path):
         specs = tmp_path / "specs"
