@@ -83,6 +83,12 @@ class TestFormatVerbose:
         output = spex_show._format_verbose(topic_dir)
         assert "(no tasks)" in output
 
+    def test_missing_meta_returns_error(self, tmp_path):
+        topic_dir = tmp_path / "specs" / "bad-topic"
+        topic_dir.mkdir(parents=True)
+        output = spex_show._format_verbose(topic_dir)
+        assert "(unable to load topic: bad-topic)" in output
+
 
 class TestMain:
     def test_no_args_no_topics_exits(self, monkeypatch, tmp_path):

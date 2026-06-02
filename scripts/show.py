@@ -10,15 +10,13 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
+    Topic,
     check_help_flag,
     format_topic,
     get_specs_dir,
-    get_todo_progress,
-    load_todo,
     resolve_topic_dir,
     strip_front_matter,
 )
-from list import _get_icon  # noqa: E402
 
 USAGE = """\
 Usage: spex show [topic] [-l]
@@ -54,21 +52,18 @@ def _format_default(topic_dir):
 
 def _format_verbose(topic_dir):
     """Format topic with full spec and structured todo."""
-    name = topic_dir.name
-    n, m = get_todo_progress(topic_dir)
-    topic = {"n": n, "m": m, "archived": False}
-    icon = _get_icon(topic)
+    t = Topic.from_dir(topic_dir)
+    if t is None:
+        return f"(unable to load topic: {topic_dir.name})"
 
-    spec_path = topic_dir / "spec.md"
     parts = []
 
-    parts.append(f"{icon} [{n}/{m}] {name}")
+    parts.append(f"{t.icon} [{t.done}/{t.total}] {t.name}")
     parts.append("")
     parts.append("# **Specification**")
     parts.append("")
-    if spec_path.is_file():
-        content = spec_path.read_text(encoding="utf-8")
-        parts.append(strip_front_matter(content).rstrip())
+    if t.spec_content is not None:
+        parts.append(strip_front_matter(t.spec_content).rstrip())
     else:
         parts.append("(no spec.md found)")
 
@@ -78,7 +73,7 @@ def _format_verbose(topic_dir):
     parts.append("# **TODO**")
     parts.append("")
 
-    todo = load_todo(topic_dir)
+    todo = t.todo_data
     if todo:
         for item in todo:
             step_id = item.get("id", "")

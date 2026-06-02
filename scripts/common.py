@@ -79,6 +79,120 @@ class TopicMeta:
         return result
 
 
+@dataclass
+class Topic:
+    """In-memory representation of a topic for display."""
+
+    name: str
+    path: Path
+    meta: TopicMeta
+    done: int = 0
+    total: int = 0
+    archived: bool = False
+
+    @classmethod
+    def from_dir(cls, topic_dir: Path, *, archived: bool = False) -> Topic | None:
+        """Create a Topic from a topic directory.
+
+        Returns None if meta.json is missing or invalid.
+        """
+        meta = load_meta(topic_dir)
+        if meta is None:
+            return None
+        done, total = get_todo_progress(topic_dir)
+        return cls(
+            name=topic_dir.name,
+            path=topic_dir,
+            meta=meta,
+            done=done,
+            total=total,
+            archived=archived,
+        )
+
+    @property
+    def workdir(self) -> str:
+        """Delegate to meta.workdir."""
+        return self.meta.workdir
+
+    @property
+    def main_worktree(self) -> str:
+        return self.meta.main_worktree
+
+    @property
+    def remote_url(self) -> str:
+        return self.meta.remote_url
+
+    @property
+    def branch(self) -> str:
+        return self.meta.branch
+
+    @property
+    def user_name(self) -> str:
+        return self.meta.user_name
+
+    @property
+    def user_email(self) -> str:
+        return self.meta.user_email
+
+    @property
+    def spex_branch(self) -> str:
+        return self.meta.spex_branch
+
+    @property
+    def description(self) -> str:
+        """Return meta description, falling back to spec.md front-matter."""
+        if self.meta.description:
+            return self.meta.description
+        return parse_front_matter_description(self.spec_content or "")
+
+    @property
+    def created_at(self) -> str:
+        """Delegate to meta.created_at."""
+        return self.meta.created_at
+
+    @property
+    def prompt(self) -> str:
+        """Return first prompt from meta, or empty string."""
+        if self.meta.prompts:
+            return self.meta.prompts[0]
+        return ""
+
+    @property
+    def spec_content(self) -> str | None:
+        """Read and return spec.md content, or None if missing."""
+        spec_path = self.path / "spec.md"
+        if not spec_path.is_file():
+            return None
+        try:
+            return spec_path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    @property
+    def todo_data(self):
+        """Delegate to load_todo(self.path)."""
+        return load_todo(self.path)
+
+    @property
+    def todo_progress(self) -> tuple:
+        """Return (done, total) counts."""
+        return (self.done, self.total)
+
+    @property
+    def is_completed(self) -> bool:
+        return self.total > 0 and self.done == self.total
+
+    @property
+    def icon(self) -> str:
+        if self.archived:
+            return ICON_ARCHIVED
+        return ICON_COMPLETED if self.is_completed else ICON_IN_PROGRESS
+
+    @property
+    def display_text(self) -> str:
+        return self.description or self.prompt
+
+
 def _create_default_toml():
     """Create ~/.spex.toml with default content."""
     target = Path.home() / ".spex.toml"
