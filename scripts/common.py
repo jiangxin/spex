@@ -763,7 +763,8 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         Path to the resolved topic directory.
     """
     if specs_dir is None:
-        specs_dir = get_specs_dir(get_current_workdir())
+        top = get_project_context().top_workdir
+        specs_dir = get_specs_dir(str(top) if top else None)
     else:
         specs_dir = Path(specs_dir)
 

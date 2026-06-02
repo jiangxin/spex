@@ -223,12 +223,12 @@ def cli_post_action(argv=None):
     from cli import ArgumentParser
     from common import (
         TopicMeta,
-        get_current_workdir,
         load_and_validate_todo_json,
         load_meta,
         parse_front_matter_description,
         validate_unique_ids,
     )
+    from config import get_project_context
 
     parser = ArgumentParser(
         prog="spex create-helper post-action",
@@ -275,8 +275,9 @@ def cli_post_action(argv=None):
     topic_name = (meta.topic if meta else "") or (
         strip_date_prefix(topic_dir.name)
     )
+    top = get_project_context().top_workdir
     workdir = (meta.workdir if meta else "") or (
-        get_current_workdir()
+        str(top) if top else None
     )
     done = sum(
         1 for item in data

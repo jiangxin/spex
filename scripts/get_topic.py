@@ -17,7 +17,6 @@ from common import (
     check_help_flag,
     find_matching_topics,
     get_archives_dir,
-    get_current_workdir,
     get_specs_dir,
     get_spex_roots,
     get_spex_tomls,
@@ -26,7 +25,7 @@ from common import (
     load_meta,
     same_path,
 )
-from config import set_spex_config_file
+from config import get_project_context, set_spex_config_file
 
 USAGE = """\
 Usage: spex get-topic [--json] [--all] [--with-archives] [--must-done | --must-undone] [topic]
@@ -286,7 +285,8 @@ def main(argv=None):
         )
         sys.exit(1)
 
-    workdir = get_current_workdir()
+    top = get_project_context().top_workdir
+    workdir = str(top) if top else None
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
     if with_archives_flag:

@@ -12,10 +12,10 @@ from common import (
     check_help_flag,
     format_topic,
     get_archives_dir,
-    get_current_workdir,
     get_specs_dir,
     same_path,
 )
+from config import get_project_context
 
 USAGE = """\
 Usage: spex list [--all] [-v|-vv]
@@ -219,7 +219,8 @@ def main(argv=None):
 
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
-    current_workdir = get_current_workdir()
+    top = get_project_context().top_workdir
+    current_workdir = str(top) if top else None
     if current_workdir:
         topics = [
             t for t in topics

@@ -17,7 +17,6 @@ from common import (
     check_help_flag,
     find_matching_topics,
     get_archives_dir,
-    get_current_workdir,
     get_specs_dir,
     get_topic_workdir,
     is_topic_completed,
@@ -25,6 +24,7 @@ from common import (
     resolve_topic_dir,
     same_path,
 )
+from config import get_project_context
 
 
 def has_active_branch(topic_dir: Path) -> bool:
@@ -204,7 +204,8 @@ def main(argv=None):
         archive_single_topic(args.topic, specs_dir, archives_dir, args.force)
         return
 
-    current_workdir = get_current_workdir()
+    top = get_project_context().top_workdir
+    current_workdir = str(top) if top else None
     completed = find_completed_topics(specs_dir, current_workdir, args.force)
 
     if not completed:

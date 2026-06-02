@@ -1,10 +1,26 @@
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from common import has_undone_tasks
+from config import ProjectContext
 from get_topic import main, resolve_topic
+
+
+def _mock_project_context(top_workdir=None):
+    """Create a ProjectContext with the given top_workdir for mocking."""
+    tw = Path(top_workdir) if top_workdir else None
+    return ProjectContext(
+        cwd=Path.cwd(),
+        top_workdir=tw,
+        main_worktree=tw,
+        remote_url="",
+        branch="",
+        user_name="",
+        user_email="",
+    )
 
 
 def _make_topic(specs_dir, name, completed=False, workdir=None):
@@ -323,9 +339,10 @@ class TestMainAllFlag:
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        # Mock get_current_workdir to return workspace_a (should be ignored)
+        # Mock get_project_context to return workspace_a (should be ignored)
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: str(workspace_a)
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(workspace_a)),
         )
         main()
         out = capsys.readouterr().out
@@ -346,7 +363,8 @@ class TestMainAllFlag:
             "get_topic.get_specs_dir", lambda: specs
         )
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: str(workspace_a)
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(workspace_a)),
         )
         main()
         out = capsys.readouterr().out
@@ -363,9 +381,10 @@ class TestMainAllFlag:
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        # Not in a git repo — get_current_workdir returns None
+        # Not in a git repo — get_project_context returns top_workdir=None
         monkeypatch.setattr(
-            "get_topic.get_current_workdir", lambda: None
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
         )
         main()
         out = capsys.readouterr().out
@@ -651,7 +670,10 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
@@ -670,7 +692,10 @@ class TestMainWithArchives:
             sys, "argv", ["get_topic", "--all"]
         )
         monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
@@ -693,7 +718,10 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
-        monkeypatch.setattr("get_topic.get_current_workdir", lambda: None)
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(None),
+        )
         main()
         out = capsys.readouterr().out
         items = json.loads(out)

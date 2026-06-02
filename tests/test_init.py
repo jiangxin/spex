@@ -10,7 +10,7 @@ from common import (
     _sync_builtin_template,
     clear_spex_root_cache,
 )
-from config import SpexContext, generate_default_toml
+from config import ProjectContext, generate_default_toml
 
 
 @pytest.fixture(autouse=True)
@@ -36,14 +36,19 @@ def _make_context(
     top_workdir=None,
     main_worktree=None,
 ):
-    """Helper to build a SpexContext for mocking."""
-    return SpexContext(
+    """Helper to build a ProjectContext for mocking."""
+    return ProjectContext(
+        cwd=Path.cwd(),
+        top_workdir=top_workdir,
+        main_worktree=main_worktree,
+        remote_url="",
+        branch="",
+        user_name="",
+        user_email="",
         spex_tomls=spex_tomls or [],
         config=config or {},
         spex_root=spex_root,
         spex_roots=spex_roots or [],
-        top_workdir=top_workdir,
-        main_worktree=main_worktree,
     )
 
 
@@ -51,7 +56,7 @@ class TestIsInitialized:
     def test_not_initialized_no_tomls(self, tmp_path):
         """Returns False when no .spex.toml config files are found."""
         ctx = _make_context(spex_root="", spex_roots=[], spex_tomls=[])
-        with patch("init.get_context", return_value=ctx):
+        with patch("init.get_project_context", return_value=ctx):
             from init import is_initialized
 
             assert is_initialized() is False
@@ -64,7 +69,7 @@ class TestIsInitialized:
             spex_roots=[str(spex_root)],
             spex_tomls=[tmp_path / ".spex.toml"],
         )
-        with patch("init.get_context", return_value=ctx):
+        with patch("init.get_project_context", return_value=ctx):
             from init import is_initialized
 
             assert is_initialized() is False
@@ -78,7 +83,7 @@ class TestIsInitialized:
             spex_roots=[str(spex_root)],
             spex_tomls=[tmp_path / ".spex.toml"],
         )
-        with patch("init.get_context", return_value=ctx):
+        with patch("init.get_project_context", return_value=ctx):
             from init import is_initialized
 
             assert is_initialized() is True
@@ -300,7 +305,7 @@ class TestCreateTomlConfig:
 
         ctx = _make_context(spex_tomls=[])
         with (
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.Path.home", return_value=fake_home),
             patch("common.Path.home", return_value=fake_home),
             patch("init.clear_config_cache"),
@@ -324,7 +329,7 @@ class TestCreateTomlConfig:
 
         ctx = _make_context(spex_tomls=[project_toml, home_toml])
         with (
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.clear_config_cache"),
         ):
             from init import _create_toml_config
@@ -346,7 +351,7 @@ class TestCreateTomlConfig:
 
         ctx = _make_context(spex_tomls=[toml_file])
         with (
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.clear_config_cache") as mock_clear,
         ):
             from init import _create_toml_config
@@ -370,7 +375,7 @@ class TestRunInit:
             patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config") as mock_create_toml,
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.ensure_initialized"),
         ):
             from init import run_init
@@ -397,7 +402,7 @@ class TestRunInit:
             patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
-            patch("init.get_context", return_value=ctx_with_roots),
+            patch("init.get_project_context", return_value=ctx_with_roots),
             patch("init._sync_all_templates") as mock_sync,
             patch("init.ensure_initialized") as mock_ensure,
         ):
@@ -422,7 +427,7 @@ class TestRunInit:
             patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.ensure_initialized") as mock_ensure,
         ):
             from init import run_init
@@ -445,7 +450,7 @@ class TestRunInit:
             patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.ensure_initialized") as mock_ensure,
         ):
             from init import run_init
@@ -503,7 +508,7 @@ class TestMainCheckFlag:
         ctx = _make_context(spex_root="", spex_roots=[])
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
-        with patch("init.get_context", return_value=ctx):
+        with patch("init.get_project_context", return_value=ctx):
             from init import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -520,7 +525,7 @@ class TestMainCheckFlag:
         )
         monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
-        with patch("init.get_context", return_value=ctx):
+        with patch("init.get_project_context", return_value=ctx):
             from init import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -582,7 +587,7 @@ class TestVerboseFlag:
             patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
-            patch("init.get_context", return_value=ctx),
+            patch("init.get_project_context", return_value=ctx),
             patch("init.ensure_initialized") as mock_ensure,
             patch("init._sync_all_templates"),
         ):
