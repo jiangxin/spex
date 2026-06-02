@@ -1,10 +1,12 @@
 """Tests for config.py: hierarchical TOML discovery, merging, and caching."""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from config import (
+    ProjectContext,
     SpexContext,
     _deep_merge,
     _find_spex_tomls,
@@ -18,6 +20,7 @@ from config import (
     generate_updated_toml,
     get_context,
     get_effective_user_config,
+    get_project_context,
     load_config,
     resolve_spex_root_and_roots,
     set_spex_config_file,
@@ -975,4 +978,135 @@ class TestGetEffectiveUserConfig:
 
         assert result["spex_root"] == "proj"
         assert result["branch_management"] is True
+
+
+# ===================== ProjectContext =====================
+
+
+class TestProjectContext:
+    def test_default_field_values(self):
+        """Fields with factory defaults are initialized correctly."""
+        ctx = ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=None,
+            main_worktree=None,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+        assert ctx.spex_tomls == []
+        assert ctx.config == {}
+        assert ctx.spex_root == ""
+        assert ctx.spex_roots == []
+
+    def test_all_fields_accessible(self):
+        """All fields are stored and accessible as attributes."""
+        cwd = Path("/work")
+        top = Path("/work")
+        ctx = ProjectContext(
+            cwd=cwd,
+            top_workdir=top,
+            main_worktree=top,
+            remote_url="https://github.com/test/repo.git",
+            branch="main",
+            user_name="Test User",
+            user_email="test@example.com",
+            spex_tomls=[Path("/work/.spex.toml")],
+            config={"spex_root": ".spex"},
+            spex_root="/work/.spex",
+            spex_roots=["/work/.spex"],
+        )
+        assert ctx.cwd == cwd
+        assert ctx.top_workdir == top
+        assert ctx.main_worktree == top
+        assert ctx.remote_url == "https://github.com/test/repo.git"
+        assert ctx.branch == "main"
+        assert ctx.user_name == "Test User"
+        assert ctx.user_email == "test@example.com"
+        assert len(ctx.spex_tomls) == 1
+        assert ctx.config["spex_root"] == ".spex"
+        assert ctx.spex_root == "/work/.spex"
+        assert ctx.spex_roots == ["/work/.spex"]
+
+
+# ===================== get_project_context =====================
+
+
+class TestGetProjectContext:
+    @pytest.mark.slow
+    def test_git_repo_populates_all_fields(self, tmp_path):
+        """In a git repo, all fields are populated from git metadata."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin",
+             "https://github.com/test/repo.git"],
+            capture_output=True, check=True,
+        )
+
+        ctx = get_project_context(str(repo))
+
+        assert ctx.cwd == repo.resolve()
+        assert ctx.top_workdir == repo.resolve()
+        assert ctx.main_worktree == repo.resolve()
+        assert ctx.remote_url == "https://github.com/test/repo.git"
+        assert ctx.branch in ("main", "master")
+        assert ctx.user_name == "Test User"
+        assert ctx.user_email == "test@example.com"
+
+    @pytest.mark.slow
+    def test_non_git_repo_returns_none_and_empty(self, tmp_path, monkeypatch):
+        """Outside a git repo, top_workdir is None and string fields are empty."""
+        no_git = tmp_path / "not-a-repo"
+        no_git.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+
+        ctx = get_project_context(str(no_git))
+
+        assert ctx.cwd == no_git.resolve()
+        assert ctx.top_workdir is None
+        assert ctx.main_worktree is None
+        assert ctx.remote_url == ""
+        assert ctx.branch == ""
+        assert ctx.user_name == ""
+        assert ctx.user_email == ""
+
+    def test_caching_returns_same_object(self, tmp_path, monkeypatch):
+        """Two calls with same workdir return the identical cached object."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: None)
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: None)
+
+        first = get_project_context(str(tmp_path))
+        second = get_project_context(str(tmp_path))
+
+        assert first is second
+
+    def test_cache_cleared_by_clear_config_cache(self, tmp_path, monkeypatch):
+        """clear_config_cache() invalidates the project context cache."""
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_top_workdir", lambda w=None: None)
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: None)
+
+        first = get_project_context(str(tmp_path))
+        clear_config_cache()
+        second = get_project_context(str(tmp_path))
+
+        assert first is not second
 
