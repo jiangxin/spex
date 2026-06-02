@@ -10,6 +10,7 @@ from pathlib import Path
 
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
+    TopicMeta,
     atomic_write_json,
     check_help_flag,
     resolve_topic_dir,
@@ -68,21 +69,20 @@ def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
     """Write meta.json into topic_dir with git info and prompt."""
     workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
-    meta = {
-        "topic": strip_date_prefix(Path(topic_dir).name),
-        "workdir": workdir,
-        "main_worktree": main_worktree,
-        "remote_url": git_info.get("remote_url", ""),
-        "branch": git_info.get("branch", ""),
-        "user_name": git_info.get("user_name", ""),
-        "user_email": git_info.get("user_email", ""),
-        "created_at": timestamp,
-        "prompts": [prompt] if prompt else [],
-    }
-    if description:
-        meta["description"] = wrap_text(description)
+    meta = TopicMeta(
+        topic=strip_date_prefix(Path(topic_dir).name),
+        workdir=workdir,
+        main_worktree=main_worktree,
+        remote_url=git_info.get("remote_url", ""),
+        branch=git_info.get("branch", ""),
+        user_name=git_info.get("user_name", ""),
+        user_email=git_info.get("user_email", ""),
+        created_at=timestamp,
+        prompts=[prompt] if prompt else [],
+        description=wrap_text(description) if description else "",
+    )
     meta_path = Path(topic_dir) / "meta.json"
-    atomic_write_json(meta_path, meta)
+    atomic_write_json(meta_path, meta.to_dict())
 
 
 def validate_create_branch(
@@ -223,6 +223,7 @@ def cli_post_action(argv=None):
     """CLI: validate todo.json and trigger post-action hook."""
     from cli import ArgumentParser
     from common import (
+        TopicMeta,
         get_current_workdir,
         load_and_validate_todo_json,
         load_meta,
@@ -265,17 +266,17 @@ def cli_post_action(argv=None):
         desc = parse_front_matter_description(spec_content)
         if desc:
             meta_path = topic_dir / "meta.json"
-            meta_data = load_meta(topic_dir) or {}
-            meta_data["description"] = wrap_text(desc)
-            atomic_write_json(meta_path, meta_data)
+            meta_data = load_meta(topic_dir) or TopicMeta()
+            meta_data.description = wrap_text(desc)
+            atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
 
     meta = load_meta(topic_dir)
-    topic_name = (meta.get("topic", "") if meta else "") or (
+    topic_name = (meta.topic if meta else "") or (
         strip_date_prefix(topic_dir.name)
     )
-    workdir = (meta.get("workdir", "") if meta else "") or (
+    workdir = (meta.workdir if meta else "") or (
         get_current_workdir()
     )
     done = sum(

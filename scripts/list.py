@@ -71,10 +71,10 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list:
                 continue
             meta = load_meta(sub)
             if meta is not None:
-                timestamp = meta.get("created_at", "")
-                prompts = meta.get("prompts", [])
+                timestamp = meta.created_at
+                prompts = meta.prompts
                 prompt = prompts[0] if prompts else ""
-                workdir = meta.get("workdir", "")
+                workdir = meta.workdir
             else:
                 ts_prompt = parse_prompt_log(sub / PROMPT_LOG)
                 timestamp, prompt = ts_prompt

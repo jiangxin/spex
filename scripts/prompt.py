@@ -10,6 +10,7 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
+    TopicMeta,
     atomic_write_json,
     get_git_info,
     get_spex_root,
@@ -250,18 +251,16 @@ def _log_prompt_to_meta(topic_dir, prompt_text):
     {'text': prompt_text, 'timestamp': local_iso_timestamp()},
     and writes atomically.
     """
-    meta = load_meta(topic_dir)
-    if meta is None:
-        meta = {}
-    prompts = meta.get("prompts", [])
+    meta = load_meta(topic_dir) or TopicMeta()
+    prompts = meta.prompts
     if not isinstance(prompts, list):
         prompts = []
     prompts.append({
         "text": prompt_text,
         "timestamp": local_iso_timestamp(),
     })
-    meta["prompts"] = prompts
-    atomic_write_json(topic_dir / "meta.json", meta)
+    meta.prompts = prompts
+    atomic_write_json(topic_dir / "meta.json", meta.to_dict())
 
 def _build_metadata(template_name, topic_name=None):
     """Build the metadata dict for template rendering.
@@ -274,7 +273,7 @@ def _build_metadata(template_name, topic_name=None):
         metadata["topic_name"] = topic_dir.name
         meta = load_meta(topic_dir)
         if meta:
-            metadata.update(meta)
+            metadata.update(meta.to_dict())
     if not metadata:
         git_info = get_git_info()
         metadata.update(git_info)

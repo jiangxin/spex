@@ -56,8 +56,8 @@ class TestLoadMeta:
 
         result = load_meta(topic)
 
-        assert result["created_at"] == "2026-05-24T20:00:00+08:00"
-        assert result["prompts"] == ["hello world"]
+        assert result.created_at == "2026-05-24T20:00:00+08:00"
+        assert result.prompts == ["hello world"]
 
     def test_missing_file(self, tmp_path):
         assert load_meta(tmp_path / "nonexistent") is None
@@ -75,17 +75,21 @@ class TestLoadMeta:
 
         result = load_meta(topic)
 
-        assert result["created_at"] == "2026-05-24T20:00:00+08:00"
-        assert result["prompts"] == []
+        assert result.created_at == "2026-05-24T20:00:00+08:00"
+        assert result.prompts == []
 
     def test_missing_fields(self, tmp_path):
+        from common import TopicMeta
+
         topic = tmp_path / "minimal"
         topic.mkdir(parents=True)
         (topic / "meta.json").write_text("{}", encoding="utf-8")
 
         result = load_meta(topic)
 
-        assert result == {}
+        assert isinstance(result, TopicMeta)
+        assert result.topic == ""
+        assert result.prompts == []
 
 
 class TestParsePromptLog:

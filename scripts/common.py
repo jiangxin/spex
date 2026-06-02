@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +31,53 @@ EXAMPLES_TEMPLATE_DIR = "examples"
 ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 ICON_ARCHIVED = "\U0001f4e6"
+
+# Field names for TopicMeta serialization order.
+_TOPIC_META_FIELD_ORDER = [
+    "topic", "workdir", "main_worktree", "remote_url", "branch",
+    "user_name", "user_email", "created_at", "prompts", "description",
+    "spex_branch",
+]
+
+
+@dataclass
+class TopicMeta:
+    """Typed representation of a topic's meta.json."""
+
+    topic: str = ""
+    workdir: str = ""
+    main_worktree: str = ""
+    remote_url: str = ""
+    branch: str = ""
+    user_name: str = ""
+    user_email: str = ""
+    created_at: str = ""
+    prompts: list = field(default_factory=list)
+    description: str = ""
+    spex_branch: str = ""
+    extras: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> TopicMeta:
+        """Create a TopicMeta from a dict, capturing unknown keys in extras."""
+        known = {f.name for f in fields(cls)} - {"extras"}
+        kwargs = {k: v for k, v in data.items() if k in known}
+        extras = {k: v for k, v in data.items() if k not in known}
+        return cls(**kwargs, extras=extras)
+
+    def to_dict(self) -> dict:
+        """Serialize to dict in fixed order, omitting empty optional fields."""
+        result: dict = {}
+        for key in _TOPIC_META_FIELD_ORDER:
+            value = getattr(self, key)
+            # Omit description and spex_branch when empty
+            if key in ("description", "spex_branch") and not value:
+                continue
+            result[key] = value
+        # Merge extras (never include the "extras" key itself)
+        result.update(self.extras)
+        return result
+
 
 def _create_default_toml():
     """Create ~/.spex.toml with default content."""
@@ -183,10 +231,10 @@ def same_path(a: str, b: str) -> bool:
     return Path(a).resolve() == Path(b).resolve()
 
 
-def load_meta(topic_dir: Path):
+def load_meta(topic_dir: Path) -> TopicMeta | None:
     """Load meta.json from a topic directory.
 
-    Returns the parsed dict, or None if missing/invalid.
+    Returns a TopicMeta instance, or None if missing/invalid.
     """
     meta_path = topic_dir / META_FILE
     if not meta_path.is_file():
@@ -197,7 +245,7 @@ def load_meta(topic_dir: Path):
         return None
     if not isinstance(data, dict):
         return None
-    return data
+    return TopicMeta.from_dict(data)
 
 
 def get_topic_workdir(topic_dir: Path) -> str:
@@ -205,10 +253,10 @@ def get_topic_workdir(topic_dir: Path) -> str:
 
     Returns the workdir string, or empty string if not found.
     """
-    data = load_meta(topic_dir)
-    if data is None:
+    meta = load_meta(topic_dir)
+    if meta is None:
         return ""
-    return data.get("workdir", "")
+    return meta.workdir
 
 
 def load_todo(topic_dir: Path):
@@ -446,8 +494,8 @@ def get_spec_description(topic_dir: Path) -> str:
     spec.md front-matter description for backwards compatibility.
     """
     meta = load_meta(topic_dir)
-    if meta and meta.get("description"):
-        return meta["description"]
+    if meta and meta.description:
+        return meta.description
 
     spec_path = topic_dir / "spec.md"
     if not spec_path.is_file():

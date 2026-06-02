@@ -128,8 +128,8 @@ def cli_submit(argv=None) -> None:
     conf = ctx.config
     topic_dir = common.resolve_topic_dir(topic_name)
     meta = common.load_meta(topic_dir)
-    source = meta.get("spex_branch", "") if meta else ""
-    target = meta.get("branch", "main") if meta else "main"
+    source = meta.spex_branch if meta else ""
+    target = (meta.branch or "main") if meta else "main"
     method = conf["submit_method"]
     errors: list[str] = []
 

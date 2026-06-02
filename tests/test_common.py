@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import sys
@@ -5,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from common import (
+    TopicMeta,
     _resolve_template_roots,
     check_help_flag,
     clear_spex_root_cache,
@@ -16,6 +18,7 @@ from common import (
     get_spex_roots,
     get_spex_tomls,
     get_template,
+    load_meta,
     local_iso_timestamp,
     parse_front_matter_description,
     resolve_topic_dir,
@@ -753,3 +756,137 @@ class TestWrapText:
         text = "a " + "x" * 80 + " b"
         result = wrap_text(text)
         assert "x" * 80 in result
+
+
+class TestTopicMeta:
+    def test_topic_meta_defaults(self):
+        m = TopicMeta()
+        assert m.topic == ""
+        assert m.workdir == ""
+        assert m.main_worktree == ""
+        assert m.remote_url == ""
+        assert m.branch == ""
+        assert m.user_name == ""
+        assert m.user_email == ""
+        assert m.created_at == ""
+        assert m.prompts == []
+        assert m.description == ""
+        assert m.spex_branch == ""
+        assert m.extras == {}
+
+    def test_topic_meta_from_dict_full(self):
+        data = {
+            "topic": "my-topic",
+            "workdir": "/work",
+            "main_worktree": "/main",
+            "remote_url": "git@example.com:repo.git",
+            "branch": "main",
+            "user_name": "Alice",
+            "user_email": "alice@example.com",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "prompts": ["do stuff"],
+            "description": "A cool feature",
+            "spex_branch": "spex/my-topic",
+        }
+        m = TopicMeta.from_dict(data)
+        result = m.to_dict()
+        assert result == data
+
+    def test_topic_meta_from_dict_partial(self):
+        data = {
+            "topic": "old-topic",
+            "workdir": "/work",
+            "main_worktree": "/main",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Bob",
+            "user_email": "bob@example.com",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "prompts": [],
+        }
+        m = TopicMeta.from_dict(data)
+        assert m.description == ""
+        assert m.spex_branch == ""
+        # description and spex_branch omitted from output
+        result = m.to_dict()
+        assert "description" not in result
+        assert "spex_branch" not in result
+
+    def test_topic_meta_from_dict_extras(self):
+        data = {
+            "topic": "t",
+            "custom_key": "custom_value",
+            "another": 42,
+        }
+        m = TopicMeta.from_dict(data)
+        assert m.extras == {"custom_key": "custom_value", "another": 42}
+        assert m.topic == "t"
+
+    def test_topic_meta_to_dict_omits_empty(self):
+        m = TopicMeta(topic="t", description="", spex_branch="")
+        result = m.to_dict()
+        assert "description" not in result
+        assert "spex_branch" not in result
+        assert result["topic"] == "t"
+
+    def test_topic_meta_to_dict_includes_extras(self):
+        m = TopicMeta(
+            topic="t",
+            extras={"custom": "val", "flag": True},
+        )
+        result = m.to_dict()
+        assert result["custom"] == "val"
+        assert result["flag"] is True
+        assert "extras" not in result
+
+    def test_topic_meta_prompts_mixed_format(self):
+        prompts = [
+            "simple string prompt",
+            {"role": "user", "content": "dict prompt"},
+        ]
+        m = TopicMeta.from_dict({"prompts": prompts})
+        assert m.prompts == prompts
+        result = m.to_dict()
+        assert result["prompts"] == prompts
+
+
+class TestLoadMetaTopicMeta:
+    def test_load_meta_returns_topic_meta(self, tmp_path):
+        data = {
+            "topic": "my-feature",
+            "workdir": "/work",
+            "description": "A feature",
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(data), encoding="utf-8")
+        result = load_meta(tmp_path)
+        assert isinstance(result, TopicMeta)
+        assert result.topic == "my-feature"
+        assert result.workdir == "/work"
+        assert result.description == "A feature"
+
+    def test_load_meta_missing_file(self, tmp_path):
+        result = load_meta(tmp_path)
+        assert result is None
+
+    def test_load_meta_backward_compat(self, tmp_path):
+        """Old meta.json without description/spex_branch still loads."""
+        data = {
+            "topic": "old-topic",
+            "workdir": "/work",
+            "main_worktree": "/main",
+            "remote_url": "",
+            "branch": "main",
+            "user_name": "Dev",
+            "user_email": "dev@example.com",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "prompts": ["initial"],
+        }
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(json.dumps(data), encoding="utf-8")
+        result = load_meta(tmp_path)
+        assert isinstance(result, TopicMeta)
+        assert result.topic == "old-topic"
+        assert result.description == ""
+        assert result.spex_branch == ""
+        assert result.prompts == ["initial"]
