@@ -856,7 +856,8 @@ class TestTopicMeta:
 
 class TestTopic:
     def test_topic_defaults(self, tmp_path):
-        t = Topic(name="t", path=tmp_path)
+        meta = TopicMeta()
+        t = Topic(name="t", path=tmp_path, meta=meta)
         assert t.name == "t"
         assert t.path == tmp_path
         assert t.created_at == ""
@@ -869,34 +870,169 @@ class TestTopic:
 
     def test_topic_is_completed(self):
         p = Path("/tmp")
-        assert Topic(name="t", path=p, done=0, total=0).is_completed is False
-        assert Topic(name="t", path=p, done=1, total=3).is_completed is False
-        assert Topic(name="t", path=p, done=3, total=3).is_completed is True
+        meta = TopicMeta()
+        assert Topic(name="t", path=p, meta=meta, done=0, total=0).is_completed is False
+        assert Topic(name="t", path=p, meta=meta, done=1, total=3).is_completed is False
+        assert Topic(name="t", path=p, meta=meta, done=3, total=3).is_completed is True
 
     def test_topic_icon(self):
         p = Path("/tmp")
-        assert Topic(name="t", path=p, archived=True).icon == ICON_ARCHIVED
+        meta = TopicMeta()
+        assert Topic(name="t", path=p, meta=meta, archived=True).icon == ICON_ARCHIVED
         assert (
-            Topic(name="t", path=p, done=3, total=3).icon == ICON_COMPLETED
+            Topic(name="t", path=p, meta=meta, done=3, total=3).icon == ICON_COMPLETED
         )
         assert (
-            Topic(name="t", path=p, done=1, total=3).icon == ICON_IN_PROGRESS
+            Topic(name="t", path=p, meta=meta, done=1, total=3).icon == ICON_IN_PROGRESS
         )
         assert (
-            Topic(name="t", path=p, done=0, total=0).icon == ICON_IN_PROGRESS
+            Topic(name="t", path=p, meta=meta, done=0, total=0).icon == ICON_IN_PROGRESS
         )
 
-    def test_topic_display_text(self):
-        p = Path("/tmp")
+    def test_topic_display_text(self, tmp_path):
         t1 = Topic(
-            name="t", path=p,
-            description="desc", prompt="prompt",
+            name="t", path=tmp_path,
+            meta=TopicMeta(description="desc", prompts=["prompt"]),
         )
         assert t1.display_text == "desc"
-        t2 = Topic(name="t", path=p, prompt="prompt")
+        t2 = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(prompts=["prompt"]),
+        )
         assert t2.display_text == "prompt"
-        t3 = Topic(name="t", path=p)
+        t3 = Topic(name="t", path=tmp_path, meta=TopicMeta())
         assert t3.display_text == ""
+
+    def test_delegated_workdir(self, tmp_path):
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(workdir="/some/path"),
+        )
+        assert t.workdir == "/some/path"
+
+    def test_delegated_created_at(self, tmp_path):
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(created_at="2026-01-01T00:00:00+00:00"),
+        )
+        assert t.created_at == "2026-01-01T00:00:00+00:00"
+
+    def test_delegated_prompt(self, tmp_path):
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(prompts=["first", "second"]),
+        )
+        assert t.prompt == "first"
+
+    def test_delegated_prompt_empty(self, tmp_path):
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.prompt == ""
+
+    def test_description_from_meta(self, tmp_path):
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(description="from meta"),
+        )
+        assert t.description == "from meta"
+
+    def test_description_fallback_to_spec(self, tmp_path):
+        (tmp_path / "spec.md").write_text(
+            '---\ndescription: "from spec"\n---\n\n# Body',
+            encoding="utf-8",
+        )
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.description == "from spec"
+
+    def test_description_meta_wins_over_spec(self, tmp_path):
+        (tmp_path / "spec.md").write_text(
+            '---\ndescription: "from spec"\n---\n\n# Body',
+            encoding="utf-8",
+        )
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(description="from meta"),
+        )
+        assert t.description == "from meta"
+
+    def test_spec_content_reads_file(self, tmp_path):
+        content = '---\ndescription: "test"\n---\n\n# Body'
+        (tmp_path / "spec.md").write_text(content, encoding="utf-8")
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.spec_content == content
+
+    def test_spec_content_missing_returns_none(self, tmp_path):
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.spec_content is None
+
+    def test_todo_data_delegates(self, tmp_path):
+        todo = [{"id": "1", "name": "Step 1"}]
+        (tmp_path / "todo.json").write_text(
+            json.dumps(todo), encoding="utf-8",
+        )
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.todo_data == todo
+
+    def test_todo_data_missing_returns_none(self, tmp_path):
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        assert t.todo_data is None
+
+    def test_todo_progress(self, tmp_path):
+        t = Topic(name="t", path=tmp_path, meta=TopicMeta(), done=2, total=5)
+        assert t.todo_progress == (2, 5)
+
+    def test_from_dir_valid(self, tmp_path):
+        topic_dir = tmp_path / "my-topic"
+        topic_dir.mkdir()
+        meta_data = {
+            "topic": "my-topic",
+            "workdir": "/work",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "prompts": ["do stuff"],
+            "description": "A feature",
+        }
+        (topic_dir / "meta.json").write_text(
+            json.dumps(meta_data), encoding="utf-8",
+        )
+        todo = [
+            {"id": "1", "name": "Step 1", "completed_at": "2026-01-01"},
+            {"id": "2", "name": "Step 2", "completed_at": ""},
+        ]
+        (topic_dir / "todo.json").write_text(
+            json.dumps(todo), encoding="utf-8",
+        )
+
+        t = Topic.from_dir(topic_dir)
+        assert t is not None
+        assert t.name == "my-topic"
+        assert t.path == topic_dir
+        assert t.workdir == "/work"
+        assert t.created_at == "2026-01-01T00:00:00+00:00"
+        assert t.prompt == "do stuff"
+        assert t.description == "A feature"
+        assert t.done == 1
+        assert t.total == 2
+        assert t.archived is False
+
+    def test_from_dir_missing_meta(self, tmp_path):
+        topic_dir = tmp_path / "no-meta"
+        topic_dir.mkdir()
+        assert Topic.from_dir(topic_dir) is None
+
+    def test_from_dir_invalid_meta(self, tmp_path):
+        topic_dir = tmp_path / "bad-meta"
+        topic_dir.mkdir()
+        (topic_dir / "meta.json").write_text("not json", encoding="utf-8")
+        assert Topic.from_dir(topic_dir) is None
+
+    def test_from_dir_archived(self, tmp_path):
+        topic_dir = tmp_path / "archived-topic"
+        topic_dir.mkdir()
+        (topic_dir / "meta.json").write_text(
+            json.dumps({"topic": "archived-topic"}), encoding="utf-8",
+        )
+        t = Topic.from_dir(topic_dir, archived=True)
+        assert t is not None
+        assert t.archived is True
 
 
 class TestLoadMetaTopicMeta:
