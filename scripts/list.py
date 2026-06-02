@@ -17,12 +17,13 @@ from common import (
 from config import get_project_context
 
 USAGE = """\
-Usage: spex list [--all] [-v|-vv]
+Usage: spex list [--archives] [--all-projects] [-v|-vv]
 
 List spec topics with progress.
 
 Options:
-  --all            Include archived topics
+  --archives       Include archived topics
+  --all-projects   Show topics from all projects (disables project filter)
   -v, --verbose    Increase verbosity (repeat for more detail)
   -h, --help       Show this help message and exit
 """
@@ -207,11 +208,12 @@ def _parse_verbosity(argv: list) -> int:
 def main(argv=None):
     check_help_flag(USAGE, argv)
     full_argv = argv if argv is not None else sys.argv[1:]
-    all_mode = "--all" in full_argv
+    archives_mode = "--archives" in full_argv
+    all_projects = "--all-projects" in full_argv
 
     dirs = [get_specs_dir()]
     archive_dirs = []
-    if all_mode:
+    if archives_mode:
         archive_dir = get_archives_dir()
         dirs.append(archive_dir)
         archive_dirs.append(archive_dir)
@@ -219,8 +221,11 @@ def main(argv=None):
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
     ctx = get_project_context()
-    topics = [t for t in topics if ctx.is_related_to(t)]
-    show_repo = not ctx.in_git_workdir()
+    if not all_projects:
+        topics = [t for t in topics if ctx.is_related_to(t)]
+        show_repo = not ctx.in_git_workdir()
+    else:
+        show_repo = True
 
     verbosity = _parse_verbosity(full_argv)
     if verbosity > 0:
