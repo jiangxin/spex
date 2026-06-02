@@ -144,6 +144,30 @@ class Topic:
         return self.meta.workdir
 
     @property
+    def main_worktree(self) -> str:
+        return self.meta.main_worktree
+
+    @property
+    def remote_url(self) -> str:
+        return self.meta.remote_url
+
+    @property
+    def branch(self) -> str:
+        return self.meta.branch
+
+    @property
+    def user_name(self) -> str:
+        return self.meta.user_name
+
+    @property
+    def user_email(self) -> str:
+        return self.meta.user_email
+
+    @property
+    def spex_branch(self) -> str:
+        return self.meta.spex_branch
+
+    @property
     def description(self) -> str:
         """Return meta description, falling back to spec.md front-matter."""
         if self.meta.description:
