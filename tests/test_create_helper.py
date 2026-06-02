@@ -4,14 +4,13 @@ import io
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
 import config as cfg
 import create_helper
 import pytest
-from config import SpexContext
+from config import ProjectContext
 from create_helper import (
     cli_create_validate,
     cli_prepare_spec,
@@ -20,24 +19,43 @@ from create_helper import (
 )
 
 
-def _fake_context(**overrides):
-    """Build a SpexContext with sensible defaults, overriding as needed."""
+def _fake_project_context(**overrides):
+    """Build a ProjectContext with sensible defaults, overriding as needed."""
     defaults = {
+        "cwd": Path("."),
+        "top_workdir": None,
+        "main_worktree": None,
+        "remote_url": "",
+        "branch": "",
+        "user_name": "",
+        "user_email": "",
         "spex_tomls": [],
         "config": {},
         "spex_root": "",
         "spex_roots": [],
-        "top_workdir": None,
-        "main_worktree": None,
     }
     defaults.update(overrides)
-    return SpexContext(**defaults)
+    return ProjectContext(**defaults)
 
 
-@dataclass
-class MockSpexContext:
-    top_workdir: Path | None = None
-    main_worktree: Path | None = None
+def _mock_ctx(
+    top_workdir=None,
+    main_worktree=None,
+    remote_url="",
+    branch="",
+    user_name="",
+    user_email="",
+):
+    """Build a ProjectContext for _write_meta tests."""
+    return ProjectContext(
+        cwd=top_workdir or Path("."),
+        top_workdir=top_workdir,
+        main_worktree=main_worktree,
+        remote_url=remote_url,
+        branch=branch,
+        user_name=user_name,
+        user_email=user_email,
+    )
 
 
 class TestCreateTopic:
@@ -132,19 +150,16 @@ class TestWriteMeta:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/home/user/project",
-            "remote_url": "git@github.com:user/project.git",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "alice@example.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/home/user/project"),
             main_worktree=Path("/home/user/project"),
+            remote_url="git@github.com:user/project.git",
+            branch="main",
+            user_name="Alice",
+            user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "fix the login bug",
+            topic_dir, ctx, "fix the login bug",
             "2026-05-24T20:00:00+08:00"
         )
 
@@ -164,19 +179,15 @@ class TestWriteMeta:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/home/user/project",
-            "remote_url": "",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "alice@example.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/home/user/project"),
             main_worktree=Path("/home/user/project"),
+            branch="main",
+            user_name="Alice",
+            user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "", "2026-05-24T20:00:00+08:00"
+            topic_dir, ctx, "", "2026-05-24T20:00:00+08:00"
         )
 
         meta = json.loads((topic_dir / "meta.json").read_text())
@@ -187,19 +198,16 @@ class TestWriteMeta:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/home/user/project-wt",
-            "remote_url": "git@github.com:user/project.git",
-            "branch": "feature",
-            "user_name": "Alice",
-            "user_email": "alice@example.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/home/user/project-wt"),
             main_worktree=Path("/home/user/project"),
+            remote_url="git@github.com:user/project.git",
+            branch="feature",
+            user_name="Alice",
+            user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "add feature",
+            topic_dir, ctx, "add feature",
             "2026-05-29T10:00:00+08:00"
         )
 
@@ -207,45 +215,41 @@ class TestWriteMeta:
         assert meta["workdir"] == "/home/user/project-wt"
         assert meta["main_worktree"] == "/home/user/project"
 
-    def test_ctx_none_falls_back_to_git_info(self, tmp_path):
+    def test_ctx_none_workdir_is_empty(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/fallback/project",
-            "remote_url": "",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "alice@example.com",
-        }
-        ctx = MockSpexContext(top_workdir=None, main_worktree=None)
+        ctx = _mock_ctx(
+            top_workdir=None,
+            main_worktree=None,
+            branch="main",
+            user_name="Alice",
+            user_email="alice@example.com",
+        )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "",
+            topic_dir, ctx, "",
             "2026-05-29T10:00:00+08:00"
         )
 
         meta = json.loads((topic_dir / "meta.json").read_text())
-        assert meta["workdir"] == "/fallback/project"
-        assert meta["main_worktree"] == "/fallback/project"
+        assert meta["workdir"] == ""
+        assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
         """Verify JSON field order from TopicMeta matches legacy format."""
         topic_dir = tmp_path / "2026-01-01-10-00-order-test"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/work",
-            "remote_url": "git@example.com:r.git",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "a@e.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/work"),
             main_worktree=Path("/work"),
+            remote_url="git@example.com:r.git",
+            branch="main",
+            user_name="Alice",
+            user_email="a@e.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "hello",
+            topic_dir, ctx, "hello",
             "2026-01-01T10:00:00+08:00",
         )
 
@@ -265,19 +269,15 @@ class TestWriteMeta:
         topic_dir = tmp_path / "2026-01-01-10-00-desc-order"
         topic_dir.mkdir()
 
-        git_info = {
-            "workdir": "/work",
-            "remote_url": "",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "a@e.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/work"),
             main_worktree=Path("/work"),
+            branch="main",
+            user_name="Alice",
+            user_email="a@e.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "",
+            topic_dir, ctx, "",
             "2026-01-01T10:00:00+08:00",
             description="My feature desc",
         )
@@ -321,16 +321,12 @@ class TestCliPrepareSpec:
         import common
         monkeypatch.setattr(sys, "stdin", io.StringIO("hello prompt"))
 
-        mock_git = {
-            "workdir": "/tmp/proj",
-            "remote_url": "",
-            "branch": "main",
-            "user_name": "Test",
-            "user_email": "test@test.com",
-        }
-        mock_ctx = MockSpexContext(
+        mock_ctx = _mock_ctx(
             top_workdir=Path("/tmp/proj"),
             main_worktree=Path("/tmp/proj"),
+            branch="main",
+            user_name="Test",
+            user_email="test@test.com",
         )
 
         import prompt as prompt_mod
@@ -340,11 +336,11 @@ class TestCliPrepareSpec:
                 common, "get_specs_dir",
                 return_value=str(tmp_path)),
             patch.object(
-                common, "get_git_info", return_value=mock_git),
-            patch.object(
                 common, "local_iso_timestamp",
                 return_value="2026-05-24T20:00:00+08:00"),
-            patch.object(cfg, "get_context", return_value=mock_ctx),
+            patch.object(
+                cfg, "get_project_context",
+                return_value=mock_ctx),
             patch.object(
                 prompt_mod, "render_prompt",
                 return_value="# Rendered Template"),
@@ -554,9 +550,10 @@ class TestCliPostAction:
 
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
-    @patch("config.get_context", return_value=_fake_context(config={
-        "branch_management": True, "main_branch_name": "",
-        "submit_method": "merge", "spex_root": ".spex"}))
+    @patch("config.get_project_context", return_value=_fake_project_context(
+        config={
+            "branch_management": True, "main_branch_name": "",
+            "submit_method": "merge", "spex_root": ".spex"}))
     def test_outputs_success(self, _ctx, _branch, capsys):
         cli_create_validate()
         out = capsys.readouterr().out
@@ -575,19 +572,15 @@ class TestDescriptionWrapping:
             "exceed the sixty-eight character limit and be wrapped "
             "into multiple lines by the wrap_text function"
         )
-        git_info = {
-            "workdir": "/home/user/project",
-            "remote_url": "",
-            "branch": "main",
-            "user_name": "Alice",
-            "user_email": "alice@example.com",
-        }
-        ctx = MockSpexContext(
+        ctx = _mock_ctx(
             top_workdir=Path("/home/user/project"),
             main_worktree=Path("/home/user/project"),
+            branch="main",
+            user_name="Alice",
+            user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, git_info, ctx, "",
+            topic_dir, ctx, "",
             "2026-01-01T10:00:00+08:00", long_desc,
         )
 

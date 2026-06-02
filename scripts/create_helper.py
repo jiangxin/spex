@@ -65,18 +65,18 @@ def create_topic(topic, specs_dir, auto_prefix=True):
     return (topic, topic_dir)
 
 
-def _write_meta(topic_dir, git_info, ctx, prompt, timestamp, description=""):
-    """Write meta.json into topic_dir with git info and prompt."""
-    workdir = str(ctx.top_workdir) if ctx.top_workdir else git_info.get("workdir", "")
+def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
+    """Write meta.json into topic_dir with project context and prompt."""
+    workdir = str(ctx.top_workdir) if ctx.top_workdir else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = TopicMeta(
         topic=strip_date_prefix(Path(topic_dir).name),
         workdir=workdir,
         main_worktree=main_worktree,
-        remote_url=git_info.get("remote_url", ""),
-        branch=git_info.get("branch", ""),
-        user_name=git_info.get("user_name", ""),
-        user_email=git_info.get("user_email", ""),
+        remote_url=ctx.remote_url,
+        branch=ctx.branch,
+        user_name=ctx.user_name,
+        user_email=ctx.user_email,
         created_at=timestamp,
         prompts=[prompt] if prompt else [],
         description=wrap_text(description) if description else "",
@@ -146,7 +146,7 @@ def cli_create_validate() -> None:
     """CLI: validate branch creation feasibility."""
     import config as cfg
 
-    ctx = cfg.get_context()
+    ctx = cfg.get_project_context()
     current = validate_create_branch(ctx.config, cwd=ctx.main_worktree)
     if current:
         print(f"Valid: currently on branch '{current}'")
@@ -171,7 +171,7 @@ def cli_prepare_spec(argv=None):
 
     import config as cfg
     from cli import ArgumentParser
-    from common import get_git_info, get_specs_dir, local_iso_timestamp
+    from common import get_specs_dir, local_iso_timestamp
 
     parser = ArgumentParser(
         prog="spex create-helper prepare-spec",
@@ -190,10 +190,9 @@ def cli_prepare_spec(argv=None):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    git_info = get_git_info()
-    ctx = cfg.get_context()
+    ctx = cfg.get_project_context()
     timestamp = local_iso_timestamp()
-    _write_meta(topic_dir, git_info, ctx, prompt, timestamp, args.description)
+    _write_meta(topic_dir, ctx, prompt, timestamp, args.description)
 
     import prompt as prompt_mod
 
