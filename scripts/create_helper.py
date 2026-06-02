@@ -223,6 +223,7 @@ def cli_post_action(argv=None):
     """CLI: validate todo.json and trigger post-action hook."""
     from cli import ArgumentParser
     from common import (
+        TopicMeta,
         get_current_workdir,
         load_and_validate_todo_json,
         load_meta,
@@ -265,17 +266,17 @@ def cli_post_action(argv=None):
         desc = parse_front_matter_description(spec_content)
         if desc:
             meta_path = topic_dir / "meta.json"
-            meta_data = load_meta(topic_dir) or {}
-            meta_data["description"] = wrap_text(desc)
-            atomic_write_json(meta_path, meta_data)
+            meta_data = load_meta(topic_dir) or TopicMeta()
+            meta_data.description = wrap_text(desc)
+            atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
 
     meta = load_meta(topic_dir)
-    topic_name = (meta.get("topic", "") if meta else "") or (
+    topic_name = (meta.topic if meta else "") or (
         strip_date_prefix(topic_dir.name)
     )
-    workdir = (meta.get("workdir", "") if meta else "") or (
+    workdir = (meta.workdir if meta else "") or (
         get_current_workdir()
     )
     done = sum(

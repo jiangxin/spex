@@ -13,6 +13,7 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
+    TopicMeta,
     check_help_flag,
     find_matching_topics,
     get_archives_dir,
@@ -202,9 +203,9 @@ def resolve_topic(topic_name, search_dirs, filter_workdir=None,
 
 def _topic_matches_workdir(topic_dir, workdir):
     """Return True if the topic's workdir or main_worktree matches the given workdir."""
-    meta = load_meta(topic_dir) or {}
-    topic_wd = meta.get("workdir", "")
-    main_wt = meta.get("main_worktree", "")
+    meta = load_meta(topic_dir) or TopicMeta()
+    topic_wd = meta.workdir
+    main_wt = meta.main_worktree
     if topic_wd and same_path(topic_wd, workdir):
         return True
     if main_wt and same_path(main_wt, workdir):

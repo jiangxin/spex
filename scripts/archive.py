@@ -32,7 +32,7 @@ def has_active_branch(topic_dir: Path) -> bool:
     meta = load_meta(topic_dir)
     if not meta:
         return False
-    spex_branch = meta.get("spex_branch", "")
+    spex_branch = meta.spex_branch
     if not spex_branch:
         return False
     return branch_exists(spex_branch)
@@ -121,7 +121,7 @@ def archive_single_topic(
         return None
     if not force and has_active_branch(topic_dir):
         meta = load_meta(topic_dir)
-        spex_branch = meta.get("spex_branch", "") if meta else ""
+        spex_branch = meta.spex_branch if meta else ""
         print(
             f"Skipping: spex branch '{spex_branch}' still exists"
             f" (use --force to archive)"
@@ -224,7 +224,7 @@ def main(argv=None):
             print(f"Would skip {len(skipped)} topic(s) (active spex_branch):")
             for topic_dir in skipped:
                 meta = load_meta(topic_dir)
-                branch = meta.get("spex_branch", "") if meta else ""
+                branch = meta.spex_branch if meta else ""
                 print(f"  {topic_dir.name} ({branch})")
         return
 

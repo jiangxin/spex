@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import DEFAULT_SPEX_BRANCH_PREFIX, strip_date_prefix
+from common import DEFAULT_SPEX_BRANCH_PREFIX, TopicMeta, strip_date_prefix
 
 USAGE = """\
 Usage: spex apply-helper <subcommand> [options]
@@ -20,9 +20,9 @@ Options:
 """
 
 
-def _extract_topic_name_for_branch(topic_dir: Path, meta: dict) -> str:
+def _extract_topic_name_for_branch(topic_dir: Path, meta) -> str:
     """Get the topic name to use for branch naming."""
-    return meta.get("topic", "") or topic_dir.name
+    return meta.topic or topic_dir.name
 
 
 def validate_apply_branch(
@@ -58,8 +58,8 @@ def validate_apply_branch(
     if not bool(config["branch_management"]):
         return
 
-    meta = common.load_meta(topic_dir) or {}
-    spex_branch = meta.get("spex_branch", "")
+    meta = common.load_meta(topic_dir) or TopicMeta()
+    spex_branch = meta.spex_branch
 
     if spex_branch:
         current = get_current_branch(cwd)
@@ -128,8 +128,8 @@ def validate_apply_branch(
             pass
 
     meta_path = topic_dir / "meta.json"
-    meta["spex_branch"] = created_branch
-    common.atomic_write_json(meta_path, meta)
+    meta.spex_branch = created_branch
+    common.atomic_write_json(meta_path, meta.to_dict())
 
     print(f"Created and switched to branch '{created_branch}'.")
 
@@ -190,11 +190,11 @@ def cli_post_action(argv=None):
     topic_dir = common.resolve_topic_dir(args.topic)
     topic_name = strip_date_prefix(topic_dir.name)
     meta = common.load_meta(topic_dir)
-    spex_branch = meta.get("spex_branch", "") if meta else ""
+    spex_branch = meta.spex_branch if meta else ""
     if not spex_branch:
         return
 
-    target = meta.get("branch", "main")
+    target = meta.branch or "main"
     workdir = common.get_current_workdir()
 
     hooks.run_post_action(
