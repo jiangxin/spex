@@ -79,7 +79,7 @@ class TopicMeta:
         return result
 
 
-@dataclass(init=False)
+@dataclass
 class Topic:
     """In-memory representation of a topic for display."""
 
@@ -89,35 +89,6 @@ class Topic:
     done: int = 0
     total: int = 0
     archived: bool = False
-
-    def __init__(
-        self,
-        name: str,
-        path: Path,
-        meta: TopicMeta | None = None,
-        done: int = 0,
-        total: int = 0,
-        archived: bool = False,
-        # Backward-compatible kwargs (will be removed in step-4).
-        created_at: str = "",
-        prompt: str = "",
-        description: str = "",
-        workdir: str = "",
-    ):
-        self.name = name
-        self.path = path
-        if meta is not None:
-            self.meta = meta
-        else:
-            self.meta = TopicMeta(
-                created_at=created_at,
-                prompts=[prompt] if prompt else [],
-                description=description,
-                workdir=workdir,
-            )
-        self.done = done
-        self.total = total
-        self.archived = archived
 
     @classmethod
     def from_dir(cls, topic_dir: Path, *, archived: bool = False) -> Topic | None:

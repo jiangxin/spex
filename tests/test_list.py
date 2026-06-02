@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from common import Topic, get_todo_progress, load_meta
+from common import Topic, TopicMeta, get_todo_progress, load_meta
 from list import (  # noqa: A004
     _parse_verbosity,
     _wrap_text,
@@ -152,11 +152,13 @@ class TestFormatOutput:
         p = Path("/tmp")
         topics = [
             Topic(name="older", path=p,
-                  created_at="2026-05-01T10:00:00+08:00",
-                  done=1, total=2, prompt="old"),
+                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+                                 prompts=["old"]),
+                  done=1, total=2),
             Topic(name="newer", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="new"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["new"]),
+                  done=0, total=1),
         ]
         output = format_output(topics)
         lines = output.splitlines()
@@ -168,8 +170,9 @@ class TestFormatOutput:
         long_name = "a" * 40
         topics = [
             Topic(name=long_name, path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="test"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["test"]),
+                  done=0, total=1),
         ]
         output = format_output(topics)
         assert "..." in output
@@ -179,8 +182,9 @@ class TestFormatOutput:
         p = Path("/tmp")
         topics = [
             Topic(name="topic", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=1, total=3, prompt="x" * 200),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["x" * 200]),
+                  done=1, total=3),
         ]
         output = format_output(topics)
         for line in output.splitlines():
@@ -247,8 +251,9 @@ class TestFormatOutputRepoPrefix:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="x", workdir="/foo/bar"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["x"], workdir="/foo/bar"),
+                  done=0, total=1),
         ]
         output = format_output(topics, show_repo=False)
         assert "[" not in output
@@ -257,8 +262,9 @@ class TestFormatOutputRepoPrefix:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="x", workdir="/foo/bar"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["x"], workdir="/foo/bar"),
+                  done=0, total=1),
         ]
         output = format_output(topics, show_repo=True)
         assert "[bar]" in output
@@ -267,9 +273,10 @@ class TestFormatOutputRepoPrefix:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="x",
-                  workdir="/foo/my-very-long-project-name"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["x"],
+                                 workdir="/foo/my-very-long-project-name"),
+                  done=0, total=1),
         ]
         output = format_output(topics, show_repo=True)
         assert "[my-very-..." in output
@@ -278,12 +285,14 @@ class TestFormatOutputRepoPrefix:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-21T10:00:00+08:00",
-                  done=0, total=1, prompt="x", workdir="/foo/ab"),
+                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+                                 prompts=["x"], workdir="/foo/ab"),
+                  done=0, total=1),
             Topic(name="topic-b", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=1, total=1, prompt="y",
-                  workdir="/foo/longername"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["y"],
+                                 workdir="/foo/longername"),
+                  done=1, total=1),
         ]
         output = format_output(topics, show_repo=True)
         lines = output.splitlines()
@@ -298,9 +307,10 @@ class TestDescriptionDisplay:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="old prompt",
-                  description="Better description"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["old prompt"],
+                                 description="Better description"),
+                  done=0, total=1),
         ]
         output = format_output(topics)
         assert "Better description" in output
@@ -310,9 +320,9 @@ class TestDescriptionDisplay:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="fallback prompt",
-                  description=""),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["fallback prompt"]),
+                  done=0, total=1),
         ]
         output = format_output(topics)
         assert "fallback prompt" in output
@@ -321,8 +331,9 @@ class TestDescriptionDisplay:
         p = Path("/tmp")
         topics = [
             Topic(name="topic-a", path=p,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="shown prompt"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["shown prompt"]),
+                  done=0, total=1),
         ]
         output = format_output(topics)
         assert "shown prompt" in output
@@ -351,9 +362,10 @@ class TestVerboseOutput:
         )
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=1, total=3, prompt="old prompt",
-                  description="Full description text here"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["old prompt"],
+                                 description="Full description text here"),
+                  done=1, total=3),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
@@ -368,9 +380,9 @@ class TestVerboseOutput:
         # No spec.md -> no description
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="fallback prompt",
-                  description=""),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["fallback prompt"]),
+                  done=0, total=1),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
@@ -391,11 +403,13 @@ class TestVerboseOutput:
         )
         topics = [
             Topic(name="topic-a", path=dir1,
-                  created_at="2026-05-21T10:00:00+08:00",
-                  done=0, total=1, prompt="p1", description="D1"),
+                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+                                 prompts=["p1"], description="D1"),
+                  done=0, total=1),
             Topic(name="topic-b", path=dir2,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=1, total=1, prompt="p2", description="D2"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["p2"], description="D2"),
+                  done=1, total=1),
         ]
         output = format_verbose_output(topics, verbosity=1)
         assert "\n\n" in output
@@ -410,9 +424,9 @@ class TestVerboseOutput:
         )
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="",
-                  description=long_desc.strip()),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 description=long_desc.strip()),
+                  done=0, total=1),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
@@ -431,9 +445,10 @@ class TestVerboseOutput:
         ])
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=1, total=2, prompt="some prompt",
-                  description="Desc"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["some prompt"],
+                                 description="Desc"),
+                  done=1, total=2),
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
@@ -451,9 +466,9 @@ class TestVerboseOutput:
         )
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=0, prompt="p",
-                  description="Desc"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["p"], description="Desc"),
+                  done=0, total=0),
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
@@ -465,9 +480,9 @@ class TestVerboseOutput:
         topic_dir.mkdir()
         topics = [
             Topic(name="my-topic", path=topic_dir,
-                  created_at="2026-05-20T10:00:00+08:00",
-                  done=0, total=1, prompt="p",
-                  description="D"),
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["p"], description="D"),
+                  done=0, total=1),
         ]
         output = format_verbose_output(topics, verbosity=3)
         assert "spex show" in output
