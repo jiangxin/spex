@@ -13,7 +13,6 @@ from common import (
     format_topic,
     get_archives_dir,
     get_specs_dir,
-    same_path,
 )
 from config import get_project_context
 
@@ -220,15 +219,8 @@ def main(argv=None):
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
     ctx = get_project_context()
-    current_workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
-    if current_workdir:
-        topics = [
-            t for t in topics
-            if not t.workdir or same_path(t.workdir, current_workdir)
-        ]
-        show_repo = False
-    else:
-        show_repo = True
+    topics = [t for t in topics if ctx.is_related_to(t)]
+    show_repo = not ctx.in_git_workdir()
 
     verbosity = _parse_verbosity(full_argv)
     if verbosity > 0:

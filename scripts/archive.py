@@ -18,13 +18,11 @@ from common import (
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
-    get_topic_workdir,
     is_topic_completed,
     load_meta,
     resolve_topic_dir,
-    same_path,
 )
-from config import get_project_context
+from config import ProjectContext, get_project_context
 
 
 def has_active_branch(topic_dir: Path) -> bool:
@@ -53,12 +51,12 @@ Options:
 
 
 def find_completed_topics(
-    specs_dir: Path, current_workdir=None, force: bool = False
+    specs_dir: Path, ctx: ProjectContext, force: bool = False
 ) -> list:
     """Return sorted list of topic paths where all tasks are completed.
 
-    If current_workdir is provided, only topics matching that workdir
-    (or topics without a workdir) are included.
+    Topics are filtered by ctx.is_related_to() to only include topics
+    matching the current workspace (or all topics when not in a git repo).
 
     If force is False, topics with an active spex_branch are excluded.
     """
@@ -70,10 +68,8 @@ def find_completed_topics(
             continue
         if not force and has_active_branch(d):
             continue
-        if current_workdir is not None:
-            workdir = get_topic_workdir(d)
-            if workdir and not same_path(workdir, current_workdir):
-                continue
+        if not ctx.is_related_to(d):
+            continue
         results.append(d)
     return sorted(results)
 
@@ -205,8 +201,7 @@ def main(argv=None):
         return
 
     ctx = get_project_context()
-    current_workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
-    completed = find_completed_topics(specs_dir, current_workdir, args.force)
+    completed = find_completed_topics(specs_dir, ctx, args.force)
 
     if not completed:
         print("No completed topics to archive.")

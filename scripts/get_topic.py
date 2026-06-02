@@ -13,7 +13,6 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    TopicMeta,
     check_help_flag,
     find_matching_topics,
     get_archives_dir,
@@ -22,10 +21,8 @@ from common import (
     get_spex_tomls,
     has_undone_tasks,
     is_topic_completed,
-    load_meta,
-    same_path,
 )
-from config import get_project_context, set_spex_config_file
+from config import ProjectContext, get_project_context, set_spex_config_file
 
 USAGE = """\
 Usage: spex get-topic [--json] [--all] [--with-archives] [--must-done | --must-undone] [topic]
@@ -48,15 +45,15 @@ Options:
   -h, --help     Show this help message and exit"""
 
 
-def resolve_topic(topic_name, search_dirs, filter_workdir=None,
+def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
                   must_done=False, must_undone=False):
     """Resolve topic name against search directories.
 
     Args:
         topic_name: Topic name or substring to match. Empty string lists all.
         search_dirs: List of Path objects to search for topics.
-        filter_workdir: When set, only return topics whose meta.json workdir
-            matches this path. Ignored when topic_name is provided.
+        ctx: When set, only return topics related to this project context.
+            Ignored when topic_name is provided.
         must_done: When True, only return completed topics.
         must_undone: When True, only return topics with undone tasks.
 
@@ -152,15 +149,15 @@ def resolve_topic(topic_name, search_dirs, filter_workdir=None,
         )
         sys.exit(1)
 
-    if filter_workdir:
+    if ctx is not None:
         all_candidates = [
             (name, parent) for name, parent in all_candidates
-            if _topic_matches_workdir(parent / name, filter_workdir)
+            if ctx.is_related_to(parent / name)
         ]
 
     if not all_candidates:
         if must_done:
-            if filter_workdir:
+            if ctx is not None:
                 print(
                     "Error: no completed topics found for the current"
                     " workspace. Use --all to show all topics.",
@@ -172,7 +169,7 @@ def resolve_topic(topic_name, search_dirs, filter_workdir=None,
                     file=sys.stderr,
                 )
         elif must_undone:
-            if filter_workdir:
+            if ctx is not None:
                 print(
                     "Error: no topics with undone tasks found for the current"
                     " workspace. Use --all to show all topics.",
@@ -184,7 +181,7 @@ def resolve_topic(topic_name, search_dirs, filter_workdir=None,
                     file=sys.stderr,
                 )
         else:
-            if filter_workdir:
+            if ctx is not None:
                 print(
                     "Error: no topics found for the current"
                     " workspace. Use --all to show all topics.",
@@ -198,18 +195,6 @@ def resolve_topic(topic_name, search_dirs, filter_workdir=None,
         sys.exit(1)
 
     return all_candidates
-
-
-def _topic_matches_workdir(topic_dir, workdir):
-    """Return True if the topic's workdir or main_worktree matches the given workdir."""
-    meta = load_meta(topic_dir) or TopicMeta()
-    topic_wd = meta.workdir
-    main_wt = meta.main_worktree
-    if topic_wd and same_path(topic_wd, workdir):
-        return True
-    if main_wt and same_path(main_wt, workdir):
-        return True
-    return False
 
 
 def main(argv=None):
@@ -296,12 +281,12 @@ def main(argv=None):
 
     # Determine workspace filter
     if topic_name or all_flag:
-        filter_workdir = None
+        filter_ctx = None
     else:
-        filter_workdir = workdir
+        filter_ctx = ctx
 
     results = resolve_topic(
-        topic_name, search_dirs, filter_workdir=filter_workdir,
+        topic_name, search_dirs, ctx=filter_ctx,
         must_done=must_done_flag, must_undone=must_undone_flag,
     )
     if json_mode:
