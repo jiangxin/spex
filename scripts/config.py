@@ -46,6 +46,53 @@ class ProjectContext:
     def in_git_workdir(self) -> bool:
         return self.top_workdir is not None
 
+    def is_related_to(self, topic) -> bool:
+        """Check if this project context is related to the given topic.
+
+        Accepts a TopicMeta instance, a Topic instance (with .meta attribute),
+        a dict (like load_meta().to_dict()), or a Path (topic directory).
+        """
+        from common import load_meta, same_path
+
+        # Not in a git repo — matches everything
+        if self.top_workdir is None and self.main_worktree is None:
+            return True
+
+        # Extract workdir and main_worktree from the topic parameter
+        if isinstance(topic, Path):
+            meta = load_meta(topic)
+            if meta is None:
+                return True
+            topic_workdir = meta.workdir
+            topic_main_worktree = meta.main_worktree
+        elif hasattr(topic, "meta"):
+            # Topic instance with .meta attribute
+            topic_workdir = topic.meta.workdir
+            topic_main_worktree = topic.meta.main_worktree
+        elif isinstance(topic, dict):
+            topic_workdir = topic.get("workdir", "")
+            topic_main_worktree = topic.get("main_worktree", "")
+        else:
+            # Assume object with .workdir and .main_worktree attributes
+            topic_workdir = getattr(topic, "workdir", "")
+            topic_main_worktree = getattr(topic, "main_worktree", "")
+
+        # No workdir record means matches any project
+        if not topic_workdir:
+            return True
+
+        # Compare top_workdir
+        if self.top_workdir is not None and topic_workdir:
+            if same_path(str(self.top_workdir), topic_workdir):
+                return True
+
+        # Compare main_worktree
+        if self.main_worktree is not None and topic_main_worktree:
+            if same_path(str(self.main_worktree), topic_main_worktree):
+                return True
+
+        return False
+
 _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}

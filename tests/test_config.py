@@ -1050,3 +1050,107 @@ class TestGetProjectContext:
 
         assert first is not second
 
+
+# ===================== is_related_to =====================
+
+
+class TestIsRelatedTo:
+    """Tests for ProjectContext.is_related_to() method."""
+
+    def _make_ctx(self, top_workdir=None, main_worktree=None):
+        return ProjectContext(
+            cwd=Path("/tmp"),
+            top_workdir=top_workdir,
+            main_worktree=main_worktree,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+        )
+
+    def test_top_workdir_matches(self, tmp_path):
+        """top_workdir matches topic's workdir -> True."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": str(tmp_path), "main_worktree": ""}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_main_worktree_matches(self, tmp_path):
+        """main_worktree matches topic's main_worktree -> True."""
+        other = tmp_path / "other"
+        other.mkdir()
+        ctx = self._make_ctx(top_workdir=other, main_worktree=tmp_path)
+        topic_dict = {"workdir": "/nonexistent/path", "main_worktree": str(tmp_path)}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_neither_matches(self, tmp_path):
+        """Neither top_workdir nor main_worktree matches -> False."""
+        ctx = self._make_ctx(
+            top_workdir=tmp_path / "a", main_worktree=tmp_path / "b"
+        )
+        topic_dict = {
+            "workdir": str(tmp_path / "x"),
+            "main_worktree": str(tmp_path / "y"),
+        }
+        assert ctx.is_related_to(topic_dict) is False
+
+    def test_not_in_git_repo(self):
+        """Both top_workdir and main_worktree are None -> True."""
+        ctx = self._make_ctx(top_workdir=None, main_worktree=None)
+        topic_dict = {"workdir": "/some/path", "main_worktree": "/other"}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_topic_workdir_empty(self, tmp_path):
+        """Topic's workdir is empty string -> True."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": "", "main_worktree": ""}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_accepts_dict(self, tmp_path):
+        """Accepts a dict (like load_meta().to_dict() result)."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dict = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
+        assert ctx.is_related_to(topic_dict) is True
+
+    def test_accepts_object_with_attributes(self, tmp_path):
+        """Accepts object with .workdir/.main_worktree attributes."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+
+        class FakeMeta:
+            workdir = str(tmp_path)
+            main_worktree = str(tmp_path)
+
+        assert ctx.is_related_to(FakeMeta()) is True
+
+    def test_accepts_topic_with_meta_attribute(self, tmp_path):
+        """Accepts Topic-like object with .meta attribute."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+
+        class FakeMeta:
+            workdir = str(tmp_path)
+            main_worktree = str(tmp_path)
+
+        class FakeTopic:
+            meta = FakeMeta()
+
+        assert ctx.is_related_to(FakeTopic()) is True
+
+    def test_accepts_path(self, tmp_path):
+        """Accepts Path as parameter (reads meta.json from directory)."""
+        import json
+
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dir = tmp_path / "topic"
+        topic_dir.mkdir()
+        meta = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
+        (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+        assert ctx.is_related_to(topic_dir) is True
+
+    def test_path_with_no_meta_json(self, tmp_path):
+        """Path with no meta.json returns True (no filtering possible)."""
+        ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
+        topic_dir = tmp_path / "empty-topic"
+        topic_dir.mkdir()
+
+        assert ctx.is_related_to(topic_dir) is True
+
