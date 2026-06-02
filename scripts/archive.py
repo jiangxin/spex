@@ -204,8 +204,8 @@ def main(argv=None):
         archive_single_topic(args.topic, specs_dir, archives_dir, args.force)
         return
 
-    top = get_project_context().top_workdir
-    current_workdir = str(top) if top else None
+    ctx = get_project_context()
+    current_workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
     completed = find_completed_topics(specs_dir, current_workdir, args.force)
 
     if not completed:

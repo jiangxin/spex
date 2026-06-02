@@ -67,7 +67,7 @@ def create_topic(topic, specs_dir, auto_prefix=True):
 
 def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
     """Write meta.json into topic_dir with project context and prompt."""
-    workdir = str(ctx.top_workdir) if ctx.top_workdir else ""
+    workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = TopicMeta(
         topic=strip_date_prefix(Path(topic_dir).name),
@@ -275,9 +275,9 @@ def cli_post_action(argv=None):
     topic_name = (meta.topic if meta else "") or (
         strip_date_prefix(topic_dir.name)
     )
-    top = get_project_context().top_workdir
+    ctx = get_project_context()
     workdir = (meta.workdir if meta else "") or (
-        str(top) if top else None
+        str(ctx.top_workdir) if ctx.in_git_workdir() else None
     )
     done = sum(
         1 for item in data

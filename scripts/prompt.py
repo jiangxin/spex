@@ -275,7 +275,7 @@ def _build_metadata(template_name, topic_name=None):
             metadata.update(meta.to_dict())
     if not metadata:
         ctx = get_project_context()
-        metadata["workdir"] = str(ctx.top_workdir) if ctx.top_workdir else ""
+        metadata["workdir"] = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
         metadata["remote_url"] = ctx.remote_url
         metadata["branch"] = ctx.branch
         metadata["user_name"] = ctx.user_name

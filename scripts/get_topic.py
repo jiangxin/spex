@@ -285,8 +285,8 @@ def main(argv=None):
         )
         sys.exit(1)
 
-    top = get_project_context().top_workdir
-    workdir = str(top) if top else None
+    ctx = get_project_context()
+    workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
     if with_archives_flag:

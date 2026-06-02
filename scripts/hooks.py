@@ -44,7 +44,7 @@ def _build_event_data(event_type: str, payload: dict, workdir=None) -> dict:
     """
     ctx = get_project_context(workdir)
     effective_workdir = workdir or (
-        str(ctx.top_workdir) if ctx.top_workdir else str(Path.cwd())
+        str(ctx.top_workdir) if ctx.in_git_workdir() else str(Path.cwd())
     )
 
     return {
