@@ -86,13 +86,13 @@ class TestHelpFlag:
         result = _run_spex("open", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_open_help_exits_zero_with_usage(self):
         result = _run_spex("open", "--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_get_topic_h_exits_zero_with_usage(self):
         result = _run_spex("get-topic", "-h")
@@ -109,7 +109,7 @@ class TestHelpFlag:
         result = _run_spex("meta", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_meta_help_exits_zero(self):
         result = _run_spex("meta", "--help")

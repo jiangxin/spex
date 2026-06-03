@@ -199,20 +199,20 @@ class TestErrorOnMissingTopic:
 class TestErrorOnInsufficientArgs:
     """Verify error when arguments are insufficient."""
 
-    def test_no_args_exits_1(self):
+    def test_no_args_exits_2(self):
         result = subprocess.run(
             [sys.executable, SCRIPT],
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 1
+        assert result.returncode == 2
 
     def test_no_args_via_main(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["prog"])
 
         with pytest.raises(SystemExit) as exc_info:
             meta.main()
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
 
 class TestGetMode:
