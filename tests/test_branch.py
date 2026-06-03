@@ -274,12 +274,13 @@ class TestCliPostAction:
 
 
 class TestCliSubmit:
+    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.resolve_topic_dir")
-    def test_merge_success(self, mock_resolve, _ctx, mock_merge, tmp_path,
-                           capsys):
+    def test_merge_success(self, mock_resolve, _ctx, mock_merge,
+                           mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/done", "branch": "main"}),
@@ -292,7 +293,68 @@ class TestCliSubmit:
         assert out["source"] == "spex/done"
         assert out["target"] == "main"
         assert out["errors"] == []
+        assert "archived" in out
         mock_merge.assert_called_once_with("main", "spex/done", cwd=None)
+
+    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
+    @patch("branch.merge_branch")
+    @patch("config.get_project_context", return_value=_fake_context(
+        config={"submit_method": "merge"}))
+    @patch("common.resolve_topic_dir")
+    def test_merge_success_archives(self, mock_resolve, _ctx, mock_merge,
+                                    mock_archive, tmp_path, capsys):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/done", "branch": "main"}),
+            encoding="utf-8",
+        )
+        mock_resolve.return_value = tmp_path
+        cli_submit(["--topic", "done-topic"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["archived"] is True
+        mock_archive.assert_called_once()
+
+    @patch("archive.archive_single_topic")
+    @patch("branch.merge_branch")
+    @patch("config.get_project_context", return_value=_fake_context(
+        config={"submit_method": "merge"}))
+    @patch("common.resolve_topic_dir")
+    def test_merge_success_no_archive_flag(self, mock_resolve, _ctx,
+                                           mock_merge, mock_archive,
+                                           tmp_path, capsys):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/done", "branch": "main"}),
+            encoding="utf-8",
+        )
+        mock_resolve.return_value = tmp_path
+        cli_submit(["--topic", "done-topic", "--no-archive"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["archived"] is False
+        mock_archive.assert_not_called()
+
+    @patch("archive.archive_single_topic")
+    @patch("branch.merge_branch",
+           side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
+    @patch("config.get_project_context", return_value=_fake_context(
+        config={"submit_method": "merge"}))
+    @patch("common.resolve_topic_dir")
+    def test_merge_failure_no_archive(self, mock_resolve, _ctx, _merge,
+                                      mock_archive, tmp_path, capsys):
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
+            encoding="utf-8",
+        )
+        mock_resolve.return_value = tmp_path
+        try:
+            cli_submit(["--topic", "conflict"])
+            assert False, "Should have called sys.exit(1)"
+        except SystemExit as e:
+            assert e.code == 1
+        out = json.loads(capsys.readouterr().out)
+        assert "Merge failed" in out["errors"][0]
+        mock_archive.assert_not_called()
 
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))

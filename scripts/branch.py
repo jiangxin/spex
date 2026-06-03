@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -120,6 +122,11 @@ def _build_submit_parser() -> ArgumentParser:
         required=True,
         help="Topic name to submit",
     )
+    parser.add_argument(
+        "--no-archive",
+        action="store_true",
+        help="Skip automatic archiving after successful merge",
+    )
     return parser
 
 
@@ -179,5 +186,23 @@ def cli_submit(argv=None) -> None:
         short_name,
     )
 
+    # Auto-archive the topic unless --no-archive is set
+    archived = False
+    if not parsed.no_archive:
+        try:
+            import archive as archive_mod
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = archive_mod.archive_single_topic(
+                    topic_name,
+                    common.get_specs_dir(),
+                    common.get_archives_dir(),
+                    force=True,
+                )
+            archived = result is not None
+        except Exception:
+            archived = False
+
     print(json.dumps({"action": method, "source": source,
-                      "target": target, "errors": errors}))
+                      "target": target, "archived": archived,
+                      "errors": errors}))
