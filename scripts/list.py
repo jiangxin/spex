@@ -12,6 +12,7 @@ from common import (
     format_topic,
     get_archives_dir,
     get_specs_dir,
+    repo_label,
 )
 from config import get_project_context
 
@@ -66,14 +67,6 @@ def _truncate(text: str, width: int) -> str:
 MAX_REPO_WIDTH = 11
 
 
-def _repo_label(workdir: str) -> str:
-    """Return truncated basename of workdir for display."""
-    name = Path(workdir).name if workdir else "?"
-    if len(name) > MAX_REPO_WIDTH:
-        return name[:8] + "..."
-    return name
-
-
 def format_output(
     topics: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
 ) -> str:
@@ -88,7 +81,7 @@ def format_output(
 
     repo_labels = []
     if show_repo:
-        repo_labels = [_repo_label(t.workdir) for t in topics]
+        repo_labels = [repo_label(t.workdir) for t in topics]
         max_label_width = max(len(lb) for lb in repo_labels)
         repo_col_width = max_label_width + 3  # brackets + trailing space
     else:
@@ -155,28 +148,10 @@ def format_verbose_output(
 
     topics.sort(key=lambda t: t.created_at, reverse=True)
 
-    blocks = []
-    for topic in topics:
-        if show_repo:
-            label = _repo_label(topic.workdir)
-            icon = topic.icon
-            prog = f"[{topic.done}/{topic.total}]"
-            line1 = f"[{label}] {icon} {prog} {topic.name}"
-            display_text = topic.display_text
-            parts = [line1]
-            if display_text:
-                parts.append(_wrap_text(display_text))
-            if verbosity >= 2:
-                todo = topic.todo_data
-                if todo:
-                    parts.append("")
-                    for item in todo:
-                        step_id = item.get("id", "")
-                        step_name = item.get("name", "")
-                        parts.append(f"    {step_id}: {step_name}")
-            blocks.append("\n".join(parts))
-        else:
-            blocks.append(format_topic(topic.path, verbose=verbosity))
+    blocks = [
+        format_topic(topic, verbose=verbosity, show_repo=show_repo)
+        for topic in topics
+    ]
 
     return "\n\n".join(blocks)
 

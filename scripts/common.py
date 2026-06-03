@@ -778,26 +778,46 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     return matches[0]
 
 
-def format_topic(topic_dir: Path, verbose: int = 0) -> str:
+MAX_REPO_WIDTH = 11
+
+
+def repo_label(workdir: str) -> str:
+    """Return truncated basename of workdir for display."""
+    name = Path(workdir).name if workdir else "?"
+    if len(name) > MAX_REPO_WIDTH:
+        return name[:8] + "..."
+    return name
+
+
+def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     """Format a single topic with progress, description, and optional todo steps.
 
-    Verbosity levels:
-        0: Icon + progress + name only.
-        1: + description line.
-        2: + todo step list (id + name).
+    Args:
+        topic: A Topic instance or a Path to a topic directory.
+        verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
+        show_repo: If True, prepend a ``[repo]`` label from the topic's workdir.
     """
-    done, total = get_todo_progress(topic_dir)
-    icon = ICON_COMPLETED if done > 0 and done == total else ICON_IN_PROGRESS
+    if isinstance(topic, Path):
+        t = Topic.from_dir(topic)
+        if t is None:
+            return f"(unable to load topic: {topic.name})"
+    else:
+        t = topic
 
-    lines = [f"{icon} [{done}/{total}] {topic_dir.name}"]
+    header = f"{t.icon} [{t.done}/{t.total}] {t.name}"
+    if show_repo:
+        label = repo_label(t.workdir)
+        header = f"[{label}] {header}"
+
+    lines = [header]
 
     if verbose >= 1:
-        description = get_spec_description(topic_dir)
+        description = t.display_text
         if description:
             lines.append(f"    {description}")
 
     if verbose >= 2:
-        todo = load_todo(topic_dir)
+        todo = t.todo_data
         if todo:
             lines.append("")
             for item in todo:

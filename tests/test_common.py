@@ -587,9 +587,16 @@ class TestGetSpecDescription:
 
 
 class TestFormatTopic:
+    @staticmethod
+    def _write_meta(topic_dir):
+        (topic_dir / "meta.json").write_text(
+            '{"topic":"t","workdir":"","prompts":[]}', encoding="utf-8",
+        )
+
     def test_verbose_0_header_only(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         out = format_topic(topic_dir, verbose=0)
         assert out.startswith("🔧 [0/0] my-feature")
         assert len(out.splitlines()) == 1
@@ -597,6 +604,7 @@ class TestFormatTopic:
     def test_verbose_1_with_description(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         (topic_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
@@ -607,6 +615,7 @@ class TestFormatTopic:
     def test_verbose_2_with_todo(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         (topic_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
@@ -624,6 +633,7 @@ class TestFormatTopic:
     def test_completed_shows_checkmark(self, tmp_path):
         topic_dir = tmp_path / "done"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         todo_path = topic_dir / "todo.json"
         todo_path.write_text(
             '[{"id": "1", "name": "Step", "completed_at": "2026-01-01"}]',
@@ -631,6 +641,21 @@ class TestFormatTopic:
         )
         out = format_topic(topic_dir, verbose=0)
         assert out.startswith("✅ [1/1] done")
+
+    def test_path_without_meta_returns_error(self, tmp_path):
+        topic_dir = tmp_path / "no-meta"
+        topic_dir.mkdir()
+        out = format_topic(topic_dir, verbose=0)
+        assert "unable to load" in out
+
+    def test_show_repo_flag(self, tmp_path):
+        from common import Topic, TopicMeta
+        t = Topic(name="my-topic", path=tmp_path / "my-topic",
+                  meta=TopicMeta(workdir="/projects/myapp"),
+                  done=2, total=5)
+        out = format_topic(t, verbose=0, show_repo=True)
+        assert "[myapp]" in out
+        assert "[2/5]" in out
 
 
 class TestGetSpexRoots:

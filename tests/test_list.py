@@ -372,15 +372,13 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic reads done/total from filesystem (no todo.json -> 0/0)
-        assert "[0/0]" in lines[0]
+        assert "[1/3]" in lines[0]
         assert "topic" in lines[0]
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
-        # No spec.md -> no description
         topics = [
             Topic(name="my-topic", path=topic_dir,
                   meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
@@ -389,9 +387,9 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # Without description, only header line is output
-        assert len(lines) == 1
+        assert "[0/1]" in lines[0]
         assert "topic" in lines[0]
+        assert lines[1] == "    fallback prompt"
 
     def test_level1_blank_line_between_topics(self, tmp_path):
         dir1 = tmp_path / "t1"
