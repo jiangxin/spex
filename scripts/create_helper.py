@@ -66,7 +66,7 @@ def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
         user_name=ctx.user_name,
         user_email=ctx.user_email,
         created_at=timestamp,
-        prompts=[prompt] if prompt else [],
+        prompts=[{"text": prompt, "timestamp": timestamp}] if prompt else [],
         description=wrap_text(description) if description else "",
     )
     meta_path = Path(topic_dir) / "meta.json"

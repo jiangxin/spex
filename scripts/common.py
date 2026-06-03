@@ -75,6 +75,17 @@ class TopicMeta:
         return result
 
 
+def normalize_prompt_entry(entry):
+    """Normalize a prompt entry to a structured dict.
+
+    If *entry* is a plain string (old format), returns ``{"text": entry}``.
+    Otherwise returns *entry* as-is (already structured).
+    """
+    if isinstance(entry, str):
+        return {"text": entry}
+    return entry
+
+
 @dataclass
 class Topic:
     """In-memory representation of a topic for display."""
@@ -148,9 +159,10 @@ class Topic:
 
     @property
     def prompt(self) -> str:
-        """Return first prompt from meta, or empty string."""
+        """Return first prompt text from meta, or empty string."""
         if self.meta.prompts:
-            return self.meta.prompts[0]
+            entry = normalize_prompt_entry(self.meta.prompts[0])
+            return entry["text"]
         return ""
 
     @property

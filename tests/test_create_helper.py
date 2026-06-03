@@ -173,7 +173,10 @@ class TestWriteMeta:
         assert meta["user_name"] == "Alice"
         assert meta["user_email"] == "alice@example.com"
         assert meta["created_at"] == "2026-05-24T20:00:00+08:00"
-        assert meta["prompts"] == ["fix the login bug"]
+        assert meta["prompts"] == [
+            {"text": "fix the login bug",
+             "timestamp": "2026-05-24T20:00:00+08:00"},
+        ]
 
     def test_meta_with_empty_prompt(self, tmp_path):
         topic_dir = tmp_path / "topic"
@@ -359,7 +362,10 @@ class TestCliPrepareSpec:
         meta_path = tmp_path / "2026-05-20-14-30-new-topic" / "meta.json"
         assert meta_path.exists()
         meta = json.loads(meta_path.read_text())
-        assert meta["prompts"] == ["hello prompt"]
+        assert meta["prompts"] == [
+            {"text": "hello prompt",
+             "timestamp": "2026-05-24T20:00:00+08:00"},
+        ]
         assert meta["description"] == "Test desc"
 
 
