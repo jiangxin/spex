@@ -598,7 +598,7 @@ class TestFormatTopic:
         topic_dir.mkdir()
         self._write_meta(topic_dir)
         out = format_topic(topic_dir, verbose=0)
-        assert out.startswith("🔧 [0/0] my-feature")
+        assert out.startswith("🔧 (0/0) my-feature")
         assert len(out.splitlines()) == 1
 
     def test_verbose_1_with_description(self, tmp_path):
@@ -640,7 +640,7 @@ class TestFormatTopic:
             encoding="utf-8",
         )
         out = format_topic(topic_dir, verbose=0)
-        assert out.startswith("✅ [1/1] done")
+        assert out.startswith("✅ (1/1) done")
 
     def test_path_without_meta_returns_error(self, tmp_path):
         topic_dir = tmp_path / "no-meta"
@@ -655,7 +655,38 @@ class TestFormatTopic:
                   done=2, total=5)
         out = format_topic(t, verbose=0, show_repo=True)
         assert "[myapp]" in out
-        assert "[2/5]" in out
+        assert "(2/5)" in out
+
+
+class TestDisplayWidth:
+    def test_ascii(self):
+        from common import display_width
+        assert display_width("hello") == 5
+
+    def test_cjk(self):
+        from common import display_width
+        assert display_width("你好") == 4
+
+    def test_mixed(self):
+        from common import display_width
+        assert display_width("hello你好") == 9
+
+    def test_truncate_cjk(self):
+        from common import display_truncate
+        result = display_truncate("你好世界测试文本", 10)
+        from common import display_width
+        assert display_width(result) <= 10
+        assert result.endswith("...")
+
+    def test_truncate_no_op(self):
+        from common import display_truncate
+        assert display_truncate("short", 10) == "short"
+
+    def test_ljust_cjk(self):
+        from common import display_ljust, display_width
+        result = display_ljust("你好", 10)
+        assert display_width(result) == 10
+        assert result == "你好      "
 
 
 class TestGetSpexRoots:

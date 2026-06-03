@@ -781,11 +781,39 @@ def resolve_topic_dir(topic_name, specs_dir=None):
 MAX_REPO_WIDTH = 11
 
 
+def display_width(text: str) -> int:
+    """Return the display width of text, counting wide chars as 2."""
+    import unicodedata
+    w = 0
+    for ch in text:
+        w += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return w
+
+
+def display_truncate(text: str, width: int) -> str:
+    """Truncate text to fit within display width, appending ... if needed."""
+    import unicodedata
+    if display_width(text) <= width:
+        return text
+    w = 0
+    for i, ch in enumerate(text):
+        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if w + cw > width - 3:
+            return text[:i] + "..."
+        w += cw
+    return text
+
+
+def display_ljust(text: str, width: int) -> str:
+    """Left-justify text to display width with space padding."""
+    return text + " " * (width - display_width(text))
+
+
 def repo_label(workdir: str) -> str:
     """Return truncated basename of workdir for display."""
     name = Path(workdir).name if workdir else "?"
-    if len(name) > MAX_REPO_WIDTH:
-        return name[:8] + "..."
+    if display_width(name) > MAX_REPO_WIDTH:
+        return display_truncate(name, MAX_REPO_WIDTH)
     return name
 
 
@@ -804,10 +832,13 @@ def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     else:
         t = topic
 
-    header = f"{t.icon} [{t.done}/{t.total}] {t.name}"
+    progress = f"({t.done}/{t.total})"
     if show_repo:
         label = repo_label(t.workdir)
-        header = f"[{label}] {header}"
+        repo_col = display_ljust(f"[{label}]", MAX_REPO_WIDTH + 3)
+        header = f"{t.icon} {repo_col}{progress} {t.name}"
+    else:
+        header = f"{t.icon} {progress} {t.name}"
 
     lines = [header]
 

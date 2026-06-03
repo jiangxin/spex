@@ -45,7 +45,7 @@ def _format_verbose(topic_dir):
 
     parts = []
 
-    parts.append(f"{t.icon} [{t.done}/{t.total}] {t.name}")
+    parts.append(f"{t.icon} ({t.done}/{t.total}) {t.name}")
     parts.append("")
     parts.append("# **Specification**")
     parts.append("")

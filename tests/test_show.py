@@ -59,7 +59,7 @@ class TestFormatDefault:
         )
         output = spex_show._format_default(topic_dir)
         lines = output.splitlines()
-        assert "[1/2]" in lines[0]
+        assert "(1/2)" in lines[0]
         assert "my-topic" in lines[0]
         assert "    A desc" in lines[1]
         assert "    step-1: First" in output
@@ -68,7 +68,7 @@ class TestFormatDefault:
     def test_no_spec_no_steps(self, tmp_path):
         topic_dir = _make_topic(tmp_path)
         output = spex_show._format_default(topic_dir)
-        assert "[0/0]" in output
+        assert "(0/0)" in output
         assert "step-" not in output
 
 
@@ -85,7 +85,7 @@ class TestFormatVerbose:
         )
         output = spex_show._format_verbose(topic_dir)
         lines = output.splitlines()
-        assert "[0/1]" in lines[0]
+        assert "(0/1)" in lines[0]
         assert "my-topic" in lines[0]
         assert "# **Specification**" in output
         assert "# My Spec" in output

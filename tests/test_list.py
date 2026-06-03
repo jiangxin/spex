@@ -372,7 +372,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        assert "[1/3]" in lines[0]
+        assert "(1/3)" in lines[0]
         assert "topic" in lines[0]
         assert lines[1] == "    Full description text here"
 
@@ -387,7 +387,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        assert "[0/1]" in lines[0]
+        assert "(0/1)" in lines[0]
         assert "topic" in lines[0]
         assert lines[1] == "    fallback prompt"
 
@@ -453,7 +453,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
-        assert "[1/2]" in lines[0]
+        assert "(1/2)" in lines[0]
         assert lines[1] == "    Desc"
         assert lines[2] == ""
         assert "step-1:" in lines[3]
