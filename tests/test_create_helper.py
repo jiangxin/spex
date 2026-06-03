@@ -567,6 +567,116 @@ class TestCliCreateValidate:
         assert "Valid" in out
 
 
+class TestAddImages:
+    def _setup_topic(self, tmp_path, meta_data):
+        topic_dir = tmp_path / "my-topic"
+        topic_dir.mkdir()
+        (topic_dir / "meta.json").write_text(
+            json.dumps(meta_data, indent=2), encoding="utf-8",
+        )
+        return topic_dir
+
+    def test_append_images(self, tmp_path, monkeypatch, capsys):
+        """add-images appends image paths to the last prompt entry."""
+        meta = {
+            "topic": "my-topic",
+            "workdir": str(tmp_path),
+            "prompts": [
+                {"text": "fix the bug", "timestamp": "2026-01-01T00:00:00+08:00"},
+            ],
+        }
+        topic_dir = self._setup_topic(tmp_path, meta)
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        create_helper.main([
+            "add-images", "--topic", "my-topic",
+            "--images", "screenshot1.png", "screenshot2.png",
+        ])
+
+        updated = json.loads((topic_dir / "meta.json").read_text())
+        last_prompt = updated["prompts"][-1]
+        assert last_prompt["images"] == [
+            "screenshot1.png", "screenshot2.png",
+        ]
+        out = capsys.readouterr().out
+        assert "Added" in out
+
+    def test_empty_prompts_exits(self, tmp_path, monkeypatch):
+        """add-images exits with error when prompts list is empty."""
+        meta = {
+            "topic": "my-topic",
+            "workdir": str(tmp_path),
+            "prompts": [],
+        }
+        topic_dir = self._setup_topic(tmp_path, meta)
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            create_helper.main([
+                "add-images", "--topic", "my-topic",
+                "--images", "img.png",
+            ])
+        assert exc_info.value.code == 1
+
+    def test_deduplication(self, tmp_path, monkeypatch):
+        """add-images does not add duplicate image paths."""
+        meta = {
+            "topic": "my-topic",
+            "workdir": str(tmp_path),
+            "prompts": [
+                {
+                    "text": "prompt",
+                    "timestamp": "2026-01-01T00:00:00+08:00",
+                    "images": ["existing.png"],
+                },
+            ],
+        }
+        topic_dir = self._setup_topic(tmp_path, meta)
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        create_helper.main([
+            "add-images", "--topic", "my-topic",
+            "--images", "existing.png", "new.png",
+        ])
+
+        updated = json.loads((topic_dir / "meta.json").read_text())
+        assert updated["prompts"][-1]["images"] == [
+            "existing.png", "new.png",
+        ]
+
+    def test_old_format_prompt_normalized(self, tmp_path, monkeypatch):
+        """add-images normalizes old plain-string prompt before adding."""
+        meta = {
+            "topic": "my-topic",
+            "workdir": str(tmp_path),
+            "prompts": ["plain string prompt"],
+        }
+        topic_dir = self._setup_topic(tmp_path, meta)
+        monkeypatch.setattr(
+            "create_helper.resolve_topic_dir",
+            lambda _name: topic_dir,
+        )
+
+        create_helper.main([
+            "add-images", "--topic", "my-topic",
+            "--images", "photo.jpg",
+        ])
+
+        updated = json.loads((topic_dir / "meta.json").read_text())
+        last_prompt = updated["prompts"][-1]
+        assert last_prompt["text"] == "plain string prompt"
+        assert last_prompt["images"] == ["photo.jpg"]
+
+
 class TestDescriptionWrapping:
     def test_write_meta_wraps_long_description(self, tmp_path):
         """_write_meta wraps descriptions longer than 68 chars."""

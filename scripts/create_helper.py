@@ -13,6 +13,8 @@ from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     TopicMeta,
     atomic_write_json,
+    load_meta,
+    normalize_prompt_entry,
     resolve_topic_dir,
     strip_date_prefix,
     wrap_text,
@@ -250,6 +252,33 @@ def cli_post_action(argv=None):
     _do_post_action(args)
 
 
+def _do_add_images(args):
+    """Append image paths to the last prompt entry in meta.json."""
+    topic_dir = resolve_topic_dir(args.topic)
+    meta = load_meta(topic_dir)
+    if meta is None:
+        print("Error: meta.json not found or invalid.", file=sys.stderr)
+        sys.exit(1)
+
+    if not meta.prompts:
+        print("Error: no prompt entries in meta.json.", file=sys.stderr)
+        sys.exit(1)
+
+    # Normalize the last prompt entry (handles old plain-string format)
+    meta.prompts[-1] = normalize_prompt_entry(meta.prompts[-1])
+    last_entry = meta.prompts[-1]
+
+    images = last_entry.get("images", [])
+    for img in args.images:
+        if img not in images:
+            images.append(img)
+    last_entry["images"] = images
+
+    meta_path = topic_dir / "meta.json"
+    atomic_write_json(meta_path, meta.to_dict())
+    print(f"Added {len(args.images)} image(s) to topic '{topic_dir.name}'.")
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -294,6 +323,19 @@ def _build_parser():
         help="Hook event type (default: create)",
     )
 
+    p_images = subs.add_parser(
+        "add-images",
+        description="Add image paths to the last prompt entry.",
+        help="Add image paths to the last prompt entry",
+    )
+    p_images.add_argument(
+        "--topic", required=True, help="Topic name",
+    )
+    p_images.add_argument(
+        "--images", nargs="+", required=True,
+        help="Image paths relative to the topic directory",
+    )
+
     return parser
 
 
@@ -312,3 +354,5 @@ def main(argv=None):
         _do_prepare_spec(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)
+    elif args.subcmd == "add-images":
+        _do_add_images(args)
