@@ -25,7 +25,8 @@ Commands (run directly):
   config [get] [--all] [var ...]
                 Show spex configuration variables
   init          Initialize spex environment
-  list [--all]  List spec topics with progress (--all includes archived)
+  list [--archives] [--all-projects]
+                List spec topics with progress
   merge --topic <name>
                 Merge a spex branch back to target (alias: submit)
   open          Open spec directory in file browser
