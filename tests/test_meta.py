@@ -51,7 +51,7 @@ def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
 
 
 class TestAppendToPrompts:
-    """Verify that key='prompts' appends to the prompts array."""
+    """Verify that key='prompts' appends {text, timestamp} structs."""
 
     def test_append_to_existing_prompts(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": ["first"]})
@@ -61,7 +61,12 @@ class TestAppendToPrompts:
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert data["prompts"] == ["first", "second"]
+        assert len(data["prompts"]) == 2
+        assert data["prompts"][0] == "first"
+        entry = data["prompts"][1]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "second"
+        assert "timestamp" in entry
 
     def test_append_creates_prompts_array(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"title": "test"})
@@ -71,7 +76,11 @@ class TestAppendToPrompts:
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert data["prompts"] == ["new prompt"]
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "new prompt"
+        assert "timestamp" in entry
 
     def test_append_replaces_non_list_prompts(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": "not a list"})
@@ -81,7 +90,11 @@ class TestAppendToPrompts:
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert data["prompts"] == ["value"]
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "value"
+        assert "timestamp" in entry
 
     def test_stdout_contains_updated_json(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {"prompts": []})
@@ -89,7 +102,26 @@ class TestAppendToPrompts:
         result = _run_script(tmp_path, "my-topic", "prompts", "hello")
 
         output = json.loads(result.stdout)
-        assert output["prompts"] == ["hello"]
+        assert len(output["prompts"]) == 1
+        entry = output["prompts"][0]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "hello"
+        assert "timestamp" in entry
+
+    def test_append_via_stdin(self, tmp_path):
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(tmp_path, "my-topic", "prompts",
+                             stdin_flag=True, input_data="stdin prompt")
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "stdin prompt"
+        assert "timestamp" in entry
 
 
 class TestSetNonPromptsKey:
@@ -146,7 +178,11 @@ class TestReadValueFromStdin:
         assert result.returncode == 0
         meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert data["prompts"] == ["stdin value"]
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert isinstance(entry, dict)
+        assert entry["text"] == "stdin value"
+        assert "timestamp" in entry
 
     def test_read_key_from_stdin(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {})

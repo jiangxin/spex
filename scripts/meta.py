@@ -58,9 +58,10 @@ def _display_key(data, key):
 def _set_key(meta, key, value, meta_path):
     """Set a key in TopicMeta and write back."""
     if key == "prompts":
+        from common import local_iso_timestamp
         if not isinstance(meta.prompts, list):
             meta.prompts = []
-        meta.prompts.append(value)
+        meta.prompts.append({"text": value, "timestamp": local_iso_timestamp()})
     else:
         known = {f.name for f in fields(TopicMeta)} - {"extras"}
         if key in known:
