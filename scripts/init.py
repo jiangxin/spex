@@ -170,7 +170,6 @@ def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex init",
         description="Initialize the spex environment.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "dir",

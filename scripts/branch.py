@@ -115,7 +115,6 @@ def _build_submit_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex submit",
         description="Submit (merge) a spex branch back to the target branch.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "--topic",

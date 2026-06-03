@@ -181,7 +181,6 @@ def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex get-topic",
         description="Resolve a topic directory under specs.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "--spex-config-file",

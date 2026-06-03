@@ -186,7 +186,6 @@ def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex list",
         description="List spec topics with progress.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "--archives",

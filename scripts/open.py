@@ -77,7 +77,6 @@ def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex open",
         description="Open a topic directory in the system file browser.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "topic",

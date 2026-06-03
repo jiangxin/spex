@@ -79,7 +79,6 @@ def _build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="spex meta",
         description="Get or set key/value in a topic's meta.json.",
-        allow_abbrev=False,
     )
     parser.add_argument(
         "topic_name",
