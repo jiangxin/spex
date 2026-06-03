@@ -10,11 +10,9 @@ from cli import ArgumentParser
 from common import (
     Topic,
     format_topic,
-    get_archives_dir,
-    get_specs_dir,
+    gather_topics,
     repo_label,
 )
-from config import get_project_context
 
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
@@ -186,21 +184,10 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    dirs = [get_specs_dir()]
-    archive_dirs = []
-    if args.archives:
-        archive_dir = get_archives_dir()
-        dirs.append(archive_dir)
-        archive_dirs.append(archive_dir)
-
-    topics = collect_topics(dirs, archive_dirs=archive_dirs)
-
-    ctx = get_project_context()
-    if not args.all_projects:
-        topics = [t for t in topics if ctx.is_related_to(t)]
-        show_repo = not ctx.in_git_workdir()
-    else:
-        show_repo = True
+    topics, show_repo = gather_topics(
+        include_archives=args.archives,
+        all_projects=args.all_projects,
+    )
 
     verbosity = args.verbose
     if verbosity > 0:

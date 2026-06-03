@@ -120,9 +120,9 @@ class TestMain:
         specs.mkdir()
         archives.mkdir()
         ctx = _make_ctx(None)
-        monkeypatch.setattr("show.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda: archives)
-        monkeypatch.setattr("show.get_project_context", lambda: ctx)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
         with pytest.raises(SystemExit) as exc_info:
             spex_show.main([])
         assert exc_info.value.code == 1
@@ -138,8 +138,8 @@ class TestMain:
         archives = tmp_path / "archives"
         specs.mkdir()
         archives.mkdir()
-        monkeypatch.setattr("show.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda: archives)
+        monkeypatch.setattr("show.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("show.get_archives_dir", lambda _w=None: archives)
         with pytest.raises(SystemExit) as exc_info:
             spex_show.main(["nonexistent"])
         assert exc_info.value.code == 1
@@ -153,8 +153,8 @@ class TestResolveTopic:
         archives = tmp_path / "archives"
         specs.mkdir()
         archives.mkdir()
-        monkeypatch.setattr("show.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda: archives)
+        monkeypatch.setattr("show.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("show.get_archives_dir", lambda _w=None: archives)
         return specs, archives
 
     def test_found_in_specs(self, tmp_path, monkeypatch):
@@ -248,9 +248,9 @@ class TestSelectTopicInteractive:
             user_email="test@test.com",
         )
 
-        monkeypatch.setattr("show.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda: archives)
-        monkeypatch.setattr("show.get_project_context", lambda: ctx)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
         return specs, archives
 
@@ -286,9 +286,9 @@ class TestSelectTopicInteractive:
         archives.mkdir()
 
         ctx = _make_ctx(None)
-        monkeypatch.setattr("show.get_specs_dir", lambda: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda: archives)
-        monkeypatch.setattr("show.get_project_context", lambda: ctx)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
         with pytest.raises(SystemExit) as exc_info:
             spex_show._select_topic_interactive()

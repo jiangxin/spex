@@ -12,12 +12,11 @@ from common import (
     Topic,
     find_matching_topics,
     format_topic,
+    gather_topics,
     get_archives_dir,
     get_specs_dir,
     strip_front_matter,
 )
-from config import get_project_context
-from list import collect_topics
 
 
 def _paged_output(text):
@@ -79,20 +78,22 @@ def _format_verbose(topic_dir):
     return "\n".join(parts).rstrip()
 
 
-def _prompt_selection(dirs):
-    """Show a numbered list of topic directories and prompt user to choose one.
+def _prompt_selection(topics, show_repo=False):
+    """Show a numbered list of topics and prompt user to choose one.
 
     Args:
-        dirs: List of Path objects for topic directories (must be non-empty).
+        topics: List of Topic objects (must be non-empty).
+        show_repo: If True, display repository labels.
 
     Returns:
-        Path to the selected topic directory.
+        The selected Topic object.
     """
-    display = dirs[:10]
-    for i, topic_dir in enumerate(display, 1):
-        print(f"  [{i}] {format_topic(topic_dir)}", file=sys.stderr)
-    if len(dirs) > 10:
-        print(f"  ... ({len(dirs) - 10} more)", file=sys.stderr)
+    display = topics[:10]
+    for i, topic in enumerate(display, 1):
+        label = format_topic(topic, show_repo=show_repo)
+        print(f"  [{i}] {label}", file=sys.stderr)
+    if len(topics) > 10:
+        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
 
     try:
         sys.stderr.write("Enter number to show: ")
@@ -153,7 +154,16 @@ def _resolve_topic(name, include_archives=False):
     if len(matches) == 1:
         return matches[0]
 
-    return _prompt_selection(sorted(matches, key=lambda d: d.name, reverse=True))
+    topics = sorted(
+        [t for t in (Topic.from_dir(m) for m in matches) if t],
+        key=lambda t: t.name, reverse=True,
+    )
+    if not topics:
+        print(f"Error: no loadable topic matching '{name}'.", file=sys.stderr)
+        sys.exit(1)
+
+    selected = _prompt_selection(topics)
+    return selected.path
 
 
 def _select_topic_interactive(include_archives=False, all_projects=False):
@@ -163,32 +173,21 @@ def _select_topic_interactive(include_archives=False, all_projects=False):
         include_archives: If True, include archived topics.
         all_projects: If True, skip is_related_to filtering.
     """
-    dirs = [get_specs_dir()]
-    archive_dirs = []
-    if include_archives:
-        ad = get_archives_dir()
-        dirs.append(ad)
-        archive_dirs.append(ad)
-
-    topics = collect_topics(dirs, archive_dirs=archive_dirs)
-
-    ctx = get_project_context()
-    if not all_projects:
-        topics = [t for t in topics if ctx.is_related_to(t)]
-
-    topic_dirs = sorted(
-        [t.path for t in topics],
-        key=lambda d: d.name,
-        reverse=True,
+    topics, show_repo = gather_topics(
+        include_archives=include_archives,
+        all_projects=all_projects,
     )
 
-    if not topic_dirs:
+    topics.sort(key=lambda t: t.name, reverse=True)
+
+    if not topics:
         print("Error: no topics found.", file=sys.stderr)
         sys.exit(1)
-    if len(topic_dirs) == 1:
-        return topic_dirs[0]
+    if len(topics) == 1:
+        return topics[0].path
 
-    return _prompt_selection(topic_dirs)
+    selected = _prompt_selection(topics, show_repo=show_repo)
+    return selected.path
 
 
 def main(argv=None):

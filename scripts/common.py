@@ -828,6 +828,45 @@ def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     return "\n".join(lines)
 
 
+def gather_topics(
+    include_archives: bool = False, all_projects: bool = False,
+) -> tuple[list, bool]:
+    """Collect and filter topics from specs/archives directories.
+
+    Returns (topics, show_repo) where show_repo indicates whether the
+    caller should display repository labels.
+    """
+    specs_dir = get_specs_dir()
+    dirs = [specs_dir]
+    archive_dirs: list[Path] = []
+    if include_archives:
+        ad = get_archives_dir()
+        dirs.append(ad)
+        archive_dirs.append(ad)
+
+    archive_set = set(archive_dirs)
+    topics: list[Topic] = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        archived = d in archive_set
+        for sub in d.iterdir():
+            if not sub.is_dir():
+                continue
+            topic = Topic.from_dir(sub, archived=archived)
+            if topic is not None:
+                topics.append(topic)
+
+    ctx = get_project_context()
+    if not all_projects:
+        topics = [t for t in topics if ctx.is_related_to(t)]
+        show_repo = not ctx.in_git_workdir()
+    else:
+        show_repo = True
+
+    return topics, show_repo
+
+
 def escape_xml_text(text: str) -> str:
     """Escape &, <, > unconditionally in text content."""
     text = text.replace("&", "&amp;")

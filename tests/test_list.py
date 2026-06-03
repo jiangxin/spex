@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import list as list_mod  # noqa: A004
+import common as common_mod
 import pytest
 from common import Topic, TopicMeta, get_todo_progress, load_meta
 from config import ProjectContext
@@ -614,9 +614,9 @@ class TestMainFlags:
 
         ctx = _make_project_context(project_workdir)
 
-        monkeypatch.setattr(list_mod, "get_specs_dir", lambda: specs)
-        monkeypatch.setattr(list_mod, "get_archives_dir", lambda: archives)
-        monkeypatch.setattr(list_mod, "get_project_context", lambda: ctx)
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(common_mod, "get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr(common_mod, "get_project_context", lambda _w=None: ctx)
 
         return specs, archives
 
