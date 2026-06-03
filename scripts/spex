@@ -233,7 +233,7 @@ Options:
 
 def _run_merge(argv=None):
     """Route merge subcommand."""
-    import branch
+    import merge
 
     parser = ArgumentParser(prog="spex merge", usage=_MERGE_USAGE)
     parser.add_argument("topic", nargs="?", default="")
@@ -247,7 +247,7 @@ def _run_merge(argv=None):
     submit_args = [args.topic]
     if args.no_archive:
         submit_args.append("--no-archive")
-    branch.cli_submit(submit_args)
+    merge.cli_submit(submit_args)
 
 
 def _run_todo_helper(argv=None):

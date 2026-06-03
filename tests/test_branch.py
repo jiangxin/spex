@@ -11,12 +11,12 @@ from apply_helper import (
 )
 from branch import (
     branch_exists,
-    cli_submit,
     get_current_branch,
     merge_branch,
 )
 from common import TopicMeta, strip_date_prefix
 from config import ProjectContext
+from merge import cli_submit
 
 
 def _fake_context(**overrides):
