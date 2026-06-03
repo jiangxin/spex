@@ -6,16 +6,18 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
     Topic,
+    find_matching_topics,
     format_topic,
+    get_archives_dir,
     get_specs_dir,
-    resolve_topic_dir,
     strip_front_matter,
 )
+from config import get_project_context
+from list import collect_topics
 
 
 def _paged_output(text):
@@ -77,30 +79,20 @@ def _format_verbose(topic_dir):
     return "\n".join(parts).rstrip()
 
 
-def _select_topic_interactive():
-    """List topics and prompt user to select one."""
-    specs_dir = Path(get_specs_dir())
-    if not specs_dir.is_dir():
-        print("Error: no topics found.", file=sys.stderr)
-        sys.exit(1)
+def _prompt_selection(dirs):
+    """Show a numbered list of topic directories and prompt user to choose one.
 
-    topics = sorted(
-        [d for d in specs_dir.iterdir() if d.is_dir() and (d / "meta.json").exists()],
-        key=lambda d: d.name,
-        reverse=True,
-    )
+    Args:
+        dirs: List of Path objects for topic directories (must be non-empty).
 
-    if not topics:
-        print("Error: no topics found.", file=sys.stderr)
-        sys.exit(1)
-    if len(topics) == 1:
-        return topics[0]
-
-    display = topics[:10]
+    Returns:
+        Path to the selected topic directory.
+    """
+    display = dirs[:10]
     for i, topic_dir in enumerate(display, 1):
         print(f"  [{i}] {format_topic(topic_dir)}", file=sys.stderr)
-    if len(topics) > 10:
-        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
+    if len(dirs) > 10:
+        print(f"  ... ({len(dirs) - 10} more)", file=sys.stderr)
 
     try:
         sys.stderr.write("Enter number to show: ")
@@ -123,6 +115,79 @@ def _select_topic_interactive():
     return display[idx]
 
 
+def _resolve_topic(name, include_archives=False):
+    """Resolve a topic name to its directory, with optional archive fallback.
+
+    Searches specs_dir first. If no matches are found, or if
+    include_archives is True, also searches archives_dir and merges
+    results (deduplicated).
+
+    Args:
+        name: Topic name or substring to match.
+        include_archives: If True, always include archives in search.
+
+    Returns:
+        Path to the resolved topic directory.
+    """
+    specs_dir = get_specs_dir()
+    archives_dir = get_archives_dir()
+
+    matches = find_matching_topics(name, specs_dir)
+
+    if not matches or include_archives:
+        archive_matches = find_matching_topics(name, archives_dir)
+        # Deduplicate by resolved path
+        seen = {m.resolve() for m in matches}
+        for m in archive_matches:
+            if m.resolve() not in seen:
+                matches.append(m)
+                seen.add(m.resolve())
+
+    if not matches:
+        print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
+        sys.exit(1)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    return _prompt_selection(sorted(matches, key=lambda d: d.name, reverse=True))
+
+
+def _select_topic_interactive(include_archives=False, all_projects=False):
+    """List topics and prompt user to select one.
+
+    Args:
+        include_archives: If True, include archived topics.
+        all_projects: If True, skip is_related_to filtering.
+    """
+    dirs = [get_specs_dir()]
+    archive_dirs = []
+    if include_archives:
+        ad = get_archives_dir()
+        dirs.append(ad)
+        archive_dirs.append(ad)
+
+    topics = collect_topics(dirs, archive_dirs=archive_dirs)
+
+    ctx = get_project_context()
+    if not all_projects:
+        topics = [t for t in topics if ctx.is_related_to(t)]
+
+    topic_dirs = sorted(
+        [t.path for t in topics],
+        key=lambda d: d.name,
+        reverse=True,
+    )
+
+    if not topic_dirs:
+        print("Error: no topics found.", file=sys.stderr)
+        sys.exit(1)
+    if len(topic_dirs) == 1:
+        return topic_dirs[0]
+
+    return _prompt_selection(topic_dirs)
+
+
 def main(argv=None):
     parser = ArgumentParser(
         prog="spex show",
@@ -132,12 +197,25 @@ def main(argv=None):
     parser.add_argument("-l", "--list", action="store_true",
                         dest="brief",
                         help="Show brief list format instead of full details")
+    parser.add_argument(
+        "--archives",
+        action="store_true",
+        help="Include archived topics in search",
+    )
+    parser.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Show topics from all projects (disables project filter)",
+    )
     args = parser.parse(argv)
 
     if args.topic:
-        topic_dir = resolve_topic_dir(args.topic)
+        topic_dir = _resolve_topic(args.topic, include_archives=args.archives)
     else:
-        topic_dir = _select_topic_interactive()
+        topic_dir = _select_topic_interactive(
+            include_archives=args.archives,
+            all_projects=args.all_projects,
+        )
 
     if args.brief:
         print(_format_default(topic_dir))
