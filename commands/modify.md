@@ -13,27 +13,7 @@ development plan.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Collect Prompt
-
-If `$prompt` is not provided or empty, ask the user to describe what
-changes they want to make to the spec. The user's full input becomes
-`$prompt`.
-
-After receiving `$prompt`, check whether the modification request is
-ambiguous. Specifically, clarify if:
-
-- The scope of the change is unclear (e.g., which sections of the spec
-  are affected, whether existing steps should be replaced or extended).
-- Multiple interpretations of the requested change exist.
-- The relationship to existing completed work is not obvious (e.g.,
-  whether to preserve or redo completed steps).
-
-**If unambiguous**, proceed directly to Phase 2 without asking questions.
-
-**If ambiguous**, ask the user to confirm your understanding. Limit to
-2–3 questions maximum, and ask them all at once in a single message.
-
-### Phase 2: Resolve Topic
+### Phase 1: Resolve Topic
 
 Run:
 
@@ -50,9 +30,56 @@ Read the command output and parse it as a JSON array:
   and `$topic_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
+### Phase 2: Understand Context and Clarify
+
+If `$prompt` is not provided or empty, ask the user to describe what
+changes they want to make to the spec. The user's full input becomes
+`$prompt`.
+
+Read the current specification at `$topic_path/spec.md` to understand
+the existing requirements and design. Then explore the workspace **only
+enough to understand where the relevant code lives and what existing
+patterns are referenced in the spec**. Do NOT dig into full
+implementation details or start modifying any files.
+
+The user's `$prompt` is a modification or addition to the existing
+specification. Evaluate whether it is clear enough to proceed:
+
+**When to clarify** — ask the user if any of these apply:
+
+- The scope of the change is unclear (e.g., which sections of the spec
+  are affected, whether existing steps should be replaced or extended).
+- Multiple viable implementation paths exist and the choice affects the
+  design.
+- The relationship to completed work is not obvious (e.g., whether to
+  preserve or redo completed steps).
+- Ambiguous terminology is used that could be interpreted differently
+  in the context of the existing specification.
+
+**When NOT to clarify** — if the modification request is already specific
+and unambiguous in the context of the current spec, skip clarification
+entirely and proceed directly to Phase 3. Do not ask questions just to
+be thorough; only ask when the answer would materially change the spec.
+
+**How to clarify**:
+
+- Ask all clarification questions at once in a single message (not one
+  by one in a back-and-forth).
+- Limit to 2–3 questions maximum. Prioritize the questions whose answers
+  most affect the design.
+
+After clarification (or if none was needed), the finalized `$prompt`
+becomes the modification request.
+
 ### Phase 3: Build Prompt
 
 Run:
+
+```bash
+$spex_skill_dir/scripts/spex meta $topic_name prompts "$prompt"
+```
+
+Then run:
 
 ```bash
 echo "$prompt" | $spex_skill_dir/scripts/spex prompt modify-spec \

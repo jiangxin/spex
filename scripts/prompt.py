@@ -10,7 +10,6 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    TopicMeta,
     atomic_write_json,
     get_spex_root,
     get_template,
@@ -243,23 +242,6 @@ def _build_task_context(topic_dir, verbose_items=20):
     }
 
 
-def _log_prompt_to_meta(topic_dir, prompt_text):
-    """Append prompt_text to the prompts array in meta.json.
-
-    Loads meta.json, ensures a 'prompts' list exists, appends
-    {'text': prompt_text, 'timestamp': local_iso_timestamp()},
-    and writes atomically.
-    """
-    meta = load_meta(topic_dir) or TopicMeta()
-    prompts = meta.prompts
-    if not isinstance(prompts, list):
-        prompts = []
-    prompts.append({
-        "text": prompt_text,
-        "timestamp": local_iso_timestamp(),
-    })
-    meta.prompts = prompts
-    atomic_write_json(topic_dir / "meta.json", meta.to_dict())
 
 def _build_metadata(template_name, topic_name=None):
     """Build the metadata dict for template rendering.
@@ -560,12 +542,6 @@ def _do_modify_spec(args):
         metadata = _build_metadata("modify-spec", args.topic)
         if extra_vars:
             metadata.update(extra_vars)
-
-        # Side-effect: log prompt_context to meta.json
-        prompt_context = metadata.get("prompt_context", "")
-        if prompt_context:
-            topic_dir = resolve_topic_dir(args.topic)
-            _log_prompt_to_meta(topic_dir, prompt_context)
 
         rendered = render_prompt("modify-spec", args.topic, metadata=metadata)
     except FileNotFoundError as e:
