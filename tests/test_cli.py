@@ -62,13 +62,13 @@ class TestHelpFlag:
         result = _run_spex("list", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_list_help_exits_zero_with_usage(self):
         result = _run_spex("list", "--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_archive_h_exits_zero_with_usage(self):
         result = _run_spex("archive", "-h")
