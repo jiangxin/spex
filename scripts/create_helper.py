@@ -8,11 +8,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     TopicMeta,
     atomic_write_json,
-    check_help_flag,
     resolve_topic_dir,
     strip_date_prefix,
     wrap_text,
@@ -21,18 +21,6 @@ from common import (
 TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
 MAX_TOPIC_BYTES = 64
-
-USAGE = """\
-Usage: spex create-helper <subcommand> [options]
-
-Subcommands:
-  precheck      Validate branch creation feasibility
-  prepare-spec  Create topic directory and return JSON metadata
-  post-action   Convert todo.xml to todo.json and run post-action hook
-
-Options:
-  -h, --help  Show this help message and exit
-"""
 
 
 def create_topic(topic, specs_dir, auto_prefix=True):
@@ -152,34 +140,12 @@ def cli_create_validate() -> None:
         print(f"Valid: currently on branch '{current}'")
 
 
-_PREPARE_SPEC_USAGE = """\
-Usage: spex create-helper prepare-spec --topic <name> [--description <text>]
-
-Create a topic directory, write meta.json, and output JSON metadata.
-Reads requirement text from stdin.
-
-Options:
-  --topic <name>         Topic name (required)
-  --description <text>   Brief description (saved to meta.json)
-  -h, --help             Show this help message and exit
-"""
-
-
-def cli_prepare_spec(argv=None):
-    """CLI: create topic directory and return JSON with metadata."""
+def _do_prepare_spec(args):
+    """Create topic directory and return JSON with metadata."""
     import json
 
     import config as cfg
-    from cli import ArgumentParser
     from common import get_specs_dir, local_iso_timestamp
-
-    parser = ArgumentParser(
-        prog="spex create-helper prepare-spec",
-        usage=_PREPARE_SPEC_USAGE,
-    )
-    parser.add_argument("--topic", required=True)
-    parser.add_argument("--description", default="")
-    args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
@@ -204,23 +170,17 @@ def cli_prepare_spec(argv=None):
     print(json.dumps(result, indent=2))
 
 
-_POST_ACTION_USAGE = """\
-Usage: spex create-helper post-action --topic <name> [--event-type <type>]
+def cli_prepare_spec(argv=None):
+    """CLI: create topic directory and return JSON with metadata."""
+    args = _build_parser().parse(["prepare-spec"] + (argv or []))
+    _do_prepare_spec(args)
 
-Validate todo.json format and run post-action hook.
-
-Options:
-  --topic <name>       Topic name (required)
-  --event-type <type>  Hook event type (default: create)
-  -h, --help           Show this help message and exit
-"""
 
 REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 
 
-def cli_post_action(argv=None):
-    """CLI: validate todo.json and trigger post-action hook."""
-    from cli import ArgumentParser
+def _do_post_action(args):
+    """Validate todo.json and trigger post-action hook."""
     from common import (
         TopicMeta,
         load_and_validate_todo_json,
@@ -229,14 +189,6 @@ def cli_post_action(argv=None):
         validate_unique_ids,
     )
     from config import get_project_context
-
-    parser = ArgumentParser(
-        prog="spex create-helper post-action",
-        usage=_POST_ACTION_USAGE,
-    )
-    parser.add_argument("--topic", required=True)
-    parser.add_argument("--event-type", default="create")
-    args = parser.parse(argv)
 
     topic_dir = resolve_topic_dir(args.topic)
     json_path = topic_dir / "todo.json"
@@ -292,33 +244,71 @@ def cli_post_action(argv=None):
     )
 
 
+def cli_post_action(argv=None):
+    """CLI: validate todo.json and trigger post-action hook."""
+    args = _build_parser().parse(["post-action"] + (argv or []))
+    _do_post_action(args)
+
+
+def _build_parser():
+    """Build the top-level parser with subcommand sub-parsers."""
+    parser = ArgumentParser(
+        prog="spex create-helper",
+        description="Helper utilities for spec creation.",
+    )
+    subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
+
+    subs.add_parser(
+        "precheck",
+        description="Validate branch creation feasibility.",
+        help="Validate branch creation feasibility",
+    )
+
+    p_prepare = subs.add_parser(
+        "prepare-spec",
+        description=(
+            "Create topic directory and return JSON metadata."
+        ),
+        help="Create topic directory and return JSON metadata",
+    )
+    p_prepare.add_argument(
+        "--topic", required=True, help="Topic name",
+    )
+    p_prepare.add_argument(
+        "--description", default="",
+        help="Brief description (saved to meta.json)",
+    )
+
+    p_post = subs.add_parser(
+        "post-action",
+        description=(
+            "Validate todo.json and run post-action hook."
+        ),
+        help="Validate todo.json and run post-action hook",
+    )
+    p_post.add_argument(
+        "--topic", required=True, help="Topic name",
+    )
+    p_post.add_argument(
+        "--event-type", default="create",
+        help="Hook event type (default: create)",
+    )
+
+    return parser
+
+
 def main(argv=None):
-    """Route create-helper subcommands."""
-    if not argv:
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    """Parse args, route to subcommand."""
+    parser = _build_parser()
+    args = parser.parse(argv)
 
-    subcmd = argv[0]
-    rest = argv[1:]
+    if not args.subcmd:
+        parser.print_help(sys.stderr)
+        sys.exit(2)
 
-    if subcmd in ("-h", "--help"):
-        print(USAGE, end="")
-        sys.exit(0)
-    elif subcmd == "precheck":
-        check_help_flag(
-            "Usage: spex create-helper precheck\n\n"
-            "Validate branch creation feasibility.\n\n"
-            "Options:\n"
-            "  -h, --help  Show this help message and exit\n",
-            rest,
-        )
+    if args.subcmd == "precheck":
         cli_create_validate()
-    elif subcmd == "prepare-spec":
-        cli_prepare_spec(rest)
-    elif subcmd == "post-action":
-        cli_post_action(rest)
-    else:
-        print(f"Error: unknown create-helper subcommand"
-              f" '{subcmd}'", file=sys.stderr)
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    elif args.subcmd == "prepare-spec":
+        _do_prepare_spec(args)
+    elif args.subcmd == "post-action":
+        _do_post_action(args)

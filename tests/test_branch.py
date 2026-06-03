@@ -333,12 +333,12 @@ class TestCliRouting:
     def test_create_helper_no_flag_exits(self):
         result = self._run_spex("create-helper")
         assert result.returncode in (1, 2)
-        assert "Usage:" in result.stderr
+        assert "usage:" in result.stderr
 
     def test_apply_helper_no_flag_exits(self):
         result = self._run_spex("apply-helper")
         assert result.returncode in (1, 2)
-        assert "Usage:" in result.stderr
+        assert "usage:" in result.stderr
 
     def test_submit_no_topic_exits(self):
         result = self._run_spex("submit")

@@ -6,18 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import DEFAULT_SPEX_BRANCH_PREFIX, TopicMeta, strip_date_prefix
-
-USAGE = """\
-Usage: spex apply-helper <subcommand> [options]
-
-Subcommands:
-  precheck     Validate branch setup for applying a topic
-  post-action  Run post-action hook and show hint
-
-Options:
-  -h, --help  Show this help message and exit
-"""
 
 
 def _extract_topic_name_for_branch(topic_dir: Path, meta) -> str:
@@ -134,59 +124,27 @@ def validate_apply_branch(
     print(f"Created and switched to branch '{created_branch}'.")
 
 
-_PRECHECK_USAGE = """\
-Usage: spex apply-helper precheck --topic <name>
-
-Validate branch setup for applying a topic.
-
-Options:
-  --topic <name>  Topic name (required)
-  -h, --help      Show this help message and exit
-"""
-
-
-def cli_precheck(argv=None):
-    """CLI: perform branch setup for applying a topic."""
+def _do_precheck(args):
+    """Perform branch setup for applying a topic."""
     import common
     import config as cfg
-    from cli import ArgumentParser
-
-    parser = ArgumentParser(
-        prog="spex apply-helper precheck",
-        usage=_PRECHECK_USAGE,
-    )
-    parser.add_argument("--topic", required=True)
-    args = parser.parse(argv)
 
     ctx = cfg.get_project_context()
     topic_dir = common.resolve_topic_dir(args.topic)
     validate_apply_branch(ctx.config, topic_dir, cwd=ctx.top_workdir)
 
 
-_POST_ACTION_USAGE = """\
-Usage: spex apply-helper post-action --topic <name>
-
-Run post-action hook and show hint.
-
-Options:
-  --topic <name>  Topic name (required)
-  -h, --help      Show this help message and exit
-"""
+def cli_precheck(argv=None):
+    """CLI: perform branch setup for applying a topic."""
+    args = _build_parser().parse(["precheck"] + (argv or []))
+    _do_precheck(args)
 
 
-def cli_post_action(argv=None):
-    """CLI: run post-action hook, and show hint."""
+def _do_post_action(args):
+    """Run post-action hook, and show hint."""
     import common
     import config as cfg
     import hooks
-    from cli import ArgumentParser
-
-    parser = ArgumentParser(
-        prog="spex apply-helper post-action",
-        usage=_POST_ACTION_USAGE,
-    )
-    parser.add_argument("--topic", required=True)
-    args = parser.parse(argv)
 
     topic_dir = common.resolve_topic_dir(args.topic)
     topic_name = strip_date_prefix(topic_dir.name)
@@ -218,24 +176,53 @@ def cli_post_action(argv=None):
         )
 
 
+def cli_post_action(argv=None):
+    """CLI: run post-action hook, and show hint."""
+    args = _build_parser().parse(["post-action"] + (argv or []))
+    _do_post_action(args)
+
+
+def _build_parser():
+    """Build the top-level parser with subcommand sub-parsers."""
+    parser = ArgumentParser(
+        prog="spex apply-helper",
+        description="Helper utilities for applying specs.",
+    )
+    subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
+
+    p_precheck = subs.add_parser(
+        "precheck",
+        description=(
+            "Validate branch setup for applying a topic."
+        ),
+        help="Validate branch setup for applying a topic",
+    )
+    p_precheck.add_argument(
+        "--topic", required=True, help="Topic name",
+    )
+
+    p_post = subs.add_parser(
+        "post-action",
+        description="Run post-action hook and show hint.",
+        help="Run post-action hook and show hint",
+    )
+    p_post.add_argument(
+        "--topic", required=True, help="Topic name",
+    )
+
+    return parser
+
+
 def main(argv=None):
-    """Route apply-helper subcommands."""
-    if not argv:
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    """Parse args, route to subcommand."""
+    parser = _build_parser()
+    args = parser.parse(argv)
 
-    subcmd = argv[0]
-    rest = argv[1:]
+    if not args.subcmd:
+        parser.print_help(sys.stderr)
+        sys.exit(2)
 
-    if subcmd in ("-h", "--help"):
-        print(USAGE, end="")
-        sys.exit(0)
-    elif subcmd == "precheck":
-        cli_precheck(rest)
-    elif subcmd == "post-action":
-        cli_post_action(rest)
-    else:
-        print(f"Error: unknown apply-helper subcommand"
-              f" '{subcmd}'", file=sys.stderr)
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    if args.subcmd == "precheck":
+        _do_precheck(args)
+    elif args.subcmd == "post-action":
+        _do_post_action(args)
