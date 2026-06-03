@@ -778,26 +778,77 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     return matches[0]
 
 
-def format_topic(topic_dir: Path, verbose: int = 0) -> str:
+MAX_REPO_WIDTH = 11
+
+
+def display_width(text: str) -> int:
+    """Return the display width of text, counting wide chars as 2."""
+    import unicodedata
+    w = 0
+    for ch in text:
+        w += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return w
+
+
+def display_truncate(text: str, width: int) -> str:
+    """Truncate text to fit within display width, appending ... if needed."""
+    import unicodedata
+    if display_width(text) <= width:
+        return text
+    w = 0
+    for i, ch in enumerate(text):
+        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if w + cw > width - 3:
+            return text[:i] + "..."
+        w += cw
+    return text
+
+
+def display_ljust(text: str, width: int) -> str:
+    """Left-justify text to display width with space padding."""
+    return text + " " * (width - display_width(text))
+
+
+def repo_label(workdir: str) -> str:
+    """Return truncated basename of workdir for display."""
+    name = Path(workdir).name if workdir else "?"
+    if display_width(name) > MAX_REPO_WIDTH:
+        return display_truncate(name, MAX_REPO_WIDTH)
+    return name
+
+
+def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     """Format a single topic with progress, description, and optional todo steps.
 
-    Verbosity levels:
-        0: Icon + progress + name only.
-        1: + description line.
-        2: + todo step list (id + name).
+    Args:
+        topic: A Topic instance or a Path to a topic directory.
+        verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
+        show_repo: If True, prepend a ``[repo]`` label from the topic's workdir.
     """
-    done, total = get_todo_progress(topic_dir)
-    icon = ICON_COMPLETED if done > 0 and done == total else ICON_IN_PROGRESS
+    if isinstance(topic, Path):
+        t = Topic.from_dir(topic)
+        if t is None:
+            return f"(unable to load topic: {topic.name})"
+    else:
+        t = topic
 
-    lines = [f"{icon} [{done}/{total}] {topic_dir.name}"]
+    progress = f"({t.done}/{t.total})"
+    if show_repo:
+        label = repo_label(t.workdir)
+        repo_col = display_ljust(f"[{label}]", MAX_REPO_WIDTH + 3)
+        header = f"{t.icon} {repo_col}{progress} {t.name}"
+    else:
+        header = f"{t.icon} {progress} {t.name}"
+
+    lines = [header]
 
     if verbose >= 1:
-        description = get_spec_description(topic_dir)
+        description = t.display_text
         if description:
             lines.append(f"    {description}")
 
     if verbose >= 2:
-        todo = load_todo(topic_dir)
+        todo = t.todo_data
         if todo:
             lines.append("")
             for item in todo:
@@ -806,6 +857,45 @@ def format_topic(topic_dir: Path, verbose: int = 0) -> str:
                 lines.append(f"    {step_id}: {step_name}")
 
     return "\n".join(lines)
+
+
+def gather_topics(
+    include_archives: bool = False, all_projects: bool = False,
+) -> tuple[list, bool]:
+    """Collect and filter topics from specs/archives directories.
+
+    Returns (topics, show_repo) where show_repo indicates whether the
+    caller should display repository labels.
+    """
+    specs_dir = get_specs_dir()
+    dirs = [specs_dir]
+    archive_dirs: list[Path] = []
+    if include_archives:
+        ad = get_archives_dir()
+        dirs.append(ad)
+        archive_dirs.append(ad)
+
+    archive_set = set(archive_dirs)
+    topics: list[Topic] = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        archived = d in archive_set
+        for sub in d.iterdir():
+            if not sub.is_dir():
+                continue
+            topic = Topic.from_dir(sub, archived=archived)
+            if topic is not None:
+                topics.append(topic)
+
+    ctx = get_project_context()
+    if not all_projects:
+        topics = [t for t in topics if ctx.is_related_to(t)]
+        show_repo = not ctx.in_git_workdir()
+    else:
+        show_repo = True
+
+    return topics, show_repo
 
 
 def escape_xml_text(text: str) -> str:

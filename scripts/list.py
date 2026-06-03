@@ -9,11 +9,13 @@ from pathlib import Path
 from cli import ArgumentParser
 from common import (
     Topic,
+    display_ljust,
+    display_truncate,
+    display_width,
     format_topic,
-    get_archives_dir,
-    get_specs_dir,
+    gather_topics,
+    repo_label,
 )
-from config import get_project_context
 
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
@@ -56,22 +58,7 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
     return topics
 
 
-def _truncate(text: str, width: int) -> str:
-    """Truncate text to width, appending ... if needed."""
-    if len(text) <= width:
-        return text
-    return text[: width - 3] + "..."
-
-
 MAX_REPO_WIDTH = 11
-
-
-def _repo_label(workdir: str) -> str:
-    """Return truncated basename of workdir for display."""
-    name = Path(workdir).name if workdir else "?"
-    if len(name) > MAX_REPO_WIDTH:
-        return name[:8] + "..."
-    return name
 
 
 def format_output(
@@ -86,32 +73,31 @@ def format_output(
     progress_strs = [f"{t.done}/{t.total}" for t in topics]
     progress_width = max(len(s) for s in progress_strs)
 
-    repo_labels = []
     if show_repo:
-        repo_labels = [_repo_label(t.workdir) for t in topics]
-        max_label_width = max(len(lb) for lb in repo_labels)
-        repo_col_width = max_label_width + 3  # brackets + trailing space
+        from common import MAX_REPO_WIDTH
+        repo_col_width = MAX_REPO_WIDTH + 3 + 1  # [label] + space
     else:
         repo_col_width = 0
 
     icon_width = 3
-    fixed_width = repo_col_width + icon_width + MAX_TOPIC_WIDTH + 2 + progress_width + 2
+    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_TOPIC_WIDTH + 2
     prompt_width = max_width - fixed_width
 
     lines = []
-    for i, (topic, prog_str) in enumerate(zip(topics, progress_strs)):
+    for topic, prog_str in zip(topics, progress_strs):
         icon = topic.icon
-        name = _truncate(topic.name, MAX_TOPIC_WIDTH)
-        name_col = name.ljust(MAX_TOPIC_WIDTH)
-        prog_col = prog_str.rjust(progress_width)
-        display_text = topic.display_text
-        prompt_col = _truncate(display_text, prompt_width) if prompt_width > 3 else ""
+        name = display_truncate(topic.name, MAX_TOPIC_WIDTH)
+        name_col = display_ljust(name, MAX_TOPIC_WIDTH)
+        prog_col = f"({prog_str})".rjust(progress_width + 2)
+        desc = topic.display_text
+        prompt_col = display_truncate(desc, prompt_width) if prompt_width > 3 else ""
 
         if show_repo:
-            repo_col = f"[{repo_labels[i]}]".ljust(repo_col_width - 1) + " "
-            lines.append(f"{repo_col}{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
+            label = repo_label(topic.workdir)
+            repo_col = display_ljust(f"[{label}]", repo_col_width - 1) + " "
         else:
-            lines.append(f"{icon} {name_col}  {prog_col}  {prompt_col}".rstrip())
+            repo_col = ""
+        lines.append(f"{icon} {repo_col}{prog_col} {name_col}  {prompt_col}".rstrip())
 
     return "\n".join(lines)
 
@@ -133,7 +119,7 @@ def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
     for word in words:
         if not current:
             current = word
-        elif len(current) + 1 + len(word) <= max_content:
+        elif display_width(current) + 1 + display_width(word) <= max_content:
             current += " " + word
         else:
             lines.append(prefix + current)
@@ -155,28 +141,10 @@ def format_verbose_output(
 
     topics.sort(key=lambda t: t.created_at, reverse=True)
 
-    blocks = []
-    for topic in topics:
-        if show_repo:
-            label = _repo_label(topic.workdir)
-            icon = topic.icon
-            prog = f"[{topic.done}/{topic.total}]"
-            line1 = f"[{label}] {icon} {prog} {topic.name}"
-            display_text = topic.display_text
-            parts = [line1]
-            if display_text:
-                parts.append(_wrap_text(display_text))
-            if verbosity >= 2:
-                todo = topic.todo_data
-                if todo:
-                    parts.append("")
-                    for item in todo:
-                        step_id = item.get("id", "")
-                        step_name = item.get("name", "")
-                        parts.append(f"    {step_id}: {step_name}")
-            blocks.append("\n".join(parts))
-        else:
-            blocks.append(format_topic(topic.path, verbose=verbosity))
+    blocks = [
+        format_topic(topic, verbose=verbosity, show_repo=show_repo)
+        for topic in topics
+    ]
 
     return "\n\n".join(blocks)
 
@@ -211,21 +179,10 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    dirs = [get_specs_dir()]
-    archive_dirs = []
-    if args.archives:
-        archive_dir = get_archives_dir()
-        dirs.append(archive_dir)
-        archive_dirs.append(archive_dir)
-
-    topics = collect_topics(dirs, archive_dirs=archive_dirs)
-
-    ctx = get_project_context()
-    if not args.all_projects:
-        topics = [t for t in topics if ctx.is_related_to(t)]
-        show_repo = not ctx.in_git_workdir()
-    else:
-        show_repo = True
+    topics, show_repo = gather_topics(
+        include_archives=args.archives,
+        all_projects=args.all_projects,
+    )
 
     verbosity = args.verbose
     if verbosity > 0:

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import list as list_mod  # noqa: A004
+import common as common_mod
 import pytest
 from common import Topic, TopicMeta, get_todo_progress, load_meta
 from config import ProjectContext
@@ -372,15 +372,13 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic reads done/total from filesystem (no todo.json -> 0/0)
-        assert "[0/0]" in lines[0]
+        assert "(1/3)" in lines[0]
         assert "topic" in lines[0]
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
-        # No spec.md -> no description
         topics = [
             Topic(name="my-topic", path=topic_dir,
                   meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
@@ -389,9 +387,9 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # Without description, only header line is output
-        assert len(lines) == 1
+        assert "(0/1)" in lines[0]
         assert "topic" in lines[0]
+        assert lines[1] == "    fallback prompt"
 
     def test_level1_blank_line_between_topics(self, tmp_path):
         dir1 = tmp_path / "t1"
@@ -455,7 +453,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=2)
         lines = output.splitlines()
-        assert "[1/2]" in lines[0]
+        assert "(1/2)" in lines[0]
         assert lines[1] == "    Desc"
         assert lines[2] == ""
         assert "step-1:" in lines[3]
@@ -616,9 +614,9 @@ class TestMainFlags:
 
         ctx = _make_project_context(project_workdir)
 
-        monkeypatch.setattr(list_mod, "get_specs_dir", lambda: specs)
-        monkeypatch.setattr(list_mod, "get_archives_dir", lambda: archives)
-        monkeypatch.setattr(list_mod, "get_project_context", lambda: ctx)
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(common_mod, "get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr(common_mod, "get_project_context", lambda _w=None: ctx)
 
         return specs, archives
 

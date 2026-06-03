@@ -587,16 +587,24 @@ class TestGetSpecDescription:
 
 
 class TestFormatTopic:
+    @staticmethod
+    def _write_meta(topic_dir):
+        (topic_dir / "meta.json").write_text(
+            '{"topic":"t","workdir":"","prompts":[]}', encoding="utf-8",
+        )
+
     def test_verbose_0_header_only(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         out = format_topic(topic_dir, verbose=0)
-        assert out.startswith("🔧 [0/0] my-feature")
+        assert out.startswith("🔧 (0/0) my-feature")
         assert len(out.splitlines()) == 1
 
     def test_verbose_1_with_description(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         (topic_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
@@ -607,6 +615,7 @@ class TestFormatTopic:
     def test_verbose_2_with_todo(self, tmp_path):
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         (topic_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
@@ -624,13 +633,60 @@ class TestFormatTopic:
     def test_completed_shows_checkmark(self, tmp_path):
         topic_dir = tmp_path / "done"
         topic_dir.mkdir()
+        self._write_meta(topic_dir)
         todo_path = topic_dir / "todo.json"
         todo_path.write_text(
             '[{"id": "1", "name": "Step", "completed_at": "2026-01-01"}]',
             encoding="utf-8",
         )
         out = format_topic(topic_dir, verbose=0)
-        assert out.startswith("✅ [1/1] done")
+        assert out.startswith("✅ (1/1) done")
+
+    def test_path_without_meta_returns_error(self, tmp_path):
+        topic_dir = tmp_path / "no-meta"
+        topic_dir.mkdir()
+        out = format_topic(topic_dir, verbose=0)
+        assert "unable to load" in out
+
+    def test_show_repo_flag(self, tmp_path):
+        from common import Topic, TopicMeta
+        t = Topic(name="my-topic", path=tmp_path / "my-topic",
+                  meta=TopicMeta(workdir="/projects/myapp"),
+                  done=2, total=5)
+        out = format_topic(t, verbose=0, show_repo=True)
+        assert "[myapp]" in out
+        assert "(2/5)" in out
+
+
+class TestDisplayWidth:
+    def test_ascii(self):
+        from common import display_width
+        assert display_width("hello") == 5
+
+    def test_cjk(self):
+        from common import display_width
+        assert display_width("你好") == 4
+
+    def test_mixed(self):
+        from common import display_width
+        assert display_width("hello你好") == 9
+
+    def test_truncate_cjk(self):
+        from common import display_truncate
+        result = display_truncate("你好世界测试文本", 10)
+        from common import display_width
+        assert display_width(result) <= 10
+        assert result.endswith("...")
+
+    def test_truncate_no_op(self):
+        from common import display_truncate
+        assert display_truncate("short", 10) == "short"
+
+    def test_ljust_cjk(self):
+        from common import display_ljust, display_width
+        result = display_ljust("你好", 10)
+        assert display_width(result) == 10
+        assert result == "你好      "
 
 
 class TestGetSpexRoots:
