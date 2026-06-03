@@ -93,12 +93,6 @@ Example JSON output:
 }
 ```
 
-**Sub-agent boundary.** Launch a sub-agent to execute Phases 5
-through 7. The sub-agent receives `$requirement`, `$topic_name`,
-`$topic_path`, and `$spec_template` as context. If the sub-agent
-fails, report the error to the user and retry. After it completes,
-continue with Phase 8 in the main context.
-
 ### Phase 5: Design Specification
 
 Perform detailed requirement analysis and solution design based on

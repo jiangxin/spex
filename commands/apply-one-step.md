@@ -40,14 +40,6 @@ $spex_skill_dir/scripts/spex apply-helper precheck --topic $topic_name
 If the script exits with an error (non-zero), the error message is already
 printed to stderr. Stop execution. On success, continue to the next phase.
 
-**Sub-agent boundary.** Launch a sub-agent to execute Phases 3
-through 6. The sub-agent receives `$topic_name` and `$topic_path`
-as context. Ensure the sub-agent's working directory is set to the
-topic's workdir (read from `meta.json` via `$topic_path/meta.json`
-or `spex get-topic` output). If the sub-agent fails, report the
-error to the user and retry. After it completes, continue with
-Phase 7 in the main context.
-
 ### Phase 3: Build Prompt
 
 Run:

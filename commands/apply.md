@@ -69,11 +69,9 @@ Parse the JSON output from stdout:
 
 **Sub-agent boundary.** Launch a sub-agent to execute Phases 4
 through 6. The sub-agent receives `$prompt`, `$current_task_id`,
-and `$topic_name` as context. Ensure the sub-agent's working
-directory is set to the topic's workdir (read from `meta.json` via
-`$topic_path/meta.json` or `spex get-topic` output). If the
-sub-agent fails, report the error to the user and retry. After it
-completes, continue with Phase 7 in the main context.
+and `$topic_name` as context. If the sub-agent fails, report
+the error to the user and retry. After it completes, continue
+with Phase 7 in the main context.
 
 ### Phase 4: Execute Task
 
