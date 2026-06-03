@@ -22,7 +22,7 @@ class TestNoArgs:
         result = _run_spex()
 
         assert result.returncode == 0
-        assert "Usage: spex" in result.stdout
+        assert "usage: spex" in result.stdout
 
     def test_lists_commands(self):
         result = _run_spex()
@@ -38,13 +38,13 @@ class TestHelpFlag:
         result = _run_spex("-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout
 
     def test_spex_help_exits_zero_with_usage(self):
         result = _run_spex("--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout
 
     def test_config_h_exits_zero_with_usage(self):
         result = _run_spex("config", "-h")
@@ -226,7 +226,7 @@ class TestUnknownCommand:
 
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
-        assert "Usage: spex" in result.stderr
+        assert "usage: spex" in result.stderr
 
 
 class TestGetCommand:
@@ -270,7 +270,7 @@ class TestCreateTopicCommand:
         result = _run_spex("create-topic")
 
         assert result.returncode == 1
-        assert "Usage:" in result.stderr
+        assert "usage:" in result.stderr
 
 
 

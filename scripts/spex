@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Spex - Spec-Driven Development CLI tool."""
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -13,12 +14,7 @@ from cli import ArgumentParser  # noqa: E402
 
 _skill_dir = _scripts_dir.parent
 
-USAGE = """\
-Usage: spex <command>
-
-Global options:
-  --version, -V       Show version and exit
-
+GROUPED_HELP = """\
 Commands (run directly):
   archive [-n] [--topic <topic>]
               Archive completed spec topics (--dry-run to preview)
@@ -54,33 +50,7 @@ Internal commands (used by skill):
                 Execute a hook script with event data
   todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
                 Operate on todo files (validate, append, edit, remove,
-                show, xml2json, json2xml)
-"""
-
-LLM_COMMANDS = {"apply", "create", "new", "modify"}
-
-
-def _normalize_subcmd(name):
-    """Normalize subcommand name: hyphens → underscores."""
-    return name.replace("-", "_")
-
-
-def _extract_global_options(argv):
-    """Extract --version and -V from argv.
-
-    Returns cleaned_argv with global options removed.
-    """
-    cleaned = []
-    i = 0
-    while i < len(argv):
-        if argv[i] in ("--version", "-V"):
-            _run_version()
-            sys.exit(0)
-        else:
-            cleaned.append(argv[i])
-            i += 1
-
-    return cleaned
+                show, xml2json, json2xml)"""
 
 
 def _run_list(argv=None):
@@ -354,24 +324,89 @@ def _run_version(argv=None):
         print(f"spex {_get_version()}")
 
 
-DIRECT_COMMANDS = {
-    "list": _run_list,
-    "show": _run_show,
-    "archive": _run_archive,
-    "open": _run_open,
-    "init": _run_init,
-    "config": _run_config,
-    "get_topic": _run_get_topic,
-    "prompt": _run_prompt,
-    "meta": _run_meta,
-    "todo_helper": _run_todo_helper,
-    "create_helper": _run_create_helper,
-    "apply_helper": _run_apply_helper,
-    "merge": _run_merge,
-    "submit": _run_merge,
-    "run_hook": _run_hook,
-    "version": _run_version,
-}
+def _make_llm_error_handler(name):
+    """Create a handler for LLM-only commands."""
+    def handler(argv=None):
+        print(
+            f"Error: 'spex {name}' requires an AI coding agent. "
+            f"Run '/spex {name}' in Claude Code or equivalent.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return handler
+
+
+# -- Command registries ---------------------------------------------------
+
+_CLI_COMMANDS = [
+    ("archive", _run_archive),
+    ("config", _run_config),
+    ("init", _run_init),
+    ("list", _run_list),
+    ("merge", _run_merge),
+    ("submit", _run_merge),
+    ("open", _run_open),
+    ("show", _run_show),
+]
+
+_LLM_COMMAND_NAMES = ["apply", "create", "modify", "new"]
+
+_INTERNAL_COMMANDS = [
+    ("apply-helper", _run_apply_helper),
+    ("create-helper", _run_create_helper),
+    ("get-topic", _run_get_topic),
+    ("meta", _run_meta),
+    ("prompt", _run_prompt),
+    ("run-hook", _run_hook),
+    ("todo-helper", _run_todo_helper),
+    ("version", _run_version),
+]
+
+_ALL_COMMANDS = (
+    {name for name, _ in _CLI_COMMANDS}
+    | set(_LLM_COMMAND_NAMES)
+    | {name for name, _ in _INTERNAL_COMMANDS}
+)
+
+
+def _build_parser():
+    """Build the main argument parser with grouped help."""
+    parser = argparse.ArgumentParser(
+        prog="spex",
+        usage="spex <command>",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=GROUPED_HELP,
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=f"spex {_get_version()}",
+        help="Show version and exit",
+    )
+
+    subs = parser.add_subparsers(dest="command")
+
+    for name, func in _CLI_COMMANDS:
+        p = subs.add_parser(name, add_help=False)
+        p.set_defaults(func=func)
+
+    for name in _LLM_COMMAND_NAMES:
+        p = subs.add_parser(name, add_help=False)
+        p.set_defaults(func=_make_llm_error_handler(name))
+
+    for name, func in _INTERNAL_COMMANDS:
+        p = subs.add_parser(name, add_help=False)
+        p.set_defaults(func=func)
+
+    # Hide the default subparser listing from help output; the grouped
+    # command descriptions are shown via the epilog instead.
+    for ag in parser._action_groups:
+        ag._group_actions = [
+            a for a in ag._group_actions
+            if not isinstance(a, argparse._SubParsersAction)
+        ]
+
+    return parser
 
 
 def main(argv=None):
@@ -379,33 +414,28 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
-    argv = _extract_global_options(argv)
+    parser = _build_parser()
+    argv = list(argv)
 
-    if not argv:
-        print(USAGE, end="")
+    # Normalize subcommand: underscores -> hyphens (for display-name
+    # matching).  Also pre-check for unknown commands so we can produce
+    # the same error format as before (argparse would exit with code 2).
+    for i, arg in enumerate(argv):
+        if not arg.startswith("-"):
+            argv[i] = arg.replace("_", "-")
+            if argv[i] not in _ALL_COMMANDS:
+                print(f"Unknown command: {argv[i]}\n", file=sys.stderr)
+                parser.print_help(sys.stderr)
+                sys.exit(1)
+            break
+
+    args, remaining = parser.parse_known_args(argv)
+
+    if args.command is None:
+        parser.print_help()
         sys.exit(0)
 
-    command = argv[0]
-    if not command.startswith("-"):
-        command = _normalize_subcmd(command)
-
-    if command in ("-h", "--help"):
-        print(USAGE, end="")
-        sys.exit(0)
-
-    if command in DIRECT_COMMANDS:
-        DIRECT_COMMANDS[command](argv[1:])
-    elif command in LLM_COMMANDS:
-        print(
-            f"Error: 'spex {command}' requires an AI coding agent. "
-            f"Run '/spex {command}' in Claude Code or equivalent.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    else:
-        print(f"Unknown command: {command}\n", file=sys.stderr)
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    args.func(remaining)
 
 
 if __name__ == "__main__":
