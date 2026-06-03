@@ -816,6 +816,52 @@ class TestApplyCommitUserIdentity:
         assert "git commit -F-" in rendered
         assert "-c user.name" not in rendered
 
+    def test_user_identity_skipped_when_matches_runtime(
+        self, tmp_path, monkeypatch
+    ):
+        """When meta.json user matches runtime config, skip -c flags."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature", details="Implement X"),
+        ]
+        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+
+        # Write meta.json with explicit user identity
+        meta_path = topic_dir / "meta.json"
+        meta_path.write_text(
+            json.dumps({
+                "workdir": str(repo),
+                "user_name": "John Doe",
+                "user_email": "john@example.com",
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(repo)
+
+        # Mock get_project_context to return matching identity
+        from pathlib import Path as _Path
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        mock_ctx = ProjectContext(
+            cwd=_Path(str(repo)),
+            top_workdir=_Path(str(repo)),
+            main_worktree=None,
+            remote_url="",
+            branch="main",
+            user_name="John Doe",
+            user_email="john@example.com",
+        )
+        with patch("prompt.get_project_context", return_value=mock_ctx):
+            from prompt import render_prompt
+
+            rendered = render_prompt("apply-commit", "test-topic")
+
+        assert "git commit -F-" in rendered
+        assert "-c user.name" not in rendered
+        assert "-c user.email" not in rendered
+
 
 
 

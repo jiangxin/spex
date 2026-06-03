@@ -278,6 +278,11 @@ def _build_metadata(template_name, topic_name=None):
                     metadata["spex_root"] = rel
             except (ValueError, RuntimeError):
                 pass
+        ctx = get_project_context()
+        if (metadata.get("user_name") == ctx.user_name
+                and metadata.get("user_email") == ctx.user_email):
+            metadata["user_name"] = ""
+            metadata["user_email"] = ""
     # All topic-based templates except spec-template need task context:
     # apply-commit, apply-one-task, modify-spec, modify-todo
     if template_name != "spec-template" and topic_name:
