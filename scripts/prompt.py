@@ -345,23 +345,106 @@ def _output_rendered(rendered, output_path):
         print(rendered)
 
 
-def cli_apply_one_task(argv):
-    """CLI handler for apply-one-task subcommand."""
+def _build_parser():
+    """Build the top-level parser with subcommand sub-parsers."""
+    parser = ArgumentParser(
+        prog="spex prompt",
+        description="Render Jinja2 templates with metadata.",
+    )
+    subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
+
+    # apply-one-task
+    p = subs.add_parser(
+        "apply-one-task",
+        description="Render apply-one-task template with topic metadata.",
+        help="Render prompt for the next undone task",
+    )
+    p.add_argument(
+        "--topic", required=True, help="Topic name (required)",
+    )
+    p.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON with task_id and prompt",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
+    # apply-commit
+    p = subs.add_parser(
+        "apply-commit",
+        description="Render apply-commit template with topic metadata.",
+        help="Render commit instructions for the current task",
+    )
+    p.add_argument("--topic", help="Topic name")
+    p.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Read raw text from stdin as prompt_context",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
+    # modify-spec
+    p = subs.add_parser(
+        "modify-spec",
+        description="Render modify-spec template with topic metadata.",
+        help="Render prompt for modifying a spec",
+    )
+    p.add_argument(
+        "--topic", required=True, help="Topic name (required)",
+    )
+    p.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Read raw text from stdin as prompt_context",
+    )
+    p.add_argument(
+        "--remove-undone", action="store_true", dest="remove_undone",
+        help="Remove undone tasks from todo.json before rendering",
+    )
+    p.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON with rendered prompt",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
+    # modify-todo
+    p = subs.add_parser(
+        "modify-todo",
+        description="Render modify-todo template with topic metadata.",
+        help="Render prompt for modifying a todo list",
+    )
+    p.add_argument(
+        "--topic", required=True, help="Topic name (required)",
+    )
+    p.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Read raw text from stdin as prompt_context",
+    )
+    p.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON with rendered prompt",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
+    return parser
+
+
+# Known subcommands for routing (fallback to cli_render for others)
+_KNOWN_SUBCMDS = {
+    "apply-one-task", "apply-commit", "modify-spec", "modify-todo",
+}
+
+
+def _do_apply_one_task(args):
+    """Handle apply-one-task subcommand."""
     import json
 
     from jinja2 import TemplateError
-
-    parser = ArgumentParser(
-        prog="spex prompt apply-one-task",
-        description="Render apply-one-task template with topic metadata.",
-    )
-    parser.add_argument("--topic", required=True,
-                        help="Topic name (required)")
-    parser.add_argument("--json", action="store_true", dest="json_mode",
-                        help="Output JSON with task_id and prompt")
-    parser.add_argument("-o", "--output",
-                        help="Output file path (default: stdout)")
-    args = parser.parse(argv)
 
     try:
         metadata = _build_metadata("apply-one-task", args.topic)
@@ -396,6 +479,12 @@ def cli_apply_one_task(argv):
         _output_rendered(rendered, args.output)
 
 
+def cli_apply_one_task(argv=None):
+    """CLI handler for apply-one-task subcommand."""
+    args = _build_parser().parse(["apply-one-task"] + (argv or []))
+    _do_apply_one_task(args)
+
+
 def _read_stdin_extra_vars(stdin_flag):
     """Read extra variables from stdin (JSON or raw text with --stdin flag)."""
     import json
@@ -414,20 +503,9 @@ def _read_stdin_extra_vars(stdin_flag):
         sys.exit(1)
 
 
-def cli_apply_commit(argv):
-    """CLI handler for apply-commit subcommand."""
+def _do_apply_commit(args):
+    """Handle apply-commit subcommand."""
     from jinja2 import TemplateError
-
-    parser = ArgumentParser(
-        prog="spex prompt apply-commit",
-        description="Render apply-commit template with topic metadata.",
-    )
-    parser.add_argument("--topic", help="Topic name")
-    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
-                        help="Read raw text from stdin as prompt_context")
-    parser.add_argument("-o", "--output",
-                        help="Output file path (default: stdout)")
-    args = parser.parse(argv)
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -451,28 +529,17 @@ def cli_apply_commit(argv):
     _output_rendered(rendered, args.output)
 
 
-def cli_modify_spec(argv):
-    """CLI handler for modify-spec subcommand."""
+def cli_apply_commit(argv=None):
+    """CLI handler for apply-commit subcommand."""
+    args = _build_parser().parse(["apply-commit"] + (argv or []))
+    _do_apply_commit(args)
+
+
+def _do_modify_spec(args):
+    """Handle modify-spec subcommand."""
     import json
 
     from jinja2 import TemplateError
-
-    parser = ArgumentParser(
-        prog="spex prompt modify-spec",
-        description="Render modify-spec template with topic metadata.",
-    )
-    parser.add_argument("--topic", required=True,
-                        help="Topic name (required)")
-    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
-                        help="Read raw text from stdin as prompt_context")
-    parser.add_argument("--remove-undone", action="store_true",
-                        dest="remove_undone",
-                        help="Remove undone tasks from todo.json before rendering")
-    parser.add_argument("--json", action="store_true", dest="json_mode",
-                        help="Output JSON with rendered prompt")
-    parser.add_argument("-o", "--output",
-                        help="Output file path (default: stdout)")
-    args = parser.parse(argv)
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -514,25 +581,17 @@ def cli_modify_spec(argv):
         _output_rendered(rendered, args.output)
 
 
-def cli_modify_todo(argv):
-    """CLI handler for modify-todo subcommand."""
+def cli_modify_spec(argv=None):
+    """CLI handler for modify-spec subcommand."""
+    args = _build_parser().parse(["modify-spec"] + (argv or []))
+    _do_modify_spec(args)
+
+
+def _do_modify_todo(args):
+    """Handle modify-todo subcommand."""
     import json
 
     from jinja2 import TemplateError
-
-    parser = ArgumentParser(
-        prog="spex prompt modify-todo",
-        description="Render modify-todo template with topic metadata.",
-    )
-    parser.add_argument("--topic", required=True,
-                        help="Topic name (required)")
-    parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
-                        help="Read raw text from stdin as prompt_context")
-    parser.add_argument("--json", action="store_true", dest="json_mode",
-                        help="Output JSON with rendered prompt")
-    parser.add_argument("-o", "--output",
-                        help="Output file path (default: stdout)")
-    args = parser.parse(argv)
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -565,6 +624,12 @@ def cli_modify_todo(argv):
         print(json.dumps({"prompt": rendered}))
     else:
         _output_rendered(rendered, args.output)
+
+
+def cli_modify_todo(argv=None):
+    """CLI handler for modify-todo subcommand."""
+    args = _build_parser().parse(["modify-todo"] + (argv or []))
+    _do_modify_todo(args)
 
 
 def cli_render(argv):
@@ -601,30 +666,8 @@ def cli_render(argv):
     _output_rendered(rendered, args.output)
 
 
-SUBCOMMANDS = {
-    "apply-one-task": cli_apply_one_task,
-    "apply-commit": cli_apply_commit,
-    "modify-spec": cli_modify_spec,
-    "modify-todo": cli_modify_todo,
-}
-
-USAGE = """\
-Usage: spex prompt <subcommand> [options]
-
-Subcommands:
-  apply-one-task  Render prompt for the next undone task
-  apply-commit    Render commit instructions for the current task
-  modify-spec     Render prompt for modifying a spec
-  modify-todo     Render prompt for modifying a todo list
-  <template-name> Render a generic template (fallback)
-
-Options:
-  -h, --help  Show this help message and exit
-"""
-
-
 def _normalize_subcmd(name):
-    """Normalize subcommand/template name: underscores → hyphens."""
+    """Normalize subcommand/template name: underscores -> hyphens."""
     return name.replace("_", "-")
 
 
@@ -633,25 +676,39 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
-    if not argv:
-        print(USAGE, end="", file=sys.stderr)
-        sys.exit(1)
+    parser = _build_parser()
 
-    subcmd = argv[0]
-    if subcmd in ("-h", "--help"):
-        print(USAGE, end="")
-        sys.exit(0)
+    if not argv:
+        parser.print_help(sys.stderr)
+        sys.exit(2)
+
+    first = argv[0]
+
+    # Let argparse handle flags like --help / -h
+    if first.startswith("-"):
+        parser.parse(argv)
+        return
 
     # Normalize: accept both underscores and hyphens
-    subcmd = _normalize_subcmd(subcmd)
+    subcmd = _normalize_subcmd(first)
 
-    handler = SUBCOMMANDS.get(subcmd)
-    if handler:
-        handler(argv[1:])
-    else:
-        # Normalize template name before fallback render
-        argv[0] = subcmd
+    if subcmd not in _KNOWN_SUBCMDS:
+        # Fallback to generic template rendering
         cli_render(argv)
+        return
+
+    # Ensure normalized name is used for argparse
+    argv = [subcmd] + list(argv[1:])
+    args = parser.parse(argv)
+
+    if args.subcmd == "apply-one-task":
+        _do_apply_one_task(args)
+    elif args.subcmd == "apply-commit":
+        _do_apply_commit(args)
+    elif args.subcmd == "modify-spec":
+        _do_modify_spec(args)
+    elif args.subcmd == "modify-todo":
+        _do_modify_todo(args)
 
 
 if __name__ == "__main__":

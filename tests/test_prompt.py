@@ -1455,12 +1455,12 @@ class TestMainRouting:
         assert "modify-spec" in captured.out
 
     def test_no_args_prints_usage_to_stderr(self, capsys):
-        """main() with no args prints usage to stderr and exits 1."""
+        """main() with no args prints usage to stderr and exits 2."""
         from prompt import main
 
         with pytest.raises(SystemExit) as exc_info:
             main([])
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
 
         captured = capsys.readouterr()
-        assert "Usage:" in captured.err
+        assert "usage:" in captured.err
