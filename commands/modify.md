@@ -19,6 +19,20 @@ If `$prompt` is not provided or empty, ask the user to describe what
 changes they want to make to the spec. The user's full input becomes
 `$prompt`.
 
+After receiving `$prompt`, check whether the modification request is
+ambiguous. Specifically, clarify if:
+
+- The scope of the change is unclear (e.g., which sections of the spec
+  are affected, whether existing steps should be replaced or extended).
+- Multiple interpretations of the requested change exist.
+- The relationship to existing completed work is not obvious (e.g.,
+  whether to preserve or redo completed steps).
+
+**If unambiguous**, proceed directly to Phase 2 without asking questions.
+
+**If ambiguous**, ask the user to confirm your understanding. Limit to
+2–3 questions maximum, and ask them all at once in a single message.
+
 ### Phase 2: Resolve Topic
 
 Run:

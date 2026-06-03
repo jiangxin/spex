@@ -41,13 +41,33 @@ If `$input` is not provided or empty, ask the user to describe the requirement.
 
 Once you have `$input`, explore the workspace **only enough to understand
 where the relevant code lives and what existing patterns to reference in the
-spec**. Identify any ambiguities, contradictions, or cases where
-multiple implementation approaches exist. Ask the user to clarify these
-points before proceeding. **Do NOT read full implementation details or start
-modifying any files — those are handled by `/spex apply`.**
+spec**. You only need enough context to generate the spec — do NOT dig into
+full implementation details or start modifying any files (those are handled
+by `/spex apply`).
 
-After clarification, record the complete, unambiguous requirement as
-`$requirement`.
+**When to clarify** — ask the user if any of these apply:
+
+- Multiple viable implementation paths exist and the choice affects the
+  design (e.g., REST vs. GraphQL, polling vs. WebSocket).
+- Scope or boundaries are unclear (e.g., which modules are in/out,
+  whether backward compatibility is required).
+- Dependencies on other systems or features are not specified.
+- Ambiguous terminology is used that could be interpreted differently.
+
+**When NOT to clarify** — if the requirement is already specific and
+unambiguous, skip clarification entirely and proceed directly to Phase 3.
+Do not ask questions just to be thorough; only ask when the answer would
+materially change the spec.
+
+**How to clarify**:
+
+- Ask all clarification questions at once in a single message (not one
+  by one in a back-and-forth).
+- Limit to 2–4 questions maximum. Prioritize the questions whose answers
+  most affect the design.
+
+After clarification (or if none was needed), record the complete,
+unambiguous requirement as `$requirement`.
 
 ### Phase 3: Generate Topic and Description
 
