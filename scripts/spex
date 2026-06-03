@@ -92,67 +92,161 @@ Options:
 """
 
 
-def _build_config_vars(ctx):
-    """Build ordered dict of (value, is_list) tuples from ProjectContext."""
-    all_vars = {}
-    # Scalar fields
-    all_vars["cwd"] = (ctx.cwd, False)
-    all_vars["top_workdir"] = (ctx.top_workdir, False)
-    all_vars["main_worktree"] = (ctx.main_worktree, False)
-    all_vars["remote_url"] = (ctx.remote_url, False)
-    all_vars["branch"] = (ctx.branch, False)
-    all_vars["user_name"] = (ctx.user_name, False)
-    all_vars["user_email"] = (ctx.user_email, False)
-    all_vars["spex_root"] = (ctx.spex_root, False)
-    # Expand config dict entries
-    for key, val in ctx.config.items():
-        all_vars[f"config.{key}"] = (val, False)
-    # List fields (displayed last)
-    all_vars["spex_tomls"] = (ctx.spex_tomls, True)
-    all_vars["spex_roots"] = (ctx.spex_roots, True)
-    return all_vars
+_CONFIG_SECTIONS = [
+    ("Git", "kv", ["branch", "remote_url", "user_name", "user_email"]),
+    ("Paths", "kv", ["cwd", "top_workdir", "main_worktree", "spex_root"]),
+    ("Config", "kv", [
+        "spex_root", "branch_management", "main_branch_name", "submit_method",
+    ]),
+    ("Config Files", "list", "spex_tomls"),
+    ("Spec Roots", "list", "spex_roots"),
+]
 
 
-def _print_config_vars(all_vars, requested):
-    """Print config variables in formatted output.
+def _section_header(name, width=50):
+    """Return a section header line like '── Name ──────...'."""
+    pad = width - len(name) - 4  # 4 = "── " + " "
+    return "── " + name + " " + "─" * max(pad, 3)
+
+
+def _format_value(value):
+    """Format a config value for display."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _build_config_sections(ctx):
+    """Build list of (name, kind, entries) tuples from ProjectContext.
+
+    For "kv" sections, entries is a list of (key, value) tuples.
+    For "list" sections, entries is a list of items.
+    """
+    # Attribute lookup for Git and Paths sections
+    attr_map = {
+        "branch": ctx.branch,
+        "remote_url": ctx.remote_url,
+        "user_name": ctx.user_name,
+        "user_email": ctx.user_email,
+        "cwd": ctx.cwd,
+        "top_workdir": ctx.top_workdir,
+        "main_worktree": ctx.main_worktree,
+        "spex_root": ctx.spex_root,
+    }
+
+    sections = []
+    for name, kind, keys in _CONFIG_SECTIONS:
+        if kind == "kv":
+            entries = []
+            for key in keys:
+                if name == "Config":
+                    value = ctx.config.get(key)
+                else:
+                    value = attr_map.get(key)
+                entries.append((key, value))
+            sections.append((name, "kv", entries))
+        else:  # list
+            items = getattr(ctx, keys)
+            sections.append((name, "list", list(items)))
+    return sections
+
+
+def _print_config_sections(sections, requested=None):
+    """Print config sections in formatted output.
 
     Args:
-        all_vars: Ordered dict of (value, is_list) tuples.
+        sections: List of (name, kind, entries) tuples.
         requested: List of variable names to show, or None for all.
     """
+    use_color = sys.stdout.isatty()
+
     if requested:
-        unknown = [n for n in requested if n not in all_vars]
+        # Build variable name mapping: var_name -> (section_name, kind, key/None)
+        var_map = {}
+        for sec_name, kind, keys in _CONFIG_SECTIONS:
+            if kind == "kv":
+                for key in keys:
+                    if sec_name == "Config":
+                        var_map[f"config.{key}"] = (sec_name, "kv", key)
+                    else:
+                        var_map[key] = (sec_name, "kv", key)
+            else:  # list
+                var_map[keys] = (sec_name, "list", None)
+
+        unknown = [n for n in requested if n not in var_map]
         if unknown:
             for name in unknown:
                 print(f"Error: unknown variable '{name}'",
                       file=sys.stderr)
             sys.exit(1)
-        requested_set = set(requested)
-        items = [(k, all_vars[k]) for k in all_vars
-                 if k in requested_set]
-    else:
-        items = list(all_vars.items())
 
-    non_list = [(k, v) for k, (v, is_list) in items if not is_list]
-    list_items = [(k, v) for k, (v, is_list) in items if is_list]
+        # Collect matching kv entries and list sections
+        kv_entries = []
+        list_sections = []
+        for var_name in requested:
+            sec_name, kind, key = var_map[var_name]
+            if kind == "kv":
+                # Find the value from sections
+                for sn, sk, entries in sections:
+                    if sn == sec_name and sk == "kv":
+                        for k, v in entries:
+                            if k == key:
+                                kv_entries.append((k, v))
+                                break
+                        break
+            else:  # list
+                for sn, sk, entries in sections:
+                    if sn == sec_name and sk == "list":
+                        list_sections.append((sec_name, entries))
+                        break
 
-    max_key = max((len(k) for k, _ in items), default=0)
+        # Print kv entries with aligned keys
+        if kv_entries:
+            max_key = max(len(k) for k, _ in kv_entries)
+            for key, value in kv_entries:
+                formatted = _format_value(value)
+                label = key.ljust(max_key)
+                if use_color:
+                    print(f"  \033[2;36m{label}\033[0m = {formatted}")
+                else:
+                    print(f"  {label} = {formatted}")
 
-    for k, v in non_list:
-        label = k.ljust(max_key)
-        if v is None:
-            print(f"{label} : (none)")
+        # Print list sections
+        for sec_name, items in list_sections:
+            if use_color:
+                print(f"\033[1m{_section_header(sec_name)}\033[0m")
+            else:
+                print(_section_header(sec_name))
+            for item in items:
+                print(f"  {item}")
+        return
+
+    # Full output: print all sections
+    first = True
+    for sec_name, kind, entries in sections:
+        if not first:
+            print()
+        first = False
+
+        if use_color:
+            print(f"\033[1m{_section_header(sec_name)}\033[0m")
         else:
-            print(f"{label} : {v}")
+            print(_section_header(sec_name))
 
-    for k, v in list_items:
-        label = k.ljust(max_key)
-        if not v:
-            print(f"{label} : (empty)")
-        else:
-            print(f"{label} :")
-            for item in v:
-                print(f"  - {item}")
+        if kind == "kv":
+            max_key = max((len(k) for k, _ in entries), default=0)
+            for key, value in entries:
+                formatted = _format_value(value)
+                label = key.ljust(max_key)
+                if use_color:
+                    print(f"  \033[2;36m{label}\033[0m = {formatted}")
+                else:
+                    print(f"  {label} = {formatted}")
+        else:  # list
+            for item in entries:
+                print(f"  {item}")
 
 
 def _run_config(argv=None):
@@ -172,14 +266,14 @@ def _run_config(argv=None):
     args = parser.parse(argv)
 
     ctx = spex_config.get_project_context()
-    all_vars = _build_config_vars(ctx)
+    sections = _build_config_sections(ctx)
 
     if args.names:
         requested = [n.replace("-", "_") for n in args.names]
     else:
         requested = None
 
-    _print_config_vars(all_vars, requested)
+    _print_config_sections(sections, requested)
 
 
 def _run_get_topic(argv=None):

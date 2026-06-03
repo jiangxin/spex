@@ -26,9 +26,11 @@ _spec.loader.exec_module(_spex_mod)
 
 from config import ProjectContext  # noqa: E402
 
-_build_config_vars = _spex_mod._build_config_vars
-_print_config_vars = _spex_mod._print_config_vars
+_build_config_sections = _spex_mod._build_config_sections
+_print_config_sections = _spex_mod._print_config_sections
 _run_config = _spex_mod._run_config
+_section_header = _spex_mod._section_header
+_format_value = _spex_mod._format_value
 
 
 def _make_context(**overrides):
@@ -44,7 +46,7 @@ def _make_context(**overrides):
         "spex_root": "/test/repo/.spex",
         "config": {
             "spex_root": ".spex",
-            "create_branch": False,
+            "branch_management": True,
             "main_branch_name": "",
             "submit_method": "merge",
         },
@@ -55,186 +57,276 @@ def _make_context(**overrides):
     return ProjectContext(**defaults)
 
 
-class TestBuildConfigVars:
-    """Tests for _build_config_vars."""
+class TestSectionHeader:
+    """Tests for _section_header."""
 
-    def test_returns_all_fields(self):
+    def test_default_width(self):
+        header = _section_header("Git")
+        assert header.startswith("── Git ")
+        assert len(header) == 50
+
+    def test_long_name(self):
+        header = _section_header("Config Files")
+        assert header.startswith("── Config Files ")
+        assert len(header) == 50
+
+    def test_minimum_padding(self):
+        header = _section_header("A" * 50, width=50)
+        assert header.endswith("───")
+
+
+class TestFormatValue:
+    """Tests for _format_value."""
+
+    def test_none(self):
+        assert _format_value(None) == ""
+
+    def test_empty_string(self):
+        assert _format_value("") == ""
+
+    def test_bool_true(self):
+        assert _format_value(True) == "true"
+
+    def test_bool_false(self):
+        assert _format_value(False) == "false"
+
+    def test_string(self):
+        assert _format_value("hello") == "hello"
+
+    def test_path(self):
+        assert _format_value(Path("/a/b")) == "/a/b"
+
+
+class TestBuildConfigSections:
+    """Tests for _build_config_sections."""
+
+    def test_returns_five_sections(self):
         ctx = _make_context()
-        result = _build_config_vars(ctx)
-
-        expected_keys = [
-            "cwd", "top_workdir", "main_worktree",
-            "remote_url", "branch", "user_name", "user_email",
-            "spex_root",
-            "config.spex_root", "config.create_branch",
-            "config.main_branch_name", "config.submit_method",
-            "spex_tomls", "spex_roots",
+        sections = _build_config_sections(ctx)
+        assert len(sections) == 5
+        names = [name for name, _, _ in sections]
+        assert names == [
+            "Git", "Paths", "Config", "Config Files", "Spec Roots",
         ]
-        assert list(result.keys()) == expected_keys
 
-    def test_scalar_values_not_is_list(self):
+    def test_git_section_keys(self):
         ctx = _make_context()
-        result = _build_config_vars(ctx)
+        sections = _build_config_sections(ctx)
+        name, kind, entries = sections[0]
+        assert name == "Git"
+        assert kind == "kv"
+        keys = [k for k, _ in entries]
+        assert keys == ["branch", "remote_url", "user_name", "user_email"]
 
-        for key in ("cwd", "top_workdir", "main_worktree",
-                     "remote_url", "branch", "user_name", "user_email",
-                     "spex_root", "config.spex_root"):
-            _, is_list = result[key]
-            assert is_list is False, f"{key} should not be a list"
-
-    def test_list_values_are_is_list(self):
+    def test_git_section_values(self):
         ctx = _make_context()
-        result = _build_config_vars(ctx)
+        sections = _build_config_sections(ctx)
+        _, _, entries = sections[0]
+        vals = dict(entries)
+        assert vals["branch"] == "main"
+        assert vals["remote_url"] == "https://github.com/test/repo.git"
+        assert vals["user_name"] == "Test User"
+        assert vals["user_email"] == "test@example.com"
 
-        for key in ("spex_tomls", "spex_roots"):
-            _, is_list = result[key]
-            assert is_list is True, f"{key} should be a list"
+    def test_paths_section(self):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        name, kind, entries = sections[1]
+        assert name == "Paths"
+        assert kind == "kv"
+        keys = [k for k, _ in entries]
+        assert keys == ["cwd", "top_workdir", "main_worktree", "spex_root"]
+
+    def test_config_section_no_prefix(self):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        name, kind, entries = sections[2]
+        assert name == "Config"
+        assert kind == "kv"
+        keys = [k for k, _ in entries]
+        assert keys == [
+            "spex_root", "branch_management",
+            "main_branch_name", "submit_method",
+        ]
+
+    def test_config_section_values(self):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _, _, entries = sections[2]
+        vals = dict(entries)
+        assert vals["spex_root"] == ".spex"
+        assert vals["branch_management"] is True
+        assert vals["main_branch_name"] == ""
+        assert vals["submit_method"] == "merge"
+
+    def test_list_sections(self):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        # Config Files
+        name, kind, entries = sections[3]
+        assert name == "Config Files"
+        assert kind == "list"
+        assert entries == [Path("/test/repo/.spex.toml")]
+        # Spec Roots
+        name, kind, entries = sections[4]
+        assert name == "Spec Roots"
+        assert kind == "list"
+        assert entries == ["/test/repo/.spex"]
 
     def test_none_top_workdir(self):
         ctx = _make_context(top_workdir=None)
-        result = _build_config_vars(ctx)
+        sections = _build_config_sections(ctx)
+        _, _, entries = sections[1]
+        vals = dict(entries)
+        assert vals["top_workdir"] is None
 
-        val, _ = result["top_workdir"]
-        assert val is None
 
+class TestPrintConfigSections:
+    """Tests for _print_config_sections."""
 
-class TestPrintConfigVars:
-    """Tests for _print_config_vars."""
-
-    def test_all_vars_scalars_before_lists(self, capsys):
+    def test_section_headers_present(self, capsys):
         ctx = _make_context()
-        all_vars = _build_config_vars(ctx)
-        _print_config_vars(all_vars, None)
-
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
         out = capsys.readouterr().out
-        lines = out.strip().splitlines()
+        assert "── Git " in out
+        assert "── Paths " in out
+        assert "── Config " in out
+        assert "── Config Files " in out
+        assert "── Spec Roots " in out
 
-        # Find first list-format line (starts with "- " or is a header
-        # followed by "- ")
-        scalar_keys = [
-            "top_workdir", "main_worktree", "spex_root",
-            "config.spex_root", "config.create_branch",
-            "config.main_branch_name", "config.submit_method",
-        ]
-        list_keys = ["spex_tomls", "spex_roots"]
-
-        # All scalar keys should appear before any list key
-        last_scalar_idx = -1
-        first_list_idx = len(lines)
-        for i, line in enumerate(lines):
-            key = line.split()[0] if line.split() else ""
-            if key in scalar_keys:
-                last_scalar_idx = max(last_scalar_idx, i)
-            if key in list_keys:
-                first_list_idx = min(first_list_idx, i)
-
-        assert last_scalar_idx < first_list_idx
-
-    def test_none_value_shows_none(self, capsys):
-        all_vars = {"myvar": (None, False)}
-        _print_config_vars(all_vars, None)
-
+    def test_kv_format_uses_equals(self, capsys):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
         out = capsys.readouterr().out
-        assert "myvar : (none)" in out
+        assert "  branch " in out
+        assert " = main" in out
 
-    def test_empty_list_shows_empty(self, capsys):
-        all_vars = {"mylist": ([], True)}
-        _print_config_vars(all_vars, None)
-
+    def test_empty_value_no_placeholder(self, capsys):
+        ctx = _make_context(remote_url="")
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
         out = capsys.readouterr().out
-        assert "mylist : (empty)" in out
+        lines = out.splitlines()
+        remote_line = [x for x in lines if "remote_url" in x][0]
+        assert remote_line.rstrip().endswith("=")
 
-    def test_list_items_use_dash_prefix(self, capsys):
-        all_vars = {"paths": (["/a", "/b"], True)}
-        _print_config_vars(all_vars, None)
-
+    def test_none_value_empty_after_equals(self, capsys):
+        ctx = _make_context(top_workdir=None)
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
         out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-        assert lines[0] == "paths :"
-        assert lines[1] == "  - /a"
-        assert lines[2] == "  - /b"
+        lines = out.splitlines()
+        tw_line = [x for x in lines if "top_workdir" in x][0]
+        assert tw_line.rstrip().endswith("=")
+
+    def test_bool_lowercase(self, capsys):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "= true" in out
+
+    def test_list_section_items(self, capsys):
+        ctx = _make_context(
+            spex_tomls=[Path("/a/.spex.toml"), Path("/b/.spex.toml")],
+        )
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "  /a/.spex.toml" in out
+        assert "  /b/.spex.toml" in out
+
+    def test_empty_list_section(self, capsys):
+        ctx = _make_context(spex_tomls=[])
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "── Config Files " in out
+
+    def test_no_color_when_not_tty(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "\033[" not in out
+
+    def test_sections_separated_by_blank_line(self, capsys):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        # Between Git and Paths sections there should be a blank line
+        assert "── Git " in out
+        assert "── Paths " in out
+        git_idx = out.index("── Git ")
+        paths_idx = out.index("── Paths ")
+        between = out[git_idx:paths_idx]
+        assert "\n\n" in between
 
     def test_unknown_variable_errors(self, capsys):
-        all_vars = {"known": ("val", False)}
-
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
         with pytest.raises(SystemExit) as exc_info:
-            _print_config_vars(all_vars, ["unknown_var"])
-
+            _print_config_sections(sections, ["unknown_var"])
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "unknown variable 'unknown_var'" in err
 
-    def test_requested_vars_filter(self, capsys):
-        all_vars = {
-            "a": ("val_a", False),
-            "b": ("val_b", False),
-            "c": ("val_c", False),
-        }
-        _print_config_vars(all_vars, ["b"])
-
+    def test_requested_kv_filter(self, capsys):
+        ctx = _make_context()
+        sections = _build_config_sections(ctx)
+        _print_config_sections(sections, ["branch"])
         out = capsys.readouterr().out
-        assert "b : val_b" in out
-        assert "a " not in out
-        assert "c " not in out
+        assert "branch" in out
+        assert " = main" in out
+        # Should not contain section headers
+        assert "── " not in out
 
 
 class TestRunConfig:
     """Tests for _run_config."""
 
-    def test_default_output_shows_all_fields(self, capsys):
+    def test_default_output_shows_all_sections(self, capsys):
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
             _run_config([])
-
         out = capsys.readouterr().out
-        for key in ("cwd", "top_workdir", "main_worktree",
-                     "remote_url", "branch", "user_name", "user_email",
-                     "spex_root",
-                     "config.spex_root", "config.create_branch",
-                     "config.main_branch_name", "config.submit_method",
-                     "spex_tomls", "spex_roots"):
+        for header in ("── Git ", "── Paths ", "── Config ",
+                        "── Config Files ", "── Spec Roots "):
+            assert header in out, f"{header} not found in output"
+
+    def test_default_output_shows_all_keys(self, capsys):
+        ctx = _make_context()
+        with patch("config.get_project_context", return_value=ctx):
+            _run_config([])
+        out = capsys.readouterr().out
+        for key in ("branch", "remote_url", "user_name", "user_email",
+                     "cwd", "top_workdir", "main_worktree", "spex_root",
+                     "branch_management", "submit_method"):
             assert key in out, f"{key} not found in output"
-
-    def test_default_output_lists_last(self, capsys):
-        ctx = _make_context()
-        with patch("config.get_project_context", return_value=ctx):
-            _run_config([])
-
-        out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-
-        # Find line indices for spex_root (scalar) and spex_tomls (list)
-        spex_root_idx = next(
-            i for i, line in enumerate(lines)
-            if line.startswith("spex_root")
-        )
-        spex_tomls_idx = next(
-            i for i, line in enumerate(lines)
-            if line.startswith("spex_tomls")
-        )
-        assert spex_root_idx < spex_tomls_idx
 
     def test_get_subcommand_filters(self, capsys):
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
-            _run_config(["get", "spex_root"])
-
+            _run_config(["get", "branch"])
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
         assert len(lines) == 1
-        assert lines[0].startswith("spex_root")
+        assert "branch" in lines[0]
+        assert " = main" in lines[0]
 
-    def test_multi_variable_query_in_order(self, capsys):
+    def test_multi_variable_query(self, capsys):
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
-            _run_config(["spex_root", "top_workdir"])
-
+            _run_config(["branch", "cwd"])
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
         assert len(lines) == 2
-        # Canonical order: top_workdir before spex_root
-        assert lines[0].startswith("top_workdir")
-        assert lines[1].startswith("spex_root")
+        assert "branch" in out
+        assert "cwd" in out
 
     def test_list_variable_format(self, capsys):
         ctx = _make_context(
@@ -242,35 +334,31 @@ class TestRunConfig:
         )
         with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex_tomls"])
-
         out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-        assert lines[0] == "spex_tomls :"
-        assert lines[1] == "  - /a/.spex.toml"
-        assert lines[2] == "  - /b/.spex.toml"
+        assert "── Config Files " in out
+        assert "  /a/.spex.toml" in out
+        assert "  /b/.spex.toml" in out
 
-    def test_empty_list_shows_empty(self, capsys):
+    def test_empty_list(self, capsys):
         ctx = _make_context(spex_tomls=[])
         with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex_tomls"])
-
         out = capsys.readouterr().out
-        assert "spex_tomls : (empty)" in out
+        assert "── Config Files " in out
 
-    def test_none_value_shows_none(self, capsys):
+    def test_none_value(self, capsys):
         ctx = _make_context(top_workdir=None)
         with patch("config.get_project_context", return_value=ctx):
             _run_config(["top_workdir"])
-
         out = capsys.readouterr().out
-        assert "top_workdir : (none)" in out
+        assert "top_workdir" in out
+        assert out.strip().endswith("=")
 
     def test_unknown_variable_error(self, capsys):
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
             with pytest.raises(SystemExit) as exc_info:
                 _run_config(["no_such_var"])
-
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "unknown variable" in err
@@ -279,19 +367,17 @@ class TestRunConfig:
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
             _run_config(["spex-root"])
-
         out = capsys.readouterr().out
         assert "spex_root" in out
-        assert " : " in out
+        assert " = " in out
 
     def test_hyphen_to_underscore_config_key(self, capsys):
         ctx = _make_context()
         with patch("config.get_project_context", return_value=ctx):
             _run_config(["config.main-branch-name"])
-
         out = capsys.readouterr().out
-        assert "config.main_branch_name" in out
-        assert " : " in out
+        assert "main_branch_name" in out
+        assert " = " in out
 
 
 class TestOldGetCommandRemoved:
