@@ -1,5 +1,4 @@
 import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -504,18 +503,17 @@ class TestRunInit:
 
 
 class TestMainCheckFlag:
-    def test_check_not_initialized(self, tmp_path, monkeypatch):
+    def test_check_not_initialized(self, tmp_path):
         ctx = _make_context(spex_root="", spex_roots=[])
-        monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
         with patch("init.get_project_context", return_value=ctx):
             from init import main
 
             with pytest.raises(SystemExit) as exc_info:
-                main()
+                main(argv=["--check"])
             assert exc_info.value.code == 1
 
-    def test_check_initialized(self, tmp_path, monkeypatch):
+    def test_check_initialized(self, tmp_path):
         spex_root = tmp_path / "spex"
         (spex_root / "specs").mkdir(parents=True)
         ctx = _make_context(
@@ -523,13 +521,12 @@ class TestMainCheckFlag:
             spex_roots=[str(spex_root)],
             spex_tomls=[tmp_path / ".spex.toml"],
         )
-        monkeypatch.setattr(sys, "argv", ["spex", "init", "--check"])
 
         with patch("init.get_project_context", return_value=ctx):
             from init import main
 
             with pytest.raises(SystemExit) as exc_info:
-                main()
+                main(argv=["--check"])
             assert exc_info.value.code == 0
 
 
