@@ -30,6 +30,31 @@ def open_directory(path):
         subprocess.run(["xdg-open", path])
 
 
+def run_in_directory(path, command):
+    """Run a command in the given directory.
+
+    Args:
+        path: Path string of the working directory.
+        command: Shell command string to execute.
+    """
+    result = subprocess.run(command, shell=True, cwd=path)
+    sys.exit(result.returncode)
+
+
+def _perform_action(path, run_command):
+    """Dispatch to open_directory or run_in_directory based on --run value.
+
+    Args:
+        path: Path string of the target directory.
+        run_command: Value of --run argument. None or empty string opens the
+            directory; a non-empty string runs that command in the directory.
+    """
+    if run_command is None or run_command == "":
+        open_directory(path)
+    else:
+        run_in_directory(path, run_command)
+
+
 def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex open``."""
     parser = ArgumentParser(
@@ -52,6 +77,14 @@ def _build_parser() -> ArgumentParser:
         action="store_true",
         help="Show topics from all projects (disables project filter)",
     )
+    parser.add_argument(
+        "--run",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="COMMAND",
+        help="Run a command in the topic directory instead of opening it",
+    )
     return parser
 
 
@@ -63,7 +96,7 @@ def main(argv=None):
 
     if topic:
         topic_dir = resolve_topic(topic, include_archives=args.archives)
-        open_directory(str(topic_dir))
+        _perform_action(str(topic_dir), args.run)
     else:
         selected = select_topic_interactive(
             include_archives=args.archives,
@@ -71,9 +104,9 @@ def main(argv=None):
             allow_empty=True,
         )
         if selected is None:
-            open_directory(get_spex_root())
+            _perform_action(get_spex_root(), args.run)
         else:
-            open_directory(str(selected))
+            _perform_action(str(selected), args.run)
 
 
 if __name__ == "__main__":
