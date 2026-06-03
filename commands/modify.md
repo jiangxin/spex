@@ -56,6 +56,24 @@ before rendering, so the prompt only includes completed step context.
 
 ### Phase 4: Modify spec.md
 
+Check if `$prompt` or the conversation context includes local image
+file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
+`.bmp`). If image files are found:
+
+1. Create the assets directory: `mkdir -p $topic_path/assets/`
+2. Copy each image file into `$topic_path/assets/`, keeping the original
+   filename.
+3. When updating `spec.md` below, reference the images using Markdown
+   syntax `![description](assets/filename.png)` in the appropriate
+   sections.
+4. After updating `spec.md`, register the images in `meta.json` by
+   running:
+
+   ```bash
+   $spex_skill_dir/scripts/spex create-helper add-images --topic $topic_name \
+     --images assets/file1.png assets/file2.png
+   ```
+
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
 according to the instructions rendered in the prompt.
 

@@ -95,6 +95,24 @@ Example JSON output:
 
 ### Phase 5: Design Specification
 
+Check if `$requirement` or the conversation context includes local image
+file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
+`.bmp`). If image files are found:
+
+1. Create the assets directory: `mkdir -p $topic_path/assets/`
+2. Copy each image file into `$topic_path/assets/`, keeping the original
+   filename.
+3. When writing `spec.md` below, reference the images using Markdown
+   syntax `![description](assets/filename.png)` in the appropriate
+   sections.
+4. After writing `spec.md`, register the images in `meta.json` by
+   running:
+
+   ```bash
+   $spex_skill_dir/scripts/spex create-helper add-images --topic $topic_name \
+     --images assets/file1.png assets/file2.png
+   ```
+
 Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
 data models, API contracts, error handling, and edge cases.

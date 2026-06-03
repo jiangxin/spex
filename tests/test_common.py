@@ -22,6 +22,7 @@ from common import (
     get_template,
     load_meta,
     local_iso_timestamp,
+    normalize_prompt_entry,
     parse_front_matter_description,
     resolve_topic_dir,
     wrap_text,
@@ -760,6 +761,23 @@ class TestWrapText:
         assert "x" * 80 in result
 
 
+class TestNormalizePromptEntry:
+    def test_string_input(self):
+        result = normalize_prompt_entry("fix the bug")
+        assert result == {"text": "fix the bug"}
+
+    def test_dict_input(self):
+        entry = {"text": "fix the bug", "timestamp": "2026-01-01T00:00:00+00:00"}
+        result = normalize_prompt_entry(entry)
+        assert result is entry
+        assert result == {"text": "fix the bug", "timestamp": "2026-01-01T00:00:00+00:00"}
+
+    def test_dict_without_timestamp(self):
+        entry = {"text": "hello"}
+        result = normalize_prompt_entry(entry)
+        assert result == {"text": "hello"}
+
+
 class TestTopicMeta:
     def test_topic_meta_defaults(self):
         m = TopicMeta()
@@ -915,12 +933,21 @@ class TestTopic:
         )
         assert t.created_at == "2026-01-01T00:00:00+00:00"
 
-    def test_delegated_prompt(self, tmp_path):
+    def test_delegated_prompt_old_format(self, tmp_path):
         t = Topic(
             name="t", path=tmp_path,
             meta=TopicMeta(prompts=["first", "second"]),
         )
         assert t.prompt == "first"
+
+    def test_delegated_prompt_new_format(self, tmp_path):
+        t = Topic(
+            name="t", path=tmp_path,
+            meta=TopicMeta(prompts=[
+                {"text": "structured prompt", "timestamp": "2026-01-01T00:00:00+00:00"},
+            ]),
+        )
+        assert t.prompt == "structured prompt"
 
     def test_delegated_prompt_empty(self, tmp_path):
         t = Topic(name="t", path=tmp_path, meta=TopicMeta())
