@@ -817,84 +817,6 @@ class TestApplyCommitUserIdentity:
         assert "-c user.name" not in rendered
 
 
-@pytest.mark.slow
-class TestLogPromptToMeta:
-    """Test _log_prompt_to_meta helper function."""
-
-    def test_log_prompt_creates_prompts_array(self, tmp_path):
-        """When meta.json has no prompts key, creates a new list."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
-
-        spex_root = repo / ".spex"
-        specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
-
-        meta_path = topic_dir / "meta.json"
-        meta_path.write_text(
-            json.dumps({"workdir": str(repo)}), encoding="utf-8"
-        )
-
-        from prompt import _log_prompt_to_meta
-
-        _log_prompt_to_meta(topic_dir, "Make the API faster")
-
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert "prompts" in data
-        assert len(data["prompts"]) == 1
-        assert data["prompts"][0]["text"] == "Make the API faster"
-        assert "timestamp" in data["prompts"][0]
-
-    def test_log_prompt_appends_to_existing(self, tmp_path):
-        """Appends to existing prompts array."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
-
-        spex_root = repo / ".spex"
-        specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
-
-        meta_path = topic_dir / "meta.json"
-        meta_path.write_text(
-            json.dumps({
-                "workdir": str(repo),
-                "prompts": [{"text": "First prompt", "timestamp": "2026-01-01"}],
-            }),
-            encoding="utf-8",
-        )
-
-        from prompt import _log_prompt_to_meta
-
-        _log_prompt_to_meta(topic_dir, "Second prompt")
-
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert len(data["prompts"]) == 2
-        assert data["prompts"][1]["text"] == "Second prompt"
-
-    def test_log_prompt_no_meta(self, tmp_path):
-        """When meta.json does not exist, creates it with prompts."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _init_git_repo(repo)
-
-        spex_root = repo / ".spex"
-        specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
-
-        from prompt import _log_prompt_to_meta
-
-        _log_prompt_to_meta(topic_dir, "Create meta from scratch")
-
-        meta_path = topic_dir / "meta.json"
-        assert meta_path.exists()
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert len(data["prompts"]) == 1
-        assert data["prompts"][0]["text"] == "Create meta from scratch"
 
 
 @pytest.mark.slow
@@ -937,10 +859,10 @@ class TestModifySpecTemplate:
         with pytest.raises(SystemExit):
             render_prompt("modify-spec", "test-topic")
 
-    def test_main_logs_prompt_to_meta_for_modify_spec(
+    def test_main_modify_spec_renders_with_stdin(
         self, tmp_path, monkeypatch, capsys
     ):
-        """main() calls _log_prompt_to_meta when using modify-spec with --stdin."""
+        """main() renders modify-spec template when using --stdin."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step"),
@@ -961,44 +883,6 @@ class TestModifySpecTemplate:
         captured = capsys.readouterr()
         assert "<user-request>" in captured.out
         assert "Refactor the auth module" in captured.out
-
-        # Verify meta.json was updated
-        meta_path = topic_dir / "meta.json"
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert "prompts" in data
-        assert len(data["prompts"]) == 1
-        assert data["prompts"][0]["text"] == "Refactor the auth module"
-
-    def test_main_no_prompt_context_does_not_log(self, tmp_path, monkeypatch, capsys):
-        """main() does not call _log_prompt_to_meta when prompt_context is absent."""
-        tasks = [
-            _make_task("step-1", name="First step", completed=True),
-        ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        meta_path = topic_dir / "meta.json"
-        # Pre-write meta with no prompts
-        meta_path.write_text(
-            json.dumps({"workdir": str(repo)}), encoding="utf-8"
-        )
-        monkeypatch.chdir(repo)
-
-        # Provide extra_vars via JSON stdin (no prompt_context key)
-        json_input = json.dumps({"spec_content": "Custom spec"})
-        monkeypatch.setattr(
-            "sys.argv",
-            ["prompt", "modify-spec", "--topic", "test-topic"],
-        )
-        monkeypatch.setattr("sys.stdin", io.StringIO(json_input))
-
-        from prompt import main
-
-        with pytest.raises(SystemExit):
-            # Fails because prompt_context is required but not provided
-            main()
-
-        # meta.json should NOT have prompts array
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert "prompts" not in data
 
 
 @pytest.mark.slow

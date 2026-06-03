@@ -17,7 +17,12 @@ import sys
 from dataclasses import fields
 
 from cli import ArgumentParser
-from common import TopicMeta, atomic_write_json, resolve_topic_dir
+from common import (
+    TopicMeta,
+    atomic_write_json,
+    normalize_prompt_entry,
+    resolve_topic_dir,
+)
 
 
 def _format_value(key, value, indent=""):
@@ -55,12 +60,36 @@ def _display_key(data, key):
         print(value)
 
 
-def _set_key(meta, key, value, meta_path):
+def _add_images_only(meta, images, meta_path):
+    """Append images to the last prompt entry (no new text)."""
+    if not isinstance(meta.prompts, list) or not meta.prompts:
+        print("Error: no prompt entries to attach images to.", file=sys.stderr)
+        sys.exit(1)
+
+    meta.prompts[-1] = normalize_prompt_entry(meta.prompts[-1])
+    last_entry = meta.prompts[-1]
+    existing = last_entry.get("images", [])
+    for img in images:
+        if img not in existing:
+            existing.append(img)
+    last_entry["images"] = existing
+
+    data = meta.to_dict()
+    atomic_write_json(meta_path, data)
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    print(content, end="")
+
+
+def _set_key(meta, key, value, meta_path, images=None):
     """Set a key in TopicMeta and write back."""
     if key == "prompts":
+        from common import local_iso_timestamp
         if not isinstance(meta.prompts, list):
             meta.prompts = []
-        meta.prompts.append(value)
+        entry = {"text": value, "timestamp": local_iso_timestamp()}
+        if images:
+            entry["images"] = list(images)
+        meta.prompts.append(entry)
     else:
         known = {f.name for f in fields(TopicMeta)} - {"extras"}
         if key in known:
@@ -102,6 +131,13 @@ def _build_parser() -> ArgumentParser:
         dest="stdin_flag",
         help="Read value from stdin instead of positional argument",
     )
+    parser.add_argument(
+        "--add-images",
+        nargs="+",
+        default=None,
+        metavar="IMAGE",
+        help="Add image paths to the prompt entry",
+    )
     return parser
 
 
@@ -113,6 +149,7 @@ def main(argv=None):
     key = args.key
     value = args.value
     stdin_flag = args.stdin_flag
+    add_images = args.add_images
 
     topic_dir = resolve_topic_dir(topic_name)
     meta_path = topic_dir / "meta.json"
@@ -132,10 +169,18 @@ def main(argv=None):
     if key is None:
         _display_all(meta.to_dict())
     elif value is not None:
-        _set_key(meta, key, value, meta_path)
+        if key == "prompts" and add_images:
+            _set_key(meta, key, value, meta_path, images=add_images)
+        else:
+            _set_key(meta, key, value, meta_path)
     elif stdin_flag:
         value = sys.stdin.read()
-        _set_key(meta, key, value, meta_path)
+        if key == "prompts" and add_images:
+            _set_key(meta, key, value, meta_path, images=add_images)
+        else:
+            _set_key(meta, key, value, meta_path)
+    elif key == "prompts" and add_images:
+        _add_images_only(meta, add_images, meta_path)
     else:
         _display_key(meta.to_dict(), key)
 
