@@ -13,7 +13,6 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    check_help_flag,
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
@@ -23,26 +22,6 @@ from common import (
     is_topic_completed,
 )
 from config import ProjectContext, get_project_context, set_spex_config_file
-
-USAGE = """\
-Usage: spex get-topic [--json] [--all] [--with-archives] [--must-done | --must-undone] [topic]
-       spex get-topic --spex-roots | --spex-toml | --spex-tomls
-
-Resolve a topic directory under specs.
-
-Options:
-  --json         Output in JSON format
-  --all          Show all topics (ignore workspace filter)
-  --with-archives
-                 Also search archives directory
-  --spex-config-file <path>
-                 Use specified config file (overrides SPEX_CONFIG_FILE env var)
-  --must-done    Only show completed topics
-  --must-undone  Only show topics with undone tasks
-  --spex-roots   Print all spex root directories (one per line)
-  --spex-toml    Print the highest-priority .spex.toml path
-  --spex-tomls   Print all discovered .spex.toml paths (one per line)
-  -h, --help     Show this help message and exit"""
 
 
 def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
@@ -197,24 +176,76 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
     return all_candidates
 
 
-def main(argv=None):
-    check_help_flag(USAGE, argv)
-    args = argv if argv is not None else sys.argv[1:]
-
-    # --- Introspection flags (handled early, before topic resolution) ---
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex get-topic``."""
     parser = ArgumentParser(
-        prog="spex get-topic", usage=USAGE, add_help=False,
+        prog="spex get-topic",
+        description="Resolve a topic directory under specs.",
+        allow_abbrev=False,
     )
-    parser.add_argument("--spex-config-file", default=None)
-    parser.add_argument("--spex-roots", action="store_true")
-    parser.add_argument("--spex-toml", action="store_true")
-    parser.add_argument("--spex-tomls", action="store_true")
-    parsed, remaining = parser.parse_known(args)
+    parser.add_argument(
+        "--spex-config-file",
+        default=None,
+        help="Use specified config file (overrides SPEX_CONFIG_FILE env var)",
+    )
+    parser.add_argument(
+        "--spex-roots",
+        action="store_true",
+        help="Print all spex root directories (one per line)",
+    )
+    parser.add_argument(
+        "--spex-toml",
+        action="store_true",
+        help="Print the highest-priority .spex.toml path",
+    )
+    parser.add_argument(
+        "--spex-tomls",
+        action="store_true",
+        help="Print all discovered .spex.toml paths (one per line)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output in JSON format",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Show all topics (ignore workspace filter)",
+    )
+    parser.add_argument(
+        "--with-archives",
+        action="store_true",
+        help="Also search archives directory",
+    )
+    exclusive = parser.add_mutually_exclusive_group()
+    exclusive.add_argument(
+        "--must-done",
+        action="store_true",
+        help="Only show completed topics",
+    )
+    exclusive.add_argument(
+        "--must-undone",
+        action="store_true",
+        help="Only show topics with undone tasks",
+    )
+    parser.add_argument(
+        "topic",
+        nargs="?",
+        default="",
+        help="Topic name or substring to match",
+    )
+    return parser
 
-    if parsed.spex_config_file:
-        set_spex_config_file(parsed.spex_config_file)
 
-    if parsed.spex_roots:
+def main(argv=None):
+    parser = _build_parser()
+    args = parser.parse(argv)
+
+    if args.spex_config_file:
+        set_spex_config_file(args.spex_config_file)
+
+    if args.spex_roots:
         roots = get_spex_roots()
         if not roots:
             sys.exit(1)
@@ -222,14 +253,14 @@ def main(argv=None):
             print(p)
         return
 
-    if parsed.spex_toml:
+    if args.spex_toml:
         tomls = get_spex_tomls()
         if not tomls:
             sys.exit(1)
         print(tomls[0])
         return
 
-    if parsed.spex_tomls:
+    if args.spex_tomls:
         tomls = get_spex_tomls()
         if not tomls:
             sys.exit(1)
@@ -237,33 +268,9 @@ def main(argv=None):
             print(p)
         return
 
-    # --- Normal topic resolution ---
-    args = remaining
-    json_mode = "--json" in args
-    if json_mode:
-        args = [a for a in args if a != "--json"]
+    topic_name = args.topic
 
-    all_flag = "--all" in args
-    if all_flag:
-        args = [a for a in args if a != "--all"]
-
-    must_done_flag = "--must-done" in args
-    must_undone_flag = "--must-undone" in args
-    if must_done_flag and must_undone_flag:
-        print(
-            "Error: --must-done and --must-undone are mutually exclusive.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    args = [a for a in args if a not in ("--must-done", "--must-undone")]
-
-    with_archives_flag = "--with-archives" in args
-    if with_archives_flag:
-        args = [a for a in args if a != "--with-archives"]
-
-    topic_name = args[0] if args else ""
-
-    if all_flag and topic_name:
+    if getattr(args, "all") and topic_name:
         print(
             "Error: --all cannot be used with a topic name.",
             file=sys.stderr,
@@ -274,22 +281,22 @@ def main(argv=None):
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
-    if with_archives_flag:
+    if args.with_archives:
         archives_dir = get_archives_dir(workdir)
         if archives_dir.is_dir():
             search_dirs.append(archives_dir)
 
     # Determine workspace filter
-    if topic_name or all_flag:
+    if topic_name or getattr(args, "all"):
         filter_ctx = None
     else:
         filter_ctx = ctx
 
     results = resolve_topic(
         topic_name, search_dirs, ctx=filter_ctx,
-        must_done=must_done_flag, must_undone=must_undone_flag,
+        must_done=args.must_done, must_undone=args.must_undone,
     )
-    if json_mode:
+    if args.json:
         items = [
             {"topic_name": name, "topic_path": str(parent_dir / name)}
             for name, parent_dir in results
