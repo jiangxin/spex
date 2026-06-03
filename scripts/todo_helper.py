@@ -21,30 +21,6 @@ from common import (
     validate_unique_ids,
 )
 
-USAGE = """\
-Usage: spex todo-helper [--topic <name> | --todo-file <path>] [--xml] \
-<subcmd>
-
-Operate on todo files (validate, append, edit, remove, show).
-
-Global options:
-  --topic <name>    Resolve topic dir, use <topic_dir>/todo.json (or .xml)
-  --todo-file <path>  Direct path to todo file
-  --xml             Force XML format
-
-Subcommands:
-  validate          Validate todo file format and check duplicate IDs
-  append            Append a new entry
-  edit              Edit an existing entry by ID
-  remove            Remove an entry by ID
-  show              Display entries with filtering and format options
-  xml2json          Convert XML todo file to JSON format
-  json2xml          Convert JSON todo file to XML format
-
-Options:
-  -h, --help        Show this help message and exit
-"""
-
 REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 
 
@@ -190,26 +166,8 @@ def cmd_validate(todo_path, is_xml):
     print("OK")
 
 
-def cmd_append(todo_path, is_xml, argv):
+def cmd_append(todo_path, is_xml, args):
     """Append a new entry to the todo file."""
-    parser = ArgumentParser(
-        prog="spex todo-helper append",
-        description="Append a new entry to the todo file.",
-    )
-    parser.add_argument("--id", required=True, help="Task ID")
-    parser.add_argument("--name", required=True, help="Task name")
-    parser.add_argument("--details", default=None,
-                        help="Task details text")
-    parser.add_argument(
-        "--details-from-stdin", action="store_true",
-        help="Read details from stdin",
-    )
-    parser.add_argument("--completed_at", default="",
-                        help="Completion timestamp (or 'now')")
-    parser.add_argument("--commit_title", default="",
-                        help="Commit title for the task")
-    args = parser.parse(argv)
-
     if args.details_from_stdin:
         details = sys.stdin.read()
     elif args.details is not None:
@@ -243,26 +201,8 @@ def cmd_append(todo_path, is_xml, argv):
     print(f"Appended '{args.id}'.")
 
 
-def cmd_edit(todo_path, is_xml, argv):
+def cmd_edit(todo_path, is_xml, args):
     """Edit an existing entry by ID."""
-    parser = ArgumentParser(
-        prog="spex todo-helper edit",
-        description="Edit an existing entry by ID.",
-    )
-    parser.add_argument("--id", required=True, help="Task ID to edit")
-    parser.add_argument("--name", default=None, help="New task name")
-    parser.add_argument("--details", default=None,
-                        help="New details text")
-    parser.add_argument(
-        "--details-from-stdin", action="store_true",
-        help="Read details from stdin",
-    )
-    parser.add_argument("--completed_at", default=None,
-                        help="Completion timestamp (or 'now')")
-    parser.add_argument("--commit_title", default=None,
-                        help="Commit title for the task")
-    args = parser.parse(argv)
-
     details = args.details
     if args.details_from_stdin:
         details = sys.stdin.read()
@@ -297,15 +237,8 @@ def cmd_edit(todo_path, is_xml, argv):
     print(f"Updated '{args.id}'.")
 
 
-def cmd_remove(todo_path, is_xml, argv):
+def cmd_remove(todo_path, is_xml, args):
     """Remove an entry by ID."""
-    parser = ArgumentParser(
-        prog="spex todo-helper remove",
-        description="Remove an entry by ID.",
-    )
-    parser.add_argument("--id", required=True, help="Task ID to remove")
-    args = parser.parse(argv)
-
     data = load_todo_file(todo_path, is_xml)
 
     new_data = [
@@ -404,32 +337,8 @@ def _format_markdown(data, width=0):
     return "\n".join(lines)
 
 
-def cmd_show(todo_path, is_xml, argv):
+def cmd_show(todo_path, is_xml, args):
     """Display entries with optional filtering and format."""
-    parser = ArgumentParser(
-        prog="spex todo-helper show",
-        description="Display entries with filtering and format options.",
-    )
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--done", action="store_true",
-                       help="Show only completed entries")
-    group.add_argument("--undone", action="store_true",
-                       help="Show only incomplete entries")
-    parser.add_argument(
-        "--format", dest="fmt", choices=["json", "markdown"],
-        default="json", help="Output format (default: json)",
-    )
-    wrap_group = parser.add_mutually_exclusive_group()
-    wrap_group.add_argument(
-        "--wrap", action="store_true", default=False,
-        help="Wrap long lines at 80 columns",
-    )
-    wrap_group.add_argument(
-        "--no-wrap", dest="wrap", action="store_false",
-        help="Do not wrap lines (default)",
-    )
-    args = parser.parse(argv)
-
     data = load_todo_file(todo_path, is_xml)
 
     if args.done:
@@ -449,16 +358,8 @@ def cmd_show(todo_path, is_xml, argv):
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def cmd_xml2json(todo_path, is_xml, argv):
+def cmd_xml2json(todo_path, is_xml, args):
     """Convert an XML todo file to JSON format."""
-    parser = ArgumentParser(
-        prog="spex todo-helper xml2json",
-        description="Convert an XML todo file to JSON format.",
-    )
-    parser.add_argument("--rm", action="store_true",
-                        help="Remove the source XML file after conversion")
-    args = parser.parse(argv)
-
     data = load_todo_xml(todo_path)
     output_path = todo_path.with_suffix(".json")
     atomic_write_json(output_path, data)
@@ -467,16 +368,8 @@ def cmd_xml2json(todo_path, is_xml, argv):
     print(f"Converted {todo_path} -> {output_path}")
 
 
-def cmd_json2xml(todo_path, is_xml, argv):
+def cmd_json2xml(todo_path, is_xml, args):
     """Convert a JSON todo file to XML format."""
-    parser = ArgumentParser(
-        prog="spex todo-helper json2xml",
-        description="Convert a JSON todo file to XML format.",
-    )
-    parser.add_argument("--rm", action="store_true",
-                        help="Remove the source JSON file after conversion")
-    args = parser.parse(argv)
-
     data = load_todo_json(todo_path)
     output_path = todo_path.with_suffix(".xml")
     write_todo_xml(output_path, data)
@@ -508,61 +401,174 @@ def _resolve_todo_path(args):
     return (topic_dir / filename, is_xml)
 
 
-def main(argv=None):
-    """Parse global args, resolve todo path, route to subcommand."""
-    if argv is None:
-        argv = sys.argv[1:]
-
-    # Show top-level help only when no subcommand is present.
-    # Subcommand handlers have their own check_help_flag calls.
-    subcmds = {
-        "validate", "append", "edit", "remove",
-        "show", "xml2json", "json2xml",
-    }
-    if not subcmds.intersection(argv) and (
-        not argv or {"-h", "--help"}.intersection(argv)
-    ):
-        print(USAGE, end="")
-        sys.exit(0)
-
+def _build_parser():
+    """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
-        prog="spex todo-helper", usage=USAGE, add_help=False,
+        prog="spex todo-helper",
+        description=(
+            "Operate on todo files"
+            " (validate, append, edit, remove, show)."
+        ),
     )
     locator = parser.add_mutually_exclusive_group()
-    locator.add_argument("--topic",
-                         help="Resolve topic dir for todo file")
-    locator.add_argument("--todo-file",
-                         help="Direct path to todo file")
-    parser.add_argument("--xml", action="store_true",
-                        help="Force XML format")
-    parser.add_argument("subcmd", choices=[
-        "validate", "append", "edit", "remove",
-        "show", "xml2json", "json2xml",
-    ], help="Subcommand to run")
-    args, rest = parser.parse_known(argv)
+    locator.add_argument(
+        "--topic", help="Resolve topic dir for todo file",
+    )
+    locator.add_argument(
+        "--todo-file", help="Direct path to todo file",
+    )
+    parser.add_argument(
+        "--xml", action="store_true", help="Force XML format",
+    )
 
-    if {"-h", "--help"}.intersection(rest):
-        if args.subcmd == "validate":
-            print("Usage: spex todo-helper ... validate\n\n"
-                  "Validate todo file format and check for duplicate IDs.")
-            sys.exit(0)
-        elif args.subcmd == "append":
-            cmd_append(None, False, rest)
-        elif args.subcmd == "edit":
-            cmd_edit(None, False, rest)
-        elif args.subcmd == "remove":
-            cmd_remove(None, False, rest)
-        elif args.subcmd == "show":
-            cmd_show(None, False, rest)
-        elif args.subcmd == "xml2json":
-            cmd_xml2json(None, False, rest)
-        elif args.subcmd == "json2xml":
-            cmd_json2xml(None, False, rest)
-        return
+    subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
+
+    # validate
+    subs.add_parser(
+        "validate",
+        description=(
+            "Validate todo file format and check"
+            " for duplicate IDs."
+        ),
+        help="Validate todo file format and check duplicate IDs",
+    )
+
+    # append
+    p_append = subs.add_parser(
+        "append",
+        description="Append a new entry to the todo file.",
+        help="Append a new entry",
+    )
+    p_append.add_argument(
+        "--id", required=True, help="Task ID",
+    )
+    p_append.add_argument(
+        "--name", required=True, help="Task name",
+    )
+    p_append.add_argument(
+        "--details", default=None, help="Task details text",
+    )
+    p_append.add_argument(
+        "--details-from-stdin", action="store_true",
+        help="Read details from stdin",
+    )
+    p_append.add_argument(
+        "--completed_at", default="",
+        help="Completion timestamp (or 'now')",
+    )
+    p_append.add_argument(
+        "--commit_title", default="",
+        help="Commit title for the task",
+    )
+
+    # edit
+    p_edit = subs.add_parser(
+        "edit",
+        description="Edit an existing entry by ID.",
+        help="Edit an existing entry by ID",
+    )
+    p_edit.add_argument(
+        "--id", required=True, help="Task ID to edit",
+    )
+    p_edit.add_argument(
+        "--name", default=None, help="New task name",
+    )
+    p_edit.add_argument(
+        "--details", default=None, help="New details text",
+    )
+    p_edit.add_argument(
+        "--details-from-stdin", action="store_true",
+        help="Read details from stdin",
+    )
+    p_edit.add_argument(
+        "--completed_at", default=None,
+        help="Completion timestamp (or 'now')",
+    )
+    p_edit.add_argument(
+        "--commit_title", default=None,
+        help="Commit title for the task",
+    )
+
+    # remove
+    p_remove = subs.add_parser(
+        "remove",
+        description="Remove an entry by ID.",
+        help="Remove an entry by ID",
+    )
+    p_remove.add_argument(
+        "--id", required=True, help="Task ID to remove",
+    )
+
+    # show
+    p_show = subs.add_parser(
+        "show",
+        description=(
+            "Display entries with filtering and format options."
+        ),
+        help="Display entries with filtering and format options",
+    )
+    show_filter = p_show.add_mutually_exclusive_group()
+    show_filter.add_argument(
+        "--done", action="store_true",
+        help="Show only completed entries",
+    )
+    show_filter.add_argument(
+        "--undone", action="store_true",
+        help="Show only incomplete entries",
+    )
+    p_show.add_argument(
+        "--format", dest="fmt",
+        choices=["json", "markdown"], default="json",
+        help="Output format (default: json)",
+    )
+    wrap_group = p_show.add_mutually_exclusive_group()
+    wrap_group.add_argument(
+        "--wrap", action="store_true", default=False,
+        help="Wrap long lines at 80 columns",
+    )
+    wrap_group.add_argument(
+        "--no-wrap", dest="wrap", action="store_false",
+        help="Do not wrap lines (default)",
+    )
+
+    # xml2json
+    p_xml2json = subs.add_parser(
+        "xml2json",
+        description="Convert an XML todo file to JSON format.",
+        help="Convert XML todo file to JSON format",
+    )
+    p_xml2json.add_argument(
+        "--rm", action="store_true",
+        help="Remove the source XML file after conversion",
+    )
+
+    # json2xml
+    p_json2xml = subs.add_parser(
+        "json2xml",
+        description="Convert a JSON todo file to XML format.",
+        help="Convert JSON todo file to XML format",
+    )
+    p_json2xml.add_argument(
+        "--rm", action="store_true",
+        help="Remove the source JSON file after conversion",
+    )
+
+    return parser
+
+
+def main(argv=None):
+    """Parse args, resolve todo path, route to subcommand."""
+    parser = _build_parser()
+    args = parser.parse(argv)
+
+    if not args.subcmd:
+        parser.print_help()
+        sys.exit(0)
 
     if not args.topic and not args.todo_file:
         print(
-            "Error: one of the arguments --topic --todo-file is required.",
+            "Error: one of the arguments --topic"
+            " --todo-file is required.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -572,17 +578,17 @@ def main(argv=None):
     if args.subcmd == "validate":
         cmd_validate(todo_path, is_xml)
     elif args.subcmd == "append":
-        cmd_append(todo_path, is_xml, rest)
+        cmd_append(todo_path, is_xml, args)
     elif args.subcmd == "edit":
-        cmd_edit(todo_path, is_xml, rest)
+        cmd_edit(todo_path, is_xml, args)
     elif args.subcmd == "remove":
-        cmd_remove(todo_path, is_xml, rest)
+        cmd_remove(todo_path, is_xml, args)
     elif args.subcmd == "show":
-        cmd_show(todo_path, is_xml, rest)
+        cmd_show(todo_path, is_xml, args)
     elif args.subcmd == "xml2json":
-        cmd_xml2json(todo_path, is_xml, rest)
+        cmd_xml2json(todo_path, is_xml, args)
     elif args.subcmd == "json2xml":
-        cmd_json2xml(todo_path, is_xml, rest)
+        cmd_json2xml(todo_path, is_xml, args)
 
 
 if __name__ == "__main__":
