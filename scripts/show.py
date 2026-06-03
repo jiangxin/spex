@@ -116,27 +116,27 @@ def _prompt_selection(dirs):
 
 
 def _resolve_topic(name, include_archives=False):
-    """Resolve a topic name to its directory, with optional archive fallback.
+    """Resolve a topic name to its directory, with optional archive search.
 
-    Searches specs_dir first. If no matches are found, or if
-    include_archives is True, also searches archives_dir and merges
-    results (deduplicated).
+    Searches specs_dir first. When include_archives is True, also
+    searches archives_dir and merges results (deduplicated).  When
+    include_archives is False and no match is found, suggests retrying
+    with --archives.
 
     Args:
         name: Topic name or substring to match.
-        include_archives: If True, always include archives in search.
+        include_archives: If True, search both specs and archives.
 
     Returns:
         Path to the resolved topic directory.
     """
     specs_dir = get_specs_dir()
-    archives_dir = get_archives_dir()
 
     matches = find_matching_topics(name, specs_dir)
 
-    if not matches or include_archives:
+    if include_archives:
+        archives_dir = get_archives_dir()
         archive_matches = find_matching_topics(name, archives_dir)
-        # Deduplicate by resolved path
         seen = {m.resolve() for m in matches}
         for m in archive_matches:
             if m.resolve() not in seen:
@@ -145,6 +145,9 @@ def _resolve_topic(name, include_archives=False):
 
     if not matches:
         print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
+        if not include_archives:
+            print("Hint: try --archives to search archived topics.",
+                  file=sys.stderr)
         sys.exit(1)
 
     if len(matches) == 1:
