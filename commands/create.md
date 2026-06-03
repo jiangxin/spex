@@ -125,8 +125,8 @@ file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
 3. When writing `spec.md` below, reference the images using Markdown
    syntax `![description](assets/filename.png)` in the appropriate
    sections.
-4. After writing `spec.md`, register the images in `meta.json` by
-   running:
+4. After writing `spec.md`, register the images in `meta.json`
+   (example):
 
    ```bash
    $spex_skill_dir/scripts/spex meta $topic_name prompts \

@@ -6,7 +6,7 @@ development plan.
 ## Usage
 
 ```text
-/spex modify [topic_name] [prompt]
+/spex modify [topic_name] [request]
 ```
 
 ## Procedure
@@ -32,9 +32,9 @@ Read the command output and parse it as a JSON array:
 
 ### Phase 2: Understand Context and Clarify
 
-If `$prompt` is not provided or empty, ask the user to describe what
+If `$request` is not provided or empty, ask the user to describe what
 changes they want to make to the spec. The user's full input becomes
-`$prompt`.
+`$request`.
 
 Read the current specification at `$topic_path/spec.md` to understand
 the existing requirements and design. Then explore the workspace **only
@@ -42,7 +42,7 @@ enough to understand where the relevant code lives and what existing
 patterns are referenced in the spec**. Do NOT dig into full
 implementation details or start modifying any files.
 
-The user's `$prompt` is a modification or addition to the existing
+The user's `$request` is a modification or addition to the existing
 specification. Evaluate whether it is clear enough to proceed:
 
 **When to clarify** — ask the user if any of these apply:
@@ -68,21 +68,41 @@ be thorough; only ask when the answer would materially change the spec.
 - Limit to 2–3 questions maximum. Prioritize the questions whose answers
   most affect the design.
 
-After clarification (or if none was needed), the finalized `$prompt`
+After clarification (or if none was needed), the finalized `$request`
 becomes the modification request.
 
-### Phase 3: Build Prompt
+### Phase 3: Save Request
+
+Record the modification request in `meta.json`:
+
+```bash
+$spex_skill_dir/scripts/spex meta $topic_name prompts "$request"
+```
+
+Check if `$request` or the conversation context includes local image
+file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
+`.bmp`). If image files are found:
+
+1. Create the assets directory: `mkdir -p $topic_path/assets/`
+2. Copy each image file into `$topic_path/assets/`, keeping the original
+   filename.
+3. Register the images in `meta.json` (example):
+
+   ```bash
+   $spex_skill_dir/scripts/spex meta $topic_name prompts \
+     --add-images assets/file1.png assets/file2.png
+   ```
+
+4. When updating `spec.md` in Phase 5, reference the images using
+   Markdown syntax `![description](assets/filename.png)` in the
+   appropriate sections.
+
+### Phase 4: Build Prompt
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex meta $topic_name prompts "$prompt"
-```
-
-Then run:
-
-```bash
-echo "$prompt" | $spex_skill_dir/scripts/spex prompt modify-spec \
+echo "$request" | $spex_skill_dir/scripts/spex prompt modify-spec \
   --json --topic $topic_name --stdin --remove-undone
 ```
 
@@ -95,30 +115,12 @@ Parse the JSON output from stdout:
 The `--remove-undone` flag removes incomplete steps from `todo.json`
 before rendering, so the prompt only includes completed step context.
 
-### Phase 4: Modify spec.md
-
-Check if `$prompt` or the conversation context includes local image
-file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
-`.bmp`). If image files are found:
-
-1. Create the assets directory: `mkdir -p $topic_path/assets/`
-2. Copy each image file into `$topic_path/assets/`, keeping the original
-   filename.
-3. When updating `spec.md` below, reference the images using Markdown
-   syntax `![description](assets/filename.png)` in the appropriate
-   sections.
-4. After updating `spec.md`, register the images in `meta.json` by
-   running:
-
-   ```bash
-   $spex_skill_dir/scripts/spex meta $topic_name prompts \
-     --add-images assets/file1.png assets/file2.png
-   ```
+### Phase 5: Modify spec.md
 
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
 according to the instructions rendered in the prompt.
 
-### Phase 5: Build Todo Prompt
+### Phase 6: Build Todo Prompt
 
 Run:
 
@@ -132,13 +134,14 @@ Parse the JSON output from stdout:
   message and stop.
 - Otherwise, save `$todo_prompt` from the `"prompt"` field.
 
-### Phase 6: Regenerate Development Steps
+### Phase 7: Regenerate Development Steps
 
-Using `$todo_prompt` as the prompt, add new development steps to
-`todo.json` via `spex todo-helper` commands (`append`, `edit`, `remove`,
-`show`) as described in the rendered prompt.
+Using `$todo_prompt` as the prompt, follow its instructions to design
+and add new development steps to `todo.json` via `spex todo-helper`.
+The prompt already contains the command syntax, planning principles,
+and step numbering rules.
 
-### Phase 7: Post-Action
+### Phase 8: Post-Action
 
 Run:
 
@@ -149,7 +152,7 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 
 If the script exits with an error, report the error and stop.
 
-### Phase 8: Output
+### Phase 9: Output
 
 Display the following summary to the user:
 
@@ -161,7 +164,7 @@ Display the following summary to the user:
 - Meta: `$topic_path/meta.json`
 ```
 
-### Phase 9: STOP — Do NOT Implement
+### Phase 10: STOP — Do NOT Implement
 
 **This is a hard stop. Do NOT write any application code, modify any
 project files, or begin implementing the updated plan.**
