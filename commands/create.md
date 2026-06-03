@@ -41,9 +41,11 @@ If `$input` is not provided or empty, ask the user to describe the requirement.
 
 Once you have `$input`, explore the workspace **only enough to understand
 where the relevant code lives and what existing patterns to reference in the
-spec**. You only need enough context to generate the spec — do NOT dig into
-full implementation details or start modifying any files (those are handled
-by `/spex apply`).
+spec**. Limit exploration to identifying: (1) relevant source files and
+their location, (2) existing patterns or conventions the spec should
+reference, (3) dependencies the requirement touches. Do NOT read full
+file contents unless necessary for the spec, dig into implementation
+details, or start modifying any files (those are handled by `/spex apply`).
 
 **When to clarify** — ask the user if any of these apply:
 
@@ -87,7 +89,9 @@ Parse this JSON and save the values as `$topic` and `$description`.
 Run:
 
 ```bash
-echo "$requirement" | $spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --topic $topic
+$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --topic $topic <<'EOF'
+$requirement
+EOF
 ```
 
 The script creates the topic directory and `meta.json` (with the

@@ -11,6 +11,14 @@ development plan.
 
 ## Procedure
 
+- **Role**: Act as a senior software architect. Focus on incremental
+  specification evolution while preserving completed work.
+
+**SCOPE: This command updates spec documents only — `spec.md`,
+`todo.json`, `meta.json` inside the topic directory. NO application
+code is written. NO existing project files are modified.
+Implementation is handled by `/spex apply` or `/spex apply-one-step`.**
+
 Follow these steps in order. Do not skip or reorder.
 
 ### Phase 1: Resolve Topic
@@ -65,7 +73,7 @@ be thorough; only ask when the answer would materially change the spec.
 
 - Ask all clarification questions at once in a single message (not one
   by one in a back-and-forth).
-- Limit to 2–3 questions maximum. Prioritize the questions whose answers
+- Limit to 2–4 questions maximum. Prioritize the questions whose answers
   most affect the design.
 
 After clarification (or if none was needed), the finalized `$request`
@@ -76,7 +84,9 @@ becomes the modification request.
 Record the modification request in `meta.json`:
 
 ```bash
-$spex_skill_dir/scripts/spex meta $topic_name prompts "$request"
+$spex_skill_dir/scripts/spex meta $topic_name prompts --stdin <<'EOF'
+$request
+EOF
 ```
 
 Check if `$request` or the conversation context includes local image
@@ -102,8 +112,10 @@ file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
 Run:
 
 ```bash
-echo "$request" | $spex_skill_dir/scripts/spex prompt modify-spec \
-  --json --topic $topic_name --stdin --remove-undone
+$spex_skill_dir/scripts/spex prompt modify-spec \
+  --json --topic $topic_name --stdin --remove-undone <<'EOF'
+$request
+EOF
 ```
 
 Parse the JSON output from stdout:
@@ -119,6 +131,9 @@ before rendering, so the prompt only includes completed step context.
 
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
 according to the instructions rendered in the prompt.
+
+Before writing, review the current codebase structure to ensure the
+updated design integrates properly with existing code.
 
 ### Phase 6: Build Todo Prompt
 
