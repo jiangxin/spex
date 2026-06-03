@@ -117,8 +117,9 @@ def _build_submit_parser() -> ArgumentParser:
         description="Submit (merge) a spex branch back to the target branch.",
     )
     parser.add_argument(
-        "--topic",
-        required=True,
+        "topic",
+        nargs="?",
+        default="",
         help="Topic name to submit",
     )
     parser.add_argument(
@@ -138,9 +139,26 @@ def cli_submit(argv=None) -> None:
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
     topic_name = parsed.topic
+
+    if not topic_name:
+        print("Error: topic argument is required", file=sys.stderr)
+        sys.exit(1)
+
     ctx = cfg.get_project_context()
     conf = ctx.config
-    topic_dir = common.resolve_topic_dir(topic_name)
+    specs_dir = common.get_specs_dir(
+        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+    topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
+
+    if not ctx.is_related_to(topic_dir):
+        meta = common.load_meta(topic_dir)
+        workdir = meta.workdir if meta else "(unknown)"
+        print(
+            f"Error: topic '{topic_name}' is not related to current project, "
+            f"it is associated with {workdir}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     meta = common.load_meta(topic_dir)
     source = meta.spex_branch if meta else ""
     target = (meta.branch or "main") if meta else "main"
