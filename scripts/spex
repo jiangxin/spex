@@ -218,12 +218,13 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge --topic <name>
+Usage: spex merge --topic <name> [--no-archive]
 
 Merge a spex branch back to target.
 
 Options:
   --topic <name>  Topic name (required)
+  --no-archive    Skip automatic archiving after successful merge
   -h, --help      Show this help message and exit
 """
 
@@ -234,13 +235,17 @@ def _run_merge(argv=None):
 
     parser = ArgumentParser(prog="spex merge", usage=_MERGE_USAGE)
     parser.add_argument("--topic")
+    parser.add_argument("--no-archive", action="store_true")
     args = parser.parse(argv)
 
     if not args.topic:
         print("Error: --topic is required", file=sys.stderr)
         sys.exit(1)
 
-    branch.cli_submit(["--topic", args.topic])
+    submit_args = ["--topic", args.topic]
+    if args.no_archive:
+        submit_args.append("--no-archive")
+    branch.cli_submit(submit_args)
 
 
 def _run_todo_helper(argv=None):

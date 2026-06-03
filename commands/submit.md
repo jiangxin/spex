@@ -49,18 +49,7 @@ Parse the JSON output:
 - If `errors` is non-empty, report the errors to the user and stop.
 - Otherwise, note the `action`, `source`, and `target` fields.
 
-### Phase 4: Archive
-
-Run:
-
-```bash
-$spex_skill_dir/scripts/spex archive --force --topic $topic_name
-```
-
-Display the output to the user. If the command fails, report
-the error but do not stop — the merge was already successful.
-
-### Phase 5: Output
+### Phase 4: Output
 
 Display the following summary to the user:
 
@@ -70,8 +59,11 @@ Display the following summary to the user:
 - Action: $action
 - Source branch: $source
 - Target branch: $target
-- Archived: yes
+- Archived: $archived
 ```
+
+Where `$archived` is `yes` if the JSON response has `"archived": true`,
+or `no` if `"archived": false`.
 
 **STOP.** The submit is complete. Do NOT start implementing any
 further changes.
