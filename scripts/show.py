@@ -10,11 +10,9 @@ import sys
 from cli import ArgumentParser
 from common import (
     Topic,
-    find_matching_topics,
     format_topic,
-    gather_topics,
-    get_archives_dir,
-    get_specs_dir,
+    resolve_topic,
+    select_topic_interactive,
     strip_front_matter,
 )
 
@@ -78,117 +76,6 @@ def _format_verbose(topic_dir):
     return "\n".join(parts).rstrip()
 
 
-def _prompt_selection(topics, show_repo=False):
-    """Show a numbered list of topics and prompt user to choose one.
-
-    Args:
-        topics: List of Topic objects (must be non-empty).
-        show_repo: If True, display repository labels.
-
-    Returns:
-        The selected Topic object.
-    """
-    display = topics[:10]
-    for i, topic in enumerate(display, 1):
-        label = format_topic(topic, show_repo=show_repo)
-        print(f"  [{i}] {label}", file=sys.stderr)
-    if len(topics) > 10:
-        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
-
-    try:
-        sys.stderr.write("Enter number to show: ")
-        sys.stderr.flush()
-        choice = sys.stdin.readline().strip()
-    except (EOFError, KeyboardInterrupt):
-        sys.exit(1)
-    if not choice:
-        sys.exit(1)
-
-    try:
-        idx = int(choice) - 1
-    except ValueError:
-        print(f"Error: invalid number '{choice}'", file=sys.stderr)
-        sys.exit(1)
-    if idx < 0 or idx >= len(display):
-        print(f"Error: number out of range (1-{len(display)})", file=sys.stderr)
-        sys.exit(1)
-
-    return display[idx]
-
-
-def _resolve_topic(name, include_archives=False):
-    """Resolve a topic name to its directory, with optional archive search.
-
-    Searches specs_dir first. When include_archives is True, also
-    searches archives_dir and merges results (deduplicated).  When
-    include_archives is False and no match is found, suggests retrying
-    with --archives.
-
-    Args:
-        name: Topic name or substring to match.
-        include_archives: If True, search both specs and archives.
-
-    Returns:
-        Path to the resolved topic directory.
-    """
-    specs_dir = get_specs_dir()
-
-    matches = find_matching_topics(name, specs_dir)
-
-    if include_archives:
-        archives_dir = get_archives_dir()
-        archive_matches = find_matching_topics(name, archives_dir)
-        seen = {m.resolve() for m in matches}
-        for m in archive_matches:
-            if m.resolve() not in seen:
-                matches.append(m)
-                seen.add(m.resolve())
-
-    if not matches:
-        print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
-        if not include_archives:
-            print("Hint: try --archives to search archived topics.",
-                  file=sys.stderr)
-        sys.exit(1)
-
-    if len(matches) == 1:
-        return matches[0]
-
-    topics = sorted(
-        [t for t in (Topic.from_dir(m) for m in matches) if t],
-        key=lambda t: t.name, reverse=True,
-    )
-    if not topics:
-        print(f"Error: no loadable topic matching '{name}'.", file=sys.stderr)
-        sys.exit(1)
-
-    selected = _prompt_selection(topics)
-    return selected.path
-
-
-def _select_topic_interactive(include_archives=False, all_projects=False):
-    """List topics and prompt user to select one.
-
-    Args:
-        include_archives: If True, include archived topics.
-        all_projects: If True, skip is_related_to filtering.
-    """
-    topics, show_repo = gather_topics(
-        include_archives=include_archives,
-        all_projects=all_projects,
-    )
-
-    topics.sort(key=lambda t: t.name, reverse=True)
-
-    if not topics:
-        print("Error: no topics found.", file=sys.stderr)
-        sys.exit(1)
-    if len(topics) == 1:
-        return topics[0].path
-
-    selected = _prompt_selection(topics, show_repo=show_repo)
-    return selected.path
-
 
 def main(argv=None):
     parser = ArgumentParser(
@@ -212,9 +99,9 @@ def main(argv=None):
     args = parser.parse(argv)
 
     if args.topic:
-        topic_dir = _resolve_topic(args.topic, include_archives=args.archives)
+        topic_dir = resolve_topic(args.topic, include_archives=args.archives)
     else:
-        topic_dir = _select_topic_interactive(
+        topic_dir = select_topic_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
         )

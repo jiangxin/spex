@@ -898,6 +898,130 @@ def gather_topics(
     return topics, show_repo
 
 
+def prompt_selection(topics, show_repo=False, allow_empty=False):
+    """Show a numbered list of topics and prompt user to choose one.
+
+    Args:
+        topics: List of Topic objects or Path objects (must be non-empty).
+        show_repo: If True, display repository labels.
+        allow_empty: If True, empty input returns None instead of exiting.
+
+    Returns:
+        The selected item, or None if allow_empty and user enters nothing.
+    """
+    display = topics[:10]
+    for i, topic in enumerate(display, 1):
+        label = format_topic(topic, show_repo=show_repo)
+        print(f"  [{i}] {label}", file=sys.stderr)
+    if len(topics) > 10:
+        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
+
+    try:
+        sys.stderr.write("Enter number to show: ")
+        sys.stderr.flush()
+        choice = sys.stdin.readline().strip()
+    except (EOFError, KeyboardInterrupt):
+        sys.exit(1)
+    if not choice:
+        if allow_empty:
+            return None
+        sys.exit(1)
+
+    try:
+        idx = int(choice) - 1
+    except ValueError:
+        print(f"Error: invalid number '{choice}'", file=sys.stderr)
+        sys.exit(1)
+    if idx < 0 or idx >= len(display):
+        print(f"Error: number out of range (1-{len(display)})", file=sys.stderr)
+        sys.exit(1)
+
+    return display[idx]
+
+
+def resolve_topic(name, include_archives=False):
+    """Resolve a topic name to its directory, with optional archive search.
+
+    Searches specs_dir first. When include_archives is True, also
+    searches archives_dir and merges results (deduplicated).  When
+    include_archives is False and no match is found, suggests retrying
+    with --archives.
+
+    Args:
+        name: Topic name or substring to match.
+        include_archives: If True, search both specs and archives.
+
+    Returns:
+        Path to the resolved topic directory.
+    """
+    specs_dir = get_specs_dir()
+
+    matches = find_matching_topics(name, specs_dir)
+
+    if include_archives:
+        archives_dir = get_archives_dir()
+        archive_matches = find_matching_topics(name, archives_dir)
+        seen = {m.resolve() for m in matches}
+        for m in archive_matches:
+            if m.resolve() not in seen:
+                matches.append(m)
+                seen.add(m.resolve())
+
+    if not matches:
+        print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
+        if not include_archives:
+            print("Hint: try --archives to search archived topics.",
+                  file=sys.stderr)
+        sys.exit(1)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    topics = sorted(
+        [t for t in (Topic.from_dir(m) for m in matches) if t],
+        key=lambda t: t.name, reverse=True,
+    )
+    if not topics:
+        print(f"Error: no loadable topic matching '{name}'.", file=sys.stderr)
+        sys.exit(1)
+
+    selected = prompt_selection(topics)
+    return selected.path
+
+
+def select_topic_interactive(
+    include_archives=False, all_projects=False, allow_empty=False,
+):
+    """List topics and prompt user to select one.
+
+    Args:
+        include_archives: If True, include archived topics.
+        all_projects: If True, skip is_related_to filtering.
+        allow_empty: If True, return None when no topics found or user
+            enters empty input, instead of exiting.
+    """
+    topics, show_repo = gather_topics(
+        include_archives=include_archives,
+        all_projects=all_projects,
+    )
+
+    topics.sort(key=lambda t: t.name, reverse=True)
+
+    if not topics:
+        if allow_empty:
+            return None
+        print("Error: no topics found.", file=sys.stderr)
+        sys.exit(1)
+    if len(topics) == 1:
+        return topics[0].path
+
+    selected = prompt_selection(topics, show_repo=show_repo,
+                                allow_empty=allow_empty)
+    if selected is None:
+        return None
+    return selected.path
+
+
 def escape_xml_text(text: str) -> str:
     """Escape &, <, > unconditionally in text content."""
     text = text.replace("&", "&amp;")

@@ -2,6 +2,7 @@ import io
 import json
 import sys
 
+import common as spex_common
 import pytest
 import show as spex_show
 from config import ProjectContext
@@ -138,30 +139,30 @@ class TestMain:
         archives = tmp_path / "archives"
         specs.mkdir()
         archives.mkdir()
-        monkeypatch.setattr("show.get_specs_dir", lambda _w=None: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
         with pytest.raises(SystemExit) as exc_info:
             spex_show.main(["nonexistent"])
         assert exc_info.value.code == 1
 
 
 class TestResolveTopic:
-    """Tests for _resolve_topic: specs lookup, archive fallback, multi-match."""
+    """Tests for resolve_topic: specs lookup, archive fallback, multi-match."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
         specs.mkdir()
         archives.mkdir()
-        monkeypatch.setattr("show.get_specs_dir", lambda _w=None: specs)
-        monkeypatch.setattr("show.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
         return specs, archives
 
     def test_found_in_specs(self, tmp_path, monkeypatch):
         specs, _archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="my-feature", subdir="specs")
 
-        result = spex_show._resolve_topic("my-feature")
+        result = spex_common.resolve_topic("my-feature")
         assert result == specs / "my-feature"
 
     def test_no_fallback_without_flag(self, tmp_path, monkeypatch, capsys):
@@ -169,7 +170,7 @@ class TestResolveTopic:
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._resolve_topic("old-feature")
+            spex_common.resolve_topic("old-feature")
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "--archives" in err
@@ -178,14 +179,14 @@ class TestResolveTopic:
         _specs, archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
-        result = spex_show._resolve_topic("old-feature", include_archives=True)
+        result = spex_common.resolve_topic("old-feature", include_archives=True)
         assert result == archives / "old-feature"
 
     def test_no_match_exits(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._resolve_topic("nonexistent")
+            spex_common.resolve_topic("nonexistent")
         assert exc_info.value.code == 1
 
     def test_multi_match_interactive(self, tmp_path, monkeypatch):
@@ -196,7 +197,7 @@ class TestResolveTopic:
         # Simulate user selecting "2" (second item in reverse-sorted list)
         monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
 
-        result = spex_show._resolve_topic("feature")
+        result = spex_common.resolve_topic("feature")
         # Reverse sorted: feature-beta=1, feature-alpha=2
         assert result == specs / "feature-alpha"
 
@@ -209,7 +210,7 @@ class TestResolveTopic:
         # Simulate user selecting "1"
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_show._resolve_topic("my-topic", include_archives=True)
+        result = spex_common.resolve_topic("my-topic", include_archives=True)
         # Reverse sorted: my-topic-old=1? No, my-topic > my-topic-old
         # Actually sorted reverse: my-topic-old, my-topic
         # Wait: reverse=True means descending, so my-topic-old > my-topic
@@ -217,7 +218,7 @@ class TestResolveTopic:
 
 
 class TestSelectTopicInteractive:
-    """Tests for _select_topic_interactive with --archives and --all-projects."""
+    """Tests for select_topic_interactive with --archives and --all-projects."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -258,7 +259,7 @@ class TestSelectTopicInteractive:
         specs, _archives = self._setup(tmp_path, monkeypatch)
 
         # Only one related spec -> returns directly
-        result = spex_show._select_topic_interactive()
+        result = spex_common.select_topic_interactive()
         assert result == specs / "related-spec"
 
     def test_archives_includes_archived(self, tmp_path, monkeypatch):
@@ -267,7 +268,7 @@ class TestSelectTopicInteractive:
         # Two related topics (spec + archive) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_show._select_topic_interactive(include_archives=True)
+        result = spex_common.select_topic_interactive(include_archives=True)
         assert result.name in ("related-spec", "related-archive")
 
     def test_all_projects_no_filter(self, tmp_path, monkeypatch):
@@ -276,7 +277,7 @@ class TestSelectTopicInteractive:
         # Two specs (related + other) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_show._select_topic_interactive(all_projects=True)
+        result = spex_common.select_topic_interactive(all_projects=True)
         assert result.name in ("related-spec", "other-spec")
 
     def test_no_topics_exits(self, tmp_path, monkeypatch):
@@ -291,12 +292,12 @@ class TestSelectTopicInteractive:
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._select_topic_interactive()
+            spex_common.select_topic_interactive()
         assert exc_info.value.code == 1
 
 
 class TestPromptSelection:
-    """Tests for _prompt_selection interactive chooser."""
+    """Tests for prompt_selection interactive chooser."""
 
     def test_valid_selection(self, tmp_path, monkeypatch):
         d1 = tmp_path / "topic-a"
@@ -306,7 +307,7 @@ class TestPromptSelection:
             _make_topic(tmp_path, name=d.name, subdir=".")
 
         monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
-        result = spex_show._prompt_selection([d1, d2])
+        result = spex_common.prompt_selection([d1, d2])
         assert result == d2
 
     def test_empty_input_exits(self, tmp_path, monkeypatch):
@@ -316,7 +317,7 @@ class TestPromptSelection:
 
         monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._prompt_selection([d1])
+            spex_common.prompt_selection([d1])
         assert exc_info.value.code == 1
 
     def test_invalid_number_exits(self, tmp_path, monkeypatch):
@@ -326,7 +327,7 @@ class TestPromptSelection:
 
         monkeypatch.setattr("sys.stdin", io.StringIO("abc\n"))
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._prompt_selection([d1])
+            spex_common.prompt_selection([d1])
         assert exc_info.value.code == 1
 
     def test_out_of_range_exits(self, tmp_path, monkeypatch):
@@ -336,5 +337,74 @@ class TestPromptSelection:
 
         monkeypatch.setattr("sys.stdin", io.StringIO("5\n"))
         with pytest.raises(SystemExit) as exc_info:
-            spex_show._prompt_selection([d1])
+            spex_common.prompt_selection([d1])
         assert exc_info.value.code == 1
+
+    def test_allow_empty_returns_none(self, tmp_path, monkeypatch):
+        d1 = tmp_path / "topic-a"
+        d1.mkdir()
+        _make_topic(tmp_path, name="topic-a", subdir=".")
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
+        result = spex_common.prompt_selection([d1], allow_empty=True)
+        assert result is None
+
+    def test_allow_empty_still_selects(self, tmp_path, monkeypatch):
+        d1 = tmp_path / "topic-a"
+        d2 = tmp_path / "topic-b"
+        for d in (d1, d2):
+            d.mkdir()
+            _make_topic(tmp_path, name=d.name, subdir=".")
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
+        result = spex_common.prompt_selection([d1, d2], allow_empty=True)
+        assert result == d1
+
+
+class TestSelectTopicInteractiveAllowEmpty:
+    """Tests for select_topic_interactive allow_empty behavior."""
+
+    def test_no_topics_returns_none(self, tmp_path, monkeypatch):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        ctx = _make_ctx(None)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+
+        result = spex_common.select_topic_interactive(allow_empty=True)
+        assert result is None
+
+    def test_empty_input_returns_none(self, tmp_path, monkeypatch):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        project_workdir = str(tmp_path / "project-a")
+        _make_topic(tmp_path, name="topic-1", subdir="specs",
+                    workdir=project_workdir)
+        _make_topic(tmp_path, name="topic-2", subdir="specs",
+                    workdir=project_workdir)
+
+        from pathlib import Path
+        ctx = ProjectContext(
+            cwd=Path(project_workdir),
+            top_workdir=Path(project_workdir),
+            main_worktree=Path(project_workdir),
+            remote_url="",
+            branch="main",
+            user_name="test",
+            user_email="test@test.com",
+        )
+
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
+
+        result = spex_common.select_topic_interactive(allow_empty=True)
+        assert result is None
