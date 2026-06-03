@@ -111,8 +111,8 @@ file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
    running:
 
    ```bash
-   $spex_skill_dir/scripts/spex create-helper add-images --topic $topic_name \
-     --images assets/file1.png assets/file2.png
+   $spex_skill_dir/scripts/spex meta $topic_name prompts \
+     --add-images assets/file1.png assets/file2.png
    ```
 
 Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`

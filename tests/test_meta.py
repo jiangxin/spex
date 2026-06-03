@@ -31,7 +31,7 @@ def _setup_spex_toml(tmp_path):
 
 
 def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
-                input_data=None):
+                input_data=None, add_images=None):
     """Run meta.py as a subprocess with .spex.toml pointing to tmp_path."""
     _setup_spex_toml(tmp_path)
     args = [sys.executable, SCRIPT, topic_name]
@@ -41,6 +41,9 @@ def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
         args.append(value)
     if stdin_flag:
         args.append("--stdin")
+    if add_images:
+        args.append("--add-images")
+        args.extend(add_images)
     return subprocess.run(
         args,
         capture_output=True,
@@ -390,3 +393,116 @@ class TestSetKeyKnownFields:
         assert data["description"] == "A description"
         assert data["spex_branch"] == "spex/rt-topic"
         assert data["prompts"] == ["initial"]
+
+
+class TestAddImages:
+    """Verify --add-images flag behavior for prompts key."""
+
+    def test_text_with_add_images(self, tmp_path):
+        """text + --add-images creates prompt entry with images."""
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts", "new prompt",
+            add_images=["img1.png", "img2.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert entry["text"] == "new prompt"
+        assert "timestamp" in entry
+        assert entry["images"] == ["img1.png", "img2.png"]
+
+    def test_only_add_images_appends_to_last(self, tmp_path):
+        """--add-images without text appends images to last entry."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {"text": "existing", "timestamp": "2026-01-01T00:00:00"},
+            ],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["new-img.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert entry["text"] == "existing"
+        assert entry["images"] == ["new-img.png"]
+
+    def test_only_add_images_no_prompts_errors(self, tmp_path):
+        """--add-images with no existing prompts exits with error."""
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["img.png"],
+        )
+
+        assert result.returncode == 1
+        assert "no prompt entries" in result.stderr
+
+    def test_add_images_deduplication(self, tmp_path):
+        """--add-images deduplicates image paths."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {
+                    "text": "prompt",
+                    "timestamp": "2026-01-01T00:00:00",
+                    "images": ["existing.png"],
+                },
+            ],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["existing.png", "new.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["prompts"][0]["images"] == ["existing.png", "new.png"]
+
+    def test_add_images_normalizes_old_format(self, tmp_path):
+        """--add-images normalizes old plain-string prompt format."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": ["plain string prompt"],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["photo.jpg"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        entry = data["prompts"][0]
+        assert entry["text"] == "plain string prompt"
+        assert entry["images"] == ["photo.jpg"]
+
+    def test_stdin_with_add_images(self, tmp_path):
+        """stdin text + --add-images creates prompt entry with images."""
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            stdin_flag=True, input_data="stdin prompt",
+            add_images=["screenshot.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert len(data["prompts"]) == 1
+        entry = data["prompts"][0]
+        assert entry["text"] == "stdin prompt"
+        assert entry["images"] == ["screenshot.png"]
