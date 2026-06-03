@@ -23,7 +23,7 @@ Commands (run directly):
   init          Initialize spex environment
   list [--archives] [--all-projects]
                 List spec topics with progress
-  merge --topic <name>
+  merge [topic]
                 Merge a spex branch back to target (alias: submit)
   open          Open spec directory in file browser
   show [topic]  Show detailed topic information (-l for brief)
@@ -218,12 +218,14 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge --topic <name> [--no-archive]
+Usage: spex merge [topic] [--no-archive]
 
 Merge a spex branch back to target.
 
+Positional arguments:
+  topic           Topic name (required)
+
 Options:
-  --topic <name>  Topic name (required)
   --no-archive    Skip automatic archiving after successful merge
   -h, --help      Show this help message and exit
 """
@@ -231,21 +233,21 @@ Options:
 
 def _run_merge(argv=None):
     """Route merge subcommand."""
-    import branch
+    import merge
 
     parser = ArgumentParser(prog="spex merge", usage=_MERGE_USAGE)
-    parser.add_argument("--topic")
+    parser.add_argument("topic", nargs="?", default="")
     parser.add_argument("--no-archive", action="store_true")
     args = parser.parse(argv)
 
     if not args.topic:
-        print("Error: --topic is required", file=sys.stderr)
+        print("Error: topic argument is required", file=sys.stderr)
         sys.exit(1)
 
-    submit_args = ["--topic", args.topic]
+    submit_args = [args.topic]
     if args.no_archive:
         submit_args.append("--no-archive")
-    branch.cli_submit(submit_args)
+    merge.cli_submit(submit_args)
 
 
 def _run_todo_helper(argv=None):

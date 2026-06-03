@@ -41,7 +41,7 @@ Read `$topic_path/meta.json` and check:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex submit --topic $topic_name
+$spex_skill_dir/scripts/spex submit $topic_name
 ```
 
 Parse the JSON output:
