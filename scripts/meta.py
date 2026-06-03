@@ -16,24 +16,8 @@ import json
 import sys
 from dataclasses import fields
 
-from common import TopicMeta, atomic_write_json, check_help_flag, resolve_topic_dir
-
-USAGE = """\
-Usage: spex meta <topic_name> [key] [value] [--stdin]
-
-Get or set key/value in a topic's meta.json.
-
-Modes:
-  spex meta <topic>              Show all meta key/values
-  spex meta <topic> <key>        Show value for a specific key
-  spex meta <topic> <key> <val>  Set key to value
-  spex meta <topic> <key> --stdin  Set key from stdin
-
-When key is 'prompts', the value is appended to the prompts array.
-
-Options:
-  --stdin       Read value from stdin
-  -h, --help    Show this help message and exit"""
+from cli import ArgumentParser
+from common import TopicMeta, atomic_write_json, resolve_topic_dir
 
 
 def _format_value(key, value, indent=""):
@@ -90,22 +74,46 @@ def _set_key(meta, key, value, meta_path):
     print(content, end="")
 
 
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex meta``."""
+    parser = ArgumentParser(
+        prog="spex meta",
+        description="Get or set key/value in a topic's meta.json.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "topic_name",
+        help="Topic name to look up",
+    )
+    parser.add_argument(
+        "key",
+        nargs="?",
+        default=None,
+        help="Meta key to get or set",
+    )
+    parser.add_argument(
+        "value",
+        nargs="?",
+        default=None,
+        help="Value to set for the key",
+    )
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        dest="stdin_flag",
+        help="Read value from stdin instead of positional argument",
+    )
+    return parser
+
+
 def main(argv=None):
-    check_help_flag(USAGE, argv)
-    args = argv if argv is not None else sys.argv[1:]
+    parser = _build_parser()
+    args = parser.parse(argv)
 
-    stdin_flag = "--stdin" in args
-    if stdin_flag:
-        args = [a for a in args if a != "--stdin"]
-
-    if len(args) < 1:
-        print("Error: topic_name is required.", file=sys.stderr)
-        print(USAGE, file=sys.stderr)
-        sys.exit(1)
-
-    topic_name = args[0]
-    key = args[1] if len(args) >= 2 else None
-    value = args[2] if len(args) >= 3 else None
+    topic_name = args.topic_name
+    key = args.key
+    value = args.value
+    stdin_flag = args.stdin_flag
 
     topic_dir = resolve_topic_dir(topic_name)
     meta_path = topic_dir / "meta.json"

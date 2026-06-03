@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import (
     _create_default_toml,
     _sync_all_templates,
@@ -164,35 +165,41 @@ def run_init(workdir=None, target_dir=None, verbose=False):
     print("Initialization complete.")
 
 
-_USAGE = """\
-Usage: spex init [<dir>] [--check] [-v | --verbose]
-
-Initialize the spex environment.
-
-When <dir> is given, creates .spex.toml in that directory (resolving to the
-git main worktree if applicable) and initializes its spex_root.
-
-Options:
-  --check        Check if initialized (exit 0 = yes, exit 1 = no)
-  -v, --verbose  Show detailed operations during initialization
-  -h, --help     Show this help message and exit
-"""
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex init``."""
+    parser = ArgumentParser(
+        prog="spex init",
+        description="Initialize the spex environment.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "dir",
+        nargs="?",
+        default=None,
+        help="Target directory to initialize (resolves to git main worktree)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if initialized (exit 0 = yes, exit 1 = no)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed operations during initialization",
+    )
+    return parser
 
 
 def main(argv=None):
-    from common import check_help_flag
+    parser = _build_parser()
+    args = parser.parse(argv)
 
-    check_help_flag(_USAGE, argv)
-    args = argv if argv is not None else (sys.argv[2:] if len(sys.argv) > 2 else sys.argv[1:])
-
-    if "--check" in args:
+    if args.check:
         sys.exit(0 if is_initialized() else 1)
 
-    verbose = "-v" in args or "--verbose" in args
-    positional = [a for a in args if not a.startswith("-")]
-    target_dir = positional[0] if positional else None
-
-    run_init(target_dir=target_dir, verbose=verbose)
+    run_init(target_dir=args.dir, verbose=args.verbose)
 
 
 if __name__ == "__main__":

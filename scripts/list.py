@@ -4,29 +4,16 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import (
     Topic,
-    check_help_flag,
     format_topic,
     get_archives_dir,
     get_specs_dir,
 )
 from config import get_project_context
-
-USAGE = """\
-Usage: spex list [--archives] [--all-projects] [-v|-vv]
-
-List spec topics with progress.
-
-Options:
-  --archives       Include archived topics
-  --all-projects   Show topics from all projects (disables project filter)
-  -v, --verbose    Increase verbosity (repeat for more detail)
-  -h, --help       Show this help message and exit
-"""
 
 PROMPT_LOG = "prompt.log"
 MAX_TOPIC_WIDTH = 38
@@ -194,26 +181,40 @@ def format_verbose_output(
     return "\n\n".join(blocks)
 
 
-def _parse_verbosity(argv: list) -> int:
-    """Count verbosity level from argv."""
-    count = 0
-    for arg in argv:
-        if arg == "--verbose" or arg == "-v":
-            count += 1
-        elif re.match(r"^-v+$", arg):
-            count += len(arg) - 1  # -vv = 2, -vvv = 3
-    return count
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex list``."""
+    parser = ArgumentParser(
+        prog="spex list",
+        description="List spec topics with progress.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "--archives",
+        action="store_true",
+        help="Include archived topics",
+    )
+    parser.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Show topics from all projects (disables project filter)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity (-v, -vv)",
+    )
+    return parser
 
 
 def main(argv=None):
-    check_help_flag(USAGE, argv)
-    full_argv = argv if argv is not None else sys.argv[1:]
-    archives_mode = "--archives" in full_argv
-    all_projects = "--all-projects" in full_argv
+    parser = _build_parser()
+    args = parser.parse(argv)
 
     dirs = [get_specs_dir()]
     archive_dirs = []
-    if archives_mode:
+    if args.archives:
         archive_dir = get_archives_dir()
         dirs.append(archive_dir)
         archive_dirs.append(archive_dir)
@@ -221,13 +222,13 @@ def main(argv=None):
     topics = collect_topics(dirs, archive_dirs=archive_dirs)
 
     ctx = get_project_context()
-    if not all_projects:
+    if not args.all_projects:
         topics = [t for t in topics if ctx.is_related_to(t)]
         show_repo = not ctx.in_git_workdir()
     else:
         show_repo = True
 
-    verbosity = _parse_verbosity(full_argv)
+    verbosity = args.verbose
     if verbosity > 0:
         print(format_verbose_output(topics, verbosity=verbosity, show_repo=show_repo))
     else:

@@ -22,7 +22,7 @@ class TestNoArgs:
         result = _run_spex()
 
         assert result.returncode == 0
-        assert "Usage: spex" in result.stdout
+        assert "usage: spex" in result.stdout
 
     def test_lists_commands(self):
         result = _run_spex()
@@ -38,13 +38,13 @@ class TestHelpFlag:
         result = _run_spex("-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout
 
     def test_spex_help_exits_zero_with_usage(self):
         result = _run_spex("--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout
 
     def test_config_h_exits_zero_with_usage(self):
         result = _run_spex("config", "-h")
@@ -62,43 +62,43 @@ class TestHelpFlag:
         result = _run_spex("list", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_list_help_exits_zero_with_usage(self):
         result = _run_spex("list", "--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_archive_h_exits_zero_with_usage(self):
         result = _run_spex("archive", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_archive_help_exits_zero_with_usage(self):
         result = _run_spex("archive", "--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_open_h_exits_zero_with_usage(self):
         result = _run_spex("open", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_open_help_exits_zero_with_usage(self):
         result = _run_spex("open", "--help")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_get_topic_h_exits_zero_with_usage(self):
         result = _run_spex("get-topic", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_get_topic_help_exits_zero(self):
         result = _run_spex("get-topic", "--help")
@@ -109,7 +109,7 @@ class TestHelpFlag:
         result = _run_spex("meta", "-h")
 
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage:" in result.stdout.lower()
 
     def test_meta_help_exits_zero(self):
         result = _run_spex("meta", "--help")
@@ -226,7 +226,7 @@ class TestUnknownCommand:
 
         assert result.returncode == 1
         assert "Unknown command: bogus" in result.stderr
-        assert "Usage: spex" in result.stderr
+        assert "usage: spex" in result.stderr
 
 
 class TestGetCommand:
@@ -270,7 +270,7 @@ class TestCreateTopicCommand:
         result = _run_spex("create-topic")
 
         assert result.returncode == 1
-        assert "Usage:" in result.stderr
+        assert "usage:" in result.stderr
 
 
 

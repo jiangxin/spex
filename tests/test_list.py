@@ -2,10 +2,10 @@ import json
 from pathlib import Path
 
 import list as list_mod  # noqa: A004
+import pytest
 from common import Topic, TopicMeta, get_todo_progress, load_meta
 from config import ProjectContext
 from list import (  # noqa: A004
-    _parse_verbosity,
     _wrap_text,
     collect_topics,
     format_output,
@@ -492,27 +492,57 @@ class TestVerboseOutput:
         assert "my-topic" not in output
 
 
-class TestParseVerbosity:
-    def test_no_flag(self):
-        assert _parse_verbosity(["--archives"]) == 0
+class TestBuildParser:
+    """Test argparse-based argument parsing for ``spex list``."""
+
+    def _parse(self, argv):
+        from list import _build_parser  # noqa: A004
+
+        return _build_parser().parse(argv)
+
+    def test_no_flags(self):
+        args = self._parse([])
+        assert args.archives is False
+        assert args.all_projects is False
+        assert args.verbose == 0
+
+    def test_archives_flag(self):
+        args = self._parse(["--archives"])
+        assert args.archives is True
+
+    def test_all_projects_flag(self):
+        args = self._parse(["--all-projects"])
+        assert args.all_projects is True
 
     def test_single_v(self):
-        assert _parse_verbosity(["-v"]) == 1
+        args = self._parse(["-v"])
+        assert args.verbose == 1
 
     def test_double_v(self):
-        assert _parse_verbosity(["-vv"]) == 2
+        args = self._parse(["-vv"])
+        assert args.verbose == 2
 
-    def test_verbose_flag(self):
-        assert _parse_verbosity(["--verbose"]) == 1
+    def test_verbose_long(self):
+        args = self._parse(["--verbose"])
+        assert args.verbose == 1
 
     def test_multiple_v_flags(self):
-        assert _parse_verbosity(["-v", "-v"]) == 2
+        args = self._parse(["-v", "-v"])
+        assert args.verbose == 2
 
-    def test_combined_with_archives(self):
-        assert _parse_verbosity(["--archives", "-vv"]) == 2
+    def test_combined_flags(self):
+        args = self._parse(["--archives", "-vv", "--all-projects"])
+        assert args.archives is True
+        assert args.all_projects is True
+        assert args.verbose == 2
 
-    def test_all_projects_with_vv(self):
-        assert _parse_verbosity(["--all-projects", "-vv"]) == 2
+    def test_unknown_flag_exits(self):
+        with pytest.raises(SystemExit):
+            self._parse(["--unknown"])
+
+    def test_help_exits(self):
+        with pytest.raises(SystemExit):
+            self._parse(["-h"])
 
 
 class TestWrapText:
@@ -651,14 +681,11 @@ class TestMainFlags:
         assert "[project-a]" in out
         assert "[project-b]" in out
 
-    def test_old_all_flag_does_not_include_archives(
-        self, tmp_path, monkeypatch, capsys,
+    def test_old_all_flag_rejected(
+        self, tmp_path, monkeypatch,
     ):
         self._setup(tmp_path, monkeypatch)
 
-        main(["--all"])
-
-        out = capsys.readouterr().out
-        # --all is no longer a recognized flag; it should not enable archives
-        assert "related-archive" not in out
-        assert "other-archive" not in out
+        # --all is not a recognized flag; argparse rejects it
+        with pytest.raises(SystemExit):
+            main(["--all"])

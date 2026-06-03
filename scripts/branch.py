@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cli import ArgumentParser
 from common import strip_date_prefix
 
 
@@ -107,14 +108,19 @@ def merge_branch(
     )
 
 
-def _parse_topic_arg(argv) -> str:
-    """Parse --topic <name> from argv. Exit 1 if missing."""
-    args = argv or []
-    for i, arg in enumerate(args):
-        if arg == "--topic" and i + 1 < len(args):
-            return args[i + 1]
-    print("Error: --topic <name> is required", file=sys.stderr)
-    sys.exit(1)
+def _build_submit_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex submit``."""
+    parser = ArgumentParser(
+        prog="spex submit",
+        description="Submit (merge) a spex branch back to the target branch.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "--topic",
+        required=True,
+        help="Topic name to submit",
+    )
+    return parser
 
 
 def cli_submit(argv=None) -> None:
@@ -123,7 +129,9 @@ def cli_submit(argv=None) -> None:
     import config as cfg
     import hooks
 
-    topic_name = _parse_topic_arg(argv)
+    parser = _build_submit_parser()
+    parsed = parser.parse(argv)
+    topic_name = parsed.topic
     ctx = cfg.get_project_context()
     conf = ctx.config
     topic_dir = common.resolve_topic_dir(topic_name)

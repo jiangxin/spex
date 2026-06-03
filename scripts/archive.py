@@ -14,7 +14,6 @@ from pathlib import Path
 from branch import branch_exists
 from cli import ArgumentParser
 from common import (
-    check_help_flag,
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
@@ -35,19 +34,6 @@ def has_active_branch(topic_dir: Path) -> bool:
         return False
     return branch_exists(spex_branch)
 
-
-USAGE = """\
-Usage: spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--not]
-
-Archive completed spec topics.
-
-Options:
-  --topic <topic>  Archive a single topic by name
-  --dry-run, -n    Preview without moving
-  --force, -f      Bypass spex_branch existence check
-  --not            Restore a topic from archives back to specs
-  -h, --help       Show this help message and exit
-"""
 
 
 def find_completed_topics(
@@ -171,9 +157,10 @@ def restore_single_topic(
 
 
 def main(argv=None):
-    check_help_flag(USAGE, argv)
-
-    parser = ArgumentParser(prog="spex archive", usage=USAGE)
+    parser = ArgumentParser(
+        prog="spex archive",
+        description="Archive completed spec topics.",
+    )
     parser.add_argument("--topic", help="Archive a single topic by name")
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="Preview without moving")

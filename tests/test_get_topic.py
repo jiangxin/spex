@@ -417,9 +417,9 @@ class TestMainMustDoneFlag:
         )
         with pytest.raises(SystemExit) as exc_info:
             main()
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "--must-done and --must-undone are mutually exclusive" in err
+        assert "not allowed with argument" in err
 
     def test_must_done_flag_passes_to_resolve(
         self, tmp_path, monkeypatch, capsys

@@ -12,17 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import check_help_flag, get_archives_dir, get_specs_dir, get_spex_root
-
-USAGE = """\
-Usage: spex open [topic]
-
-Open a topic directory in the system file browser.
-If no topic is given, opens the spex root directory.
-
-Options:
-  -h, --help  Show this help message and exit
-"""
+from cli import ArgumentParser
+from common import get_archives_dir, get_specs_dir, get_spex_root
 
 
 def find_topic(name, specs_dir, archives_dir):
@@ -81,11 +72,27 @@ def open_directory(path):
         subprocess.run(["xdg-open", path])
 
 
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex open``."""
+    parser = ArgumentParser(
+        prog="spex open",
+        description="Open a topic directory in the system file browser.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "topic",
+        nargs="?",
+        default="",
+        help="Topic name or substring to open (opens spex root if omitted)",
+    )
+    return parser
+
+
 def main(argv=None):
     """CLI entry point for the open command."""
-    check_help_flag(USAGE, argv)
-    args = argv if argv is not None else sys.argv[1:]
-    topic = args[0] if args else ""
+    parser = _build_parser()
+    args = parser.parse(argv)
+    topic = args.topic
 
     if not topic:
         open_directory(get_spex_root())

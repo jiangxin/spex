@@ -11,25 +11,11 @@ from pathlib import Path
 from cli import ArgumentParser
 from common import (
     Topic,
-    check_help_flag,
     format_topic,
     get_specs_dir,
     resolve_topic_dir,
     strip_front_matter,
 )
-
-USAGE = """\
-Usage: spex show [topic] [-l]
-
-Show detailed information about a spec topic.
-
-If no topic is given and only one exists, it is shown automatically.
-If multiple topics exist, an interactive list is displayed.
-
-Options:
-  -l, --list     Show brief list format instead of full details
-  -h, --help     Show this help message and exit
-"""
 
 
 def _paged_output(text):
@@ -138,9 +124,10 @@ def _select_topic_interactive():
 
 
 def main(argv=None):
-    check_help_flag(USAGE, argv)
-
-    parser = ArgumentParser(prog="spex show", usage=USAGE)
+    parser = ArgumentParser(
+        prog="spex show",
+        description="Show detailed information about a spec topic.",
+    )
     parser.add_argument("topic", nargs="?", help="Topic name or substring")
     parser.add_argument("-l", "--list", action="store_true",
                         dest="brief",
