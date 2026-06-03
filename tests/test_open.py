@@ -1,9 +1,9 @@
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import open as spex_open  # noqa: A004
 import pytest
-from open import main, open_directory  # noqa: A004
+from open import main, open_directory, run_in_directory  # noqa: A004
 
 
 class TestOpenDirectory:
@@ -157,3 +157,107 @@ class TestMain:
         mock_select.assert_called_once_with(
             include_archives=False, all_projects=True, allow_empty=True
         )
+
+
+class TestRunInDirectory:
+    """Tests for run_in_directory."""
+
+    def test_runs_command_in_directory(self, tmp_path):
+        """run_in_directory calls subprocess.run with shell=True and cwd."""
+        mock_result = MagicMock(returncode=0)
+        with patch("open.subprocess.run", return_value=mock_result) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_in_directory(str(tmp_path), "ls -la")
+
+        mock_run.assert_called_once_with("ls -la", shell=True, cwd=str(tmp_path))
+        assert exc_info.value.code == 0
+
+    def test_propagates_nonzero_exit_code(self, tmp_path):
+        """run_in_directory propagates non-zero exit codes via sys.exit."""
+        mock_result = MagicMock(returncode=42)
+        with patch("open.subprocess.run", return_value=mock_result):
+            with pytest.raises(SystemExit) as exc_info:
+                run_in_directory(str(tmp_path), "false")
+
+        assert exc_info.value.code == 42
+
+
+class TestRunOption:
+    """Tests for the --run option in main()."""
+
+    def test_no_run_with_topic_calls_open_directory(self, tmp_path):
+        """No --run + has topic calls open_directory (existing behavior)."""
+        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        topic_dir.mkdir(parents=True)
+
+        with patch.object(sys, "argv", ["open.py", "my-topic"]), patch.object(
+            spex_open, "resolve_topic", return_value=topic_dir
+        ), patch.object(spex_open, "open_directory") as mock_open:
+            main()
+
+        mock_open.assert_called_once_with(str(topic_dir))
+
+    def test_run_without_value_calls_open_directory(self, tmp_path):
+        """--run without value + has topic calls open_directory."""
+        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        topic_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys, "argv", ["open.py", "my-topic", "--run"]
+        ), patch.object(
+            spex_open, "resolve_topic", return_value=topic_dir
+        ), patch.object(spex_open, "open_directory") as mock_open:
+            main()
+
+        mock_open.assert_called_once_with(str(topic_dir))
+
+    def test_run_with_command_calls_subprocess(self, tmp_path):
+        """--run "ls" + has topic calls subprocess.run in topic dir."""
+        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        topic_dir.mkdir(parents=True)
+
+        mock_result = MagicMock(returncode=0)
+        with patch.object(
+            sys, "argv", ["open.py", "--run", "ls", "my-topic"]
+        ), patch.object(
+            spex_open, "resolve_topic", return_value=topic_dir
+        ), patch("open.subprocess.run", return_value=mock_result) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        mock_run.assert_called_once_with("ls", shell=True, cwd=str(topic_dir))
+        assert exc_info.value.code == 0
+
+    def test_run_no_topic_no_topics_runs_in_spex_root(self, tmp_path):
+        """--run "ls" + no topic + no topics runs in spex_root."""
+        spex_root = str(tmp_path / "root")
+
+        mock_result = MagicMock(returncode=0)
+        with patch.object(
+            sys, "argv", ["open.py", "--run", "ls"]
+        ), patch.object(
+            spex_open, "select_topic_interactive", return_value=None
+        ), patch.object(
+            spex_open, "get_spex_root", return_value=spex_root
+        ), patch("open.subprocess.run", return_value=mock_result) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        mock_run.assert_called_once_with("ls", shell=True, cwd=spex_root)
+        assert exc_info.value.code == 0
+
+    def test_run_command_nonzero_exit_propagates(self, tmp_path):
+        """--run command returns non-zero exit code, sys.exit propagates it."""
+        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        topic_dir.mkdir(parents=True)
+
+        mock_result = MagicMock(returncode=7)
+        with patch.object(
+            sys, "argv", ["open.py", "--run", "bad-cmd", "my-topic"]
+        ), patch.object(
+            spex_open, "resolve_topic", return_value=topic_dir
+        ), patch("open.subprocess.run", return_value=mock_result):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 7
