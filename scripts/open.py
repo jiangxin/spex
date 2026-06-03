@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Open a topic directory in the system file browser.
 
-If no topic is given, opens the spex root directory.
-If a topic is given, searches specs and archives for a match.
+If no topic is given, lists topics for interactive selection.
+If a topic is given, searches specs (and optionally archives) for a match.
+When no selection is made or no topics exist, opens the spex root directory.
 """
 
 from __future__ import annotations
@@ -10,52 +11,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 from cli import ArgumentParser
-from common import get_archives_dir, get_specs_dir, get_spex_root
-
-
-def find_topic(name, specs_dir, archives_dir):
-    """Search for a topic by name in both specs and archives directories.
-
-    First tries exact match, then falls back to substring match.
-    No filtering by undone tasks.
-
-    Args:
-        name: Topic name or substring to search for.
-        specs_dir: Path to the specs directory.
-        archives_dir: Path to the archives directory.
-
-    Returns:
-        List of (path_str, source_label) tuples where source_label
-        is "specs" or "archives".
-    """
-    specs_dir = Path(specs_dir)
-    archives_dir = Path(archives_dir)
-    sources = [
-        (specs_dir, "specs"),
-        (archives_dir, "archives"),
-    ]
-
-    # Try exact match first
-    exact = []
-    for base, label in sources:
-        candidate = base / name
-        if candidate.is_dir():
-            exact.append((str(candidate), label))
-    if exact:
-        return exact
-
-    # Fall back to substring match
-    matches = []
-    for base, label in sources:
-        if not base.is_dir():
-            continue
-        for d in sorted(base.iterdir()):
-            if d.is_dir() and name in d.name:
-                matches.append((str(d), label))
-    return matches
+from common import get_spex_root, resolve_topic, select_topic_interactive
 
 
 def open_directory(path):
@@ -82,7 +40,17 @@ def _build_parser() -> ArgumentParser:
         "topic",
         nargs="?",
         default="",
-        help="Topic name or substring to open (opens spex root if omitted)",
+        help="Topic name or substring to open (interactive selection if omitted)",
+    )
+    parser.add_argument(
+        "--archives",
+        action="store_true",
+        help="Include archived topics in search",
+    )
+    parser.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Show topics from all projects (disables project filter)",
     )
     return parser
 
@@ -93,33 +61,19 @@ def main(argv=None):
     args = parser.parse(argv)
     topic = args.topic
 
-    if not topic:
-        open_directory(get_spex_root())
-        return
-
-    specs_dir = get_specs_dir()
-    archives_dir = get_archives_dir()
-    matches = find_topic(topic, specs_dir, archives_dir)
-
-    if not matches:
-        print(
-            f"Error: no topic matching '{topic}' found.",
-            file=sys.stderr,
+    if topic:
+        topic_dir = resolve_topic(topic, include_archives=args.archives)
+        open_directory(str(topic_dir))
+    else:
+        selected = select_topic_interactive(
+            include_archives=args.archives,
+            all_projects=args.all_projects,
+            allow_empty=True,
         )
-        sys.exit(1)
-
-    if len(matches) == 1:
-        open_directory(matches[0][0])
-        return
-
-    print(
-        f"Multiple topics match '{topic}'. Please specify more precisely:",
-        file=sys.stderr,
-    )
-    for path, source in matches:
-        name = Path(path).name
-        print(f"  [{source}] {name}", file=sys.stderr)
-    sys.exit(1)
+        if selected is None:
+            open_directory(get_spex_root())
+        else:
+            open_directory(str(selected))
 
 
 if __name__ == "__main__":
