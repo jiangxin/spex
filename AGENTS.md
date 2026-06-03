@@ -67,7 +67,6 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 
 | Function | Description |
 |----------|-------------|
-| `check_help_flag(usage_text, argv)` | Print usage and exit if `-h`/`--help` in argv. |
 | `clear_spex_root_cache()` | Clear the spex_root configuration cache. |
 | `ensure_initialized(spex_root)` | Create spex_root dirs, templates, and .gitignore if missing. |
 | `get_spex_root(workdir, require_git, auto_init)` | Resolve spex_root path (.spex.toml > default). |

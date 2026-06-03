@@ -1,7 +1,6 @@
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -12,7 +11,6 @@ from common import (
     Topic,
     TopicMeta,
     _resolve_template_roots,
-    check_help_flag,
     clear_spex_root_cache,
     format_topic,
     get_archives_dir,
@@ -307,31 +305,6 @@ def test_auto_init_skips_toml_when_exists(monkeypatch, tmp_path):
     get_spex_root(str(repo))
 
     assert (repo / ".spex.toml").read_text() == '[spex]\nspex_root = ".spex"\n'
-
-
-class TestCheckHelpFlag:
-    def test_h_flag_prints_usage_and_exits(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["script", "-h"])
-        with pytest.raises(SystemExit) as exc_info:
-            check_help_flag("Usage: script [options]\n")
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert captured.out == "Usage: script [options]\n"
-
-    def test_help_flag_prints_usage_and_exits(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["script", "--help"])
-        with pytest.raises(SystemExit) as exc_info:
-            check_help_flag("Usage: script [options]\n")
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert captured.out == "Usage: script [options]\n"
-
-    def test_no_help_flag_does_nothing(self, monkeypatch, capsys):
-        monkeypatch.setattr(sys, "argv", ["script", "--verbose", "file.txt"])
-        # Should return normally without raising
-        check_help_flag("Usage: script [options]\n")
-        captured = capsys.readouterr()
-        assert captured.out == ""
 
 
 class TestResolveTopicDir:

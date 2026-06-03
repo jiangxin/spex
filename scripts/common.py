@@ -196,16 +196,6 @@ def _create_default_toml():
 
 
 
-
-def check_help_flag(usage_text, argv=None):
-    """If -h or --help is in argv, print usage and exit."""
-    if argv is None:
-        argv = sys.argv
-    if "-h" in argv or "--help" in argv:
-        print(usage_text, end="")
-        sys.exit(0)
-
-
 def clear_spex_root_cache():
     """Clear the spex_root configuration cache. Useful for testing."""
     clear_config_cache()
