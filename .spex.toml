@@ -1,9 +1,9 @@
 [spex]
 # Root directory for spec storage
-spex_root = ".spex"
+# spex_root = ".spex"
 
 # Create and manage branches for specs
-branch_management = true
+# branch_management = true
 
 # Restrict spec creation to this branch
 # main_branch_name = ""
