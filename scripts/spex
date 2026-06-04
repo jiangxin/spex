@@ -488,10 +488,10 @@ def _build_parser():
         help="Show version and exit",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-d", "--debug",
         action="store_true",
         default=False,
-        help="Enable verbose (debug) output",
+        help="Enable debug output",
     )
 
     subs = parser.add_subparsers(dest="command")
@@ -525,7 +525,7 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     from common import logger, setup_logging
-    setup_logging(verbose=("-v" in argv or "--verbose" in argv))
+    setup_logging(verbose=("-d" in argv or "--debug" in argv))
 
     parser = _build_parser()
     argv = list(argv)

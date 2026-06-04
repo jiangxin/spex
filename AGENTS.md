@@ -110,7 +110,7 @@ Scripts use Python's `logging` module for all informational output
   scripts only need `from common import logger`.
 - Scripts with `if __name__ == "__main__"` call `setup_logging()` there
   as a fallback for direct execution (e.g., in tests).
-- Use `-v` / `--verbose` global flag for DEBUG-level output.
+- Use `-d` / `--debug` global flag for DEBUG-level output.
 
 | Usage | API |
 |-------|-----|

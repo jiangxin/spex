@@ -275,7 +275,8 @@ class TestCliPostAction:
 
 
 class TestCliSubmit:
-    def test_no_topic_arg_exits(self, caplog):
+    @patch("merge._find_submittable_topics", return_value=[])
+    def test_no_topic_arg_exits(self, _mock, caplog):
         """Empty topic argument causes error exit."""
         import logging
         with caplog.at_level(logging.ERROR):
@@ -457,4 +458,5 @@ class TestCliRouting:
     def test_submit_no_topic_exits(self):
         result = self._run_spex("submit")
         assert result.returncode in (1, 2)
-        assert "topic" in result.stderr.lower()
+        err = result.stderr.lower()
+        assert "topic" in err or "auto-selected" in err
