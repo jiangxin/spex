@@ -811,6 +811,15 @@ class TestWrapText:
         for line in result.splitlines():
             assert len(line) <= 20
 
+    def test_wrap_text_literal_backslash_n(self):
+        result = wrap_text("Add feature\\nfor users")
+        assert "\\n" not in result
+        assert "Add feature for users" == result
+
+    def test_wrap_text_real_newline_still_works(self):
+        result = wrap_text("Add feature\nfor users")
+        assert "Add feature for users" == result
+
     def test_long_word_not_broken(self):
         text = "a " + "x" * 80 + " b"
         result = wrap_text(text)
