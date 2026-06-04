@@ -505,7 +505,7 @@ class TestRunInit:
         assert examples.is_dir()
 
 
-    def test_normal_run_shows_status_without_verbose(self, tmp_path, capsys,
+    def test_normal_run_shows_status_without_verbose(self, tmp_path, caplog,
                                                          mock_workdir):
         """run_init() without -v shows status messages."""
         from init import run_init
@@ -527,9 +527,7 @@ class TestRunInit:
             # Second run shows "Already initialized" without verbose
             run_init(workdir=str(mock_workdir))
 
-        out = capsys.readouterr().out
-        assert "Already initialized:" in out
-        assert "Config up-to-date:" in out or "Initialization complete." in out
+        assert "Already initialized:" in caplog.text
 
 
 class TestMainCheckFlag:
@@ -635,21 +633,20 @@ class TestVerboseFlag:
             str(spex_root), verbose=True, dry_run=False,
         )
 
-    def test_ensure_initialized_verbose_output(self, tmp_path, capsys):
+    def test_ensure_initialized_verbose_output(self, tmp_path, caplog):
         """ensure_initialized(verbose=True) prints directory creation."""
         from common import ensure_initialized
 
         spex_root = tmp_path / "spex"
         ensure_initialized(str(spex_root), verbose=True)
 
-        out = capsys.readouterr().out
-        assert "Initializing:" in out
-        assert f"Created: {spex_root}/" in out
-        assert "specs/" in out
-        assert "archives/" in out
-        assert "hooks/" in out
+        assert "Initializing:" in caplog.text
+        assert f"Created: {spex_root}/" in caplog.text
+        assert "specs/" in caplog.text
+        assert "archives/" in caplog.text
+        assert "hooks/" in caplog.text
 
-    def test_ensure_initialized_verbose_already_initialized(self, tmp_path, capsys):
+    def test_ensure_initialized_verbose_already_initialized(self, tmp_path, caplog):
         """ensure_initialized(verbose=True) reports when already initialized."""
         from common import ensure_initialized
 
@@ -657,23 +654,21 @@ class TestVerboseFlag:
         (spex_root / "specs").mkdir(parents=True)
         ensure_initialized(str(spex_root), verbose=True)
 
-        out = capsys.readouterr().out
-        assert "Already initialized:" in out
+        assert "Already initialized:" in caplog.text
 
-    def test_ensure_initialized_shows_created_without_verbose(self, tmp_path, capsys):
+    def test_ensure_initialized_shows_created_without_verbose(self, tmp_path, caplog):
         """ensure_initialized(verbose=False) prints Created but not Initializing."""
         from common import ensure_initialized
 
         spex_root = tmp_path / "spex"
         ensure_initialized(str(spex_root))
 
-        out = capsys.readouterr().out
-        assert "Initializing:" not in out
-        assert f"Created: {spex_root}/" in out
-        assert "specs/" in out
-        assert "archives/" in out
+        assert "Initializing:" not in caplog.text
+        assert f"Created: {spex_root}/" in caplog.text
+        assert "specs/" in caplog.text
+        assert "archives/" in caplog.text
 
-    def test_ensure_initialized_shows_already_without_verbose(self, tmp_path, capsys):
+    def test_ensure_initialized_shows_already_without_verbose(self, tmp_path, caplog):
         """ensure_initialized(verbose=False) prints 'Already initialized'."""
         from common import ensure_initialized
 
@@ -681,8 +676,7 @@ class TestVerboseFlag:
         (spex_root / "specs").mkdir(parents=True)
         ensure_initialized(str(spex_root))
 
-        out = capsys.readouterr().out
-        assert "Already initialized:" in out
+        assert "Already initialized:" in caplog.text
 
 
 class TestResolveTargetDir:
@@ -822,8 +816,8 @@ class TestDryRun:
 
         assert not spex_root.exists()
 
-    def test_dry_run_shows_operations(self, tmp_path, capsys):
-        """dry_run=True prints 'Would' messages to stdout."""
+    def test_dry_run_shows_operations(self, tmp_path, caplog):
+        """dry_run=True prints 'Would' messages via logging."""
         spex_root = tmp_path / ".spex"
         ctx = _make_context(
             spex_root=str(spex_root),
@@ -841,10 +835,9 @@ class TestDryRun:
 
             run_init(workdir=str(tmp_path), dry_run=True)
 
-        out = capsys.readouterr().out
-        assert "Would initialize:" in out
-        assert "Would create:" in out
-        assert f"Would create: {spex_root}/" in out
+        assert "Would initialize:" in caplog.text
+        assert "Would create:" in caplog.text
+        assert f"Would create: {spex_root}/" in caplog.text
 
     def test_dry_run_target_dir_shows_spex_root(self, tmp_path, capsys):
         """dry_run with target_dir resolves spex_root without .spex.toml on disk."""

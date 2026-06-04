@@ -159,7 +159,7 @@ class TestAutoSelect:
         assert "No submittable topics found" in err
 
     def test_auto_select_multiple_topics_non_interactive(
-        self, tmp_path, capsys,
+        self, tmp_path, caplog,
     ):
         specs = tmp_path / "specs"
         _setup_topic(tmp_path, topic_name="topic-a",
@@ -176,8 +176,7 @@ class TestAutoSelect:
             spex_merge.cli_submit([])
 
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "[1]" in err
-        assert "[2]" in err
-        assert "topic-a" in err
-        assert "topic-b" in err
+        assert "[1]" in caplog.text
+        assert "[2]" in caplog.text
+        assert "topic-a" in caplog.text
+        assert "topic-b" in caplog.text

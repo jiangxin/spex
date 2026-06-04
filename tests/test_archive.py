@@ -407,7 +407,7 @@ class TestArchiveSingleTopic:
         output = capsys.readouterr().out
         assert "my-topic" in output
 
-    def test_archive_single_nonexistent_topic(self, tmp_path, capsys):
+    def test_archive_single_nonexistent_topic(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -415,9 +415,8 @@ class TestArchiveSingleTopic:
         with pytest.raises(SystemExit) as exc_info:
             archive_single_topic("no-such-topic", specs, archives)
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "no-such-topic" in err
-        assert "no topic matching" in err
+        assert "no-such-topic" in caplog.text
+        assert "no topic matching" in caplog.text
 
     def test_archive_single_topic_conflict(self, tmp_path, capsys):
         specs = tmp_path / "specs"
@@ -586,7 +585,7 @@ class TestArchiveSingleWithBranchGuard:
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
         assert not (specs / "2026-05-27-14-11-archive-branch-guard").exists()
 
-    def test_partial_match_multiple_error(self, tmp_path, capsys):
+    def test_partial_match_multiple_error(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         (specs / "2026-05-27-14-11-topic-a").mkdir(parents=True)
         (specs / "2026-05-27-14-22-topic-b").mkdir(parents=True)
@@ -595,10 +594,9 @@ class TestArchiveSingleWithBranchGuard:
         with pytest.raises(SystemExit) as exc_info:
             archive_single_topic("topic", specs, archives)
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "multiple topics match" in err
-        assert "topic-a" in err
-        assert "topic-b" in err
+        assert "multiple topics match" in caplog.text
+        assert "topic-a" in caplog.text
+        assert "topic-b" in caplog.text
 
 
 class TestMainWithBranchGuard:

@@ -67,6 +67,8 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 
 | Function | Description |
 |----------|-------------|
+| `setup_logging(verbose)` | Configure logging to stderr with message-only format. |
+| `logger` | Module-level Logger instance (`logging.getLogger("spex")`). |
 | `clear_spex_root_cache()` | Clear the spex_root configuration cache. |
 | `ensure_initialized(spex_root)` | Create spex_root dirs, templates, and .gitignore if missing. |
 | `get_spex_root(workdir, require_git, auto_init)` | Resolve spex_root path (.spex.toml > default). |
@@ -97,6 +99,20 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
 | `validate_unique_ids(data)` | Check unique non-empty 'id' fields, exit on duplicates. |
 | `find_matching_topics(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
+
+## Logging Convention
+
+Scripts use Python's `logging` module for all informational output
+(status, progress, errors). stdout is reserved for programmatic data
+(JSON, rendered content, paths).
+
+| Usage | API |
+|-------|-----|
+| Setup (call once in `main()`) | `from common import setup_logging; setup_logging()` |
+| Info messages | `logger.info("Created branch '%s'", name)` |
+| Warnings | `logger.warning("...")` |
+| Errors | `logger.error("...")` |
+| Data output (stdout) | `print(json.dumps(...))` / `print(rendered)` |
 
 ## Project Context (`scripts/config.py`)
 

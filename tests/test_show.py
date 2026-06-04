@@ -165,15 +165,14 @@ class TestResolveTopic:
         result = spex_common.resolve_topic("my-feature")
         assert result == specs / "my-feature"
 
-    def test_no_fallback_without_flag(self, tmp_path, monkeypatch, capsys):
+    def test_no_fallback_without_flag(self, tmp_path, monkeypatch, caplog):
         self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
         with pytest.raises(SystemExit) as exc_info:
             spex_common.resolve_topic("old-feature")
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "--archives" in err
+        assert "--archives" in caplog.text
 
     def test_archives_flag_finds_archived(self, tmp_path, monkeypatch):
         _specs, archives = self._setup(tmp_path, monkeypatch)

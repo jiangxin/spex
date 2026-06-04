@@ -36,6 +36,7 @@ markers = [
     "e2e: end-to-end tests (run via make test-e2e)",
 ]
 addopts = ["-m", "not slow and not e2e"]
+log_level = "INFO"
 
 [tool.coverage.run]
 source = ["scripts"]
