@@ -5,7 +5,7 @@ Archive completed specification topics.
 ## Usage
 
 ```text
-/spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--restore]
+/spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects]
 ```
 
 ## Options
@@ -16,6 +16,7 @@ Archive completed specification topics.
 | `--dry-run, -n`| Preview without moving                 |
 | `--force, -f`  | Bypass spex_branch existence check     |
 | `--restore`    | Restore a topic from archives to specs |
+| `--all-projects` | Archive topics from all projects     |
 
 ## Behavior
 

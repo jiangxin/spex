@@ -38,7 +38,8 @@ def has_active_branch(topic_dir: Path) -> bool:
 
 
 def find_completed_topics(
-    specs_dir: Path, ctx: ProjectContext, force: bool = False
+    specs_dir: Path, ctx: ProjectContext, force: bool = False,
+    all_projects: bool = False,
 ) -> list:
     """Return sorted list of topic paths where all tasks are completed.
 
@@ -55,7 +56,7 @@ def find_completed_topics(
             continue
         if not force and has_active_branch(d):
             continue
-        if not ctx.is_related_to(d):
+        if not all_projects and not ctx.is_related_to(d):
             continue
         results.append(d)
     return sorted(results)
@@ -182,6 +183,8 @@ def main(argv=None):
                         help="Restore a topic from archives back to specs")
     parser.add_argument("--not", action="store_true", dest="restore",
                         help=argparse.SUPPRESS)
+    parser.add_argument("--all-projects", action="store_true",
+                        help="Archive topics from all projects")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
@@ -204,7 +207,17 @@ def main(argv=None):
         return
 
     ctx = get_project_context()
-    completed = find_completed_topics(specs_dir, ctx, args.force)
+
+    if not ctx.in_git_workdir() and not args.all_projects:
+        print(
+            "Not in a git workdir. Use --all-projects to archive"
+            " topics from all projects."
+        )
+        return
+
+    completed = find_completed_topics(
+        specs_dir, ctx, args.force, all_projects=args.all_projects,
+    )
 
     if not completed:
         print("No completed topics to archive.")

@@ -924,3 +924,102 @@ class TestRestoreFlagCLI:
         output = capsys.readouterr().out
         assert "Restored:" in output
         assert (specs / "my-topic").is_dir()
+
+
+class TestAllProjectsFlag:
+    """Tests for --all-projects flag."""
+
+    def test_all_projects_includes_cross_project(self, tmp_path, capsys, monkeypatch):
+        """With --all-projects, topics from other projects are archived."""
+        specs = tmp_path / "specs"
+        # Topic from a different project
+        topic = specs / "other-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"workdir": "/other/repo"}), encoding="utf-8"
+        )
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/my/repo")
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--all-projects"])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "other-topic" in output
+        assert (archives / "other-topic").is_dir()
+
+    def test_without_all_projects_filters_by_project(self, tmp_path, capsys, monkeypatch):
+        """Without --all-projects, only current project topics are archived."""
+        specs = tmp_path / "specs"
+        # Topic from current project
+        topic_mine = specs / "my-topic"
+        _write_todo(topic_mine, [_make_task("1")])
+        (topic_mine / "meta.json").write_text(
+            json.dumps({"workdir": "/my/repo"}), encoding="utf-8"
+        )
+        # Topic from another project
+        topic_other = specs / "other-topic"
+        _write_todo(topic_other, [_make_task("1")])
+        (topic_other / "meta.json").write_text(
+            json.dumps({"workdir": "/other/repo"}), encoding="utf-8"
+        )
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/my/repo")
+        monkeypatch.setattr(sys, "argv", ["archive.py"])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "my-topic" in output
+        assert "other-topic" not in output
+        assert (archives / "my-topic").is_dir()
+        assert (specs / "other-topic").is_dir()
+
+    def test_non_git_workdir_requires_all_projects(self, tmp_path, capsys, monkeypatch):
+        """Outside git workdir without --all-projects, prints message and exits."""
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context()  # top_workdir=None
+        monkeypatch.setattr(sys, "argv", ["archive.py"])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "--all-projects" in output
+        assert (specs / "done-topic").is_dir()  # not moved
+        assert not archives.exists()
+
+    def test_non_git_workdir_with_all_projects_works(self, tmp_path, capsys, monkeypatch):
+        """Outside git workdir with --all-projects, archives normally."""
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context()  # top_workdir=None
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--all-projects"])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "done-topic" in output
+        assert (archives / "done-topic").is_dir()
