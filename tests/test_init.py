@@ -211,7 +211,6 @@ class TestEnsureInitialized:
 
         assert (spex_root / "specs").is_dir()
         assert (spex_root / "archives").is_dir()
-        assert (spex_root / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR).is_dir()
         assert (spex_root / ".gitignore").exists()
 
     def test_idempotent(self, tmp_path):
@@ -402,7 +401,6 @@ class TestRunInit:
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx_with_roots),
-            patch("init._sync_all_templates") as mock_sync,
             patch("init.ensure_initialized") as mock_ensure,
         ):
             from init import run_init
@@ -411,9 +409,6 @@ class TestRunInit:
 
         mock_ensure.assert_called_once_with(
             str(spex_root), verbose=False, dry_run=False,
-        )
-        mock_sync.assert_called_once_with(
-            spex_root, verbose=False, dry_run=False,
         )
 
     def test_initializes_spex_root_when_missing(self, tmp_path):
@@ -631,7 +626,6 @@ class TestVerboseFlag:
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
             patch("init.ensure_initialized") as mock_ensure,
-            patch("init._sync_all_templates"),
         ):
             from init import run_init
 

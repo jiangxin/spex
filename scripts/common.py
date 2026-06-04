@@ -288,7 +288,6 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
         print(f"  Would create: {spex_root_path}/")
         for subdir in ("specs", "archives", "hooks"):
             print(f"  Would create: {spex_root_path / subdir}/")
-        _sync_all_templates(spex_root_path, verbose=verbose, dry_run=True)
         _write_internal_gitignore(spex_root_path, verbose=verbose,
                                   dry_run=True)
         return
@@ -301,7 +300,6 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
         (spex_root_path / subdir).mkdir(exist_ok=True)
         if not quiet:
             print(f"  Created: {spex_root_path / subdir}/")
-    _sync_all_templates(spex_root_path, verbose=verbose)
     _write_internal_gitignore(spex_root_path, verbose=verbose, quiet=quiet)
 
 
