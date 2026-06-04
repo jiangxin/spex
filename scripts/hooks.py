@@ -6,11 +6,10 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
-from common import _resolve_hook_roots
+from common import _resolve_hook_roots, logger
 from config import get_project_context
 
 
@@ -81,10 +80,9 @@ def run_hook(hook_name: str, event_data: dict, workdir=None) -> None:
         cwd=workdir,
     )
     if result.returncode != 0:
-        print(
-            f"Hook '{hook_name}' exited with code {result.returncode}:\n"
-            f"stderr: {result.stderr.strip()}",
-            file=sys.stderr,
+        logger.warning(
+            "Hook '%s' exited with code %d:\nstderr: %s",
+            hook_name, result.returncode, result.stderr.strip(),
         )
 
 
