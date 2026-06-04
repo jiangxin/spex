@@ -12,6 +12,7 @@ from common import (
     _create_default_toml,
     _sync_all_templates,
     ensure_initialized,
+    logger,
 )
 from config import (
     clear_config_cache,
@@ -43,20 +44,20 @@ def _install_deps(verbose=False, dry_run=False):
 
     skill_dir = _get_skill_path()
     if dry_run:
-        print(f"Would install dependencies from {skill_dir}")
+        logger.info("Would install dependencies from %s", skill_dir)
         return True
     if verbose:
-        print(f"Installing dependencies from {skill_dir} ...")
+        logger.info("Installing dependencies from %s ...", skill_dir)
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", str(skill_dir), "--quiet"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        print(f"Warning: pip install failed: {result.stderr.strip()}",
-              file=sys.stderr)
+        logger.warning("Warning: pip install failed: %s",
+                       result.stderr.strip())
         return False
-    print("Installed Python dependencies.")
+    logger.info("Installed Python dependencies.")
     return True
 
 
@@ -71,12 +72,12 @@ def _install_cli(verbose=False, dry_run=False):
     link_path = link_dir / "spex"
 
     if dry_run:
-        print(f"Would install CLI: {link_path} -> {script_path}")
+        logger.info("Would install CLI: %s -> %s", link_path, script_path)
         return
 
     found = _shutil.which("spex")
     if found and Path(found).resolve() == script_path.resolve():
-        print(f"CLI already installed: {found}")
+        logger.info("CLI already installed: %s", found)
         return
 
     try:
@@ -84,10 +85,11 @@ def _install_cli(verbose=False, dry_run=False):
         if link_path.is_symlink() or link_path.exists():
             link_path.unlink()
         link_path.symlink_to(script_path)
-        print(f"Installed CLI: {link_path} -> {script_path}")
+        logger.info("Installed CLI: %s -> %s", link_path, script_path)
     except PermissionError:
-        print(f"Warning: cannot install CLI to {link_dir} (permission denied)",
-              file=sys.stderr)
+        logger.warning(
+            "Warning: cannot install CLI to %s (permission denied)", link_dir
+        )
 
 
 def _resolve_target_dir(dir_path):
@@ -98,7 +100,7 @@ def _resolve_target_dir(dir_path):
     """
     target = Path(dir_path).resolve()
     if not target.is_dir():
-        print(f"Error: not a directory: {dir_path}", file=sys.stderr)
+        logger.error("Error: not a directory: %s", dir_path)
         sys.exit(1)
 
     main_wt = get_main_worktree(str(target))
@@ -112,17 +114,17 @@ def _init_target_toml(target_dir, verbose=False, dry_run=False):
     """
     toml_path = Path(target_dir) / ".spex.toml"
     if toml_path.is_file():
-        print(f"Config already exists: {toml_path}")
+        logger.info("Config already exists: %s", toml_path)
         return
 
     if dry_run:
-        print(f"Would create: {toml_path}")
+        logger.info("Would create: %s", toml_path)
         return
 
     effective = load_config(str(target_dir))
     content = generate_updated_toml(effective, force_keys={"spex_root"})
     toml_path.write_text(content, encoding="utf-8")
-    print(f"Created: {toml_path}")
+    logger.info("Created: %s", toml_path)
 
 
 def _create_toml_config(workdir=None, verbose=False, dry_run=False):
@@ -135,24 +137,24 @@ def _create_toml_config(workdir=None, verbose=False, dry_run=False):
             path = Path(toml_path)
             if dry_run:
                 if safe_update_toml(path, dry_run=True):
-                    print(f"Would reinitialize: {path}")
+                    logger.info("Would reinitialize: %s", path)
                 else:
-                    print(f"Config up-to-date: {path}")
+                    logger.info("Config up-to-date: %s", path)
             elif safe_update_toml(path):
-                print(f"Reinitialized: {path}")
+                logger.info("Reinitialized: %s", path)
                 changed = True
             else:
-                print(f"Config up-to-date: {path}")
+                logger.info("Config up-to-date: %s", path)
         if changed:
             clear_config_cache()
         return
 
     home_toml = Path.home() / ".spex.toml"
     if dry_run:
-        print(f"Would create: {home_toml}")
+        logger.info("Would create: %s", home_toml)
         return
     _create_default_toml()
-    print(f"Created: {home_toml}")
+    logger.info("Created: %s", home_toml)
     clear_config_cache()
 
 
@@ -190,7 +192,7 @@ def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):
     _sync_all_templates(spex_root, verbose=verbose, dry_run=dry_run)
 
     _install_cli(verbose=verbose, dry_run=dry_run)
-    print("Initialization complete.")
+    logger.info("Initialization complete.")
 
 
 def _build_parser() -> ArgumentParser:
@@ -234,4 +236,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()

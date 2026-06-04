@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import subprocess
 
 import pytest
@@ -97,7 +98,7 @@ class TestAllDoneDetection:
         captured = capsys.readouterr()
         assert captured.out == ""
 
-    def test_exit_code_error(self, tmp_path, monkeypatch, capsys):
+    def test_exit_code_error(self, tmp_path, monkeypatch, caplog):
         """Error scenario (missing template) -> exit(1)."""
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -111,12 +112,11 @@ class TestAllDoneDetection:
 
         from prompt import main
 
-        with pytest.raises(SystemExit) as exc_info:
-            main()
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
         assert exc_info.value.code == 1
-
-        captured = capsys.readouterr()
-        assert captured.err != ""
+        assert caplog.text != ""
 
     def test_all_done_render_prompt_returns_none(self, tmp_path, monkeypatch):
         """render_prompt() returns None when all tasks are done."""
@@ -1350,7 +1350,7 @@ class TestMainRouting:
         data = json.loads(captured.out)
         assert data["task_id"] == "step-1"
 
-    def test_fallback_to_cli_render(self, tmp_path, monkeypatch, capsys):
+    def test_fallback_to_cli_render(self, tmp_path, monkeypatch, caplog):
         """main() falls back to cli_render for unknown template names."""
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -1360,12 +1360,11 @@ class TestMainRouting:
 
         from prompt import main
 
-        with pytest.raises(SystemExit) as exc_info:
-            main(["nonexistent-template"])
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["nonexistent-template"])
         assert exc_info.value.code == 1
-
-        captured = capsys.readouterr()
-        assert "Error" in captured.err
+        assert "Error" in caplog.text
 
     def test_help_flag(self, capsys):
         """main() --help prints usage and exits 0."""

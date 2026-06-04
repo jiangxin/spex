@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from cli import ArgumentParser
-from common import strip_date_prefix
+from common import logger, strip_date_prefix
 
 
 def _build_submit_parser() -> ArgumentParser:
@@ -72,12 +72,12 @@ def cli_submit(argv=None) -> None:
     if not topic_name:
         candidates = _find_submittable_topics(ctx)
         if not candidates:
-            print("No submittable topics found.", file=sys.stderr)
+            logger.error("No submittable topics found.")
             sys.exit(1)
         elif len(candidates) == 1:
             topic_dir = candidates[0].path
             topic_name = candidates[0].name
-            print(f"Auto-selected: {topic_name}", file=sys.stderr)
+            logger.error("Auto-selected: %s", topic_name)
         else:
             from common import prompt_selection
 
@@ -92,10 +92,9 @@ def cli_submit(argv=None) -> None:
     if not ctx.is_related_to(topic_dir):
         meta = common.load_meta(topic_dir)
         workdir = meta.workdir if meta else "(unknown)"
-        print(
-            f"Error: topic '{topic_name}' is not related to current project, "
-            f"it is associated with {workdir}",
-            file=sys.stderr,
+        logger.error(
+            "Error: topic '%s' is not related to current project, "
+            "it is associated with %s", topic_name, workdir
         )
         sys.exit(1)
     meta = common.load_meta(topic_dir)
@@ -111,9 +110,9 @@ def cli_submit(argv=None) -> None:
         sys.exit(1)
 
     if parsed.dry_run:
-        print(f"Would merge: {source} -> {target}")
+        logger.info("Would merge: %s -> %s", source, target)
         if not parsed.no_archive:
-            print(f"Would archive: {topic_dir.name}")
+            logger.info("Would archive: %s", topic_dir.name)
         print(json.dumps({"action": method, "source": source,
                           "target": target, "archived": not parsed.no_archive,
                           "dry_run": True, "errors": []}))

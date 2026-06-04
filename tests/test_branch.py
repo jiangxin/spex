@@ -250,17 +250,18 @@ class TestCliPostAction:
     @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
     def test_outputs_text_with_branch(self, mock_resolve, _ctx,
-                                      tmp_path, capsys):
+                                      tmp_path, caplog):
+        import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
         )
         mock_resolve.return_value = tmp_path
-        cli_post_action(["--topic", "my-feat"])
-        out = capsys.readouterr().out
-        assert "spex/my-feat" in out
-        assert "Development completed" in out
-        assert "main" in out
+        with caplog.at_level(logging.INFO):
+            cli_post_action(["--topic", "my-feat"])
+        assert "spex/my-feat" in caplog.text
+        assert "Development completed" in caplog.text
+        assert "main" in caplog.text
 
     @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
@@ -274,22 +275,25 @@ class TestCliPostAction:
 
 
 class TestCliSubmit:
-    def test_no_topic_arg_exits(self, capsys):
+    @patch("merge._find_submittable_topics", return_value=[])
+    def test_no_topic_arg_exits(self, _mock, caplog):
         """Empty topic argument causes error exit."""
-        try:
-            cli_submit([])
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
-        err = capsys.readouterr().err
-        assert "topic" in err.lower()
+        import logging
+        with caplog.at_level(logging.ERROR):
+            try:
+                cli_submit([])
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
+        assert "topic" in caplog.text.lower()
 
     @patch("config.get_project_context")
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_topic_dir")
     def test_unrelated_topic_exits(self, mock_resolve, _specs, mock_ctx,
-                                   tmp_path, capsys):
+                                   tmp_path, caplog):
         """Topic not related to current project causes error exit."""
+        import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({
@@ -307,14 +311,14 @@ class TestCliSubmit:
             config={"submit_method": "merge"},
         )
         mock_ctx.return_value = ctx
-        try:
-            cli_submit(["done-topic"])
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
-        err = capsys.readouterr().err
-        assert "not related to current project" in err
-        assert "/other/project" in err
+        with caplog.at_level(logging.ERROR):
+            try:
+                cli_submit(["done-topic"])
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
+        assert "not related to current project" in caplog.text
+        assert "/other/project" in caplog.text
 
     @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
@@ -454,4 +458,5 @@ class TestCliRouting:
     def test_submit_no_topic_exits(self):
         result = self._run_spex("submit")
         assert result.returncode in (1, 2)
-        assert "topic" in result.stderr.lower()
+        err = result.stderr.lower()
+        assert "topic" in err or "auto-selected" in err

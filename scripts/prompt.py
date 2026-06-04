@@ -16,6 +16,7 @@ from common import (
     load_meta,
     load_todo,
     local_iso_timestamp,
+    logger,
     resolve_topic_dir,
     strip_front_matter,
 )
@@ -46,9 +47,8 @@ def validate_required_meta(content, metadata):
 
     missing = [key for key in required if key not in metadata]
     if missing:
-        print(
-            f"Error: missing required metadata: {', '.join(missing)}",
-            file=sys.stderr,
+        logger.error(
+            "Error: missing required metadata: %s", ", ".join(missing)
         )
         sys.exit(1)
 
@@ -453,10 +453,10 @@ def _do_apply_one_task(args):
 
         rendered = render_prompt("apply-one-task", args.topic, metadata=metadata)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         sys.exit(1)
     except TemplateError as e:
-        print(f"Error rendering template: {e}", file=sys.stderr)
+        logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
     if args.json_mode:
@@ -486,7 +486,7 @@ def _read_stdin_extra_vars(stdin_flag):
     try:
         return json.loads(stdin_data)
     except json.JSONDecodeError:
-        print("Error: stdin must be valid JSON", file=sys.stderr)
+        logger.error("Error: stdin must be valid JSON")
         sys.exit(1)
 
 
@@ -507,10 +507,10 @@ def _do_apply_commit(args):
 
         rendered = render_prompt("apply-commit", args.topic, metadata=metadata)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         sys.exit(1)
     except TemplateError as e:
-        print(f"Error rendering template: {e}", file=sys.stderr)
+        logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
     _output_rendered(rendered, args.output)
@@ -550,10 +550,10 @@ def _do_modify_spec(args):
 
         rendered = render_prompt("modify-spec", args.topic, metadata=metadata)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         sys.exit(1)
     except TemplateError as e:
-        print(f"Error rendering template: {e}", file=sys.stderr)
+        logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
     if args.json_mode:
@@ -595,10 +595,10 @@ def _do_modify_todo(args):
 
         rendered = render_prompt("modify-todo", args.topic, metadata=metadata)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         sys.exit(1)
     except TemplateError as e:
-        print(f"Error rendering template: {e}", file=sys.stderr)
+        logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
     if args.json_mode:
@@ -638,10 +638,10 @@ def cli_render(argv):
 
         rendered = render_prompt(args.name, args.topic, metadata=metadata)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         sys.exit(1)
     except TemplateError as e:
-        print(f"Error rendering template: {e}", file=sys.stderr)
+        logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
     _output_rendered(rendered, args.output)
@@ -693,4 +693,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()

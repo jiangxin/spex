@@ -106,9 +106,14 @@ Scripts use Python's `logging` module for all informational output
 (status, progress, errors). stdout is reserved for programmatic data
 (JSON, rendered content, paths).
 
+- `setup_logging()` is called once in `scripts/spex` main(); subcommand
+  scripts only need `from common import logger`.
+- Scripts with `if __name__ == "__main__"` call `setup_logging()` there
+  as a fallback for direct execution (e.g., in tests).
+- Use `-d` / `--debug` global flag for DEBUG-level output.
+
 | Usage | API |
 |-------|-----|
-| Setup (call once in `main()`) | `from common import setup_logging; setup_logging()` |
 | Info messages | `logger.info("Created branch '%s'", name)` |
 | Warnings | `logger.warning("...")` |
 | Errors | `logger.error("...")` |

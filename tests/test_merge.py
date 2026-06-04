@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -53,19 +54,19 @@ def _setup_topic(tmp_path, topic_name="my-topic", spex_branch="spex/test",
 class TestDryRun:
     """Tests for --dry-run flag in cli_submit."""
 
-    def test_dry_run_does_not_merge(self, tmp_path, capsys):
+    def test_dry_run_does_not_merge(self, tmp_path, caplog):
         specs, topic_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("branch.merge_branch", mock_merge):
+             patch("branch.merge_branch", mock_merge), \
+             caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
 
         mock_merge.assert_not_called()
-        output = capsys.readouterr().out
-        assert "Would merge" in output
+        assert "Would merge" in caplog.text
 
     def test_dry_run_json_output(self, tmp_path, capsys):
         specs, topic_dir = _setup_topic(tmp_path)
@@ -78,52 +79,51 @@ class TestDryRun:
             spex_merge.cli_submit(["my-topic", "--dry-run"])
 
         output = capsys.readouterr().out
-        lines = output.strip().split("\n")
-        # Last line should be JSON
-        data = json.loads(lines[-1])
+        # Only JSON remains on stdout (info messages go to logging)
+        data = json.loads(output.strip())
         assert data["dry_run"] is True
         assert data["source"] == "spex/test"
         assert data["target"] == "main"
         assert data["archived"] is True
         assert data["errors"] == []
 
-    def test_dry_run_no_archive(self, tmp_path, capsys):
+    def test_dry_run_no_archive(self, tmp_path, capsys, caplog):
         specs, topic_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("branch.merge_branch", mock_merge):
+             patch("branch.merge_branch", mock_merge), \
+             caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run", "--no-archive"])
 
         mock_merge.assert_not_called()
+        assert "Would merge" in caplog.text
+        assert "Would archive" not in caplog.text
         output = capsys.readouterr().out
-        assert "Would merge" in output
-        assert "Would archive" not in output
-        lines = output.strip().split("\n")
-        data = json.loads(lines[-1])
+        data = json.loads(output.strip())
         assert data["archived"] is False
 
-    def test_dry_run_short_flag(self, tmp_path, capsys):
+    def test_dry_run_short_flag(self, tmp_path, caplog):
         specs, topic_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("branch.merge_branch", mock_merge):
+             patch("branch.merge_branch", mock_merge), \
+             caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "-n"])
 
         mock_merge.assert_not_called()
-        output = capsys.readouterr().out
-        assert "Would merge" in output
+        assert "Would merge" in caplog.text
 
 
 class TestAutoSelect:
     """Tests for auto-topic selection when no topic is provided."""
 
-    def test_auto_select_single_topic(self, tmp_path, capsys):
+    def test_auto_select_single_topic(self, tmp_path, caplog):
         specs, topic_dir = _setup_topic(
             tmp_path, topic_name="auto-topic",
             spex_branch="spex/auto", completed=True,
@@ -135,28 +135,28 @@ class TestAutoSelect:
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_post_action"), \
-             patch("archive.archive_single_topic", return_value=None):
+             patch("archive.archive_single_topic", return_value=None), \
+             caplog.at_level(logging.ERROR):
             spex_merge.cli_submit([])
 
         mock_merge.assert_called_once()
         call_args = mock_merge.call_args
         assert call_args[0][1] == "spex/auto"
-        err = capsys.readouterr().err
-        assert "Auto-selected: auto-topic" in err
+        assert "Auto-selected: auto-topic" in caplog.text
 
-    def test_auto_select_no_topics(self, tmp_path, capsys):
+    def test_auto_select_no_topics(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         specs.mkdir(parents=True)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             caplog.at_level(logging.ERROR), \
              pytest.raises(SystemExit) as exc_info:
             spex_merge.cli_submit([])
 
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "No submittable topics found" in err
+        assert "No submittable topics found" in caplog.text
 
     def test_auto_select_multiple_topics_non_interactive(
         self, tmp_path, caplog,

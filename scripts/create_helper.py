@@ -13,6 +13,7 @@ from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     TopicMeta,
     atomic_write_json,
+    logger,
     resolve_topic_dir,
     strip_date_prefix,
     wrap_text,
@@ -86,44 +87,41 @@ def validate_create_branch(
     try:
         current = get_current_branch(cwd)
     except subprocess.CalledProcessError as e:
-        print(f"Error: cannot determine current branch: {e}", file=sys.stderr)
+        logger.error(f"Error: cannot determine current branch: {e}")
         sys.exit(1)
     except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         sys.exit(1)
 
     if not bool(config["branch_management"]):
-        print("Note: branch management is not enabled in .spex.toml, "
-              "will not create new branch for spec.", file=sys.stderr)
+        logger.info("Note: branch management is not enabled in .spex.toml, "
+                    "will not create new branch for spec.")
         return current
 
     main_branch = config["main_branch_name"]
     if main_branch and current != main_branch:
-        print(
+        logger.warning(
             f"Warning: current branch '{current}' does not match "
             f"main_branch_name '{main_branch}'. "
             f"Switching to '{main_branch}'...",
-            file=sys.stderr,
         )
         try:
             switch_branch(main_branch, cwd)
         except subprocess.CalledProcessError as e:
-            print(
+            logger.error(
                 f"Error: failed to switch to '{main_branch}': "
                 f"{e.stderr.strip() or e}",
-                file=sys.stderr,
             )
             sys.exit(-1)
-        print(f"Switched to branch '{main_branch}'.", file=sys.stderr)
+        logger.info(f"Switched to branch '{main_branch}'.")
         return main_branch
 
     if current.startswith(DEFAULT_SPEX_BRANCH_PREFIX):
-        print(
+        logger.error(
             f"Error: current branch '{current}' starts with "
             f"'{DEFAULT_SPEX_BRANCH_PREFIX}'.\n"
             f"Hint: configure 'main_branch_name' in .spex.toml "
             f"to enable automatic branch switching.",
-            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -132,12 +130,13 @@ def validate_create_branch(
 
 def cli_create_validate() -> None:
     """CLI: validate branch creation feasibility."""
+
     import config as cfg
 
     ctx = cfg.get_project_context()
     current = validate_create_branch(ctx.config, cwd=ctx.main_worktree)
     if current:
-        print(f"Valid: currently on branch '{current}'")
+        logger.info(f"Valid: currently on branch '{current}'")
 
 
 def _do_prepare_spec(args):
@@ -153,7 +152,7 @@ def _do_prepare_spec(args):
     try:
         topic_name, topic_dir = create_topic(args.topic, specs_dir)
     except (ValueError, FileExistsError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         sys.exit(1)
 
     ctx = cfg.get_project_context()
@@ -172,6 +171,7 @@ def _do_prepare_spec(args):
 
 def cli_prepare_spec(argv=None):
     """CLI: create topic directory and return JSON with metadata."""
+
     args = _build_parser().parse(["prepare-spec"] + (argv or []))
     _do_prepare_spec(args)
 
@@ -194,7 +194,7 @@ def _do_post_action(args):
     json_path = topic_dir / "todo.json"
 
     if not json_path.is_file():
-        print(f"Error: {json_path} not found.", file=sys.stderr)
+        logger.error(f"Error: {json_path} not found.")
         sys.exit(1)
 
     data = load_and_validate_todo_json(json_path)
@@ -202,13 +202,12 @@ def _do_post_action(args):
     for i, item in enumerate(data):
         for field in REQUIRED_FIELDS:
             if field not in item:
-                print(
+                logger.error(
                     f"Error: item[{i}]: missing required"
                     f" field '{field}'.",
-                    file=sys.stderr,
                 )
                 sys.exit(1)
-    print(f"OK: {len(data)} step(s) validated.")
+    logger.info(f"OK: {len(data)} step(s) validated.")
 
     # Update description from spec.md front-matter
     spec_path = topic_dir / "spec.md"
@@ -246,6 +245,7 @@ def _do_post_action(args):
 
 def cli_post_action(argv=None):
     """CLI: validate todo.json and trigger post-action hook."""
+
     args = _build_parser().parse(["post-action"] + (argv or []))
     _do_post_action(args)
 
@@ -299,6 +299,7 @@ def _build_parser():
 
 def main(argv=None):
     """Parse args, route to subcommand."""
+
     parser = _build_parser()
     args = parser.parse(argv)
 

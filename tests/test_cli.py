@@ -22,13 +22,13 @@ class TestNoArgs:
         result = _run_spex()
 
         assert result.returncode == 0
-        assert "usage: spex" in result.stdout
+        assert "usage: spex" in result.stderr
 
     def test_lists_commands(self):
         result = _run_spex()
 
-        assert "list" in result.stdout
-        assert "archive" in result.stdout
+        assert "list" in result.stderr
+        assert "archive" in result.stderr
 
 
 class TestHelpFlag:

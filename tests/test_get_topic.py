@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -168,14 +169,14 @@ class TestResolveTopicMustDone:
         result = resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
         assert result == [("2026-05-20-14-30-my-topic", specs)]
 
-    def test_exact_match_must_done_not_completed(self, tmp_path, capsys):
+    def test_exact_match_must_done_not_completed(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-my-topic")
 
-        with pytest.raises(SystemExit):
-            resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
-        err = capsys.readouterr().err
-        assert "Error: topic '2026-05-20-14-30-my-topic' is not completed." in err
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit):
+                resolve_topic("2026-05-20-14-30-my-topic", specs, must_done=True)
+        assert "topic '2026-05-20-14-30-my-topic' is not completed." in caplog.text
 
     def test_fuzzy_match_must_done(self, tmp_path):
         specs = tmp_path / "specs"
@@ -204,14 +205,14 @@ class TestResolveTopicMustDone:
             ("2026-05-20-14-30-beta", specs),
         ]
 
-    def test_no_name_must_done_none_completed(self, tmp_path, capsys):
+    def test_no_name_must_done_none_completed(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-active")
 
-        with pytest.raises(SystemExit):
-            resolve_topic("", specs, must_done=True)
-        err = capsys.readouterr().err
-        assert "no completed topics found" in err
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit):
+                resolve_topic("", specs, must_done=True)
+        assert "no completed topics found" in caplog.text
 
 
 class TestResolveTopicWorkdirFilter:
@@ -242,7 +243,7 @@ class TestResolveTopicWorkdirFilter:
             ("2026-05-20-14-30-two", specs),
         ]
 
-    def test_filter_no_match_exits_with_hint(self, tmp_path, capsys):
+    def test_filter_no_match_exits_with_hint(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         workspace_a = tmp_path / "workspace-a"
         workspace_b = tmp_path / "workspace-b"
@@ -251,10 +252,10 @@ class TestResolveTopicWorkdirFilter:
         _make_topic(specs, "2026-05-20-14-30-alpha", workdir=str(workspace_a))
 
         ctx = _mock_project_context(top_workdir=str(workspace_b))
-        with pytest.raises(SystemExit):
-            resolve_topic("", specs, ctx=ctx)
-        err = capsys.readouterr().err
-        assert "--all" in err
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit):
+                resolve_topic("", specs, ctx=ctx)
+        assert "--all" in caplog.text
 
     def test_filter_skips_topics_without_meta(self, tmp_path):
         specs = tmp_path / "specs"
@@ -318,7 +319,7 @@ class TestResolveTopicWorkdirFilter:
 
 
 class TestMainAllFlag:
-    def test_all_flag_mutual_exclusion(self, tmp_path, monkeypatch, capsys):
+    def test_all_flag_mutual_exclusion(self, tmp_path, monkeypatch, caplog):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-my-topic")
 
@@ -328,10 +329,10 @@ class TestMainAllFlag:
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        with pytest.raises(SystemExit):
-            main()
-        err = capsys.readouterr().err
-        assert "--all cannot be used with a topic name" in err
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit):
+                main()
+        assert "--all cannot be used with a topic name" in caplog.text
 
     def test_all_flag_no_filter(self, tmp_path, monkeypatch, capsys):
         specs = tmp_path / "specs"
@@ -541,16 +542,16 @@ class TestResolveTopicMustUndone:
         )
         assert result == [("2026-05-20-14-30-active-topic", specs)]
 
-    def test_exact_match_completed_returns_empty(self, tmp_path, capsys):
+    def test_exact_match_completed_returns_empty(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-done-topic", completed=True)
 
-        result = resolve_topic(
-            "2026-05-20-14-30-done-topic", specs, must_undone=True
-        )
+        with caplog.at_level(logging.WARNING):
+            result = resolve_topic(
+                "2026-05-20-14-30-done-topic", specs, must_undone=True
+            )
         assert result == []
-        err = capsys.readouterr().err
-        assert "no undone tasks" in err
+        assert "no undone tasks" in caplog.text
 
     def test_fuzzy_match_filters_undone(self, tmp_path):
         specs = tmp_path / "specs"
@@ -579,14 +580,14 @@ class TestResolveTopicMustUndone:
             ("2026-05-20-14-30-gamma", specs),
         ]
 
-    def test_no_name_all_done_exits(self, tmp_path, capsys):
+    def test_no_name_all_done_exits(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _make_topic(specs, "2026-05-20-14-30-done", completed=True)
 
-        with pytest.raises(SystemExit):
-            resolve_topic("", specs, must_undone=True)
-        err = capsys.readouterr().err
-        assert "no topics with undone tasks found" in err
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit):
+                resolve_topic("", specs, must_undone=True)
+        assert "no topics with undone tasks found" in caplog.text
 
 
 class TestResolveTopicWithArchives:

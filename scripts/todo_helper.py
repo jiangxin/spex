@@ -17,6 +17,7 @@ from common import (
     escape_xml_text,
     load_and_validate_todo_json,
     local_iso_timestamp,
+    logger,
     resolve_topic_dir,
     validate_unique_ids,
 )
@@ -56,16 +57,14 @@ def load_todo_xml(path):
     try:
         root = ET.fromstring(content)
     except ET.ParseError as exc:
-        print(
-            f"Error: failed to parse XML '{path}': {exc}",
-            file=sys.stderr,
+        logger.error(
+            "Error: failed to parse XML '%s': %s", path, exc,
         )
         sys.exit(1)
     if root.tag != "todo":
-        print(
-            f"Error: expected root element <todo>,"
-            f" got <{root.tag}>.",
-            file=sys.stderr,
+        logger.error(
+            "Error: expected root element <todo>,"
+            " got <%s>.", root.tag,
         )
         sys.exit(1)
     entries = []
@@ -157,13 +156,12 @@ def cmd_validate(todo_path, is_xml):
     for i, item in enumerate(data):
         for field in REQUIRED_FIELDS:
             if field not in item:
-                print(
-                    f"Error: item[{i}]: missing required field"
-                    f" '{field}'.",
-                    file=sys.stderr,
+                logger.error(
+                    "Error: item[%d]: missing required field"
+                    " '%s'.", i, field,
                 )
                 sys.exit(1)
-    print("OK")
+    logger.info("OK")
 
 
 def cmd_append(todo_path, is_xml, args):
@@ -173,9 +171,8 @@ def cmd_append(todo_path, is_xml, args):
     elif args.details is not None:
         details = args.details
     else:
-        print(
+        logger.error(
             "Error: --details or --details-from-stdin required.",
-            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -183,9 +180,8 @@ def cmd_append(todo_path, is_xml, args):
 
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
-            print(
-                f"Error: duplicate id '{args.id}'.",
-                file=sys.stderr,
+            logger.error(
+                "Error: duplicate id '%s'.", args.id,
             )
             sys.exit(1)
 
@@ -198,7 +194,7 @@ def cmd_append(todo_path, is_xml, args):
     }
     data.append(entry)
     write_todo_file(todo_path, data, is_xml)
-    print(f"Appended '{args.id}'.")
+    logger.info("Appended '%s'.", args.id)
 
 
 def cmd_edit(todo_path, is_xml, args):
@@ -227,14 +223,13 @@ def cmd_edit(todo_path, is_xml, args):
             break
 
     if not found:
-        print(
-            f"Error: id '{args.id}' not found.",
-            file=sys.stderr,
+        logger.error(
+            "Error: id '%s' not found.", args.id,
         )
         sys.exit(1)
 
     write_todo_file(todo_path, data, is_xml)
-    print(f"Updated '{args.id}'.")
+    logger.info("Updated '%s'.", args.id)
 
 
 def cmd_remove(todo_path, is_xml, args):
@@ -247,14 +242,13 @@ def cmd_remove(todo_path, is_xml, args):
     ]
 
     if len(new_data) == len(data):
-        print(
-            f"Error: id '{args.id}' not found.",
-            file=sys.stderr,
+        logger.error(
+            "Error: id '%s' not found.", args.id,
         )
         sys.exit(1)
 
     write_todo_file(todo_path, new_data, is_xml)
-    print(f"Removed '{args.id}'.")
+    logger.info("Removed '%s'.", args.id)
 
 
 def _wrap_field(label, text, indent, width=10**9):
@@ -365,7 +359,7 @@ def cmd_xml2json(todo_path, is_xml, args):
     atomic_write_json(output_path, data)
     if args.rm:
         todo_path.unlink()
-    print(f"Converted {todo_path} -> {output_path}")
+    logger.info("Converted %s -> %s", todo_path, output_path)
 
 
 def cmd_json2xml(todo_path, is_xml, args):
@@ -375,7 +369,7 @@ def cmd_json2xml(todo_path, is_xml, args):
     write_todo_xml(output_path, data)
     if args.rm:
         todo_path.unlink()
-    print(f"Converted {todo_path} -> {output_path}")
+    logger.info("Converted %s -> %s", todo_path, output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -562,14 +556,13 @@ def main(argv=None):
     args = parser.parse(argv)
 
     if not args.subcmd:
-        parser.print_help()
+        parser.print_help(sys.stderr)
         sys.exit(0)
 
     if not args.topic and not args.todo_file:
-        print(
+        logger.error(
             "Error: one of the arguments --topic"
             " --todo-file is required.",
-            file=sys.stderr,
         )
         sys.exit(2)
 
@@ -592,4 +585,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()

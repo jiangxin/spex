@@ -1,5 +1,6 @@
 """Tests for hooks.py: hook resolution, execution, and event data."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -286,7 +287,7 @@ class TestRunHook:
 
         assert output_file.read_text() == "event=apply"
 
-    def test_logs_error_on_failure(self, monkeypatch, tmp_path, capfd):
+    def test_logs_error_on_failure(self, monkeypatch, tmp_path, caplog):
         """run_hook logs stderr when hook exits non-zero."""
         from unittest.mock import patch
 
@@ -313,16 +314,16 @@ class TestRunHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
-            hooks.run_hook(
-                "post-action",
-                {"event_type": "create", "payload": {}},
-                str(tmp_path),
-            )
+        with caplog.at_level(logging.WARNING):
+            with patch("common.get_project_context", return_value=ctx):
+                hooks.run_hook(
+                    "post-action",
+                    {"event_type": "create", "payload": {}},
+                    str(tmp_path),
+                )
 
-        _, stderr = capfd.readouterr()
-        assert "intentional error" in stderr
-        assert "exited with code 1" in stderr
+        assert "intentional error" in caplog.text
+        assert "exited with code 1" in caplog.text
 
     def test_silent_when_no_hook(self, monkeypatch, tmp_path, capfd):
         """run_hook is silent when no hook exists."""

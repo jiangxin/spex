@@ -98,7 +98,7 @@ class TestTodoHelperValidate:
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
-        assert "OK" in result.stdout
+        assert "OK" in result.stderr
 
     def test_validate_xml_via_file(self, sandbox):
         """Validate a todo.xml file via --todo-file."""
@@ -111,7 +111,7 @@ class TestTodoHelperValidate:
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
-        assert "OK" in result.stdout
+        assert "OK" in result.stderr
 
 
 @pytest.mark.e2e

@@ -20,6 +20,7 @@ from common import (
     get_spex_tomls,
     has_undone_tasks,
     is_topic_completed,
+    logger,
 )
 from config import ProjectContext, get_project_context, set_spex_config_file
 
@@ -62,17 +63,15 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             topic_path, parent_dir = all_matches[0]
             if must_done:
                 if not is_topic_completed(topic_path):
-                    print(
-                        f"Error: topic '{topic_name}' is not completed.",
-                        file=sys.stderr,
+                    logger.error(
+                        "Error: topic '%s' is not completed.", topic_name
                     )
                     sys.exit(1)
                 return [(topic_name, parent_dir)]
             if must_undone:
                 if not has_undone_tasks(topic_path):
-                    print(
-                        f"Warning: topic '{topic_name}' has no undone tasks.",
-                        file=sys.stderr,
+                    logger.warning(
+                        "Warning: topic '%s' has no undone tasks.", topic_name
                     )
                     return []
             return [(topic_name, parent_dir)]
@@ -90,10 +89,9 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
 
         if not filtered:
             dir_list = ", ".join(str(d) for d in search_dirs)
-            print(
-                f"Error: no topic matching '{topic_name}' found in"
-                f" {dir_list}",
-                file=sys.stderr,
+            logger.error(
+                "Error: no topic matching '%s' found in %s",
+                topic_name, dir_list,
             )
             sys.exit(1)
 
@@ -122,9 +120,8 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
         Path(d).is_dir() for d in search_dirs
     ):
         dir_list = ", ".join(str(d) for d in search_dirs)
-        print(
-            f"Error: specs directory does not exist: {dir_list}",
-            file=sys.stderr,
+        logger.error(
+            "Error: specs directory does not exist: %s", dir_list
         )
         sys.exit(1)
 
@@ -137,40 +134,30 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
     if not all_candidates:
         if must_done:
             if ctx is not None:
-                print(
+                logger.error(
                     "Error: no completed topics found for the current"
-                    " workspace. Use --all to show all topics.",
-                    file=sys.stderr,
+                    " workspace. Use --all to show all topics."
                 )
             else:
-                print(
-                    "Error: no completed topics found.",
-                    file=sys.stderr,
-                )
+                logger.error("Error: no completed topics found.")
         elif must_undone:
             if ctx is not None:
-                print(
+                logger.error(
                     "Error: no topics with undone tasks found for the current"
-                    " workspace. Use --all to show all topics.",
-                    file=sys.stderr,
+                    " workspace. Use --all to show all topics."
                 )
             else:
-                print(
-                    "Error: no topics with undone tasks found.",
-                    file=sys.stderr,
+                logger.error(
+                    "Error: no topics with undone tasks found."
                 )
         else:
             if ctx is not None:
-                print(
+                logger.error(
                     "Error: no topics found for the current"
-                    " workspace. Use --all to show all topics.",
-                    file=sys.stderr,
+                    " workspace. Use --all to show all topics."
                 )
             else:
-                print(
-                    "Error: no topics found.",
-                    file=sys.stderr,
-                )
+                logger.error("Error: no topics found.")
         sys.exit(1)
 
     return all_candidates
@@ -270,10 +257,7 @@ def main(argv=None):
     topic_name = args.topic
 
     if getattr(args, "all") and topic_name:
-        print(
-            "Error: --all cannot be used with a topic name.",
-            file=sys.stderr,
-        )
+        logger.error("Error: --all cannot be used with a topic name.")
         sys.exit(1)
 
     ctx = get_project_context()
@@ -307,4 +291,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()
