@@ -709,7 +709,7 @@ def _sync_builtin_template(
     if not target.exists():
         examples_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        print(f"  Synced template: {template_name}")
+        print(f"  Synced template: {template_name}", file=sys.stderr)
         return
 
     src_stat = source.stat()
@@ -717,17 +717,17 @@ def _sync_builtin_template(
     if (tgt_stat.st_mtime != src_stat.st_mtime
             or tgt_stat.st_size != src_stat.st_size):
         shutil.copy2(source, target)
-        print(f"  Updated template: {template_name}")
+        print(f"  Updated template: {template_name}", file=sys.stderr)
         return
 
     source_version = _extract_template_version(source)
     target_version = _extract_template_version(target)
     if source_version and source_version == target_version:
-        print(f"  Template up-to-date: {template_name}")
+        print(f"  Template up-to-date: {template_name}", file=sys.stderr)
         return
 
     shutil.copy2(source, target)
-    print(f"  Updated template: {template_name}")
+    print(f"  Updated template: {template_name}", file=sys.stderr)
 
 
 def _resolve_template_roots(workdir=None):

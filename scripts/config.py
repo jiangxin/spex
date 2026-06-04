@@ -407,10 +407,10 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
 
     top_workdir = _get_top_workdir(workdir)
     main_worktree = _get_main_worktree(workdir)
-    user_name = _git_field(["git", "config", "user.name"], cwd=workdir)
-    user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
 
     if top_workdir is not None:
+        user_name = _git_field(["git", "config", "user.name"], cwd=workdir)
+        user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
         remote_url = _git_field(
             ["git", "remote", "get-url", "origin"], cwd=workdir,
         )
@@ -418,6 +418,8 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=workdir,
         )
     else:
+        user_name = ""
+        user_email = ""
         remote_url = ""
         branch = ""
 

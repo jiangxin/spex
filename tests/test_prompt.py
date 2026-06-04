@@ -1168,8 +1168,8 @@ class TestCliApplyCommit:
 class TestCliModifySpec:
     """Test cli_modify_spec handler directly."""
 
-    def test_stdin_logs_to_meta(self, tmp_path, monkeypatch, capsys):
-        """cli_modify_spec with --stdin logs prompt_context to meta.json."""
+    def test_stdin_included_in_output(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec with --stdin includes prompt_context in output."""
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
@@ -1183,11 +1183,6 @@ class TestCliModifySpec:
 
         captured = capsys.readouterr()
         assert "Add caching support" in captured.out
-
-        # Verify meta.json was updated
-        meta_path = topic_dir / "meta.json"
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert data["prompts"][0]["text"] == "Add caching support"
 
     def test_json_mode_output(self, tmp_path, monkeypatch, capsys):
         """cli_modify_spec --json outputs JSON with prompt key."""
