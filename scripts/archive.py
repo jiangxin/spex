@@ -7,6 +7,7 @@ into the archives directory.
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import sys
 from pathlib import Path
@@ -37,7 +38,8 @@ def has_active_branch(topic_dir: Path) -> bool:
 
 
 def find_completed_topics(
-    specs_dir: Path, ctx: ProjectContext, force: bool = False
+    specs_dir: Path, ctx: ProjectContext, force: bool = False,
+    all_projects: bool = False,
 ) -> list:
     """Return sorted list of topic paths where all tasks are completed.
 
@@ -54,7 +56,7 @@ def find_completed_topics(
             continue
         if not force and has_active_branch(d):
             continue
-        if not ctx.is_related_to(d):
+        if not all_projects and not ctx.is_related_to(d):
             continue
         results.append(d)
     return sorted(results)
@@ -89,7 +91,11 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def archive_single_topic(
-    topic_name: str, specs_dir: Path, archives_dir: Path, force: bool = False
+    topic_name: str,
+    specs_dir: Path,
+    archives_dir: Path,
+    force: bool = False,
+    dry_run: bool = False,
 ) -> Path | None:
     """Archive a single topic by name. Supports partial topic name matching.
 
@@ -109,6 +115,9 @@ def archive_single_topic(
             f" (use --force to archive)"
         )
         return None
+    if dry_run:
+        print(f"Would archive: {topic_dir.name}")
+        return archives_dir / topic_dir.name
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
     print(f"Archived: {topic_dir.name} -> {dest}")
@@ -119,6 +128,7 @@ def restore_single_topic(
     topic_name: str,
     specs_dir: Path,
     archives_dir: Path,
+    dry_run: bool = False,
 ) -> Path | None:
     """Restore a single topic from archives back to specs.
 
@@ -150,6 +160,9 @@ def restore_single_topic(
         )
         sys.exit(1)
 
+    if dry_run:
+        print(f"Would restore: {matches[0].name}")
+        return specs_dir / matches[0].name
     specs_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic_with_conflict(matches[0], specs_dir)
     print(f"Restored: {matches[0].name} -> {dest}")
@@ -166,29 +179,45 @@ def main(argv=None):
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
-    parser.add_argument("--not", action="store_true", dest="not_flag",
+    parser.add_argument("--restore", action="store_true",
                         help="Restore a topic from archives back to specs")
+    parser.add_argument("--not", action="store_true", dest="restore",
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--all-projects", action="store_true",
+                        help="Archive topics from all projects")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
 
-    if args.not_flag:
+    if args.restore:
         if not args.topic:
             print(
-                "Error: --not requires --topic to specify what to restore.",
+                "Error: --restore requires --topic to specify what to restore.",
                 file=sys.stderr,
             )
             sys.exit(1)
-        restore_single_topic(args.topic, specs_dir, archives_dir)
+        restore_single_topic(args.topic, specs_dir, archives_dir,
+                             dry_run=args.dry_run)
         return
 
     if args.topic:
-        archive_single_topic(args.topic, specs_dir, archives_dir, args.force)
+        archive_single_topic(args.topic, specs_dir, archives_dir, args.force,
+                             dry_run=args.dry_run)
         return
 
     ctx = get_project_context()
-    completed = find_completed_topics(specs_dir, ctx, args.force)
+
+    if not ctx.in_git_workdir() and not args.all_projects:
+        print(
+            "Not in a git workdir. Use --all-projects to archive"
+            " topics from all projects."
+        )
+        return
+
+    completed = find_completed_topics(
+        specs_dir, ctx, args.force, all_projects=args.all_projects,
+    )
 
     if not completed:
         print("No completed topics to archive.")
