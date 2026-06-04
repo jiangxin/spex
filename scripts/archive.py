@@ -89,7 +89,11 @@ def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
 
 
 def archive_single_topic(
-    topic_name: str, specs_dir: Path, archives_dir: Path, force: bool = False
+    topic_name: str,
+    specs_dir: Path,
+    archives_dir: Path,
+    force: bool = False,
+    dry_run: bool = False,
 ) -> Path | None:
     """Archive a single topic by name. Supports partial topic name matching.
 
@@ -109,6 +113,9 @@ def archive_single_topic(
             f" (use --force to archive)"
         )
         return None
+    if dry_run:
+        print(f"Would archive: {topic_dir.name}")
+        return archives_dir / topic_dir.name
     archives_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic(topic_dir, archives_dir)
     print(f"Archived: {topic_dir.name} -> {dest}")
@@ -119,6 +126,7 @@ def restore_single_topic(
     topic_name: str,
     specs_dir: Path,
     archives_dir: Path,
+    dry_run: bool = False,
 ) -> Path | None:
     """Restore a single topic from archives back to specs.
 
@@ -150,6 +158,9 @@ def restore_single_topic(
         )
         sys.exit(1)
 
+    if dry_run:
+        print(f"Would restore: {matches[0].name}")
+        return specs_dir / matches[0].name
     specs_dir.mkdir(parents=True, exist_ok=True)
     dest = move_topic_with_conflict(matches[0], specs_dir)
     print(f"Restored: {matches[0].name} -> {dest}")
@@ -180,11 +191,13 @@ def main(argv=None):
                 file=sys.stderr,
             )
             sys.exit(1)
-        restore_single_topic(args.topic, specs_dir, archives_dir)
+        restore_single_topic(args.topic, specs_dir, archives_dir,
+                             dry_run=args.dry_run)
         return
 
     if args.topic:
-        archive_single_topic(args.topic, specs_dir, archives_dir, args.force)
+        archive_single_topic(args.topic, specs_dir, archives_dir, args.force,
+                             dry_run=args.dry_run)
         return
 
     ctx = get_project_context()

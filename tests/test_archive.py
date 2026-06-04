@@ -355,6 +355,25 @@ class TestMain:
         # other-topic should remain untouched
         assert (specs / "other-topic").is_dir()
 
+    def test_topic_flag_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        monkeypatch.setattr(
+            sys, "argv", ["archive.py", "--topic", "done-topic", "-n"]
+        )
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "Would archive" in output
+        assert "done-topic" in output
+        assert (specs / "done-topic").is_dir()  # not moved
+        assert not archives.exists()  # archives dir not even created
+
     def test_topic_flag_missing_value(self, tmp_path, capsys, monkeypatch):
         specs = tmp_path / "specs"
         specs.mkdir()
@@ -839,6 +858,26 @@ class TestNotFlagCLI:
         assert "my-topic" in output
         assert (specs / "my-topic").is_dir()
         assert not (archives / "my-topic").exists()
+
+    def test_restore_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        monkeypatch.setattr(
+            sys, "argv", ["archive.py", "--not", "--topic", "my-topic", "-n"]
+        )
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "Would restore" in output
+        assert "my-topic" in output
+        assert (archives / "my-topic").is_dir()  # not moved
+        assert not (specs / "my-topic").exists()  # not restored
 
     def test_not_partial_match_restores(self, tmp_path, capsys, monkeypatch):
         """--not with partial topic name restores unique match."""
