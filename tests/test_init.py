@@ -510,6 +510,33 @@ class TestRunInit:
         assert examples.is_dir()
 
 
+    def test_normal_run_shows_status_without_verbose(self, tmp_path, capsys,
+                                                         mock_workdir):
+        """run_init() without -v shows status messages."""
+        from init import run_init
+
+        (mock_workdir / ".spex.toml").write_text(
+            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+        )
+        clear_spex_root_cache()
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init._create_toml_config"),
+        ):
+            # First run creates directories
+            run_init(workdir=str(mock_workdir))
+            clear_spex_root_cache()
+
+            # Second run shows "Already initialized" without verbose
+            run_init(workdir=str(mock_workdir))
+
+        out = capsys.readouterr().out
+        assert "Already initialized:" in out
+        assert "Config up-to-date:" in out or "Initialization complete." in out
+
+
 class TestMainCheckFlag:
     def test_check_not_initialized(self, tmp_path):
         ctx = _make_context(spex_root="", spex_roots=[])
@@ -639,8 +666,8 @@ class TestVerboseFlag:
         out = capsys.readouterr().out
         assert "Already initialized:" in out
 
-    def test_ensure_initialized_quiet_by_default(self, tmp_path, capsys):
-        """ensure_initialized(verbose=False) prints nothing."""
+    def test_ensure_initialized_shows_created_without_verbose(self, tmp_path, capsys):
+        """ensure_initialized(verbose=False) prints Created but not Initializing."""
         from common import ensure_initialized
 
         spex_root = tmp_path / "spex"
@@ -648,7 +675,20 @@ class TestVerboseFlag:
 
         out = capsys.readouterr().out
         assert "Initializing:" not in out
-        assert "Already initialized:" not in out
+        assert f"Created: {spex_root}/" in out
+        assert "specs/" in out
+        assert "archives/" in out
+
+    def test_ensure_initialized_shows_already_without_verbose(self, tmp_path, capsys):
+        """ensure_initialized(verbose=False) prints 'Already initialized'."""
+        from common import ensure_initialized
+
+        spex_root = tmp_path / "spex"
+        (spex_root / "specs").mkdir(parents=True)
+        ensure_initialized(str(spex_root))
+
+        out = capsys.readouterr().out
+        assert "Already initialized:" in out
 
 
 class TestResolveTargetDir:

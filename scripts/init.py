@@ -76,8 +76,7 @@ def _install_cli(verbose=False, dry_run=False):
 
     found = _shutil.which("spex")
     if found and Path(found).resolve() == script_path.resolve():
-        if verbose:
-            print(f"CLI already installed: {found}")
+        print(f"CLI already installed: {found}")
         return
 
     try:
@@ -113,8 +112,7 @@ def _init_target_toml(target_dir, verbose=False, dry_run=False):
     """
     toml_path = Path(target_dir) / ".spex.toml"
     if toml_path.is_file():
-        if verbose or dry_run:
-            print(f"Config already exists: {toml_path}")
+        print(f"Config already exists: {toml_path}")
         return
 
     if dry_run:
@@ -143,7 +141,7 @@ def _create_toml_config(workdir=None, verbose=False, dry_run=False):
             elif safe_update_toml(path):
                 print(f"Reinitialized: {path}")
                 changed = True
-            elif verbose:
+            else:
                 print(f"Config up-to-date: {path}")
         if changed:
             clear_config_cache()

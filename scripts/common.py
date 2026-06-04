@@ -234,7 +234,7 @@ def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
 
 
 def _write_internal_gitignore(spex_root_path: Path, verbose=False,
-                              dry_run=False):
+                              dry_run=False, quiet=False):
     """Create .gitignore files inside spex_root to ignore generated content."""
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
@@ -242,7 +242,7 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
             print(f"  Would create: {root_gi}")
         else:
             root_gi.write_text("/specs/\n/archives/\n")
-            if verbose:
+            if not quiet:
                 print(f"  Created: {root_gi}")
     tpl_dir = spex_root_path / TEMPLATE_DIR
     tpl_gi = tpl_dir / ".gitignore"
@@ -253,7 +253,7 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
             print(f"  Would create: {tpl_gi}")
         else:
             tpl_gi.write_text("/examples/\n")
-            if verbose:
+            if not quiet:
                 print(f"  Created: {tpl_gi}")
 
 
@@ -266,11 +266,19 @@ def _resolve_hook_roots(workdir=None):
     return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
-def ensure_initialized(spex_root, verbose=False, dry_run=False):
-    """Ensure spex_root directory structure is initialized."""
+def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
+    """Ensure spex_root directory structure is initialized.
+
+    Args:
+        spex_root: Path to the spex root directory.
+        verbose: If True, print extra debug info (e.g. "Initializing:").
+        dry_run: If True, preview without executing.
+        quiet: If True, suppress all output. Used by internal callers
+            like get_spex_root() where printing would pollute stdout.
+    """
     spex_root_path = Path(spex_root)
     if (spex_root_path / "specs").is_dir():
-        if verbose or dry_run:
+        if not quiet:
             print(f"Already initialized: {spex_root_path}")
         return
     if dry_run:
@@ -285,14 +293,14 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False):
     if verbose:
         print(f"Initializing: {spex_root_path}")
     spex_root_path.mkdir(parents=True, exist_ok=True)
-    if verbose:
+    if not quiet:
         print(f"  Created: {spex_root_path}/")
     for subdir in ("specs", "archives", "hooks"):
         (spex_root_path / subdir).mkdir(exist_ok=True)
-        if verbose:
+        if not quiet:
             print(f"  Created: {spex_root_path / subdir}/")
     _sync_all_templates(spex_root_path, verbose=verbose)
-    _write_internal_gitignore(spex_root_path, verbose=verbose)
+    _write_internal_gitignore(spex_root_path, verbose=verbose, quiet=quiet)
 
 
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
@@ -330,7 +338,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     if require_git and ctx.main_worktree is None:
         raise RuntimeError("Not inside a git repository")
     if auto_init:
-        ensure_initialized(ctx.spex_root)
+        ensure_initialized(ctx.spex_root, quiet=True)
     return ctx.spex_root
 
 
