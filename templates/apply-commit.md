@@ -18,7 +18,11 @@ single commit with a well-crafted message.
 ## Commit Message Guidelines
 
 - Follow the **Conventional Commits** format.
-- Wrap lines at 72 characters.
+- **Title line** (first line): aim for 50 characters or fewer
+  (recommended). Must NOT exceed 72 characters (hard limit). Never
+  wrap the title across multiple lines. Use the body for details.
+- **Body lines**: wrap at 72 characters. Separate from the title
+  with a blank line.
 - Convey WHY the change was made and the core technical reasoning —
   not an exhaustive list of HOW things were modified.
 - Derive context from the Specification below; derive scope from the
