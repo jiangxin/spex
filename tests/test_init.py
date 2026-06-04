@@ -852,6 +852,30 @@ class TestDryRun:
         assert "Would create:" in out
         assert f"Would create: {spex_root}/" in out
 
+    def test_dry_run_target_dir_shows_spex_root(self, tmp_path, capsys):
+        """dry_run with target_dir resolves spex_root without .spex.toml on disk."""
+        target = tmp_path / "target"
+        target.mkdir()
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init.get_main_worktree", return_value=None),
+        ):
+            from init import run_init
+
+            clear_spex_root_cache()
+            run_init(target_dir=str(target), dry_run=True)
+
+        out = capsys.readouterr().out
+        assert "Would create:" in out
+        expected_spex = str(target / ".spex")
+        assert expected_spex in out
+
+        # Verify nothing was actually created
+        assert not (target / ".spex").exists()
+        assert not (target / ".spex.toml").exists()
+
     def test_dry_run_flag_short(self):
         """Parser accepts -n and sets dry_run=True."""
         with patch("init.run_init") as mock_run:

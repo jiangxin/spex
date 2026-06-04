@@ -176,9 +176,16 @@ def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):
 
     _create_toml_config(workdir=workdir, verbose=verbose, dry_run=dry_run)
 
-    ctx = get_project_context(workdir)
+    if dry_run and target_dir:
+        effective = load_config(str(resolved))
+        spex_root_val = effective.get("spex_root", ".spex")
+        spex_root = Path(spex_root_val)
+        if not spex_root.is_absolute():
+            spex_root = resolved / spex_root
+    else:
+        ctx = get_project_context(workdir)
+        spex_root = Path(ctx.spex_root)
 
-    spex_root = Path(ctx.spex_root)
     ensure_initialized(str(spex_root), verbose=verbose, dry_run=dry_run)
     _sync_all_templates(spex_root, verbose=verbose, dry_run=dry_run)
 
