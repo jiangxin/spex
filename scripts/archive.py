@@ -7,6 +7,7 @@ into the archives directory.
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import sys
 from pathlib import Path
@@ -177,17 +178,19 @@ def main(argv=None):
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
-    parser.add_argument("--not", action="store_true", dest="not_flag",
+    parser.add_argument("--restore", action="store_true",
                         help="Restore a topic from archives back to specs")
+    parser.add_argument("--not", action="store_true", dest="restore",
+                        help=argparse.SUPPRESS)
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
 
-    if args.not_flag:
+    if args.restore:
         if not args.topic:
             print(
-                "Error: --not requires --topic to specify what to restore.",
+                "Error: --restore requires --topic to specify what to restore.",
                 file=sys.stderr,
             )
             sys.exit(1)

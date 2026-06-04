@@ -816,16 +816,16 @@ class TestRestoreSingleTopic:
         ).exists()
 
 
-class TestNotFlagCLI:
-    """Integration tests for --not flag in main()."""
+class TestRestoreFlagCLI:
+    """Integration tests for --restore flag in main()."""
 
-    def test_not_without_topic_errors(self, tmp_path, capsys, monkeypatch):
-        """--not without --topic → error."""
+    def test_restore_without_topic_errors(self, tmp_path, capsys, monkeypatch):
+        """--restore without --topic → error."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
         archives.mkdir()
-        monkeypatch.setattr(sys, "argv", ["archive.py", "--not"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--restore"])
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
@@ -835,17 +835,17 @@ class TestNotFlagCLI:
                 spex_archive.main()
             assert exc_info.value.code == 1
         err = capsys.readouterr().err
-        assert "--not" in err
+        assert "--restore" in err
         assert "--topic" in err
 
-    def test_not_restores_from_archives(self, tmp_path, capsys, monkeypatch):
-        """--not --topic restores topic from archives to specs."""
+    def test_restore_restores_from_archives(self, tmp_path, capsys, monkeypatch):
+        """--restore --topic restores topic from archives to specs."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--not", "--topic", "my-topic"]
+            sys, "argv", ["archive.py", "--restore", "--topic", "my-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -865,7 +865,7 @@ class TestNotFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--not", "--topic", "my-topic", "-n"]
+            sys, "argv", ["archive.py", "--restore", "--topic", "my-topic", "-n"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -879,8 +879,8 @@ class TestNotFlagCLI:
         assert (archives / "my-topic").is_dir()  # not moved
         assert not (specs / "my-topic").exists()  # not restored
 
-    def test_not_partial_match_restores(self, tmp_path, capsys, monkeypatch):
-        """--not with partial topic name restores unique match."""
+    def test_restore_partial_match_restores(self, tmp_path, capsys, monkeypatch):
+        """--restore with partial topic name restores unique match."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -891,7 +891,7 @@ class TestNotFlagCLI:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive.py", "--not", "--topic", "branch-guard"],
+            ["archive.py", "--restore", "--topic", "branch-guard"],
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -905,3 +905,22 @@ class TestNotFlagCLI:
         assert not (
             archives / "2026-05-27-14-11-archive-branch-guard"
         ).exists()
+
+    def test_not_flag_backward_compat(self, tmp_path, capsys, monkeypatch):
+        """--not still works as a hidden alias for --restore."""
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "my-topic", [_make_task("1")])
+        monkeypatch.setattr(
+            sys, "argv", ["archive.py", "--not", "--topic", "my-topic"]
+        )
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ):
+            spex_archive.main()
+        output = capsys.readouterr().out
+        assert "Restored:" in output
+        assert (specs / "my-topic").is_dir()
