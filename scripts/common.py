@@ -811,6 +811,11 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     Tries exact match first, then fuzzy substring match against directory
     names in specs_dir. Exits with an error if no match or multiple matches.
 
+    This function is a low-level name-to-path resolver and does NOT
+    perform project-relatedness checks. Callers that need cross-project
+    safety (e.g. merge, archive) should call ``ctx.is_related_to()``
+    on the resolved directory themselves.
+
     Args:
         topic_name: Topic name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
