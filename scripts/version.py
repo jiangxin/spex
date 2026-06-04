@@ -10,6 +10,8 @@ import re
 import sys
 from pathlib import Path
 
+from common import logger
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _PROJECT_ROOT / "pyproject.toml"
 _SKILL_MD = _PROJECT_ROOT / "SKILL.md"
@@ -42,17 +44,17 @@ def check_versions() -> bool:
     skill_ver = get_skill_version()
 
     if pyproject_ver is None:
-        print("Error: cannot read version from pyproject.toml", file=sys.stderr)
+        logger.error("Error: cannot read version from pyproject.toml")
         return False
     if skill_ver is None:
-        print("Error: cannot read version from SKILL.md", file=sys.stderr)
+        logger.error("Error: cannot read version from SKILL.md")
         return False
     if pyproject_ver != skill_ver:
-        print(
-            f"Error: version mismatch\n"
-            f"  pyproject.toml: {pyproject_ver}\n"
-            f"  SKILL.md:       {skill_ver}",
-            file=sys.stderr,
+        logger.error(
+            "Error: version mismatch\n"
+            "  pyproject.toml: %s\n"
+            "  SKILL.md:       %s",
+            pyproject_ver, skill_ver,
         )
         return False
     return True
@@ -60,7 +62,7 @@ def check_versions() -> bool:
 
 def bump_version(new_version: str) -> bool:
     if not _SEMVER_RE.match(new_version):
-        print(f"Error: invalid semver format: {new_version}", file=sys.stderr)
+        logger.error("Error: invalid semver format: %s", new_version)
         return False
 
     # Update pyproject.toml
@@ -73,7 +75,7 @@ def bump_version(new_version: str) -> bool:
         flags=re.MULTILINE,
     )
     if new_content == content:
-        print("Error: could not find version in pyproject.toml", file=sys.stderr)
+        logger.error("Error: could not find version in pyproject.toml")
         return False
     _PYPROJECT.write_text(new_content, encoding="utf-8")
 
@@ -87,7 +89,7 @@ def bump_version(new_version: str) -> bool:
         flags=re.MULTILINE,
     )
     if new_content == content:
-        print("Error: could not find version in SKILL.md", file=sys.stderr)
+        logger.error("Error: could not find version in SKILL.md")
         return False
     _SKILL_MD.write_text(new_content, encoding="utf-8")
 
@@ -118,17 +120,19 @@ Options:
         if not check_versions():
             sys.exit(1)
         ver = get_pyproject_version()
-        print(f"OK: {ver}")
+        logger.info("OK: %s", ver)
     elif args.bump:
         if not bump_version(args.bump):
             sys.exit(1)
     else:
         ver = get_pyproject_version()
         if ver is None:
-            print("Error: cannot read version", file=sys.stderr)
+            logger.error("Error: cannot read version")
             sys.exit(1)
         print(ver)
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()

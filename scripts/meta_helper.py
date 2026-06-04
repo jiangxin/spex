@@ -186,4 +186,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    from common import setup_logging
+    setup_logging()
     main()

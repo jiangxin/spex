@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 import todo_helper
@@ -85,7 +86,7 @@ class TestFileLocating:
             todo_helper.main(["validate"])
 
     def test_xml_flag_with_topic(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, monkeypatch, caplog,
     ):
         topic_dir = tmp_path / "my-topic"
         topic_dir.mkdir()
@@ -98,10 +99,11 @@ class TestFileLocating:
             todo_helper, "resolve_topic_dir",
             lambda name, **kw: topic_dir,
         )
-        todo_helper.main([
-            "--topic", "my-topic", "--xml", "validate",
-        ])
-        assert "OK" in capsys.readouterr().out
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--topic", "my-topic", "--xml", "validate",
+            ])
+        assert "OK" in caplog.text
 
     def test_todo_file_xml_extension_auto_detects(
         self, tmp_path,
@@ -119,12 +121,13 @@ class TestFileLocating:
 # validate
 # -----------------------------------------------------------------------
 class TestValidate:
-    def test_valid_file(self, todo_file, capsys):
+    def test_valid_file(self, todo_file, caplog):
         _write(todo_file, SAMPLE_DATA)
-        todo_helper.main([
-            "--todo-file", str(todo_file), "validate",
-        ])
-        assert "OK" in capsys.readouterr().out
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert "OK" in caplog.text
 
     def test_duplicate_ids_fail(self, todo_file):
         data = [
@@ -149,12 +152,13 @@ class TestValidate:
             ])
         assert exc.value.code == 1
 
-    def test_empty_file_ok(self, todo_file, capsys):
+    def test_empty_file_ok(self, todo_file, caplog):
         _write(todo_file, [])
-        todo_helper.main([
-            "--todo-file", str(todo_file), "validate",
-        ])
-        assert "OK" in capsys.readouterr().out
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert "OK" in caplog.text
 
 
 # -----------------------------------------------------------------------
@@ -686,12 +690,13 @@ CONVERSION_JSON = [
 
 
 class TestConversion:
-    def test_xml2json_converts(self, tmp_path, capsys):
+    def test_xml2json_converts(self, tmp_path, caplog):
         xml_file = tmp_path / "todo.xml"
         xml_file.write_text(CONVERSION_XML, encoding="utf-8")
-        todo_helper.main([
-            "--todo-file", str(xml_file), "xml2json",
-        ])
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(xml_file), "xml2json",
+            ])
         json_file = tmp_path / "todo.json"
         assert json_file.exists()
         result = _read(json_file)
@@ -699,8 +704,7 @@ class TestConversion:
         assert result[0]["id"] == "step-1"
         assert result[1]["id"] == "step-2"
         assert result[1]["completed_at"] == "2026-01-01"
-        out = capsys.readouterr().out
-        assert "Converted" in out
+        assert "Converted" in caplog.text
 
     def test_xml2json_rm(self, tmp_path):
         xml_file = tmp_path / "todo.xml"
@@ -726,20 +730,20 @@ class TestConversion:
         assert expected.exists()
         assert not (tmp_path / "tasks.json").exists()
 
-    def test_json2xml_converts(self, tmp_path, capsys):
+    def test_json2xml_converts(self, tmp_path, caplog):
         json_file = tmp_path / "todo.json"
         _write(json_file, CONVERSION_JSON)
-        todo_helper.main([
-            "--todo-file", str(json_file), "json2xml",
-        ])
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(json_file), "json2xml",
+            ])
         xml_file = tmp_path / "todo.xml"
         assert xml_file.exists()
         data = todo_helper.load_todo_xml(xml_file)
         assert len(data) == 2
         assert data[0]["id"] == "step-1"
         assert data[1]["completed_at"] == "2026-01-01"
-        out = capsys.readouterr().out
-        assert "Converted" in out
+        assert "Converted" in caplog.text
 
     def test_json2xml_rm(self, tmp_path):
         json_file = tmp_path / "todo.json"
@@ -841,12 +845,13 @@ class TestXmlFormat:
             ):
                 assert loaded[i][key] == original[i][key]
 
-    def test_validate_xml(self, xml_file, capsys):
+    def test_validate_xml(self, xml_file, caplog):
         xml_file.write_text(SAMPLE_XML, encoding="utf-8")
-        todo_helper.main([
-            "--todo-file", str(xml_file), "validate",
-        ])
-        assert "OK" in capsys.readouterr().out
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(xml_file), "validate",
+            ])
+        assert "OK" in caplog.text
 
     def test_append_to_xml(self, xml_file):
         xml_file.write_text(SAMPLE_XML, encoding="utf-8")
@@ -914,11 +919,11 @@ class TestSubcommandHelp:
         out = capsys.readouterr().out
         assert "--format" in out
 
-    def test_no_locator_errors(self, capsys):
+    def test_no_locator_errors(self, caplog):
         """Without --topic or --todo-file, should error with exit 2."""
-        with pytest.raises(SystemExit) as exc_info:
-            todo_helper.main(["validate"])
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                todo_helper.main(["validate"])
         assert exc_info.value.code == 2
-        err = capsys.readouterr().err
-        assert "--topic" in err
-        assert "--todo-file" in err
+        assert "--topic" in caplog.text
+        assert "--todo-file" in caplog.text
