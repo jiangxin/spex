@@ -12,54 +12,18 @@ import shutil
 import sys
 from pathlib import Path
 
-from branch import branch_exists
 from cli import ArgumentParser
 from common import (
+    find_completed_topics,
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
+    has_active_branch,
     is_topic_completed,
     load_meta,
     resolve_topic_dir,
 )
-from config import ProjectContext, get_project_context
-
-
-def has_active_branch(topic_dir: Path) -> bool:
-    """Return True if meta.json has spex_branch and that git branch exists."""
-    meta = load_meta(topic_dir)
-    if not meta:
-        return False
-    spex_branch = meta.spex_branch
-    if not spex_branch:
-        return False
-    return branch_exists(spex_branch)
-
-
-
-def find_completed_topics(
-    specs_dir: Path, ctx: ProjectContext, force: bool = False,
-    all_projects: bool = False,
-) -> list:
-    """Return sorted list of topic paths where all tasks are completed.
-
-    Topics are filtered by ctx.is_related_to() to only include topics
-    matching the current workspace (or all topics when not in a git repo).
-
-    If force is False, topics with an active spex_branch are excluded.
-    """
-    if not specs_dir.is_dir():
-        return []
-    results = []
-    for d in specs_dir.iterdir():
-        if not d.is_dir() or not is_topic_completed(d):
-            continue
-        if not force and has_active_branch(d):
-            continue
-        if not all_projects and not ctx.is_related_to(d):
-            continue
-        results.append(d)
-    return sorted(results)
+from config import get_project_context
 
 
 def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:

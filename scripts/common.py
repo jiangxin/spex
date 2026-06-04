@@ -513,6 +513,44 @@ def get_todo_progress(topic_dir: Path) -> tuple:
     return (done, total)
 
 
+def has_active_branch(topic_dir: Path) -> bool:
+    """Return True if meta.json has spex_branch and that git branch exists."""
+    from branch import branch_exists
+
+    meta = load_meta(topic_dir)
+    if not meta:
+        return False
+    spex_branch = meta.spex_branch
+    if not spex_branch:
+        return False
+    return branch_exists(spex_branch)
+
+
+def find_completed_topics(
+    specs_dir: Path, ctx, force: bool = False,
+    all_projects: bool = False,
+) -> list:
+    """Return sorted list of topic paths where all tasks are completed.
+
+    Topics are filtered by ctx.is_related_to() to only include topics
+    matching the current workspace (or all topics when not in a git repo).
+
+    If force is False, topics with an active spex_branch are excluded.
+    """
+    if not specs_dir.is_dir():
+        return []
+    results = []
+    for d in specs_dir.iterdir():
+        if not d.is_dir() or not is_topic_completed(d):
+            continue
+        if not force and has_active_branch(d):
+            continue
+        if not all_projects and not ctx.is_related_to(d):
+            continue
+        results.append(d)
+    return sorted(results)
+
+
 def atomic_write_json(path: Path, data) -> None:
     """Atomically write JSON data to a file using tempfile + os.replace."""
     import tempfile

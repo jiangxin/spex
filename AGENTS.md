@@ -81,6 +81,8 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `is_topic_completed(topic_dir)` | True if all tasks in `todo.json` have `completed_at`. |
 | `has_undone_tasks(topic_dir)` | True if `todo.json` has incomplete items. |
 | `get_todo_progress(topic_dir)` | Return `(completed_count, total_count)`. |
+| `has_active_branch(topic_dir)` | True if `meta.json` has `spex_branch` and that git branch exists. |
+| `find_completed_topics(specs_dir, ctx, force, all_projects)` | Return sorted list of completed topic paths, filtered by project context. |
 | `atomic_write_json(path, data)` | Atomically write JSON via tempfile + `os.replace`. |
 | `local_iso_timestamp()` | Current local time as ISO 8601 string. |
 | `strip_date_prefix(topic_name)` | Remove `YYYY-MM-DD-HH-MM-` prefix from a topic name. |
