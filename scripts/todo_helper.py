@@ -556,7 +556,7 @@ def main(argv=None):
     args = parser.parse(argv)
 
     if not args.subcmd:
-        parser.print_help()
+        parser.print_help(sys.stderr)
         sys.exit(0)
 
     if not args.topic and not args.todo_file:

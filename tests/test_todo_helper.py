@@ -589,8 +589,8 @@ class TestHelp:
         with pytest.raises(SystemExit) as exc:
             todo_helper.main([])
         assert exc.value.code == 0
-        out = capsys.readouterr().out
-        assert "Subcommands:" in out
+        err = capsys.readouterr().err
+        assert "Subcommands:" in err
 
     def test_subcmd_help_shows_subcmd_usage(self, capsys, todo_file):
         """--help after a subcommand shows subcommand-specific help."""
