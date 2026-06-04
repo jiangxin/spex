@@ -20,6 +20,7 @@ from cli import ArgumentParser
 from common import (
     TopicMeta,
     atomic_write_json,
+    logger,
     normalize_prompt_entry,
     resolve_topic_dir,
 )
@@ -51,7 +52,7 @@ def _display_all(data):
 def _display_key(data, key):
     """Display a specific key's value."""
     if key not in data:
-        print(f"Error: key '{key}' not found in meta.json", file=sys.stderr)
+        logger.error("Error: key '%s' not found in meta.json", key)
         sys.exit(1)
     value = data[key]
     if isinstance(value, (dict, list)):
@@ -63,7 +64,7 @@ def _display_key(data, key):
 def _add_images_only(meta, images, meta_path):
     """Append images to the last prompt entry (no new text)."""
     if not isinstance(meta.prompts, list) or not meta.prompts:
-        print("Error: no prompt entries to attach images to.", file=sys.stderr)
+        logger.error("Error: no prompt entries to attach images to.")
         sys.exit(1)
 
     meta.prompts[-1] = normalize_prompt_entry(meta.prompts[-1])
@@ -155,13 +156,13 @@ def main(argv=None):
     meta_path = topic_dir / "meta.json"
 
     if not meta_path.is_file():
-        print(f"Error: file not found: {meta_path}", file=sys.stderr)
+        logger.error("Error: file not found: %s", meta_path)
         sys.exit(1)
 
     try:
         data = json.loads(meta_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        logger.error("Error: invalid JSON: %s", e)
         sys.exit(1)
 
     meta = TopicMeta.from_dict(data)
