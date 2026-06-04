@@ -223,10 +223,12 @@ def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
     source_dir = skill_path / TEMPLATE_DIR
     if not source_dir.is_dir():
         return
+    examples_dir = spex_root_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
     for src in source_dir.iterdir():
         if src.is_file() and src.suffix == ".md":
             if dry_run:
-                print(f"  Would sync template: {src.name}")
+                print(f"  Would sync template: {src.name}"
+                      f" -> {examples_dir}/")
             else:
                 _sync_builtin_template(
                     src.name, spex_root=spex_root_path, verbose=verbose,
