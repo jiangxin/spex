@@ -485,13 +485,13 @@ def generate_updated_toml(
     return "\n".join(lines) + "\n"
 
 
-def safe_update_toml(toml_path):
+def safe_update_toml(toml_path, dry_run=False):
     """Safe-update a single .spex.toml with the latest config schema.
 
     Reads the existing file, preserves user-set keys, and regenerates with
     the full schema. New keys appear as commented-out defaults.
 
-    Returns True if the file was modified.
+    Returns True if the file was (or would be) modified.
     """
     existing = _load_toml_config(toml_path)
     user_config = (existing or {}).get("spex", {})
@@ -501,7 +501,8 @@ def safe_update_toml(toml_path):
         return False
     old_content = toml_path.read_text(encoding="utf-8")
     if new_content != old_content:
-        toml_path.write_text(new_content, encoding="utf-8")
+        if not dry_run:
+            toml_path.write_text(new_content, encoding="utf-8")
         return True
     return False
 

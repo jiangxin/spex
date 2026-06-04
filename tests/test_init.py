@@ -382,7 +382,7 @@ class TestRunInit:
             run_init(workdir=str(tmp_path))
 
         mock_create_toml.assert_called_once_with(
-            workdir=str(tmp_path), verbose=False,
+            workdir=str(tmp_path), verbose=False, dry_run=False,
         )
 
     def test_syncs_templates_when_already_initialized(self, tmp_path):
@@ -409,8 +409,12 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(spex_root), verbose=False)
-        mock_sync.assert_called_once_with(spex_root, verbose=False)
+        mock_ensure.assert_called_once_with(
+            str(spex_root), verbose=False, dry_run=False,
+        )
+        mock_sync.assert_called_once_with(
+            spex_root, verbose=False, dry_run=False,
+        )
 
     def test_initializes_spex_root_when_missing(self, tmp_path):
         """Calls ensure_initialized when tomls exist but spex_root/specs/ is missing."""
@@ -433,7 +437,9 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(spex_root), verbose=False)
+        mock_ensure.assert_called_once_with(
+            str(spex_root), verbose=False, dry_run=False,
+        )
 
     def test_uses_resolved_spex_root(self, tmp_path):
         """run_init() targets ctx.spex_root, not hardcoded ~/.spex."""
@@ -456,7 +462,9 @@ class TestRunInit:
 
             run_init(workdir=str(tmp_path))
 
-        mock_ensure.assert_called_once_with(str(custom_root), verbose=False)
+        mock_ensure.assert_called_once_with(
+            str(custom_root), verbose=False, dry_run=False,
+        )
 
     def test_creates_templates(self, tmp_path, monkeypatch, mock_workdir):
         """Integration: templates are created during init."""
@@ -537,7 +545,9 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["-v"])
-        mock_run.assert_called_once_with(target_dir=None, verbose=True)
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=True, dry_run=False,
+        )
 
     def test_main_parses_verbose_long(self):
         """main() passes verbose=True when --verbose is given."""
@@ -545,7 +555,9 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["--verbose"])
-        mock_run.assert_called_once_with(target_dir=None, verbose=True)
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=True, dry_run=False,
+        )
 
     def test_main_default_not_verbose(self):
         """main() passes verbose=False by default."""
@@ -553,7 +565,9 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=[])
-        mock_run.assert_called_once_with(target_dir=None, verbose=False)
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=False, dry_run=False,
+        )
 
     def test_main_parses_target_dir(self):
         """main() passes target_dir when positional arg is given."""
@@ -561,7 +575,9 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["/some/dir"])
-        mock_run.assert_called_once_with(target_dir="/some/dir", verbose=False)
+        mock_run.assert_called_once_with(
+            target_dir="/some/dir", verbose=False, dry_run=False,
+        )
 
     def test_main_parses_target_dir_with_verbose(self):
         """main() passes both target_dir and verbose."""
@@ -569,7 +585,9 @@ class TestVerboseFlag:
             from init import main
 
             main(argv=["-v", "/some/dir"])
-        mock_run.assert_called_once_with(target_dir="/some/dir", verbose=True)
+        mock_run.assert_called_once_with(
+            target_dir="/some/dir", verbose=True, dry_run=False,
+        )
 
     def test_run_init_passes_verbose_to_ensure_initialized(self, tmp_path):
         """run_init(verbose=True) forwards verbose to ensure_initialized."""
@@ -592,7 +610,9 @@ class TestVerboseFlag:
 
             run_init(workdir=str(tmp_path), verbose=True)
 
-        mock_ensure.assert_called_once_with(str(spex_root), verbose=True)
+        mock_ensure.assert_called_once_with(
+            str(spex_root), verbose=True, dry_run=False,
+        )
 
     def test_ensure_initialized_verbose_output(self, tmp_path, capsys):
         """ensure_initialized(verbose=True) prints directory creation."""
@@ -743,3 +763,69 @@ class TestRunInitWithTargetDir:
 
         content = (mock_workdir / ".spex.toml").read_text()
         assert "branch_management = false" in content
+
+
+class TestDryRun:
+    def test_dry_run_does_not_create_dirs(self, tmp_path):
+        """dry_run=True does not create any files or directories."""
+        spex_root = tmp_path / ".spex"
+        ctx = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init._create_toml_config"),
+            patch("init.get_project_context", return_value=ctx),
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path), dry_run=True)
+
+        assert not spex_root.exists()
+
+    def test_dry_run_shows_operations(self, tmp_path, capsys):
+        """dry_run=True prints 'Would' messages to stdout."""
+        spex_root = tmp_path / ".spex"
+        ctx = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+
+        with (
+            patch("init._install_deps"),
+            patch("init._install_cli"),
+            patch("init._create_toml_config"),
+            patch("init.get_project_context", return_value=ctx),
+        ):
+            from init import run_init
+
+            run_init(workdir=str(tmp_path), dry_run=True)
+
+        out = capsys.readouterr().out
+        assert "Would initialize:" in out
+        assert "Would create:" in out
+
+    def test_dry_run_flag_short(self):
+        """Parser accepts -n and sets dry_run=True."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["-n"])
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=False, dry_run=True,
+        )
+
+    def test_dry_run_flag_long(self):
+        """Parser accepts --dry-run and sets dry_run=True."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["--dry-run"])
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=False, dry_run=True,
+        )
