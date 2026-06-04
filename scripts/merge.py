@@ -29,6 +29,11 @@ def _build_submit_parser() -> ArgumentParser:
         action="store_true",
         help="Skip automatic archiving after successful merge",
     )
+    parser.add_argument(
+        "-n", "--dry-run",
+        action="store_true",
+        help="Preview merge without executing",
+    )
     return parser
 
 
@@ -73,6 +78,15 @@ def cli_submit(argv=None) -> None:
         print(json.dumps({"action": method, "source": "", "target": target,
                           "errors": errors}))
         sys.exit(1)
+
+    if parsed.dry_run:
+        print(f"Would merge: {source} -> {target}")
+        if not parsed.no_archive:
+            print(f"Would archive: {topic_dir.name}")
+        print(json.dumps({"action": method, "source": source,
+                          "target": target, "archived": not parsed.no_archive,
+                          "dry_run": True, "errors": []}))
+        return
 
     if method == "merge":
         try:
