@@ -29,7 +29,30 @@ def _build_submit_parser() -> ArgumentParser:
         action="store_true",
         help="Skip automatic archiving after successful merge",
     )
+    parser.add_argument(
+        "-n", "--dry-run",
+        action="store_true",
+        help="Preview merge without executing",
+    )
     return parser
+
+
+def _find_submittable_topics(ctx):
+    """Find topics ready to submit: all tasks done + has spex_branch."""
+    import common
+    from common import Topic, find_completed_topics
+
+    specs_dir = common.get_specs_dir(
+        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+    completed = find_completed_topics(specs_dir, ctx, force=True)
+    results = []
+    for d in completed:
+        meta = common.load_meta(d)
+        if meta and meta.spex_branch:
+            topic = Topic.from_dir(d)
+            if topic is not None:
+                results.append(topic)
+    return results
 
 
 def cli_submit(argv=None) -> None:
@@ -43,15 +66,28 @@ def cli_submit(argv=None) -> None:
     parsed = parser.parse(argv)
     topic_name = parsed.topic
 
-    if not topic_name:
-        print("Error: topic argument is required", file=sys.stderr)
-        sys.exit(1)
-
     ctx = cfg.get_project_context()
     conf = ctx.config
-    specs_dir = common.get_specs_dir(
-        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
-    topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
+
+    if not topic_name:
+        candidates = _find_submittable_topics(ctx)
+        if not candidates:
+            print("No submittable topics found.", file=sys.stderr)
+            sys.exit(1)
+        elif len(candidates) == 1:
+            topic_dir = candidates[0].path
+            topic_name = candidates[0].name
+            print(f"Auto-selected: {topic_name}", file=sys.stderr)
+        else:
+            from common import prompt_selection
+
+            selected = prompt_selection(candidates)
+            topic_dir = selected.path
+            topic_name = selected.name
+    else:
+        specs_dir = common.get_specs_dir(
+            str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+        topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
 
     if not ctx.is_related_to(topic_dir):
         meta = common.load_meta(topic_dir)
@@ -73,6 +109,15 @@ def cli_submit(argv=None) -> None:
         print(json.dumps({"action": method, "source": "", "target": target,
                           "errors": errors}))
         sys.exit(1)
+
+    if parsed.dry_run:
+        print(f"Would merge: {source} -> {target}")
+        if not parsed.no_archive:
+            print(f"Would archive: {topic_dir.name}")
+        print(json.dumps({"action": method, "source": source,
+                          "target": target, "archived": not parsed.no_archive,
+                          "dry_run": True, "errors": []}))
+        return
 
     if method == "merge":
         try:

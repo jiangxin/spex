@@ -5,8 +5,14 @@ Submit completed work by merging the feature branch or creating a PR.
 ## Usage
 
 ```text
-/spex submit [topic_name]
+/spex submit [topic_name] [--dry-run | -n] [--no-archive]
 ```
+
+When `topic_name` is omitted, the CLI automatically searches for
+submittable topics (completed tasks + has `spex_branch` + related to
+the current project). If exactly one is found it is auto-selected;
+if multiple are found a numbered list is displayed for interactive
+selection.
 
 ## Procedure
 

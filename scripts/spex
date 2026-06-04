@@ -312,7 +312,7 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge [topic] [--no-archive]
+Usage: spex merge [topic] [--no-archive] [-n/--dry-run]
 
 Merge a spex branch back to target.
 
@@ -321,6 +321,7 @@ Positional arguments:
 
 Options:
   --no-archive    Skip automatic archiving after successful merge
+  -n, --dry-run   Preview merge without executing
   -h, --help      Show this help message and exit
 """
 
@@ -332,15 +333,16 @@ def _run_merge(argv=None):
     parser = ArgumentParser(prog="spex merge", usage=_MERGE_USAGE)
     parser.add_argument("topic", nargs="?", default="")
     parser.add_argument("--no-archive", action="store_true")
+    parser.add_argument("-n", "--dry-run", action="store_true")
     args = parser.parse(argv)
 
-    if not args.topic:
-        print("Error: topic argument is required", file=sys.stderr)
-        sys.exit(1)
-
-    submit_args = [args.topic]
+    submit_args = []
+    if args.topic:
+        submit_args.append(args.topic)
     if args.no_archive:
         submit_args.append("--no-archive")
+    if args.dry_run:
+        submit_args.append("--dry-run")
     merge.cli_submit(submit_args)
 
 

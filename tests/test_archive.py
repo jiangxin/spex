@@ -441,7 +441,7 @@ class TestHasActiveBranch:
         (topic / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/some-branch"}), encoding="utf-8"
         )
-        with patch("archive.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True):
             assert has_active_branch(topic) is True
 
     def test_returns_false_when_branch_missing(self, tmp_path):
@@ -450,7 +450,7 @@ class TestHasActiveBranch:
         (topic / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/gone-branch"}), encoding="utf-8"
         )
-        with patch("archive.branch_exists", return_value=False):
+        with patch("branch.branch_exists", return_value=False):
             assert has_active_branch(topic) is False
 
     def test_returns_false_when_no_spex_branch(self, tmp_path):
@@ -483,7 +483,7 @@ class TestFindCompletedTopicsWithBranchGuard:
         _write_todo(topic_b, [_make_task("1")])
 
         ctx = _mock_project_context()
-        with patch("archive.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True):
             result = find_completed_topics(specs, ctx, force=False)
 
         names = [d.name for d in result]
@@ -499,7 +499,7 @@ class TestFindCompletedTopicsWithBranchGuard:
         )
 
         ctx = _mock_project_context()
-        with patch("archive.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True):
             result = find_completed_topics(specs, ctx, force=True)
 
         assert len(result) == 1
@@ -514,7 +514,7 @@ class TestFindCompletedTopicsWithBranchGuard:
         )
 
         ctx = _mock_project_context()
-        with patch("archive.branch_exists", return_value=False):
+        with patch("branch.branch_exists", return_value=False):
             result = find_completed_topics(specs, ctx, force=False)
 
         assert len(result) == 1
@@ -534,7 +534,7 @@ class TestArchiveSingleWithBranchGuard:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True):
             result = archive_single_topic("active-topic", specs, archives)
 
         assert result is None
@@ -548,7 +548,7 @@ class TestArchiveSingleWithBranchGuard:
         _write_todo(specs / "merged-topic", [_make_task("1")])
         archives = tmp_path / "archives"
 
-        with patch("archive.branch_exists", return_value=False):
+        with patch("branch.branch_exists", return_value=False):
             result = archive_single_topic("merged-topic", specs, archives)
 
         assert result == archives / "merged-topic"
@@ -564,7 +564,7 @@ class TestArchiveSingleWithBranchGuard:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True):
             result = archive_single_topic(
                 "active-topic", specs, archives, force=True
             )
@@ -579,7 +579,7 @@ class TestArchiveSingleWithBranchGuard:
         _write_todo(topic, [_make_task("1")])
         archives = tmp_path / "archives"
 
-        with patch("archive.branch_exists", return_value=False):
+        with patch("branch.branch_exists", return_value=False):
             result = archive_single_topic("branch-guard", specs, archives)
 
         assert result == archives / "2026-05-27-14-11-archive-branch-guard"
@@ -621,7 +621,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive.branch_exists", return_value=True
+            "branch.branch_exists", return_value=True
         ):
             spex_archive.main()
         output = capsys.readouterr().out
@@ -645,7 +645,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive.branch_exists", return_value=True
+            "branch.branch_exists", return_value=True
         ):
             spex_archive.main()
         output = capsys.readouterr().out
@@ -672,7 +672,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive.branch_exists",
+            "branch.branch_exists",
             side_effect=lambda name: name == "spex/active",
         ):
             spex_archive.main()
@@ -702,7 +702,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive.branch_exists",
+            "branch.branch_exists",
             side_effect=lambda name: name == "spex/active",
         ):
             spex_archive.main()
@@ -727,7 +727,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "archive.branch_exists", return_value=False
+            "branch.branch_exists", return_value=False
         ):
             spex_archive.main()
         output = capsys.readouterr().out

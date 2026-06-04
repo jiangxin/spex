@@ -185,7 +185,7 @@ class TestArchiveSingleTopicIncomplete:
         )
         archives = tmp_path / "archives"
 
-        with patch("archive.branch_exists", return_value=False):
+        with patch("branch.branch_exists", return_value=False):
             result = archive_single_topic(
                 "wip-topic", specs, archives, force=True
             )
