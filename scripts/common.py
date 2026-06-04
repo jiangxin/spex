@@ -619,6 +619,7 @@ def wrap_text(text: str, width: int = 68) -> str:
         return ""
     import textwrap
 
+    text = text.replace("\\n", "\n")
     single_line = " ".join(text.split())
     return textwrap.fill(single_line, width=width, break_long_words=False)
 
