@@ -16,8 +16,6 @@ from common import (
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
-    get_spex_roots,
-    get_spex_tomls,
     has_undone_tasks,
     is_topic_completed,
     logger,
@@ -175,21 +173,6 @@ def _build_parser() -> ArgumentParser:
         help="Use specified config file (overrides SPEX_CONFIG_FILE env var)",
     )
     parser.add_argument(
-        "--spex-roots",
-        action="store_true",
-        help="Print all spex root directories (one per line)",
-    )
-    parser.add_argument(
-        "--spex-toml",
-        action="store_true",
-        help="Print the highest-priority .spex.toml path",
-    )
-    parser.add_argument(
-        "--spex-tomls",
-        action="store_true",
-        help="Print all discovered .spex.toml paths (one per line)",
-    )
-    parser.add_argument(
         "--json",
         action="store_true",
         help="Output in JSON format",
@@ -230,29 +213,6 @@ def main(argv=None):
 
     if args.spex_config_file:
         set_spex_config_file(args.spex_config_file)
-
-    if args.spex_roots:
-        roots = get_spex_roots()
-        if not roots:
-            sys.exit(1)
-        for p in roots:
-            print(p)
-        return
-
-    if args.spex_toml:
-        tomls = get_spex_tomls()
-        if not tomls:
-            sys.exit(1)
-        print(tomls[0])
-        return
-
-    if args.spex_tomls:
-        tomls = get_spex_tomls()
-        if not tomls:
-            sys.exit(1)
-        for p in tomls:
-            print(p)
-        return
 
     topic_name = args.topic
 

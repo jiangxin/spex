@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from common import has_undone_tasks
@@ -747,45 +746,3 @@ class TestMainWithArchives:
         )
 
 
-class TestSpexIntrospectionFlags:
-    def test_spex_roots_prints_paths(self, capsys):
-        with patch("get_topic.get_spex_roots", return_value=["/a/root", "/b/root"]):
-            main(["--spex-roots"])
-        out = capsys.readouterr().out
-        assert out.splitlines() == ["/a/root", "/b/root"]
-
-    def test_spex_roots_empty_exits_1(self):
-        with patch("get_topic.get_spex_roots", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-roots"])
-            assert exc_info.value.code == 1
-
-    def test_spex_toml_prints_first(self, capsys):
-        with patch(
-            "get_topic.get_spex_tomls",
-            return_value=["/first/.spex.toml", "/second/.spex.toml"],
-        ):
-            main(["--spex-toml"])
-        out = capsys.readouterr().out
-        assert out.strip() == "/first/.spex.toml"
-
-    def test_spex_toml_empty_exits_1(self):
-        with patch("get_topic.get_spex_tomls", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-toml"])
-            assert exc_info.value.code == 1
-
-    def test_spex_tomls_prints_all(self, capsys):
-        with patch(
-            "get_topic.get_spex_tomls",
-            return_value=["/first/.spex.toml", "/second/.spex.toml"],
-        ):
-            main(["--spex-tomls"])
-        out = capsys.readouterr().out
-        assert out.splitlines() == ["/first/.spex.toml", "/second/.spex.toml"]
-
-    def test_spex_tomls_empty_exits_1(self):
-        with patch("get_topic.get_spex_tomls", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-tomls"])
-            assert exc_info.value.code == 1
