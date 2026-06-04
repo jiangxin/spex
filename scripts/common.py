@@ -213,7 +213,7 @@ def clear_spex_root_cache():
     clear_config_cache()
 
 
-def _sync_all_templates(spex_root_path: Path, verbose=False):
+def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
     """Sync all built-in templates to spex_root/templates/examples/.
 
     Iterates every .md file in the skill's templates/ directory and calls
@@ -223,27 +223,40 @@ def _sync_all_templates(spex_root_path: Path, verbose=False):
     source_dir = skill_path / TEMPLATE_DIR
     if not source_dir.is_dir():
         return
+    examples_dir = spex_root_path / TEMPLATE_DIR / EXAMPLES_TEMPLATE_DIR
     for src in source_dir.iterdir():
         if src.is_file() and src.suffix == ".md":
-            _sync_builtin_template(
-                src.name, spex_root=spex_root_path, verbose=verbose,
-            )
+            if dry_run:
+                print(f"  Would sync template: {src.name}"
+                      f" -> {examples_dir}/")
+            else:
+                _sync_builtin_template(
+                    src.name, spex_root=spex_root_path, verbose=verbose,
+                )
 
 
-def _write_internal_gitignore(spex_root_path: Path, verbose=False):
+def _write_internal_gitignore(spex_root_path: Path, verbose=False,
+                              dry_run=False, quiet=False):
     """Create .gitignore files inside spex_root to ignore generated content."""
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
-        root_gi.write_text("/specs/\n/archives/\n")
-        if verbose:
-            print(f"  Created: {root_gi}")
+        if dry_run:
+            print(f"  Would create: {root_gi}")
+        else:
+            root_gi.write_text("/specs/\n/archives/\n")
+            if not quiet:
+                print(f"  Created: {root_gi}")
     tpl_dir = spex_root_path / TEMPLATE_DIR
-    tpl_dir.mkdir(parents=True, exist_ok=True)
     tpl_gi = tpl_dir / ".gitignore"
+    if not dry_run:
+        tpl_dir.mkdir(parents=True, exist_ok=True)
     if not tpl_gi.exists():
-        tpl_gi.write_text("/examples/\n")
-        if verbose:
-            print(f"  Created: {tpl_gi}")
+        if dry_run:
+            print(f"  Would create: {tpl_gi}")
+        else:
+            tpl_gi.write_text("/examples/\n")
+            if not quiet:
+                print(f"  Created: {tpl_gi}")
 
 
 def _resolve_hook_roots(workdir=None):
@@ -255,22 +268,39 @@ def _resolve_hook_roots(workdir=None):
     return [Path(sr) / "hooks" for sr in ctx.spex_roots]
 
 
-def ensure_initialized(spex_root, verbose=False):
-    """Ensure spex_root directory structure is initialized."""
+def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
+    """Ensure spex_root directory structure is initialized.
+
+    Args:
+        spex_root: Path to the spex root directory.
+        verbose: If True, print extra debug info (e.g. "Initializing:").
+        dry_run: If True, preview without executing.
+        quiet: If True, suppress all output. Used by internal callers
+            like get_spex_root() where printing would pollute stdout.
+    """
     spex_root_path = Path(spex_root)
     if (spex_root_path / "specs").is_dir():
-        if verbose:
+        if not quiet:
             print(f"Already initialized: {spex_root_path}")
+        return
+    if dry_run:
+        print(f"Would initialize: {spex_root_path}")
+        print(f"  Would create: {spex_root_path}/")
+        for subdir in ("specs", "archives", "hooks"):
+            print(f"  Would create: {spex_root_path / subdir}/")
+        _write_internal_gitignore(spex_root_path, verbose=verbose,
+                                  dry_run=True)
         return
     if verbose:
         print(f"Initializing: {spex_root_path}")
     spex_root_path.mkdir(parents=True, exist_ok=True)
+    if not quiet:
+        print(f"  Created: {spex_root_path}/")
     for subdir in ("specs", "archives", "hooks"):
         (spex_root_path / subdir).mkdir(exist_ok=True)
-        if verbose:
+        if not quiet:
             print(f"  Created: {spex_root_path / subdir}/")
-    _sync_all_templates(spex_root_path, verbose=verbose)
-    _write_internal_gitignore(spex_root_path, verbose=verbose)
+    _write_internal_gitignore(spex_root_path, verbose=verbose, quiet=quiet)
 
 
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
@@ -308,7 +338,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     if require_git and ctx.main_worktree is None:
         raise RuntimeError("Not inside a git repository")
     if auto_init:
-        ensure_initialized(ctx.spex_root)
+        ensure_initialized(ctx.spex_root, quiet=True)
     return ctx.spex_root
 
 
@@ -640,8 +670,7 @@ def _sync_builtin_template(
     if not target.exists():
         examples_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        if verbose:
-            print(f"  Synced template: {template_name}")
+        print(f"  Synced template: {template_name}")
         return
 
     src_stat = source.stat()
@@ -649,20 +678,17 @@ def _sync_builtin_template(
     if (tgt_stat.st_mtime != src_stat.st_mtime
             or tgt_stat.st_size != src_stat.st_size):
         shutil.copy2(source, target)
-        if verbose:
-            print(f"  Updated template: {template_name}")
+        print(f"  Updated template: {template_name}")
         return
 
     source_version = _extract_template_version(source)
     target_version = _extract_template_version(target)
     if source_version and source_version == target_version:
-        if verbose:
-            print(f"  Template up-to-date: {template_name}")
+        print(f"  Template up-to-date: {template_name}")
         return
 
     shutil.copy2(source, target)
-    if verbose:
-        print(f"  Updated template: {template_name}")
+    print(f"  Updated template: {template_name}")
 
 
 def _resolve_template_roots(workdir=None):

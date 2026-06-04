@@ -37,11 +37,14 @@ def is_initialized(workdir=None):
     return True
 
 
-def _install_deps(verbose=False):
+def _install_deps(verbose=False, dry_run=False):
     """Install Python dependencies from the skill's pyproject.toml."""
     from common import _get_skill_path
 
     skill_dir = _get_skill_path()
+    if dry_run:
+        print(f"Would install dependencies from {skill_dir}")
+        return True
     if verbose:
         print(f"Installing dependencies from {skill_dir} ...")
     result = subprocess.run(
@@ -57,7 +60,7 @@ def _install_deps(verbose=False):
     return True
 
 
-def _install_cli(verbose=False):
+def _install_cli(verbose=False, dry_run=False):
     """Install spex CLI symlink to ~/.local/bin."""
     import shutil as _shutil
 
@@ -67,10 +70,13 @@ def _install_cli(verbose=False):
     link_dir = Path.home() / ".local" / "bin"
     link_path = link_dir / "spex"
 
+    if dry_run:
+        print(f"Would install CLI: {link_path} -> {script_path}")
+        return
+
     found = _shutil.which("spex")
     if found and Path(found).resolve() == script_path.resolve():
-        if verbose:
-            print(f"CLI already installed: {found}")
+        print(f"CLI already installed: {found}")
         return
 
     try:
@@ -99,15 +105,18 @@ def _resolve_target_dir(dir_path):
     return main_wt if main_wt is not None else target
 
 
-def _init_target_toml(target_dir, verbose=False):
+def _init_target_toml(target_dir, verbose=False, dry_run=False):
     """Create .spex.toml in target_dir if it does not exist.
 
     The new file inherits effective config values from parent tomls.
     """
     toml_path = Path(target_dir) / ".spex.toml"
     if toml_path.is_file():
-        if verbose:
-            print(f"Config already exists: {toml_path}")
+        print(f"Config already exists: {toml_path}")
+        return
+
+    if dry_run:
+        print(f"Would create: {toml_path}")
         return
 
     effective = load_config(str(target_dir))
@@ -116,7 +125,7 @@ def _init_target_toml(target_dir, verbose=False):
     print(f"Created: {toml_path}")
 
 
-def _create_toml_config(workdir=None, verbose=False):
+def _create_toml_config(workdir=None, verbose=False, dry_run=False):
     """Create or safely update .spex.toml files with the latest config schema."""
     ctx = get_project_context(workdir)
 
@@ -124,44 +133,63 @@ def _create_toml_config(workdir=None, verbose=False):
         changed = False
         for toml_path in ctx.spex_tomls:
             path = Path(toml_path)
-            if safe_update_toml(path):
+            if dry_run:
+                if safe_update_toml(path, dry_run=True):
+                    print(f"Would reinitialize: {path}")
+                else:
+                    print(f"Config up-to-date: {path}")
+            elif safe_update_toml(path):
                 print(f"Reinitialized: {path}")
                 changed = True
-            elif verbose:
+            else:
                 print(f"Config up-to-date: {path}")
         if changed:
             clear_config_cache()
         return
 
     home_toml = Path.home() / ".spex.toml"
+    if dry_run:
+        print(f"Would create: {home_toml}")
+        return
     _create_default_toml()
     print(f"Created: {home_toml}")
     clear_config_cache()
 
 
-def run_init(workdir=None, target_dir=None, verbose=False):
+def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):
     """Run full spex initialization."""
+    if dry_run:
+        verbose = True
+
     if workdir is None:
         top = get_top_workdir()
         workdir = str(top) if top else None
 
-    _install_deps(verbose=verbose)
+    _install_deps(verbose=verbose, dry_run=dry_run)
 
     if target_dir:
         resolved = _resolve_target_dir(target_dir)
-        _init_target_toml(resolved, verbose=verbose)
-        clear_config_cache()
+        _init_target_toml(resolved, verbose=verbose, dry_run=dry_run)
+        if not dry_run:
+            clear_config_cache()
         workdir = str(resolved)
 
-    _create_toml_config(workdir=workdir, verbose=verbose)
+    _create_toml_config(workdir=workdir, verbose=verbose, dry_run=dry_run)
 
-    ctx = get_project_context(workdir)
+    if dry_run and target_dir:
+        effective = load_config(str(resolved))
+        spex_root_val = effective.get("spex_root", ".spex")
+        spex_root = Path(spex_root_val)
+        if not spex_root.is_absolute():
+            spex_root = resolved / spex_root
+    else:
+        ctx = get_project_context(workdir)
+        spex_root = Path(ctx.spex_root)
 
-    spex_root = Path(ctx.spex_root)
-    ensure_initialized(str(spex_root), verbose=verbose)
-    _sync_all_templates(spex_root, verbose=verbose)
+    ensure_initialized(str(spex_root), verbose=verbose, dry_run=dry_run)
+    _sync_all_templates(spex_root, verbose=verbose, dry_run=dry_run)
 
-    _install_cli(verbose=verbose)
+    _install_cli(verbose=verbose, dry_run=dry_run)
     print("Initialization complete.")
 
 
@@ -188,6 +216,10 @@ def _build_parser() -> ArgumentParser:
         action="store_true",
         help="Show detailed operations during initialization",
     )
+    parser.add_argument(
+        "-n", "--dry-run", action="store_true",
+        help="Preview operations without executing them",
+    )
     return parser
 
 
@@ -198,7 +230,7 @@ def main(argv=None):
     if args.check:
         sys.exit(0 if is_initialized() else 1)
 
-    run_init(target_dir=args.dir, verbose=args.verbose)
+    run_init(target_dir=args.dir, verbose=args.verbose, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
