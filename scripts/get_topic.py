@@ -16,8 +16,6 @@ from common import (
     find_matching_topics,
     get_archives_dir,
     get_specs_dir,
-    get_spex_roots,
-    get_spex_tomls,
     has_undone_tasks,
     is_topic_completed,
     logger,
@@ -136,7 +134,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no completed topics found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error("Error: no completed topics found.")
@@ -144,7 +142,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no topics with undone tasks found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error(
@@ -154,7 +152,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no topics found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error("Error: no topics found.")
@@ -175,32 +173,17 @@ def _build_parser() -> ArgumentParser:
         help="Use specified config file (overrides SPEX_CONFIG_FILE env var)",
     )
     parser.add_argument(
-        "--spex-roots",
-        action="store_true",
-        help="Print all spex root directories (one per line)",
-    )
-    parser.add_argument(
-        "--spex-toml",
-        action="store_true",
-        help="Print the highest-priority .spex.toml path",
-    )
-    parser.add_argument(
-        "--spex-tomls",
-        action="store_true",
-        help="Print all discovered .spex.toml paths (one per line)",
-    )
-    parser.add_argument(
         "--json",
         action="store_true",
         help="Output in JSON format",
     )
     parser.add_argument(
-        "--all",
+        "--all-topics",
         action="store_true",
         help="Show all topics (ignore workspace filter)",
     )
     parser.add_argument(
-        "--with-archives",
+        "--archives",
         action="store_true",
         help="Also search archives directory",
     )
@@ -231,46 +214,23 @@ def main(argv=None):
     if args.spex_config_file:
         set_spex_config_file(args.spex_config_file)
 
-    if args.spex_roots:
-        roots = get_spex_roots()
-        if not roots:
-            sys.exit(1)
-        for p in roots:
-            print(p)
-        return
-
-    if args.spex_toml:
-        tomls = get_spex_tomls()
-        if not tomls:
-            sys.exit(1)
-        print(tomls[0])
-        return
-
-    if args.spex_tomls:
-        tomls = get_spex_tomls()
-        if not tomls:
-            sys.exit(1)
-        for p in tomls:
-            print(p)
-        return
-
     topic_name = args.topic
 
-    if getattr(args, "all") and topic_name:
-        logger.error("Error: --all cannot be used with a topic name.")
+    if args.all_topics and topic_name:
+        logger.error("Error: --all-topics cannot be used with a topic name.")
         sys.exit(1)
 
     ctx = get_project_context()
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
-    if args.with_archives:
+    if args.archives:
         archives_dir = get_archives_dir(workdir)
         if archives_dir.is_dir():
             search_dirs.append(archives_dir)
 
     # Determine workspace filter
-    if topic_name or getattr(args, "all"):
+    if topic_name or args.all_topics:
         filter_ctx = None
     else:
         filter_ctx = ctx

@@ -16,7 +16,7 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$topic_name` is `--all`:
 
-- Run `$spex_skill_dir/scripts/spex get-topic --json --all --must-undone`
+- Run `$spex_skill_dir/scripts/spex get-topic --json --all-topics --must-undone`
   to get all topics with undone tasks.
 - Parse the output as a JSON array of objects, each containing
   `topic_name` and `topic_path`.

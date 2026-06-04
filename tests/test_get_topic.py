@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from common import has_undone_tasks
@@ -255,7 +254,7 @@ class TestResolveTopicWorkdirFilter:
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit):
                 resolve_topic("", specs, ctx=ctx)
-        assert "--all" in caplog.text
+        assert "--all-topics" in caplog.text
 
     def test_filter_skips_topics_without_meta(self, tmp_path):
         specs = tmp_path / "specs"
@@ -324,7 +323,7 @@ class TestMainAllFlag:
         _make_topic(specs, "2026-05-20-14-30-my-topic")
 
         monkeypatch.setattr(
-            sys, "argv", ["get_topic", "--all", "my-topic"]
+            sys, "argv", ["get_topic", "--all-topics", "my-topic"]
         )
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
@@ -332,7 +331,7 @@ class TestMainAllFlag:
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit):
                 main()
-        assert "--all cannot be used with a topic name" in caplog.text
+        assert "--all-topics cannot be used with a topic name" in caplog.text
 
     def test_all_flag_no_filter(self, tmp_path, monkeypatch, capsys):
         specs = tmp_path / "specs"
@@ -344,7 +343,7 @@ class TestMainAllFlag:
         _make_topic(specs, "2026-05-20-14-30-beta", workdir=str(workspace_b))
 
         monkeypatch.setattr(
-            sys, "argv", ["get_topic", "--all"]
+            sys, "argv", ["get_topic", "--all-topics"]
         )
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
@@ -674,7 +673,7 @@ class TestMainWithArchives:
         _make_topic(archives, "2026-05-10-10-00-archived-topic")
 
         monkeypatch.setattr(
-            sys, "argv", ["get_topic", "--with-archives", "--all"]
+            sys, "argv", ["get_topic", "--archives", "--all-topics"]
         )
         monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
         monkeypatch.setattr(
@@ -699,7 +698,7 @@ class TestMainWithArchives:
         _make_topic(archives, "2026-05-10-10-00-archived-topic")
 
         monkeypatch.setattr(
-            sys, "argv", ["get_topic", "--all"]
+            sys, "argv", ["get_topic", "--all-topics"]
         )
         monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
         monkeypatch.setattr(
@@ -722,7 +721,7 @@ class TestMainWithArchives:
 
         monkeypatch.setattr(
             sys, "argv",
-            ["get_topic", "--with-archives", "--all", "--json"],
+            ["get_topic", "--archives", "--all-topics", "--json"],
         )
         monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
         monkeypatch.setattr(
@@ -747,45 +746,3 @@ class TestMainWithArchives:
         )
 
 
-class TestSpexIntrospectionFlags:
-    def test_spex_roots_prints_paths(self, capsys):
-        with patch("get_topic.get_spex_roots", return_value=["/a/root", "/b/root"]):
-            main(["--spex-roots"])
-        out = capsys.readouterr().out
-        assert out.splitlines() == ["/a/root", "/b/root"]
-
-    def test_spex_roots_empty_exits_1(self):
-        with patch("get_topic.get_spex_roots", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-roots"])
-            assert exc_info.value.code == 1
-
-    def test_spex_toml_prints_first(self, capsys):
-        with patch(
-            "get_topic.get_spex_tomls",
-            return_value=["/first/.spex.toml", "/second/.spex.toml"],
-        ):
-            main(["--spex-toml"])
-        out = capsys.readouterr().out
-        assert out.strip() == "/first/.spex.toml"
-
-    def test_spex_toml_empty_exits_1(self):
-        with patch("get_topic.get_spex_tomls", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-toml"])
-            assert exc_info.value.code == 1
-
-    def test_spex_tomls_prints_all(self, capsys):
-        with patch(
-            "get_topic.get_spex_tomls",
-            return_value=["/first/.spex.toml", "/second/.spex.toml"],
-        ):
-            main(["--spex-tomls"])
-        out = capsys.readouterr().out
-        assert out.splitlines() == ["/first/.spex.toml", "/second/.spex.toml"]
-
-    def test_spex_tomls_empty_exits_1(self):
-        with patch("get_topic.get_spex_tomls", return_value=[]):
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--spex-tomls"])
-            assert exc_info.value.code == 1
