@@ -275,6 +275,7 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False):
         return
     if dry_run:
         print(f"Would initialize: {spex_root_path}")
+        print(f"  Would create: {spex_root_path}/")
         for subdir in ("specs", "archives", "hooks"):
             print(f"  Would create: {spex_root_path / subdir}/")
         _sync_all_templates(spex_root_path, verbose=verbose, dry_run=True)
@@ -284,6 +285,8 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False):
     if verbose:
         print(f"Initializing: {spex_root_path}")
     spex_root_path.mkdir(parents=True, exist_ok=True)
+    if verbose:
+        print(f"  Created: {spex_root_path}/")
     for subdir in ("specs", "archives", "hooks"):
         (spex_root_path / subdir).mkdir(exist_ok=True)
         if verbose:

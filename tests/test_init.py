@@ -623,6 +623,7 @@ class TestVerboseFlag:
 
         out = capsys.readouterr().out
         assert "Initializing:" in out
+        assert f"Created: {spex_root}/" in out
         assert "specs/" in out
         assert "archives/" in out
         assert "hooks/" in out
@@ -809,6 +810,7 @@ class TestDryRun:
         out = capsys.readouterr().out
         assert "Would initialize:" in out
         assert "Would create:" in out
+        assert f"Would create: {spex_root}/" in out
 
     def test_dry_run_flag_short(self):
         """Parser accepts -n and sets dry_run=True."""
