@@ -134,7 +134,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no completed topics found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error("Error: no completed topics found.")
@@ -142,7 +142,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no topics with undone tasks found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error(
@@ -152,7 +152,7 @@ def resolve_topic(topic_name, search_dirs, ctx: ProjectContext | None = None,
             if ctx is not None:
                 logger.error(
                     "Error: no topics found for the current"
-                    " workspace. Use --all to show all topics."
+                    " workspace. Use --all-topics to show all topics."
                 )
             else:
                 logger.error("Error: no topics found.")
@@ -178,12 +178,12 @@ def _build_parser() -> ArgumentParser:
         help="Output in JSON format",
     )
     parser.add_argument(
-        "--all",
+        "--all-topics",
         action="store_true",
         help="Show all topics (ignore workspace filter)",
     )
     parser.add_argument(
-        "--with-archives",
+        "--archives",
         action="store_true",
         help="Also search archives directory",
     )
@@ -216,21 +216,21 @@ def main(argv=None):
 
     topic_name = args.topic
 
-    if getattr(args, "all") and topic_name:
-        logger.error("Error: --all cannot be used with a topic name.")
+    if args.all_topics and topic_name:
+        logger.error("Error: --all-topics cannot be used with a topic name.")
         sys.exit(1)
 
     ctx = get_project_context()
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
     specs_dir = get_specs_dir()
     search_dirs = [specs_dir]
-    if args.with_archives:
+    if args.archives:
         archives_dir = get_archives_dir(workdir)
         if archives_dir.is_dir():
             search_dirs.append(archives_dir)
 
     # Determine workspace filter
-    if topic_name or getattr(args, "all"):
+    if topic_name or args.all_topics:
         filter_ctx = None
     else:
         filter_ctx = ctx
