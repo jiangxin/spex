@@ -1,3 +1,4 @@
+import logging
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -704,7 +705,7 @@ class TestResolveTargetDir:
 
 
 class TestInitTargetToml:
-    def test_creates_toml_with_inherited_config(self, tmp_path, capsys):
+    def test_creates_toml_with_inherited_config(self, tmp_path, caplog):
         """Creates .spex.toml inheriting user-set values from parent config."""
         target = tmp_path / "project"
         target.mkdir()
@@ -716,14 +717,15 @@ class TestInitTargetToml:
             from init import _init_target_toml
 
             clear_spex_root_cache()
-            _init_target_toml(target)
+            with caplog.at_level(logging.INFO):
+                _init_target_toml(target)
 
         toml_path = target / ".spex.toml"
         assert toml_path.exists()
         content = toml_path.read_text()
         assert "branch_management = false" in content
         assert 'spex_root = ".spex"' in content
-        assert "Created:" in capsys.readouterr().out
+        assert "Created:" in caplog.text
 
     def test_creates_toml_with_forced_spex_root(self, tmp_path):
         """Creates .spex.toml with spex_root always explicit."""
@@ -839,7 +841,7 @@ class TestDryRun:
         assert "Would create:" in caplog.text
         assert f"Would create: {spex_root}/" in caplog.text
 
-    def test_dry_run_target_dir_shows_spex_root(self, tmp_path, capsys):
+    def test_dry_run_target_dir_shows_spex_root(self, tmp_path, caplog):
         """dry_run with target_dir resolves spex_root without .spex.toml on disk."""
         target = tmp_path / "target"
         target.mkdir()
@@ -852,12 +854,12 @@ class TestDryRun:
             from init import run_init
 
             clear_spex_root_cache()
-            run_init(target_dir=str(target), dry_run=True)
+            with caplog.at_level(logging.INFO):
+                run_init(target_dir=str(target), dry_run=True)
 
-        out = capsys.readouterr().out
-        assert "Would create:" in out
+        assert "Would create:" in caplog.text
         expected_spex = str(target / ".spex")
-        assert expected_spex in out
+        assert expected_spex in caplog.text
 
         # Verify nothing was actually created
         assert not (target / ".spex").exists()

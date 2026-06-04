@@ -1,6 +1,7 @@
 """Tests for shared utility functions added during scripts-refactor."""
 
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -144,7 +145,7 @@ class TestSafeUpdateToml:
 class TestArchiveSingleTopicIncomplete:
     """Test that archive_single_topic refuses incomplete topics."""
 
-    def test_refuses_incomplete_without_force(self, tmp_path, capsys):
+    def test_refuses_incomplete_without_force(self, tmp_path, caplog):
         from archive import archive_single_topic
 
         specs = tmp_path / "specs"
@@ -161,12 +162,12 @@ class TestArchiveSingleTopicIncomplete:
         )
         archives = tmp_path / "archives"
 
-        result = archive_single_topic("wip-topic", specs, archives)
+        with caplog.at_level(logging.INFO):
+            result = archive_single_topic("wip-topic", specs, archives)
 
         assert result is None
         assert not (archives / "wip-topic").exists()
-        output = capsys.readouterr().out
-        assert "not completed" in output
+        assert "not completed" in caplog.text
 
     def test_archives_incomplete_with_force(self, tmp_path, capsys):
         from archive import archive_single_topic

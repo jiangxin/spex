@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -269,7 +270,7 @@ class TestMoveTopicWithConflict:
 class TestMain:
     """Tests for the main() CLI entry point."""
 
-    def test_no_completed_topics(self, tmp_path, capsys):
+    def test_no_completed_topics(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -277,12 +278,11 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main([])
-        output = capsys.readouterr().out
-        assert "No completed topics" in output
+        assert "No completed topics" in caplog.text
 
-    def test_archives_completed_topics(self, tmp_path, capsys):
+    def test_archives_completed_topics(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         _write_todo(
@@ -294,15 +294,14 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main([])
-        output = capsys.readouterr().out
-        assert "done-topic" in output
-        assert "wip-topic" not in output
+        assert "done-topic" in caplog.text
+        assert "wip-topic" not in caplog.text
         assert (archives / "done-topic").is_dir()
         assert (specs / "wip-topic").is_dir()
 
-    def test_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+    def test_dry_run_does_not_move(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -311,15 +310,14 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Would archive 1 topic(s)" in output
-        assert "done-topic" in output
+        assert "Would archive 1 topic(s)" in caplog.text
+        assert "done-topic" in caplog.text
         assert (specs / "done-topic").is_dir()
         assert not archives.exists()
 
-    def test_dry_run_short_flag(self, tmp_path, capsys, monkeypatch):
+    def test_dry_run_short_flag(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -328,13 +326,12 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Would archive" in output
+        assert "Would archive" in caplog.text
         assert (specs / "done-topic").is_dir()
 
-    def test_topic_flag_archives_single(self, tmp_path, capsys, monkeypatch):
+    def test_topic_flag_archives_single(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         _write_todo(specs / "target-topic", [_make_task("1")])
         _write_todo(specs / "other-topic", [_make_task("1")])
@@ -346,16 +343,15 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "target-topic" in output
+        assert "target-topic" in caplog.text
         assert (archives / "target-topic").is_dir()
         assert not (specs / "target-topic").exists()
         # other-topic should remain untouched
         assert (specs / "other-topic").is_dir()
 
-    def test_topic_flag_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+    def test_topic_flag_dry_run_does_not_move(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -366,11 +362,10 @@ class TestMain:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Would archive" in output
-        assert "done-topic" in output
+        assert "Would archive" in caplog.text
+        assert "done-topic" in caplog.text
         assert (specs / "done-topic").is_dir()  # not moved
         assert not archives.exists()  # archives dir not even created
 
@@ -394,18 +389,18 @@ class TestMain:
 class TestArchiveSingleTopic:
     """Tests for archive_single_topic."""
 
-    def test_archive_single_existing_topic(self, tmp_path, capsys):
+    def test_archive_single_existing_topic(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _write_todo(specs / "my-topic", [_make_task("1")])
         archives = tmp_path / "archives"
 
-        dest = archive_single_topic("my-topic", specs, archives)
+        with caplog.at_level(logging.INFO):
+            dest = archive_single_topic("my-topic", specs, archives)
 
         assert dest == archives / "my-topic"
         assert dest.is_dir()
         assert not (specs / "my-topic").exists()
-        output = capsys.readouterr().out
-        assert "my-topic" in output
+        assert "my-topic" in caplog.text
 
     def test_archive_single_nonexistent_topic(self, tmp_path, caplog):
         specs = tmp_path / "specs"
@@ -418,7 +413,7 @@ class TestArchiveSingleTopic:
         assert "no-such-topic" in caplog.text
         assert "no topic matching" in caplog.text
 
-    def test_archive_single_topic_conflict(self, tmp_path, capsys):
+    def test_archive_single_topic_conflict(self, tmp_path):
         specs = tmp_path / "specs"
         _write_todo(specs / "my-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -523,7 +518,7 @@ class TestFindCompletedTopicsWithBranchGuard:
 class TestArchiveSingleWithBranchGuard:
     """Tests for archive_single_topic with force parameter."""
 
-    def test_skips_when_branch_exists_no_force(self, tmp_path, capsys):
+    def test_skips_when_branch_exists_no_force(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         topic = specs / "active-topic"
         _write_todo(topic, [_make_task("1")])
@@ -533,16 +528,16 @@ class TestArchiveSingleWithBranchGuard:
         )
         archives = tmp_path / "archives"
 
-        with patch("branch.branch_exists", return_value=True):
+        with patch("branch.branch_exists", return_value=True), \
+             caplog.at_level(logging.INFO):
             result = archive_single_topic("active-topic", specs, archives)
 
         assert result is None
         assert not (archives / "active-topic").exists()
-        output = capsys.readouterr().out
-        assert "spex/active" in output
-        assert "Skipping" in output
+        assert "spex/active" in caplog.text
+        assert "Skipping" in caplog.text
 
-    def test_archives_when_branch_missing_no_force(self, tmp_path, capsys):
+    def test_archives_when_branch_missing_no_force(self, tmp_path):
         specs = tmp_path / "specs"
         _write_todo(specs / "merged-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -553,7 +548,7 @@ class TestArchiveSingleWithBranchGuard:
         assert result == archives / "merged-topic"
         assert (archives / "merged-topic").is_dir()
 
-    def test_archives_with_force_despite_branch(self, tmp_path, capsys):
+    def test_archives_with_force_despite_branch(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "active-topic"
         _write_todo(topic, [_make_task("1")])
@@ -572,7 +567,7 @@ class TestArchiveSingleWithBranchGuard:
         assert (archives / "active-topic").is_dir()
         assert not (specs / "active-topic").exists()
 
-    def test_partial_match_archives_topic(self, tmp_path, capsys):
+    def test_partial_match_archives_topic(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "2026-05-27-14-11-archive-branch-guard"
         _write_todo(topic, [_make_task("1")])
@@ -602,7 +597,7 @@ class TestArchiveSingleWithBranchGuard:
 class TestMainWithBranchGuard:
     """Integration tests for main() with branch guard."""
 
-    def test_force_flag_archives_active_branch(self, tmp_path, capsys, monkeypatch):
+    def test_force_flag_archives_active_branch(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         topic = specs / "active-topic"
         _write_todo(topic, [_make_task("1")])
@@ -620,13 +615,12 @@ class TestMainWithBranchGuard:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
             "branch.branch_exists", return_value=True
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "active-topic" in output
+        assert "active-topic" in caplog.text
         assert (archives / "active-topic").is_dir()
 
-    def test_short_f_flag_works(self, tmp_path, capsys, monkeypatch):
+    def test_short_f_flag_works(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         topic = specs / "active-topic"
         _write_todo(topic, [_make_task("1")])
@@ -644,12 +638,11 @@ class TestMainWithBranchGuard:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
             "branch.branch_exists", return_value=True
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "active-topic" in output
+        assert "active-topic" in caplog.text
 
-    def test_dry_run_shows_skipped(self, tmp_path, capsys, monkeypatch):
+    def test_dry_run_shows_skipped(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         # Topic with active branch
         topic_active = specs / "active-topic"
@@ -672,18 +665,17 @@ class TestMainWithBranchGuard:
         ), patch(
             "branch.branch_exists",
             side_effect=lambda name: name == "spex/active",
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Would archive 1 topic(s)" in output
-        assert "merged-topic" in output
-        assert "Would skip 1 topic(s)" in output
-        assert "active-topic" in output
-        assert "spex/active" in output
+        assert "Would archive 1 topic(s)" in caplog.text
+        assert "merged-topic" in caplog.text
+        assert "Would skip 1 topic(s)" in caplog.text
+        assert "active-topic" in caplog.text
+        assert "spex/active" in caplog.text
         # Nothing actually moved
         assert not archives.exists()
 
-    def test_bulk_excludes_active_branch(self, tmp_path, capsys, monkeypatch):
+    def test_bulk_excludes_active_branch(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         topic_active = specs / "active-topic"
         _write_todo(topic_active, [_make_task("1")])
@@ -702,15 +694,14 @@ class TestMainWithBranchGuard:
         ), patch(
             "branch.branch_exists",
             side_effect=lambda name: name == "spex/active",
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "merged-topic" in output
-        assert "active-topic" not in output
+        assert "merged-topic" in caplog.text
+        assert "active-topic" not in caplog.text
         assert (archives / "merged-topic").is_dir()
         assert (specs / "active-topic").is_dir()
 
-    def test_topic_flag_partial_match(self, tmp_path, capsys, monkeypatch):
+    def test_topic_flag_partial_match(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         topic = specs / "2026-05-27-14-11-archive-branch-guard"
         _write_todo(topic, [_make_task("1")])
@@ -726,46 +717,45 @@ class TestMainWithBranchGuard:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
             "branch.branch_exists", return_value=False
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "2026-05-27-14-11-archive-branch-guard" in output
+        assert "2026-05-27-14-11-archive-branch-guard" in caplog.text
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
 
 
 class TestRestoreSingleTopic:
     """Tests for restore_single_topic."""
 
-    def test_restore_single_match(self, tmp_path, capsys):
+    def test_restore_single_match(self, tmp_path, caplog):
         """Single match in archives → moved to specs."""
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         specs = tmp_path / "specs"
         specs.mkdir()
 
-        dest = restore_single_topic("my-topic", specs, archives)
+        with caplog.at_level(logging.INFO):
+            dest = restore_single_topic("my-topic", specs, archives)
 
         assert dest == specs / "my-topic"
         assert dest.is_dir()
         assert not (archives / "my-topic").exists()
-        output = capsys.readouterr().out
-        assert "Restored:" in output
-        assert "my-topic" in output
+        assert "Restored:" in caplog.text
+        assert "my-topic" in caplog.text
 
-    def test_restore_no_match(self, tmp_path, capsys):
+    def test_restore_no_match(self, tmp_path, caplog):
         """No match → exit 1 with error."""
         archives = tmp_path / "archives"
         archives.mkdir()
         specs = tmp_path / "specs"
         specs.mkdir()
 
-        with pytest.raises(SystemExit) as exc_info:
+        with caplog.at_level(logging.ERROR), \
+             pytest.raises(SystemExit) as exc_info:
             restore_single_topic("nonexistent", specs, archives)
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "no topic matching" in err
+        assert "no topic matching" in caplog.text
 
-    def test_restore_multiple_matches(self, tmp_path, capsys):
+    def test_restore_multiple_matches(self, tmp_path, caplog):
         """Multiple matches → exit 1 listing candidates."""
         archives = tmp_path / "archives"
         (archives / "2026-01-01-topic-a").mkdir(parents=True)
@@ -773,15 +763,15 @@ class TestRestoreSingleTopic:
         specs = tmp_path / "specs"
         specs.mkdir()
 
-        with pytest.raises(SystemExit) as exc_info:
+        with caplog.at_level(logging.ERROR), \
+             pytest.raises(SystemExit) as exc_info:
             restore_single_topic("topic", specs, archives)
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "multiple topics match" in err
-        assert "topic-a" in err
-        assert "topic-b" in err
+        assert "multiple topics match" in caplog.text
+        assert "topic-a" in caplog.text
+        assert "topic-b" in caplog.text
 
-    def test_restore_name_conflict(self, tmp_path, capsys):
+    def test_restore_name_conflict(self, tmp_path):
         """Conflict in specs → topic moved as <name>-2."""
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
@@ -794,7 +784,7 @@ class TestRestoreSingleTopic:
         assert dest.is_dir()
         assert not (archives / "my-topic").exists()
 
-    def test_restore_partial_match(self, tmp_path, capsys):
+    def test_restore_partial_match(self, tmp_path):
         """Partial match finds unique topic."""
         archives = tmp_path / "archives"
         _write_todo(
@@ -817,7 +807,7 @@ class TestRestoreSingleTopic:
 class TestRestoreFlagCLI:
     """Integration tests for --restore flag in main()."""
 
-    def test_restore_without_topic_errors(self, tmp_path, capsys, monkeypatch):
+    def test_restore_without_topic_errors(self, tmp_path, caplog, monkeypatch):
         """--restore without --topic → error."""
         specs = tmp_path / "specs"
         specs.mkdir()
@@ -828,15 +818,14 @@ class TestRestoreFlagCLI:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc_info:
                 spex_archive.main()
             assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "--restore" in err
-        assert "--topic" in err
+        assert "--restore" in caplog.text
+        assert "--topic" in caplog.text
 
-    def test_restore_restores_from_archives(self, tmp_path, capsys, monkeypatch):
+    def test_restore_restores_from_archives(self, tmp_path, caplog, monkeypatch):
         """--restore --topic restores topic from archives to specs."""
         specs = tmp_path / "specs"
         specs.mkdir()
@@ -849,15 +838,14 @@ class TestRestoreFlagCLI:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Restored:" in output
-        assert "my-topic" in output
+        assert "Restored:" in caplog.text
+        assert "my-topic" in caplog.text
         assert (specs / "my-topic").is_dir()
         assert not (archives / "my-topic").exists()
 
-    def test_restore_dry_run_does_not_move(self, tmp_path, capsys, monkeypatch):
+    def test_restore_dry_run_does_not_move(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -869,15 +857,14 @@ class TestRestoreFlagCLI:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Would restore" in output
-        assert "my-topic" in output
+        assert "Would restore" in caplog.text
+        assert "my-topic" in caplog.text
         assert (archives / "my-topic").is_dir()  # not moved
         assert not (specs / "my-topic").exists()  # not restored
 
-    def test_restore_partial_match_restores(self, tmp_path, capsys, monkeypatch):
+    def test_restore_partial_match_restores(self, tmp_path, caplog, monkeypatch):
         """--restore with partial topic name restores unique match."""
         specs = tmp_path / "specs"
         specs.mkdir()
@@ -895,16 +882,15 @@ class TestRestoreFlagCLI:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Restored:" in output
+        assert "Restored:" in caplog.text
         assert (specs / "2026-05-27-14-11-archive-branch-guard").is_dir()
         assert not (
             archives / "2026-05-27-14-11-archive-branch-guard"
         ).exists()
 
-    def test_not_flag_backward_compat(self, tmp_path, capsys, monkeypatch):
+    def test_not_flag_backward_compat(self, tmp_path, caplog, monkeypatch):
         """--not still works as a hidden alias for --restore."""
         specs = tmp_path / "specs"
         specs.mkdir()
@@ -917,17 +903,16 @@ class TestRestoreFlagCLI:
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "Restored:" in output
+        assert "Restored:" in caplog.text
         assert (specs / "my-topic").is_dir()
 
 
 class TestAllProjectsFlag:
     """Tests for --all-projects flag."""
 
-    def test_all_projects_includes_cross_project(self, tmp_path, capsys, monkeypatch):
+    def test_all_projects_includes_cross_project(self, tmp_path, caplog, monkeypatch):
         """With --all-projects, topics from other projects are archived."""
         specs = tmp_path / "specs"
         # Topic from a different project
@@ -945,13 +930,12 @@ class TestAllProjectsFlag:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "other-topic" in output
+        assert "other-topic" in caplog.text
         assert (archives / "other-topic").is_dir()
 
-    def test_without_all_projects_filters_by_project(self, tmp_path, capsys, monkeypatch):
+    def test_without_all_projects_filters_by_project(self, tmp_path, caplog, monkeypatch):
         """Without --all-projects, only current project topics are archived."""
         specs = tmp_path / "specs"
         # Topic from current project
@@ -975,15 +959,14 @@ class TestAllProjectsFlag:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "my-topic" in output
-        assert "other-topic" not in output
+        assert "my-topic" in caplog.text
+        assert "other-topic" not in caplog.text
         assert (archives / "my-topic").is_dir()
         assert (specs / "other-topic").is_dir()
 
-    def test_non_git_workdir_requires_all_projects(self, tmp_path, capsys, monkeypatch):
+    def test_non_git_workdir_requires_all_projects(self, tmp_path, caplog, monkeypatch):
         """Outside git workdir without --all-projects, prints message and exits."""
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
@@ -996,14 +979,13 @@ class TestAllProjectsFlag:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "--all-projects" in output
+        assert "--all-projects" in caplog.text
         assert (specs / "done-topic").is_dir()  # not moved
         assert not archives.exists()
 
-    def test_non_git_workdir_with_all_projects_works(self, tmp_path, capsys, monkeypatch):
+    def test_non_git_workdir_with_all_projects_works(self, tmp_path, caplog, monkeypatch):
         """Outside git workdir with --all-projects, archives normally."""
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
@@ -1016,8 +998,7 @@ class TestAllProjectsFlag:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ):
+        ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        output = capsys.readouterr().out
-        assert "done-topic" in output
+        assert "done-topic" in caplog.text
         assert (archives / "done-topic").is_dir()
