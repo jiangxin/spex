@@ -134,7 +134,7 @@ file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
    (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta $topic_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper $topic_name prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 

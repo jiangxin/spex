@@ -1,14 +1,14 @@
-"""Tests for meta.py."""
+"""Tests for meta_helper.py."""
 
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-import meta
+import meta_helper
 import pytest
 
-SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta.py")
+SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta_helper.py")
 
 
 def _make_topic(tmp_path, topic_name, data):
@@ -32,7 +32,7 @@ def _setup_spex_toml(tmp_path):
 
 def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
                 input_data=None, add_images=None):
-    """Run meta.py as a subprocess with .spex.toml pointing to tmp_path."""
+    """Run meta_helper.py as subprocess with .spex.toml pointing to tmp_path."""
     _setup_spex_toml(tmp_path)
     args = [sys.executable, SCRIPT, topic_name]
     if key is not None:
@@ -231,7 +231,7 @@ class TestErrorOnMissingTopic:
         clear_spex_root_cache()
 
         with pytest.raises(SystemExit) as exc_info:
-            meta.main(["nonexistent", "key", "val"])
+            meta_helper.main(["nonexistent", "key", "val"])
         assert exc_info.value.code == 1
 
 
@@ -250,7 +250,7 @@ class TestErrorOnInsufficientArgs:
         monkeypatch.setattr(sys, "argv", ["prog"])
 
         with pytest.raises(SystemExit) as exc_info:
-            meta.main()
+            meta_helper.main()
         assert exc_info.value.code == 2
 
 

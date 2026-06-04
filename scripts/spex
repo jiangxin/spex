@@ -42,7 +42,7 @@ Internal commands (used by skill):
                 (precheck, prepare-spec)
   get-topic [name]
                 Resolve a topic directory
-  meta <topic_name> [key] [value] [--stdin]
+  meta-helper <topic_name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <name> [--topic <topic>] [-o <file>]
                 Render a Jinja2 template with metadata
@@ -290,11 +290,11 @@ def _run_prompt(argv=None):
     prompt.main(argv)
 
 
-def _run_meta(argv=None):
+def _run_meta_helper(argv=None):
     """Get or set key/value in meta.json."""
-    import meta
+    import meta_helper
 
-    meta.main(argv)
+    meta_helper.main(argv)
 
 
 def _run_create_helper(argv=None):
@@ -458,7 +458,7 @@ _INTERNAL_COMMANDS = [
     ("apply-helper", _run_apply_helper),
     ("create-helper", _run_create_helper),
     ("get-topic", _run_get_topic),
-    ("meta", _run_meta),
+    ("meta-helper", _run_meta_helper),
     ("prompt", _run_prompt),
     ("run-hook", _run_hook),
     ("todo-helper", _run_todo_helper),

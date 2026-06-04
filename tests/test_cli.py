@@ -105,14 +105,14 @@ class TestHelpFlag:
 
         assert result.returncode == 0
 
-    def test_meta_h_exits_zero_with_usage(self):
-        result = _run_spex("meta", "-h")
+    def test_meta_helper_h_exits_zero_with_usage(self):
+        result = _run_spex("meta-helper", "-h")
 
         assert result.returncode == 0
         assert "usage:" in result.stdout.lower()
 
-    def test_meta_help_exits_zero(self):
-        result = _run_spex("meta", "--help")
+    def test_meta_helper_help_exits_zero(self):
+        result = _run_spex("meta-helper", "--help")
 
         assert result.returncode == 0
 

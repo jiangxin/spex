@@ -84,7 +84,7 @@ becomes the modification request.
 Record the modification request in `meta.json`:
 
 ```bash
-$spex_skill_dir/scripts/spex meta $topic_name prompts --stdin <<'EOF'
+$spex_skill_dir/scripts/spex meta-helper $topic_name prompts --stdin <<'EOF'
 $request
 EOF
 ```
@@ -99,7 +99,7 @@ file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
 3. Register the images in `meta.json` (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta $topic_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper $topic_name prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 
