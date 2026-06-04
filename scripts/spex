@@ -487,6 +487,12 @@ def _build_parser():
         version=f"spex {_get_version()}",
         help="Show version and exit",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        default=False,
+        help="Enable verbose (debug) output",
+    )
 
     subs = parser.add_subparsers(dest="command")
 
@@ -518,6 +524,9 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
+    from common import logger, setup_logging
+    setup_logging(verbose=("-v" in argv or "--verbose" in argv))
+
     parser = _build_parser()
     argv = list(argv)
 
@@ -528,7 +537,7 @@ def main(argv=None):
         if not arg.startswith("-"):
             argv[i] = arg.replace("_", "-")
             if argv[i] not in _ALL_COMMANDS:
-                print(f"Unknown command: {argv[i]}\n", file=sys.stderr)
+                logger.error("Unknown command: %s\n", argv[i])
                 parser.print_help(sys.stderr)
                 sys.exit(1)
             break

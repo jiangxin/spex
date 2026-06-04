@@ -7,7 +7,12 @@ import sys
 from pathlib import Path
 
 from cli import ArgumentParser
-from common import DEFAULT_SPEX_BRANCH_PREFIX, TopicMeta, strip_date_prefix
+from common import (
+    DEFAULT_SPEX_BRANCH_PREFIX,
+    TopicMeta,
+    logger,
+    strip_date_prefix,
+)
 
 
 def _extract_topic_name_for_branch(topic_dir: Path, meta) -> str:
@@ -42,7 +47,7 @@ def validate_apply_branch(
 
     if common.is_topic_completed(topic_dir):
         status = common.format_topic(topic_dir, verbose=2)
-        print(f"Error: topic is already completed.\n{status}", file=sys.stderr)
+        logger.error(f"Error: topic is already completed.\n{status}")
         sys.exit(1)
 
     if not bool(config["branch_management"]):
@@ -55,22 +60,20 @@ def validate_apply_branch(
         current = get_current_branch(cwd)
         if current != spex_branch:
             if not branch_exists(spex_branch, cwd):
-                print(
+                logger.error(
                     f"Error: spex_branch '{spex_branch}' defined in meta.json "
                     f"does not exist.",
-                    file=sys.stderr,
                 )
                 sys.exit(1)
             try:
                 switch_branch(spex_branch, cwd)
             except subprocess.CalledProcessError as e:
-                print(
+                logger.error(
                     f"Error: failed to switch to '{spex_branch}': "
                     f"{e.stderr.strip() or e}",
-                    file=sys.stderr,
                 )
                 sys.exit(1)
-            print(f"Switched to branch '{spex_branch}'.")
+            logger.info(f"Switched to branch '{spex_branch}'.")
         return
 
     topic_name = _extract_topic_name_for_branch(topic_dir, meta)
@@ -94,19 +97,17 @@ def validate_apply_branch(
             continue
 
     if created_branch is None:
-        print(
+        logger.error(
             f"Error: failed to create branch. Tried: {', '.join(candidates)}",
-            file=sys.stderr,
         )
         sys.exit(1)
 
     try:
         switch_branch(created_branch, cwd)
     except subprocess.CalledProcessError as e:
-        print(
+        logger.error(
             f"Error: failed to switch to '{created_branch}': "
             f"{e.stderr.strip() or e}",
-            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -121,7 +122,7 @@ def validate_apply_branch(
     meta.spex_branch = created_branch
     common.atomic_write_json(meta_path, meta.to_dict())
 
-    print(f"Created and switched to branch '{created_branch}'.")
+    logger.info(f"Created and switched to branch '{created_branch}'.")
 
 
 def _do_precheck(args):
@@ -136,6 +137,7 @@ def _do_precheck(args):
 
 def cli_precheck(argv=None):
     """CLI: perform branch setup for applying a topic."""
+
     args = _build_parser().parse(["precheck"] + (argv or []))
     _do_precheck(args)
 
@@ -169,7 +171,7 @@ def _do_post_action(args):
     )
 
     if hooks.find_hook("post-action", workdir) is None:
-        print(
+        logger.info(
             f"Development completed on topic branch {spex_branch}.\n"
             f"After local code review, run /spex merge to merge into\n"
             f"branch {target}, or create a pull request."
@@ -178,6 +180,7 @@ def _do_post_action(args):
 
 def cli_post_action(argv=None):
     """CLI: run post-action hook, and show hint."""
+
     args = _build_parser().parse(["post-action"] + (argv or []))
     _do_post_action(args)
 
@@ -215,6 +218,7 @@ def _build_parser():
 
 def main(argv=None):
     """Parse args, route to subcommand."""
+
     parser = _build_parser()
     args = parser.parse(argv)
 

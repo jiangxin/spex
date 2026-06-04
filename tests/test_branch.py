@@ -250,17 +250,18 @@ class TestCliPostAction:
     @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
     def test_outputs_text_with_branch(self, mock_resolve, _ctx,
-                                      tmp_path, capsys):
+                                      tmp_path, caplog):
+        import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/my-feat"}), encoding="utf-8"
         )
         mock_resolve.return_value = tmp_path
-        cli_post_action(["--topic", "my-feat"])
-        out = capsys.readouterr().out
-        assert "spex/my-feat" in out
-        assert "Development completed" in out
-        assert "main" in out
+        with caplog.at_level(logging.INFO):
+            cli_post_action(["--topic", "my-feat"])
+        assert "spex/my-feat" in caplog.text
+        assert "Development completed" in caplog.text
+        assert "main" in caplog.text
 
     @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
