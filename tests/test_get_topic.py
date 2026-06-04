@@ -346,7 +346,7 @@ class TestMainAllFlag:
             sys, "argv", ["get_topic", "--all-topics"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
         )
         # Mock get_project_context to return workspace_a (should be ignored)
         monkeypatch.setattr(
@@ -369,7 +369,7 @@ class TestMainAllFlag:
 
         monkeypatch.setattr(sys, "argv", ["get_topic"])
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
         )
         monkeypatch.setattr(
             "get_topic.get_project_context",
@@ -379,26 +379,24 @@ class TestMainAllFlag:
         out = capsys.readouterr().out
         assert out.strip() == "2026-05-20-14-30-alpha"
 
-    def test_not_in_git_repo_no_filter(self, tmp_path, monkeypatch, capsys):
+    def test_not_in_git_repo_exits(self, tmp_path, monkeypatch, caplog):
         specs = tmp_path / "specs"
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         _make_topic(specs, "2026-05-20-14-30-alpha", workdir=str(workspace))
-        _make_topic(specs, "2026-05-20-14-30-beta")
 
         monkeypatch.setattr(sys, "argv", ["get_topic"])
         monkeypatch.setattr(
             "get_topic.get_specs_dir", lambda: specs
         )
-        # Not in a git repo — get_project_context returns top_workdir=None
         monkeypatch.setattr(
             "get_topic.get_project_context",
             lambda: _mock_project_context(None),
         )
-        main()
-        out = capsys.readouterr().out
-        lines = out.strip().splitlines()
-        assert lines == ["2026-05-20-14-30-alpha", "2026-05-20-14-30-beta"]
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+        assert "not inside a git working directory" in caplog.text
 
 
 class TestMainMustDoneFlag:
@@ -432,7 +430,11 @@ class TestMainMustDoneFlag:
             ["get_topic", "--must-done", "2026-05-20-14-30-my-topic"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
+        )
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(tmp_path)),
         )
 
         captured_kwargs = {}
@@ -457,7 +459,11 @@ class TestMainMustDoneFlag:
             ["get_topic", "2026-05-20-14-30-my-topic"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
+        )
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(tmp_path)),
         )
 
         captured_kwargs = {}
@@ -482,7 +488,11 @@ class TestMainJsonFlag:
             sys, "argv", ["get_topic", "2026-05-20-14-30-my-topic"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
+        )
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out
@@ -497,7 +507,11 @@ class TestMainJsonFlag:
             ["get_topic", "2026-05-20-14-30-my-topic", "--json"],
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
+        )
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out
@@ -515,7 +529,11 @@ class TestMainJsonFlag:
             sys, "argv", ["get_topic", "--json", "edit"]
         )
         monkeypatch.setattr(
-            "get_topic.get_specs_dir", lambda: specs
+            "get_topic.get_specs_dir", lambda workdir: specs
+        )
+        monkeypatch.setattr(
+            "get_topic.get_project_context",
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out
@@ -675,13 +693,13 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             sys, "argv", ["get_topic", "--archives", "--all-topics"]
         )
-        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda workdir: specs)
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
         monkeypatch.setattr(
             "get_topic.get_project_context",
-            lambda: _mock_project_context(None),
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out
@@ -700,10 +718,10 @@ class TestMainWithArchives:
         monkeypatch.setattr(
             sys, "argv", ["get_topic", "--all-topics"]
         )
-        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda workdir: specs)
         monkeypatch.setattr(
             "get_topic.get_project_context",
-            lambda: _mock_project_context(None),
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out
@@ -723,13 +741,13 @@ class TestMainWithArchives:
             sys, "argv",
             ["get_topic", "--archives", "--all-topics", "--json"],
         )
-        monkeypatch.setattr("get_topic.get_specs_dir", lambda: specs)
+        monkeypatch.setattr("get_topic.get_specs_dir", lambda workdir: specs)
         monkeypatch.setattr(
             "get_topic.get_archives_dir", lambda workdir: archives
         )
         monkeypatch.setattr(
             "get_topic.get_project_context",
-            lambda: _mock_project_context(None),
+            lambda: _mock_project_context(str(tmp_path)),
         )
         main()
         out = capsys.readouterr().out

@@ -221,8 +221,11 @@ def main(argv=None):
         sys.exit(1)
 
     ctx = get_project_context()
-    workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else None
-    specs_dir = get_specs_dir()
+    if not ctx.in_git_workdir():
+        logger.error("Error: not inside a git working directory.")
+        sys.exit(1)
+    workdir = str(ctx.top_workdir)
+    specs_dir = get_specs_dir(workdir)
     search_dirs = [specs_dir]
     if args.archives:
         archives_dir = get_archives_dir(workdir)
