@@ -336,11 +336,9 @@ def _run_merge(argv=None):
     parser.add_argument("-n", "--dry-run", action="store_true")
     args = parser.parse(argv)
 
-    if not args.topic:
-        print("Error: topic argument is required", file=sys.stderr)
-        sys.exit(1)
-
-    submit_args = [args.topic]
+    submit_args = []
+    if args.topic:
+        submit_args.append(args.topic)
     if args.no_archive:
         submit_args.append("--no-archive")
     if args.dry_run:

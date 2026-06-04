@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import merge as spex_merge
+import pytest
 from config import ProjectContext
 
 
@@ -117,3 +118,66 @@ class TestDryRun:
         mock_merge.assert_not_called()
         output = capsys.readouterr().out
         assert "Would merge" in output
+
+
+class TestAutoSelect:
+    """Tests for auto-topic selection when no topic is provided."""
+
+    def test_auto_select_single_topic(self, tmp_path, capsys):
+        specs, topic_dir = _setup_topic(
+            tmp_path, topic_name="auto-topic",
+            spex_branch="spex/auto", completed=True,
+        )
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+        mock_merge = MagicMock()
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.merge_branch", mock_merge), \
+             patch("hooks.run_post_action"), \
+             patch("archive.archive_single_topic", return_value=None):
+            spex_merge.cli_submit([])
+
+        mock_merge.assert_called_once()
+        call_args = mock_merge.call_args
+        assert call_args[0][1] == "spex/auto"
+        err = capsys.readouterr().err
+        assert "Auto-selected: auto-topic" in err
+
+    def test_auto_select_no_topics(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        specs.mkdir(parents=True)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             pytest.raises(SystemExit) as exc_info:
+            spex_merge.cli_submit([])
+
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "No submittable topics found" in err
+
+    def test_auto_select_multiple_topics_non_interactive(
+        self, tmp_path, capsys,
+    ):
+        specs = tmp_path / "specs"
+        _setup_topic(tmp_path, topic_name="topic-a",
+                     spex_branch="spex/a", completed=True)
+        _setup_topic(tmp_path, topic_name="topic-b",
+                     spex_branch="spex/b", completed=True)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("sys.stdin") as mock_stdin, \
+             pytest.raises(SystemExit) as exc_info:
+            mock_stdin.readline.return_value = ""
+            spex_merge.cli_submit([])
+
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "[1]" in err
+        assert "[2]" in err
+        assert "topic-a" in err
+        assert "topic-b" in err

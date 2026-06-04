@@ -37,6 +37,32 @@ def _build_submit_parser() -> ArgumentParser:
     return parser
 
 
+def _find_submittable_topics(ctx):
+    """Find topics ready to submit: all tasks done + has spex_branch."""
+    import common
+    from common import Topic
+
+    specs_dir = common.get_specs_dir(
+        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+    if not specs_dir.is_dir():
+        return []
+    results = []
+    for d in sorted(specs_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        if not common.is_topic_completed(d):
+            continue
+        if not ctx.is_related_to(d):
+            continue
+        meta = common.load_meta(d)
+        if not meta or not meta.spex_branch:
+            continue
+        topic = Topic.from_dir(d)
+        if topic is not None:
+            results.append(topic)
+    return results
+
+
 def cli_submit(argv=None) -> None:
     """CLI: submit (merge) a spex branch back to target. Output JSON."""
     import common
@@ -48,15 +74,28 @@ def cli_submit(argv=None) -> None:
     parsed = parser.parse(argv)
     topic_name = parsed.topic
 
-    if not topic_name:
-        print("Error: topic argument is required", file=sys.stderr)
-        sys.exit(1)
-
     ctx = cfg.get_project_context()
     conf = ctx.config
-    specs_dir = common.get_specs_dir(
-        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
-    topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
+
+    if not topic_name:
+        candidates = _find_submittable_topics(ctx)
+        if not candidates:
+            print("No submittable topics found.", file=sys.stderr)
+            sys.exit(1)
+        elif len(candidates) == 1:
+            topic_dir = candidates[0].path
+            topic_name = candidates[0].name
+            print(f"Auto-selected: {topic_name}", file=sys.stderr)
+        else:
+            from common import prompt_selection
+
+            selected = prompt_selection(candidates)
+            topic_dir = selected.path
+            topic_name = selected.name
+    else:
+        specs_dir = common.get_specs_dir(
+            str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+        topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
 
     if not ctx.is_related_to(topic_dir):
         meta = common.load_meta(topic_dir)
