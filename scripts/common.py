@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -17,6 +18,20 @@ from config import (
     generate_default_toml,
     get_project_context,
 )
+
+logger = logging.getLogger("spex")
+
+
+def setup_logging(verbose=False):
+    """Configure logging to stderr with message-only format."""
+    level = logging.DEBUG if verbose else logging.INFO
+    handler = logging.StreamHandler()  # defaults to stderr
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(level)
+
 
 TODO_FILE = "todo.json"
 META_FILE = "meta.json"
@@ -227,8 +242,8 @@ def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
     for src in source_dir.iterdir():
         if src.is_file() and src.suffix == ".md":
             if dry_run:
-                print(f"  Would sync template: {src.name}"
-                      f" -> {examples_dir}/")
+                logger.info("  Would sync template: %s -> %s/",
+                            src.name, examples_dir)
             else:
                 _sync_builtin_template(
                     src.name, spex_root=spex_root_path, verbose=verbose,
@@ -241,22 +256,22 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
         if dry_run:
-            print(f"  Would create: {root_gi}")
+            logger.info("  Would create: %s", root_gi)
         else:
             root_gi.write_text("/specs/\n/archives/\n")
             if not quiet:
-                print(f"  Created: {root_gi}")
+                logger.info("  Created: %s", root_gi)
     tpl_dir = spex_root_path / TEMPLATE_DIR
     tpl_gi = tpl_dir / ".gitignore"
     if not dry_run:
         tpl_dir.mkdir(parents=True, exist_ok=True)
     if not tpl_gi.exists():
         if dry_run:
-            print(f"  Would create: {tpl_gi}")
+            logger.info("  Would create: %s", tpl_gi)
         else:
             tpl_gi.write_text("/examples/\n")
             if not quiet:
-                print(f"  Created: {tpl_gi}")
+                logger.info("  Created: %s", tpl_gi)
 
 
 def _resolve_hook_roots(workdir=None):
@@ -281,25 +296,25 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
     spex_root_path = Path(spex_root)
     if (spex_root_path / "specs").is_dir():
         if not quiet:
-            print(f"Already initialized: {spex_root_path}")
+            logger.info("Already initialized: %s", spex_root_path)
         return
     if dry_run:
-        print(f"Would initialize: {spex_root_path}")
-        print(f"  Would create: {spex_root_path}/")
+        logger.info("Would initialize: %s", spex_root_path)
+        logger.info("  Would create: %s/", spex_root_path)
         for subdir in ("specs", "archives", "hooks"):
-            print(f"  Would create: {spex_root_path / subdir}/")
+            logger.info("  Would create: %s/", spex_root_path / subdir)
         _write_internal_gitignore(spex_root_path, verbose=verbose,
                                   dry_run=True)
         return
     if verbose:
-        print(f"Initializing: {spex_root_path}")
+        logger.info("Initializing: %s", spex_root_path)
     spex_root_path.mkdir(parents=True, exist_ok=True)
     if not quiet:
-        print(f"  Created: {spex_root_path}/")
+        logger.info("  Created: %s/", spex_root_path)
     for subdir in ("specs", "archives", "hooks"):
         (spex_root_path / subdir).mkdir(exist_ok=True)
         if not quiet:
-            print(f"  Created: {spex_root_path / subdir}/")
+            logger.info("  Created: %s/", spex_root_path / subdir)
     _write_internal_gitignore(spex_root_path, verbose=verbose, quiet=quiet)
 
 
@@ -427,21 +442,21 @@ def load_and_validate_todo_json(path, allow_empty=False):
     """
     path = Path(path)
     if not path.is_file():
-        print(f"Error: file not found: {path}", file=sys.stderr)
+        logger.error("Error: file not found: %s", path)
         sys.exit(1)
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        logger.error("Error: invalid JSON: %s", e)
         sys.exit(1)
 
     if not isinstance(data, list):
-        print("Error: top-level value must be an array.", file=sys.stderr)
+        logger.error("Error: top-level value must be an array.")
         sys.exit(1)
 
     if not allow_empty and not data:
-        print("Error: empty array, nothing to process.", file=sys.stderr)
+        logger.error("Error: empty array, nothing to process.")
         sys.exit(1)
 
     return data
@@ -459,20 +474,19 @@ def validate_unique_ids(data):
     seen_ids = {}
     for i, item in enumerate(data):
         if not isinstance(item, dict):
-            print(f"Error: item[{i}] is not an object.", file=sys.stderr)
+            logger.error("Error: item[%d] is not an object.", i)
             sys.exit(1)
         step_id = item.get("id", "")
         if not step_id:
-            print(
-                f"Error: item[{i}]: 'id' is missing or empty.",
-                file=sys.stderr,
+            logger.error(
+                "Error: item[%d]: 'id' is missing or empty.", i,
             )
             sys.exit(1)
         if step_id in seen_ids:
-            print(
-                f"Error: item[{i}]: duplicate id '{step_id}'"
-                f" (first seen at item[{seen_ids[step_id]}]).",
-                file=sys.stderr,
+            logger.error(
+                "Error: item[%d]: duplicate id '%s'"
+                " (first seen at item[%d]).",
+                i, step_id, seen_ids[step_id],
             )
             sys.exit(1)
         seen_ids[step_id] = i
@@ -709,7 +723,7 @@ def _sync_builtin_template(
     if not target.exists():
         examples_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        print(f"  Synced template: {template_name}", file=sys.stderr)
+        logger.info("  Synced template: %s", template_name)
         return
 
     src_stat = source.stat()
@@ -717,17 +731,17 @@ def _sync_builtin_template(
     if (tgt_stat.st_mtime != src_stat.st_mtime
             or tgt_stat.st_size != src_stat.st_size):
         shutil.copy2(source, target)
-        print(f"  Updated template: {template_name}", file=sys.stderr)
+        logger.info("  Updated template: %s", template_name)
         return
 
     source_version = _extract_template_version(source)
     target_version = _extract_template_version(target)
     if source_version and source_version == target_version:
-        print(f"  Template up-to-date: {template_name}", file=sys.stderr)
+        logger.info("  Template up-to-date: %s", template_name)
         return
 
     shutil.copy2(source, target)
-    print(f"  Updated template: {template_name}", file=sys.stderr)
+    logger.info("  Updated template: %s", template_name)
 
 
 def _resolve_template_roots(workdir=None):
@@ -831,18 +845,18 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         specs_dir = Path(specs_dir)
 
     if not specs_dir.is_dir():
-        print(f"Error: specs directory does not exist: {specs_dir}", file=sys.stderr)
+        logger.error("Error: specs directory does not exist: %s", specs_dir)
         sys.exit(1)
 
     matches = find_matching_topics(topic_name, specs_dir)
     if not matches:
-        print(f"Error: no topic matching '{topic_name}' found.", file=sys.stderr)
+        logger.error("Error: no topic matching '%s' found.", topic_name)
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
-        print(
-            f"Error: multiple topics match '{topic_name}':\n  {names}",
-            file=sys.stderr,
+        logger.error(
+            "Error: multiple topics match '%s':\n  %s",
+            topic_name, names,
         )
         sys.exit(1)
     return matches[0]
@@ -982,9 +996,9 @@ def prompt_selection(topics, show_repo=False, allow_empty=False):
     display = topics[:10]
     for i, topic in enumerate(display, 1):
         label = format_topic(topic, show_repo=show_repo)
-        print(f"  [{i}] {label}", file=sys.stderr)
+        logger.info("  [%d] %s", i, label)
     if len(topics) > 10:
-        print(f"  ... ({len(topics) - 10} more)", file=sys.stderr)
+        logger.info("  ... (%d more)", len(topics) - 10)
 
     try:
         sys.stderr.write("Enter number to show: ")
@@ -1000,10 +1014,10 @@ def prompt_selection(topics, show_repo=False, allow_empty=False):
     try:
         idx = int(choice) - 1
     except ValueError:
-        print(f"Error: invalid number '{choice}'", file=sys.stderr)
+        logger.error("Error: invalid number '%s'", choice)
         sys.exit(1)
     if idx < 0 or idx >= len(display):
-        print(f"Error: number out of range (1-{len(display)})", file=sys.stderr)
+        logger.error("Error: number out of range (1-%d)", len(display))
         sys.exit(1)
 
     return display[idx]
@@ -1038,10 +1052,9 @@ def resolve_topic(name, include_archives=False):
                 seen.add(m.resolve())
 
     if not matches:
-        print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
+        logger.error("Error: no topic matching '%s' found.", name)
         if not include_archives:
-            print("Hint: try --archives to search archived topics.",
-                  file=sys.stderr)
+            logger.info("Hint: try --archives to search archived topics.")
         sys.exit(1)
 
     if len(matches) == 1:
@@ -1052,7 +1065,7 @@ def resolve_topic(name, include_archives=False):
         key=lambda t: t.name, reverse=True,
     )
     if not topics:
-        print(f"Error: no loadable topic matching '{name}'.", file=sys.stderr)
+        logger.error("Error: no loadable topic matching '%s'.", name)
         sys.exit(1)
 
     selected = prompt_selection(topics)
@@ -1080,7 +1093,7 @@ def select_topic_interactive(
     if not topics:
         if allow_empty:
             return None
-        print("Error: no topics found.", file=sys.stderr)
+        logger.error("Error: no topics found.")
         sys.exit(1)
     if len(topics) == 1:
         return topics[0].path
