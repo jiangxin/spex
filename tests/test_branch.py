@@ -438,25 +438,26 @@ class TestCliRouting:
         Path(__file__).resolve().parent.parent / "scripts" / "spex"
     )
 
-    def _run_spex(self, *args):
+    def _run_spex(self, *args, cwd=None):
         return subprocess.run(
             [sys.executable, self.SPEX_SCRIPT, *args],
             capture_output=True,
             text=True,
+            cwd=cwd,
         )
 
-    def test_create_helper_no_flag_exits(self):
-        result = self._run_spex("create-helper")
+    def test_create_helper_no_flag_exits(self, tmp_path):
+        result = self._run_spex("create-helper", cwd=tmp_path)
         assert result.returncode in (1, 2)
         assert "usage:" in result.stderr
 
-    def test_apply_helper_no_flag_exits(self):
-        result = self._run_spex("apply-helper")
+    def test_apply_helper_no_flag_exits(self, tmp_path):
+        result = self._run_spex("apply-helper", cwd=tmp_path)
         assert result.returncode in (1, 2)
         assert "usage:" in result.stderr
 
-    def test_submit_no_topic_exits(self):
-        result = self._run_spex("submit")
+    def test_submit_no_topic_exits(self, tmp_path):
+        result = self._run_spex("submit", cwd=tmp_path)
         assert result.returncode in (1, 2)
         err = result.stderr.lower()
         assert "topic" in err or "auto-selected" in err
