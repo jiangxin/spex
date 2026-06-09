@@ -89,13 +89,21 @@ $request
 EOF
 ```
 
-Check if `$request` or the conversation context includes local image
-file paths (extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`,
-`.bmp`). If image files are found:
+Check for images from either of the following sources (supported
+extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
+
+- **Pasted images (primary)**: Scan the conversation context for
+  `[Image: source: <path>]` markers. These are images the user pasted
+  into the chat, cached at `.claude/image-cache/<uuid>/<n>.png`.
+  Extract the absolute file path from each marker.
+- **Explicit file paths (secondary)**: Check if `$request` text
+  contains local image file paths with a supported extension.
+
+If images are found from either source:
 
 1. Create the assets directory: `mkdir -p $topic_path/assets/`
-2. Copy each image file into `$topic_path/assets/`, keeping the original
-   filename.
+2. Copy each discovered image file into `$topic_path/assets/`, keeping
+   the original filename.
 3. Register the images in `meta.json` (example):
 
    ```bash
