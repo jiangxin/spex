@@ -180,7 +180,7 @@ multi-line Markdown details:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
-  --id step-1 --name "Short name" --details-from-stdin <<'DETAILS'
+  --id step-1 --step-name "Short description for the step" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 

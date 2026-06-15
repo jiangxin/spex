@@ -187,7 +187,7 @@ def cmd_append(todo_path, is_xml, args):
 
     entry = {
         "id": args.id,
-        "name": args.name,
+        "name": args.step_name,
         "details": details,
         "completed_at": _resolve_completed_at(args.completed_at),
         "commit_title": args.commit_title,
@@ -211,8 +211,8 @@ def cmd_edit(todo_path, is_xml, args):
     found = False
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
-            if args.name is not None:
-                item["name"] = args.name
+            if args.step_name is not None:
+                item["name"] = args.step_name
             if details is not None:
                 item["details"] = details
             if args.completed_at is not None:
@@ -437,7 +437,7 @@ def _build_parser():
         "--id", required=True, help="Task ID",
     )
     p_append.add_argument(
-        "--name", required=True, help="Task name",
+        "--step-name", required=True, help="Task name",
     )
     p_append.add_argument(
         "--details", default=None, help="Task details text",
@@ -465,7 +465,7 @@ def _build_parser():
         "--id", required=True, help="Task ID to edit",
     )
     p_edit.add_argument(
-        "--name", default=None, help="New task name",
+        "--step-name", default=None, help="New task name",
     )
     p_edit.add_argument(
         "--details", default=None, help="New details text",

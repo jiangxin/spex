@@ -170,7 +170,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "step-4",
-            "--name", "Fourth step",
+            "--step-name", "Fourth step",
             "--details", "Do the fourth thing",
         ])
         result = _read(todo_file)
@@ -185,7 +185,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "step-1",
-            "--name", "First",
+            "--step-name", "First",
             "--details", "Details here",
         ])
         result = _read(todo_file)
@@ -198,7 +198,7 @@ class TestAppend:
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
                 "--id", "step-1",
-                "--name", "Dup",
+                "--step-name", "Dup",
                 "--details", "Dup details",
             ])
         assert exc.value.code == 1
@@ -208,7 +208,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "s1",
-            "--name", "Done task",
+            "--step-name", "Done task",
             "--details", "Already done",
             "--completed_at", "2026-05-30",
             "--commit_title", "feat: done",
@@ -225,7 +225,7 @@ class TestAppend:
         ))
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1", "--name", "Stdin step",
+            "--id", "s1", "--step-name", "Stdin step",
             "--details-from-stdin",
         ])
         result = _read(todo_file)
@@ -237,7 +237,7 @@ class TestAppend:
         with pytest.raises(SystemExit):
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
-                "--id", "s1", "--name", "No details",
+                "--id", "s1", "--step-name", "No details",
             ])
 
 
@@ -266,7 +266,7 @@ class TestEdit:
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
             "--id", "step-2",
-            "--name", "Updated name",
+            "--step-name", "Updated name",
         ])
         result = _read(todo_file)
         step2 = [i for i in result if i["id"] == "step-2"][0]
@@ -296,7 +296,7 @@ class TestEdit:
             todo_helper.main([
                 "--todo-file", str(todo_file), "edit",
                 "--id", "no-such-id",
-                "--name", "X",
+                "--step-name", "X",
             ])
         assert exc.value.code == 1
 
@@ -337,7 +337,7 @@ class TestAppendCompletedAtNow:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "s1",
-            "--name", "Task done now",
+            "--step-name", "Task done now",
             "--details", "Details",
             "--completed_at", "now",
         ])
@@ -858,7 +858,7 @@ class TestXmlFormat:
         todo_helper.main([
             "--todo-file", str(xml_file), "append",
             "--id", "step-4",
-            "--name", "Fourth step",
+            "--step-name", "Fourth step",
             "--details", "Do the fourth thing",
         ])
         data = todo_helper.load_todo_xml(xml_file)
@@ -871,7 +871,7 @@ class TestXmlFormat:
         todo_helper.main([
             "--todo-file", str(xml_file), "edit",
             "--id", "step-2",
-            "--name", "Updated name",
+            "--step-name", "Updated name",
         ])
         data = todo_helper.load_todo_xml(xml_file)
         step2 = [

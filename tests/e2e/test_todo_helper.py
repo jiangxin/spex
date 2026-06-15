@@ -125,7 +125,7 @@ class TestTodoHelperAppendShow:
             "todo-helper", "--name", spec_name,
             "append",
             "--id", "step-3",
-            "--name", "New step",
+            "--step-name", "New step",
             "--details", "New details",
             sandbox=sandbox,
         )
@@ -214,7 +214,7 @@ class TestTodoHelperWorkflow:
             "todo-helper", "--name", spec_name,
             "append",
             "--id", "step-3",
-            "--name", "Task 3",
+            "--step-name", "Task 3",
             "--details", "Do thing 3",
             sandbox=sandbox,
         )
@@ -225,7 +225,7 @@ class TestTodoHelperWorkflow:
             "todo-helper", "--name", spec_name,
             "edit",
             "--id", "step-3",
-            "--name", "Updated Task 3",
+            "--step-name", "Updated Task 3",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
