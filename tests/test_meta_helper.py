@@ -309,7 +309,7 @@ class TestGetMode:
 
 
 class TestSetKeyKnownFields:
-    """Verify that known TopicMeta fields use setattr, not extras."""
+    """Verify that known SpecMeta fields use setattr, not extras."""
 
     def test_set_known_field_branch(self, tmp_path):
         """Setting a known field updates it via setattr."""

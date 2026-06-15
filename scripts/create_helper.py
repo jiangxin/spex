@@ -11,7 +11,7 @@ from pathlib import Path
 from cli import ArgumentParser
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
-    TopicMeta,
+    SpecMeta,
     atomic_write_json,
     logger,
     resolve_topic_dir,
@@ -58,7 +58,7 @@ def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
     """Write meta.json into topic_dir with project context and prompt."""
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
-    meta = TopicMeta(
+    meta = SpecMeta(
         topic=strip_date_prefix(Path(topic_dir).name),
         workdir=workdir,
         main_worktree=main_worktree,
@@ -182,7 +182,7 @@ REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 def _do_post_action(args):
     """Validate todo.json and trigger post-action hook."""
     from common import (
-        TopicMeta,
+        SpecMeta,
         load_and_validate_todo_json,
         load_meta,
         parse_front_matter_description,
@@ -216,7 +216,7 @@ def _do_post_action(args):
         desc = parse_front_matter_description(spec_content)
         if desc:
             meta_path = topic_dir / "meta.json"
-            meta_data = load_meta(topic_dir) or TopicMeta()
+            meta_data = load_meta(topic_dir) or SpecMeta()
             meta_data.description = wrap_text(desc)
             atomic_write_json(meta_path, meta_data.to_dict())
 

@@ -239,7 +239,7 @@ class TestWriteMeta:
         assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
-        """Verify JSON field order from TopicMeta matches legacy format."""
+        """Verify JSON field order from SpecMeta matches legacy format."""
         topic_dir = tmp_path / "2026-01-01-10-00-order-test"
         topic_dir.mkdir()
 

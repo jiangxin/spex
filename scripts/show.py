@@ -9,7 +9,7 @@ import sys
 
 from cli import ArgumentParser
 from common import (
-    Topic,
+    Spec,
     format_topic,
     resolve_topic,
     select_topic_interactive,
@@ -37,7 +37,7 @@ def _format_default(topic_dir):
 
 def _format_verbose(topic_dir):
     """Format topic with full spec and structured todo."""
-    t = Topic.from_dir(topic_dir)
+    t = Spec.from_dir(topic_dir)
     if t is None:
         return f"(unable to load topic: {topic_dir.name})"
 

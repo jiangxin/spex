@@ -43,8 +43,8 @@ ICON_COMPLETED = "✅"
 ICON_IN_PROGRESS = "\U0001f527"
 ICON_ARCHIVED = "\U0001f4e6"
 
-# Field names for TopicMeta serialization order.
-_TOPIC_META_FIELD_ORDER = [
+# Field names for SpecMeta serialization order.
+_SPEC_META_FIELD_ORDER = [
     "topic", "workdir", "main_worktree", "remote_url", "branch",
     "user_name", "user_email", "created_at", "prompts", "description",
     "spex_branch",
@@ -52,7 +52,7 @@ _TOPIC_META_FIELD_ORDER = [
 
 
 @dataclass
-class TopicMeta:
+class SpecMeta:
     """Typed representation of a topic's meta.json."""
 
     topic: str = ""
@@ -69,8 +69,8 @@ class TopicMeta:
     extras: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> TopicMeta:
-        """Create a TopicMeta from a dict, capturing unknown keys in extras."""
+    def from_dict(cls, data: dict) -> SpecMeta:
+        """Create a SpecMeta from a dict, capturing unknown keys in extras."""
         known = {f.name for f in fields(cls)} - {"extras"}
         kwargs = {k: v for k, v in data.items() if k in known}
         extras = {k: v for k, v in data.items() if k not in known}
@@ -79,7 +79,7 @@ class TopicMeta:
     def to_dict(self) -> dict:
         """Serialize to dict in fixed order, omitting empty optional fields."""
         result: dict = {}
-        for key in _TOPIC_META_FIELD_ORDER:
+        for key in _SPEC_META_FIELD_ORDER:
             value = getattr(self, key)
             # Omit description and spex_branch when empty
             if key in ("description", "spex_branch") and not value:
@@ -102,19 +102,19 @@ def normalize_prompt_entry(entry):
 
 
 @dataclass
-class Topic:
+class Spec:
     """In-memory representation of a topic for display."""
 
     name: str
     path: Path
-    meta: TopicMeta
+    meta: SpecMeta
     done: int = 0
     total: int = 0
     archived: bool = False
 
     @classmethod
-    def from_dir(cls, topic_dir: Path, *, archived: bool = False) -> Topic | None:
-        """Create a Topic from a topic directory.
+    def from_dir(cls, topic_dir: Path, *, archived: bool = False) -> Spec | None:
+        """Create a Spec from a topic directory.
 
         Returns None if meta.json is missing or invalid.
         """
@@ -325,7 +325,6 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
       1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
          ~/.spex.toml).
       2. Default: .spex inside the git toplevel.
-      3. Default: .spex inside the git toplevel.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
@@ -382,10 +381,10 @@ def same_path(a: str, b: str) -> bool:
     return Path(a).resolve() == Path(b).resolve()
 
 
-def load_meta(topic_dir: Path) -> TopicMeta | None:
+def load_meta(topic_dir: Path) -> SpecMeta | None:
     """Load meta.json from a topic directory.
 
-    Returns a TopicMeta instance, or None if missing/invalid.
+    Returns a SpecMeta instance, or None if missing/invalid.
     """
     meta_path = topic_dir / META_FILE
     if not meta_path.is_file():
@@ -396,7 +395,7 @@ def load_meta(topic_dir: Path) -> TopicMeta | None:
         return None
     if not isinstance(data, dict):
         return None
-    return TopicMeta.from_dict(data)
+    return SpecMeta.from_dict(data)
 
 
 def get_topic_workdir(topic_dir: Path) -> str:
@@ -904,12 +903,12 @@ def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     """Format a single topic with progress, description, and optional todo steps.
 
     Args:
-        topic: A Topic instance or a Path to a topic directory.
+        topic: A Spec instance or a Path to a topic directory.
         verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
         show_repo: If True, prepend a ``[repo]`` label from the topic's workdir.
     """
     if isinstance(topic, Path):
-        t = Topic.from_dir(topic)
+        t = Spec.from_dir(topic)
         if t is None:
             return f"(unable to load topic: {topic.name})"
     else:
@@ -959,7 +958,7 @@ def gather_topics(
         archive_dirs.append(ad)
 
     archive_set = set(archive_dirs)
-    topics: list[Topic] = []
+    topics: list[Spec] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -967,7 +966,7 @@ def gather_topics(
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            topic = Topic.from_dir(sub, archived=archived)
+            topic = Spec.from_dir(sub, archived=archived)
             if topic is not None:
                 topics.append(topic)
 
@@ -985,7 +984,7 @@ def prompt_selection(topics, show_repo=False, allow_empty=False):
     """Show a numbered list of topics and prompt user to choose one.
 
     Args:
-        topics: List of Topic objects or Path objects (must be non-empty).
+        topics: List of Spec objects or Path objects (must be non-empty).
         show_repo: If True, display repository labels.
         allow_empty: If True, empty input returns None instead of exiting.
 
@@ -1060,7 +1059,7 @@ def resolve_topic(name, include_archives=False):
         return matches[0]
 
     topics = sorted(
-        [t for t in (Topic.from_dir(m) for m in matches) if t],
+        [t for t in (Spec.from_dir(m) for m in matches) if t],
         key=lambda t: t.name, reverse=True,
     )
     if not topics:

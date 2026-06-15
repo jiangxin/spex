@@ -49,7 +49,7 @@ class ProjectContext:
     def is_related_to(self, topic) -> bool:
         """Check if this project context is related to the given topic.
 
-        Accepts a TopicMeta instance, a Topic instance (with .meta attribute),
+        Accepts a SpecMeta instance, a Spec instance (with .meta attribute),
         a dict (like load_meta().to_dict()), or a Path (topic directory).
         """
         from common import load_meta, same_path
@@ -66,7 +66,7 @@ class ProjectContext:
             topic_workdir = meta.workdir
             topic_main_worktree = meta.main_worktree
         elif hasattr(topic, "meta"):
-            # Topic instance with .meta attribute
+            # Spec instance with .meta attribute
             topic_workdir = topic.meta.workdir
             topic_main_worktree = topic.meta.main_worktree
         elif isinstance(topic, dict):
@@ -399,8 +399,8 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     Aggregates git metadata, discovered TOML paths, merged config, and
     resolved spex_root/spex_roots into a single object.
     """
-    cwd = Path(workdir).resolve() if workdir else Path.cwd().resolve()
-    cache_key = str(cwd)
+    workdir = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+    cache_key = str(workdir)
 
     if cache_key in _project_context_cache:
         return _project_context_cache[cache_key]
@@ -427,7 +427,7 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     spex_root = spex_roots[0] if spex_roots else ""
 
     ctx = ProjectContext(
-        cwd=cwd,
+        cwd=workdir,
         top_workdir=top_workdir,
         main_worktree=main_worktree,
         remote_url=remote_url,

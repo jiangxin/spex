@@ -40,7 +40,7 @@ def _build_submit_parser() -> ArgumentParser:
 def _find_submittable_topics(ctx):
     """Find topics ready to submit: all tasks done + has spex_branch."""
     import common
-    from common import Topic, find_completed_topics
+    from common import Spec, find_completed_topics
 
     specs_dir = common.get_specs_dir()
     completed = find_completed_topics(specs_dir, ctx, force=True)
@@ -48,7 +48,7 @@ def _find_submittable_topics(ctx):
     for d in completed:
         meta = common.load_meta(d)
         if meta and meta.spex_branch:
-            topic = Topic.from_dir(d)
+            topic = Spec.from_dir(d)
             if topic is not None:
                 results.append(topic)
     return results

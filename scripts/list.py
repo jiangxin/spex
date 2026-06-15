@@ -11,7 +11,7 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    Topic,
+    Spec,
     display_ljust,
     display_truncate,
     display_width,
@@ -44,10 +44,10 @@ def parse_prompt_log(log_path: Path) -> tuple:
     return (timestamp, prompt_text)
 
 
-def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
+def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
     """Collect topic info from given directories."""
     archive_dirs = set(archive_dirs or [])
-    topics: list[Topic] = []
+    topics: list[Spec] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -55,7 +55,7 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            topic = Topic.from_dir(sub, archived=archived)
+            topic = Spec.from_dir(sub, archived=archived)
             if topic is not None:
                 topics.append(topic)
     return topics

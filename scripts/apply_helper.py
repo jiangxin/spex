@@ -9,7 +9,7 @@ from pathlib import Path
 from cli import ArgumentParser
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
-    TopicMeta,
+    SpecMeta,
     logger,
     strip_date_prefix,
 )
@@ -53,7 +53,7 @@ def validate_apply_branch(
     if not bool(config["branch_management"]):
         return
 
-    meta = common.load_meta(topic_dir) or TopicMeta()
+    meta = common.load_meta(topic_dir) or SpecMeta()
     spex_branch = meta.spex_branch
 
     if spex_branch:

@@ -8,8 +8,8 @@ from common import (
     ICON_ARCHIVED,
     ICON_COMPLETED,
     ICON_IN_PROGRESS,
-    Topic,
-    TopicMeta,
+    Spec,
+    SpecMeta,
     _resolve_template_roots,
     clear_spex_root_cache,
     format_topic,
@@ -366,7 +366,7 @@ class TestLinkedWorktreeResolution:
         specs.mkdir(parents=True)
         topic = specs / "2026-01-15-10-00-my-feature"
         topic.mkdir()
-        meta = TopicMeta(
+        meta = SpecMeta(
             topic="my-feature",
             workdir=str(main),
             main_worktree=str(main),
@@ -748,10 +748,10 @@ class TestFormatTopic:
         assert "unable to load" in out
 
     def test_show_repo_flag(self, tmp_path):
-        from common import Topic, TopicMeta
-        t = Topic(name="my-topic", path=tmp_path / "my-topic",
-                  meta=TopicMeta(workdir="/projects/myapp"),
-                  done=2, total=5)
+        from common import Spec, SpecMeta
+        t = Spec(name="my-topic", path=tmp_path / "my-topic",
+                 meta=SpecMeta(workdir="/projects/myapp"),
+                 done=2, total=5)
         out = format_topic(t, verbose=0, show_repo=True)
         assert "[myapp]" in out
         assert "(2/5)" in out
@@ -942,9 +942,9 @@ class TestNormalizePromptEntry:
         assert result == {"text": "hello"}
 
 
-class TestTopicMeta:
-    def test_topic_meta_defaults(self):
-        m = TopicMeta()
+class TestSpecMeta:
+    def test_spec_meta_defaults(self):
+        m = SpecMeta()
         assert m.topic == ""
         assert m.workdir == ""
         assert m.main_worktree == ""
@@ -958,7 +958,7 @@ class TestTopicMeta:
         assert m.spex_branch == ""
         assert m.extras == {}
 
-    def test_topic_meta_from_dict_full(self):
+    def test_spec_meta_from_dict_full(self):
         data = {
             "topic": "my-topic",
             "workdir": "/work",
@@ -972,11 +972,11 @@ class TestTopicMeta:
             "description": "A cool feature",
             "spex_branch": "spex/my-topic",
         }
-        m = TopicMeta.from_dict(data)
+        m = SpecMeta.from_dict(data)
         result = m.to_dict()
         assert result == data
 
-    def test_topic_meta_from_dict_partial(self):
+    def test_spec_meta_from_dict_partial(self):
         data = {
             "topic": "old-topic",
             "workdir": "/work",
@@ -988,7 +988,7 @@ class TestTopicMeta:
             "created_at": "2026-01-01T00:00:00+00:00",
             "prompts": [],
         }
-        m = TopicMeta.from_dict(data)
+        m = SpecMeta.from_dict(data)
         assert m.description == ""
         assert m.spex_branch == ""
         # description and spex_branch omitted from output
@@ -996,25 +996,25 @@ class TestTopicMeta:
         assert "description" not in result
         assert "spex_branch" not in result
 
-    def test_topic_meta_from_dict_extras(self):
+    def test_spec_meta_from_dict_extras(self):
         data = {
             "topic": "t",
             "custom_key": "custom_value",
             "another": 42,
         }
-        m = TopicMeta.from_dict(data)
+        m = SpecMeta.from_dict(data)
         assert m.extras == {"custom_key": "custom_value", "another": 42}
         assert m.topic == "t"
 
-    def test_topic_meta_to_dict_omits_empty(self):
-        m = TopicMeta(topic="t", description="", spex_branch="")
+    def test_spec_meta_to_dict_omits_empty(self):
+        m = SpecMeta(topic="t", description="", spex_branch="")
         result = m.to_dict()
         assert "description" not in result
         assert "spex_branch" not in result
         assert result["topic"] == "t"
 
-    def test_topic_meta_to_dict_includes_extras(self):
-        m = TopicMeta(
+    def test_spec_meta_to_dict_includes_extras(self):
+        m = SpecMeta(
             topic="t",
             extras={"custom": "val", "flag": True},
         )
@@ -1023,21 +1023,21 @@ class TestTopicMeta:
         assert result["flag"] is True
         assert "extras" not in result
 
-    def test_topic_meta_prompts_mixed_format(self):
+    def test_spec_meta_prompts_mixed_format(self):
         prompts = [
             "simple string prompt",
             {"role": "user", "content": "dict prompt"},
         ]
-        m = TopicMeta.from_dict({"prompts": prompts})
+        m = SpecMeta.from_dict({"prompts": prompts})
         assert m.prompts == prompts
         result = m.to_dict()
         assert result["prompts"] == prompts
 
 
-class TestTopic:
-    def test_topic_defaults(self, tmp_path):
-        meta = TopicMeta()
-        t = Topic(name="t", path=tmp_path, meta=meta)
+class TestSpec:
+    def test_spec_defaults(self, tmp_path):
+        meta = SpecMeta()
+        t = Spec(name="t", path=tmp_path, meta=meta)
         assert t.name == "t"
         assert t.path == tmp_path
         assert t.created_at == ""
@@ -1048,79 +1048,79 @@ class TestTopic:
         assert t.workdir == ""
         assert t.archived is False
 
-    def test_topic_is_completed(self):
+    def test_spec_is_completed(self):
         p = Path("/tmp")
-        meta = TopicMeta()
-        assert Topic(name="t", path=p, meta=meta, done=0, total=0).is_completed is False
-        assert Topic(name="t", path=p, meta=meta, done=1, total=3).is_completed is False
-        assert Topic(name="t", path=p, meta=meta, done=3, total=3).is_completed is True
+        meta = SpecMeta()
+        assert Spec(name="t", path=p, meta=meta, done=0, total=0).is_completed is False
+        assert Spec(name="t", path=p, meta=meta, done=1, total=3).is_completed is False
+        assert Spec(name="t", path=p, meta=meta, done=3, total=3).is_completed is True
 
-    def test_topic_icon(self):
+    def test_spec_icon(self):
         p = Path("/tmp")
-        meta = TopicMeta()
-        assert Topic(name="t", path=p, meta=meta, archived=True).icon == ICON_ARCHIVED
+        meta = SpecMeta()
+        assert Spec(name="t", path=p, meta=meta, archived=True).icon == ICON_ARCHIVED
         assert (
-            Topic(name="t", path=p, meta=meta, done=3, total=3).icon == ICON_COMPLETED
+            Spec(name="t", path=p, meta=meta, done=3, total=3).icon == ICON_COMPLETED
         )
         assert (
-            Topic(name="t", path=p, meta=meta, done=1, total=3).icon == ICON_IN_PROGRESS
+            Spec(name="t", path=p, meta=meta, done=1, total=3).icon == ICON_IN_PROGRESS
         )
         assert (
-            Topic(name="t", path=p, meta=meta, done=0, total=0).icon == ICON_IN_PROGRESS
+            Spec(name="t", path=p, meta=meta, done=0, total=0).icon == ICON_IN_PROGRESS
         )
 
-    def test_topic_display_text(self, tmp_path):
-        t1 = Topic(
+    def test_spec_display_text(self, tmp_path):
+        t1 = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(description="desc", prompts=["prompt"]),
+            meta=SpecMeta(description="desc", prompts=["prompt"]),
         )
         assert t1.display_text == "desc"
-        t2 = Topic(
+        t2 = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(prompts=["prompt"]),
+            meta=SpecMeta(prompts=["prompt"]),
         )
         assert t2.display_text == "prompt"
-        t3 = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t3 = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t3.display_text == ""
 
     def test_delegated_workdir(self, tmp_path):
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(workdir="/some/path"),
+            meta=SpecMeta(workdir="/some/path"),
         )
         assert t.workdir == "/some/path"
 
     def test_delegated_created_at(self, tmp_path):
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(created_at="2026-01-01T00:00:00+00:00"),
+            meta=SpecMeta(created_at="2026-01-01T00:00:00+00:00"),
         )
         assert t.created_at == "2026-01-01T00:00:00+00:00"
 
     def test_delegated_prompt_old_format(self, tmp_path):
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(prompts=["first", "second"]),
+            meta=SpecMeta(prompts=["first", "second"]),
         )
         assert t.prompt == "first"
 
     def test_delegated_prompt_new_format(self, tmp_path):
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(prompts=[
+            meta=SpecMeta(prompts=[
                 {"text": "structured prompt", "timestamp": "2026-01-01T00:00:00+00:00"},
             ]),
         )
         assert t.prompt == "structured prompt"
 
     def test_delegated_prompt_empty(self, tmp_path):
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.prompt == ""
 
     def test_description_from_meta(self, tmp_path):
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(description="from meta"),
+            meta=SpecMeta(description="from meta"),
         )
         assert t.description == "from meta"
 
@@ -1129,7 +1129,7 @@ class TestTopic:
             '---\ndescription: "from spec"\n---\n\n# Body',
             encoding="utf-8",
         )
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.description == "from spec"
 
     def test_description_meta_wins_over_spec(self, tmp_path):
@@ -1137,20 +1137,20 @@ class TestTopic:
             '---\ndescription: "from spec"\n---\n\n# Body',
             encoding="utf-8",
         )
-        t = Topic(
+        t = Spec(
             name="t", path=tmp_path,
-            meta=TopicMeta(description="from meta"),
+            meta=SpecMeta(description="from meta"),
         )
         assert t.description == "from meta"
 
     def test_spec_content_reads_file(self, tmp_path):
         content = '---\ndescription: "test"\n---\n\n# Body'
         (tmp_path / "spec.md").write_text(content, encoding="utf-8")
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.spec_content == content
 
     def test_spec_content_missing_returns_none(self, tmp_path):
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.spec_content is None
 
     def test_todo_data_delegates(self, tmp_path):
@@ -1158,15 +1158,15 @@ class TestTopic:
         (tmp_path / "todo.json").write_text(
             json.dumps(todo), encoding="utf-8",
         )
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.todo_data == todo
 
     def test_todo_data_missing_returns_none(self, tmp_path):
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta())
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta())
         assert t.todo_data is None
 
     def test_todo_progress(self, tmp_path):
-        t = Topic(name="t", path=tmp_path, meta=TopicMeta(), done=2, total=5)
+        t = Spec(name="t", path=tmp_path, meta=SpecMeta(), done=2, total=5)
         assert t.todo_progress == (2, 5)
 
     def test_from_dir_valid(self, tmp_path):
@@ -1190,7 +1190,7 @@ class TestTopic:
             json.dumps(todo), encoding="utf-8",
         )
 
-        t = Topic.from_dir(topic_dir)
+        t = Spec.from_dir(topic_dir)
         assert t is not None
         assert t.name == "my-topic"
         assert t.path == topic_dir
@@ -1205,13 +1205,13 @@ class TestTopic:
     def test_from_dir_missing_meta(self, tmp_path):
         topic_dir = tmp_path / "no-meta"
         topic_dir.mkdir()
-        assert Topic.from_dir(topic_dir) is None
+        assert Spec.from_dir(topic_dir) is None
 
     def test_from_dir_invalid_meta(self, tmp_path):
         topic_dir = tmp_path / "bad-meta"
         topic_dir.mkdir()
         (topic_dir / "meta.json").write_text("not json", encoding="utf-8")
-        assert Topic.from_dir(topic_dir) is None
+        assert Spec.from_dir(topic_dir) is None
 
     def test_from_dir_archived(self, tmp_path):
         topic_dir = tmp_path / "archived-topic"
@@ -1219,12 +1219,12 @@ class TestTopic:
         (topic_dir / "meta.json").write_text(
             json.dumps({"topic": "archived-topic"}), encoding="utf-8",
         )
-        t = Topic.from_dir(topic_dir, archived=True)
+        t = Spec.from_dir(topic_dir, archived=True)
         assert t is not None
         assert t.archived is True
 
 
-class TestLoadMetaTopicMeta:
+class TestLoadMetaSpecMeta:
     def test_load_meta_returns_topic_meta(self, tmp_path):
         data = {
             "topic": "my-feature",
@@ -1234,7 +1234,7 @@ class TestLoadMetaTopicMeta:
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps(data), encoding="utf-8")
         result = load_meta(tmp_path)
-        assert isinstance(result, TopicMeta)
+        assert isinstance(result, SpecMeta)
         assert result.topic == "my-feature"
         assert result.workdir == "/work"
         assert result.description == "A feature"
@@ -1259,7 +1259,7 @@ class TestLoadMetaTopicMeta:
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps(data), encoding="utf-8")
         result = load_meta(tmp_path)
-        assert isinstance(result, TopicMeta)
+        assert isinstance(result, SpecMeta)
         assert result.topic == "old-topic"
         assert result.description == ""
         assert result.spex_branch == ""

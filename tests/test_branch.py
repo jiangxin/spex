@@ -14,7 +14,7 @@ from branch import (
     get_current_branch,
     merge_branch,
 )
-from common import TopicMeta, strip_date_prefix
+from common import SpecMeta, strip_date_prefix
 from config import ProjectContext
 from merge import cli_submit
 
@@ -265,7 +265,7 @@ class TestCliPostAction:
 
     @patch("config.get_project_context", return_value=_fake_context())
     @patch("common.resolve_topic_dir")
-    @patch("common.load_meta", return_value=TopicMeta())
+    @patch("common.load_meta", return_value=SpecMeta())
     def test_no_branch_no_output(self, _meta, _resolve, _ctx, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path

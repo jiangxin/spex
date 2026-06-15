@@ -18,7 +18,7 @@ from dataclasses import fields
 
 from cli import ArgumentParser
 from common import (
-    TopicMeta,
+    SpecMeta,
     atomic_write_json,
     logger,
     normalize_prompt_entry,
@@ -82,7 +82,7 @@ def _add_images_only(meta, images, meta_path):
 
 
 def _set_key(meta, key, value, meta_path, images=None):
-    """Set a key in TopicMeta and write back."""
+    """Set a key in SpecMeta and write back."""
     if key == "prompts":
         from common import local_iso_timestamp
         if not isinstance(meta.prompts, list):
@@ -92,7 +92,7 @@ def _set_key(meta, key, value, meta_path, images=None):
             entry["images"] = list(images)
         meta.prompts.append(entry)
     else:
-        known = {f.name for f in fields(TopicMeta)} - {"extras"}
+        known = {f.name for f in fields(SpecMeta)} - {"extras"}
         if key in known:
             setattr(meta, key, value)
         else:
@@ -165,7 +165,7 @@ def main(argv=None):
         logger.error("Error: invalid JSON: %s", e)
         sys.exit(1)
 
-    meta = TopicMeta.from_dict(data)
+    meta = SpecMeta.from_dict(data)
 
     if key is None:
         _display_all(meta.to_dict())

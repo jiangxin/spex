@@ -3,7 +3,7 @@ from pathlib import Path
 
 import common as common_mod
 import pytest
-from common import Topic, TopicMeta, get_todo_progress, load_meta
+from common import Spec, SpecMeta, get_todo_progress, load_meta
 from config import ProjectContext
 from list import (  # noqa: A004
     _wrap_text,
@@ -85,7 +85,7 @@ class TestLoadMeta:
         assert result.prompts == []
 
     def test_missing_fields(self, tmp_path):
-        from common import TopicMeta
+        from common import SpecMeta
 
         topic = tmp_path / "minimal"
         topic.mkdir(parents=True)
@@ -93,7 +93,7 @@ class TestLoadMeta:
 
         result = load_meta(topic)
 
-        assert isinstance(result, TopicMeta)
+        assert isinstance(result, SpecMeta)
         assert result.topic == ""
         assert result.prompts == []
 
@@ -156,12 +156,12 @@ class TestFormatOutput:
     def test_sort_descending(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="older", path=p,
-                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+            Spec(name="older", path=p,
+                  meta=SpecMeta(created_at="2026-05-01T10:00:00+08:00",
                                  prompts=["old"]),
                   done=1, total=2),
-            Topic(name="newer", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="newer", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["new"]),
                   done=0, total=1),
         ]
@@ -174,8 +174,8 @@ class TestFormatOutput:
         p = Path("/tmp")
         long_name = "a" * 40
         topics = [
-            Topic(name=long_name, path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name=long_name, path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"]),
                   done=0, total=1),
         ]
@@ -186,8 +186,8 @@ class TestFormatOutput:
     def test_line_width_limit(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x" * 200]),
                   done=1, total=3),
         ]
@@ -206,7 +206,7 @@ class TestCollectTopics:
         result = collect_topics([specs])
 
         assert len(result) == 1
-        assert isinstance(result[0], Topic)
+        assert isinstance(result[0], Spec)
         assert result[0].name == "my-topic"
         assert result[0].done == 0
         assert result[0].total == 1
@@ -255,8 +255,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_false(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/bar"),
                   done=0, total=1),
         ]
@@ -266,8 +266,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_true_short_name(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/bar"),
                   done=0, total=1),
         ]
@@ -277,8 +277,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_true_long_name(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"],
                                  workdir="/foo/my-very-long-project-name"),
                   done=0, total=1),
@@ -289,12 +289,12 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_alignment(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-21T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/ab"),
                   done=0, total=1),
-            Topic(name="topic-b", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-b", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["y"],
                                  workdir="/foo/longername"),
                   done=1, total=1),
@@ -311,8 +311,8 @@ class TestDescriptionDisplay:
     def test_description_shown_over_prompt(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["old prompt"],
                                  description="Better description"),
                   done=0, total=1),
@@ -324,8 +324,8 @@ class TestDescriptionDisplay:
     def test_prompt_fallback_when_no_description(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["fallback prompt"]),
                   done=0, total=1),
         ]
@@ -335,8 +335,8 @@ class TestDescriptionDisplay:
     def test_prompt_fallback_when_description_missing(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["shown prompt"]),
                   done=0, total=1),
         ]
@@ -366,8 +366,8 @@ class TestVerboseOutput:
             encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["old prompt"],
                                  description="Full description text here"),
                   done=1, total=3),
@@ -382,8 +382,8 @@ class TestVerboseOutput:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["fallback prompt"]),
                   done=0, total=1),
         ]
@@ -405,12 +405,12 @@ class TestVerboseOutput:
             '---\ndescription: "D2"\n---\n', encoding="utf-8",
         )
         topics = [
-            Topic(name="topic-a", path=dir1,
-                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+            Spec(name="topic-a", path=dir1,
+                  meta=SpecMeta(created_at="2026-05-21T10:00:00+08:00",
                                  prompts=["p1"], description="D1"),
                   done=0, total=1),
-            Topic(name="topic-b", path=dir2,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-b", path=dir2,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p2"], description="D2"),
                   done=1, total=1),
         ]
@@ -426,8 +426,8 @@ class TestVerboseOutput:
             encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  description=long_desc.strip()),
                   done=0, total=1),
         ]
@@ -447,8 +447,8 @@ class TestVerboseOutput:
             _task("step-2", completed=False),
         ])
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["some prompt"],
                                  description="Desc"),
                   done=1, total=2),
@@ -468,8 +468,8 @@ class TestVerboseOutput:
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="Desc"),
                   done=0, total=0),
         ]
@@ -482,8 +482,8 @@ class TestVerboseOutput:
         topic_dir = tmp_path / "topic"
         topic_dir.mkdir()
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=topic_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="D"),
                   done=0, total=1),
         ]
@@ -587,8 +587,8 @@ class TestJsonOutput:
     def test_json_single_topic(self):
         p = Path("/tmp/my-topic")
         topics = [
-            Topic(name="my-topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"]),
                   done=0, total=1),
         ]
@@ -598,12 +598,12 @@ class TestJsonOutput:
     def test_json_multiple_topics_sorted(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="older", path=p / "older",
-                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+            Spec(name="older", path=p / "older",
+                  meta=SpecMeta(created_at="2026-05-01T10:00:00+08:00",
                                  prompts=["old"]),
                   done=0, total=1),
-            Topic(name="newer", path=p / "newer",
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="newer", path=p / "newer",
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["new"]),
                   done=0, total=1),
         ]
@@ -614,8 +614,8 @@ class TestJsonOutput:
     def test_json_only_required_fields(self):
         p = Path("/tmp/my-topic")
         topics = [
-            Topic(name="my-topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"],
                                  description="Some description"),
                   done=1, total=2),
@@ -627,9 +627,9 @@ class TestJsonOutput:
 
 class TestFilterTopics:
     def _topic(self, name):
-        return Topic(
+        return Spec(
             name=name, path=Path("/tmp") / name,
-            meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                            prompts=["test"]),
             done=0, total=1,
         )

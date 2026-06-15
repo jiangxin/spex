@@ -1121,17 +1121,17 @@ class TestIsRelatedTo:
         assert ctx.is_related_to(FakeMeta()) is True
 
     def test_accepts_topic_with_meta_attribute(self, tmp_path):
-        """Accepts Topic-like object with .meta attribute."""
+        """Accepts Spec-like object with .meta attribute."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
 
         class FakeMeta:
             workdir = str(tmp_path)
             main_worktree = str(tmp_path)
 
-        class FakeTopic:
+        class FakeSpec:
             meta = FakeMeta()
 
-        assert ctx.is_related_to(FakeTopic()) is True
+        assert ctx.is_related_to(FakeSpec()) is True
 
     def test_accepts_path(self, tmp_path):
         """Accepts Path as parameter (reads meta.json from directory)."""
