@@ -162,8 +162,8 @@ def _do_prepare_spec(args):
     import prompt as prompt_mod
 
     result = {
-        "topic_name": spec_name,
-        "topic_path": str(spec_dir),
+        "spec_name": spec_name,
+        "spec_path": str(spec_dir),
         "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
     }
     print(json.dumps(result, indent=2))

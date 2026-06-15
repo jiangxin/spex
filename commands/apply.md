@@ -5,7 +5,7 @@ Apply a specification to implement code step by step.
 ## Usage
 
 ```text
-/spex apply [topic_name | --all]
+/spex apply [spec_name | --all]
 ```
 
 ## Procedure
@@ -14,29 +14,29 @@ Follow these steps in order. Do not skip or reorder.
 
 ### Phase 1: Resolve Topic
 
-If `$topic_name` is `--all`:
+If `$spec_name` is `--all`:
 
 - Run `$spex_skill_dir/scripts/spex list --json --all-projects --must-undone`
   to get all topics with undone tasks.
 - Parse the output as a JSON array of objects, each containing
-  `topic_name` and `topic_path`.
-- For each entry, set `$topic_name` and `$topic_path` and execute
+  `spec_name` and `spec_path`.
+- For each entry, set `$spec_name` and `$spec_path` and execute
   Phases 2 through 7.
 - After completing all topics, proceed to Phase 8.
 
 Otherwise, run:
 
 ```bash
-$spex_skill_dir/scripts/spex list --json --must-undone "$topic_name"
+$spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
 ```
 
 Read the command output and parse it as a JSON array:
 
-- If the array contains a single element, set `$topic_name` to its
-  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains a single element, set `$spec_name` to its
+  `spec_name` and `$spec_path` to its `spec_path`.
 - If the array contains multiple elements, present a numbered list of
-  `topic_name` values to the user and ask them to choose. Set
-  `$topic_name` and `$topic_path` from the selected entry.
+  `spec_name` values to the user and ask them to choose. Set
+  `$spec_name` and `$spec_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Phase 2: Validate Branch
@@ -44,7 +44,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper precheck --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper precheck --topic $spec_name
 ```
 
 If the script exits with an error (non-zero), the error message is already
@@ -55,7 +55,7 @@ printed to stderr. Stop execution. On success, continue to the next phase.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $topic_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $spec_name
 ```
 
 Parse the JSON output from stdout:
@@ -69,7 +69,7 @@ Parse the JSON output from stdout:
 
 **Sub-agent boundary.** Launch a sub-agent to execute Phases 4
 through 6. The sub-agent receives `$prompt`, `$current_task_id`,
-and `$topic_name` as context. If the sub-agent fails, report
+and `$spec_name` as context. If the sub-agent fails, report
 the error to the user and retry. After it completes, continue
 with Phase 7 in the main context.
 
@@ -88,7 +88,7 @@ and stop.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
+$spex_skill_dir/scripts/spex prompt apply-commit --topic $spec_name
 ```
 
 Save the output to `$commit_prompt`. Using `$commit_prompt` as the
@@ -112,7 +112,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+$spex_skill_dir/scripts/spex todo-helper --topic $spec_name edit \
   --id "$current_task_id" --completed_at now \
   --commit_title "$commit_title"
 ```
@@ -135,7 +135,7 @@ Phase 2.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper post-action --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper post-action --topic $spec_name
 ```
 
 Display the output to the user.

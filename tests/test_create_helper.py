@@ -353,8 +353,8 @@ class TestCliPrepareSpec:
                  "--description", "Test desc"])
 
         output = json.loads(capsys.readouterr().out.strip())
-        assert output["topic_name"] == "2026-05-20-14-30-new-topic"
-        assert output["topic_path"] == str(
+        assert output["spec_name"] == "2026-05-20-14-30-new-topic"
+        assert output["spec_path"] == str(
             tmp_path / "2026-05-20-14-30-new-topic"
         )
         assert output["spec_template"] == "# Rendered Template"

@@ -80,8 +80,8 @@ def _create_topic(sandbox, name, *, done=False):
     )
 
     return {
-        "topic_name": name,
-        "topic_path": str(spec_dir),
+        "spec_name": name,
+        "spec_path": str(spec_dir),
     }
 
 
@@ -90,7 +90,7 @@ class TestTodoHelperValidate:
     def test_validate_json_via_topic(self, sandbox):
         """Validate a spec's todo.json via --topic."""
         data = _create_topic(sandbox, "val-json")
-        spec_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
             "todo-helper", "--topic", spec_name,
@@ -119,7 +119,7 @@ class TestTodoHelperAppendShow:
     def test_append_and_show(self, sandbox):
         """Append a step and verify it appears in show output."""
         data = _create_topic(sandbox, "append-test")
-        spec_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
             "todo-helper", "--topic", spec_name,
@@ -146,7 +146,7 @@ class TestTodoHelperAppendShow:
         data = _create_topic(
             sandbox, "done-filter", done=True,
         )
-        spec_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
             "todo-helper", "--topic", spec_name,
@@ -185,8 +185,8 @@ class TestTodoHelperConversion:
     def test_json2xml_via_cli(self, sandbox):
         """json2xml converts a spec's todo.json to XML."""
         data = _create_topic(sandbox, "j2x-test")
-        spec_name = data["topic_name"]
-        spec_path = Path(data["topic_path"])
+        spec_name = data["spec_name"]
+        spec_path = Path(data["spec_path"])
 
         result = run_spex(
             "todo-helper", "--topic", spec_name,
@@ -207,7 +207,7 @@ class TestTodoHelperWorkflow:
     def test_full_crud_workflow(self, sandbox):
         """Exercise append, edit, show, remove sequence."""
         data = _create_topic(sandbox, "crud-test")
-        spec_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         # 1. Append step-3
         result = run_spex(

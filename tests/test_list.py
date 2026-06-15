@@ -593,7 +593,7 @@ class TestJsonOutput:
                   done=0, total=1),
         ]
         result = json.loads(format_json_output(topics))
-        assert result == [{"topic_name": "my-topic", "topic_path": "/tmp/my-topic"}]
+        assert result == [{"spec_name": "my-topic", "spec_path": "/tmp/my-topic"}]
 
     def test_json_multiple_topics_sorted(self):
         p = Path("/tmp")
@@ -608,8 +608,8 @@ class TestJsonOutput:
                   done=0, total=1),
         ]
         result = json.loads(format_json_output(topics))
-        assert result[0]["topic_name"] == "newer"
-        assert result[1]["topic_name"] == "older"
+        assert result[0]["spec_name"] == "newer"
+        assert result[1]["spec_name"] == "older"
 
     def test_json_only_required_fields(self):
         p = Path("/tmp/my-topic")
@@ -622,7 +622,7 @@ class TestJsonOutput:
         ]
         result = json.loads(format_json_output(topics))
         for obj in result:
-            assert set(obj.keys()) == {"topic_name", "topic_path"}
+            assert set(obj.keys()) == {"spec_name", "spec_path"}
 
 
 class TestFilterTopics:
@@ -722,7 +722,7 @@ class TestMainJsonFlag:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "related-spec" in names
 
     def test_main_json_with_archives(self, tmp_path, monkeypatch, capsys):
@@ -732,7 +732,7 @@ class TestMainJsonFlag:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "related-spec" in names
         assert "related-archive" in names
 
@@ -1058,7 +1058,7 @@ class TestDoneUndoneFilter:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "done-topic" in names
         assert "undone-topic" not in names
 

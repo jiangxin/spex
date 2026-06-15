@@ -100,9 +100,9 @@ requirement saved to its `prompts` field and the description saved to
 its `description` field). Parse the JSON output and
 save these variables:
 
-- `$topic_name` ← `topic_name` (topic with date prefix,
+- `$spec_name` ← `spec_name` (topic with date prefix,
   e.g., `2026-05-24-10-30-add-login-api`)
-- `$topic_path` ← `topic_path`
+- `$spec_path` ← `spec_path`
 - `$spec_template` ← `spec_template`
 
 If the script exits with an error, return to Phase 3 and retry with a
@@ -112,8 +112,8 @@ Example JSON output:
 
 ```json
 {
-  "topic_name": "2026-05-24-10-30-add-login-api",
-  "topic_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
+  "spec_name": "2026-05-24-10-30-add-login-api",
+  "spec_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
   "spec_template": "# [Title]\n..."
 }
 ```
@@ -132,8 +132,8 @@ extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
 
 If images are found from either source:
 
-1. Create the assets directory: `mkdir -p $topic_path/assets/`
-2. Copy each discovered image file into `$topic_path/assets/`, keeping
+1. Create the assets directory: `mkdir -p $spec_path/assets/`
+2. Copy each discovered image file into `$spec_path/assets/`, keeping
    the original filename.
 3. When writing `spec.md` below, reference the images using Markdown
    syntax `![description](assets/filename.png)` in the appropriate
@@ -142,7 +142,7 @@ If images are found from either source:
    (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta-helper $topic_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 
@@ -150,7 +150,7 @@ Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
 data models, API contracts, error handling, and edge cases.
 
-Using `$spec_template` as the template, create `$topic_path/spec.md`
+Using `$spec_template` as the template, create `$spec_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
 Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
@@ -160,7 +160,7 @@ Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 
 ### Phase 6: Plan Implementation Steps
 
-Based on the design in `$topic_path/spec.md`, break down the work into
+Based on the design in `$spec_path/spec.md`, break down the work into
 incremental development steps. Each step should be independently
 committable and verifiable.
 
@@ -179,7 +179,7 @@ Number steps sequentially: `step-1`, `step-2`, etc.
 multi-line Markdown details:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name append \
+$spex_skill_dir/scripts/spex todo-helper --topic $spec_name append \
   --id step-1 --name "Short name" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -195,14 +195,14 @@ DETAILS
 **Show** current steps (to review before adding more):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name show \
+$spex_skill_dir/scripts/spex todo-helper --topic $spec_name show \
   --format markdown
 ```
 
 **Edit** a step (only specified fields are updated):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+$spex_skill_dir/scripts/spex todo-helper --topic $spec_name edit \
   --id step-1 --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
@@ -214,7 +214,7 @@ DETAILS
 **Remove** a step:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name remove \
+$spex_skill_dir/scripts/spex todo-helper --topic $spec_name remove \
   --id step-1
 ```
 
@@ -229,7 +229,7 @@ The `details` field supports multi-line Markdown:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action --topic $topic_name
+$spex_skill_dir/scripts/spex create-helper post-action --topic $spec_name
 ```
 
 If the script exits with an error, read the error message, fix the
@@ -240,11 +240,11 @@ JSON format in `todo.json`, and re-run until validation succeeds.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$topic_name`
+**Topic**: `$spec_name`
 
-- Spec: `$topic_path/spec.md`
-- Todo: `$topic_path/todo.json`
-- Meta: `$topic_path/meta.json`
+- Spec: `$spec_path/spec.md`
+- Todo: `$spec_path/todo.json`
+- Meta: `$spec_path/meta.json`
 ```
 
 ### Phase 9: STOP — Do NOT Implement

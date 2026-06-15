@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Get or set key/value in a spec's meta.json.
 
-Usage: spex meta-helper <topic_name> [key] [value] [--stdin]
+Usage: spex meta-helper <spec_name> [key] [value] [--stdin]
 
 When no key is given, display all meta.json contents.
 When key is given without value, display that key's value.
@@ -111,8 +111,8 @@ def _build_parser() -> ArgumentParser:
         description="Get or set key/value in a spec's meta.json.",
     )
     parser.add_argument(
-        "topic_name",
-        help="Topic name to look up",
+        "spec_name",
+        help="Spec name to look up",
     )
     parser.add_argument(
         "key",
@@ -146,7 +146,7 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    spec_name = args.topic_name
+    spec_name = args.spec_name
     key = args.key
     value = args.value
     stdin_flag = args.stdin_flag

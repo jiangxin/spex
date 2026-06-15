@@ -97,6 +97,6 @@ def run_post_action(event_type: str, payload: dict, workdir=None,
         spec_name: Optional spec name added to the payload.
     """
     if spec_name:
-        payload = {**payload, "topic_name": spec_name}
+        payload = {**payload, "spec_name": spec_name}
     data = _build_event_data(event_type, payload, workdir)
     run_hook("post-action", data, workdir)

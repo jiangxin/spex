@@ -165,7 +165,7 @@ def create_sample_topic(
     assert result.returncode == 0, f"create-topic failed: {result.stderr}"
 
     data = json.loads(result.stdout)
-    spec_path = Path(data["topic_path"])
+    spec_path = Path(data["spec_path"])
 
     (spec_path / "spec.md").write_text(
         f"# {name}\n\nTest spec.\n", encoding="utf-8",

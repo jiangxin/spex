@@ -156,7 +156,7 @@ def format_json_output(specs: list) -> str:
     """Format specs as a JSON array."""
     specs.sort(key=lambda t: t.created_at, reverse=True)
     return json.dumps(
-        [{"topic_name": t.name, "topic_path": str(t.path)} for t in specs],
+        [{"spec_name": t.name, "spec_path": str(t.path)} for t in specs],
         ensure_ascii=False,
         indent=2,
     )

@@ -251,7 +251,7 @@ def _build_metadata(template_name, spec_name=None):
     metadata = {}
     if spec_name:
         spec_dir = resolve_spec_dir(spec_name)
-        metadata["topic_name"] = spec_dir.name
+        metadata["spec_name"] = spec_dir.name
         meta = load_meta(spec_dir)
         if meta:
             metadata.update(meta.to_dict())

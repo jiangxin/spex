@@ -40,7 +40,7 @@ Internal commands (used by skill):
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  meta-helper <topic_name> [key] [value] [--stdin]
+  meta-helper <spec_name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <name> [--topic <topic>] [-o <file>]
                 Render a Jinja2 template with metadata
@@ -403,7 +403,7 @@ def _run_hook(argv=None):
 
     payload = json.loads(args.json_payload or "{}")
     if args.topic:
-        payload = {**payload, "topic_name": args.topic}
+        payload = {**payload, "spec_name": args.topic}
     event_data = hooks._build_event_data(args.event_type, payload,
                                          args.workdir)
     hooks.run_hook(args.hook_name, event_data, args.workdir)
