@@ -11,6 +11,7 @@ from apply_helper import (
 )
 from branch import (
     branch_exists,
+    create_and_switch_branch,
     get_current_branch,
     merge_branch,
 )
@@ -95,6 +96,24 @@ class TestBranchExists:
             args=[], returncode=128, stdout="", stderr="fatal: not a valid ref"
         )
         assert branch_exists("spex/nonexistent") is False
+
+
+class TestCreateBranch:
+    def test_create_branch_on_unborn_branch(self, tmp_path):
+        """create_and_switch_branch should work on an unborn branch (no commits)."""
+        subprocess.run(
+            ["git", "init"], cwd=tmp_path, capture_output=True, check=True,
+        )
+        # Verify we're on an unborn branch
+        current = get_current_branch(tmp_path)
+        assert current  # e.g., "master" or "main"
+
+        create_and_switch_branch("spex/test-feature", cwd=tmp_path)
+
+        # On an unborn branch, git switch -c succeeds and switches HEAD,
+        # but the branch won't show in rev-parse --verify until a commit
+        # is made. Verify we're on the new branch via symbolic-ref.
+        assert get_current_branch(tmp_path) == "spex/test-feature"
 
 
 class TestMergeBranch:
@@ -183,14 +202,13 @@ class TestValidateApplyBranch:
         except SystemExit as e:
             assert e.code == 1
 
-    @patch("branch.switch_branch")
     @patch("branch.set_branch_description")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch")
+    @patch("branch.create_and_switch_branch")
     @patch("common.is_spec_completed", return_value=False)
     def test_creates_branch_with_short_name(
-        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        self, _completed, mock_create, _exists, _curr, _desc,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
@@ -200,19 +218,17 @@ class TestValidateApplyBranch:
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
         mock_create.assert_called_once_with("spex/add-feature", None)
-        mock_switch.assert_called_once_with("spex/add-feature", None)
 
-    @patch("branch.switch_branch")
     @patch("branch.set_branch_description")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch", side_effect=[
+    @patch("branch.create_and_switch_branch", side_effect=[
         subprocess.CalledProcessError(1, "git"),
         None,
     ])
     @patch("common.is_spec_completed", return_value=False)
     def test_fallback_to_long_name(
-        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        self, _completed, mock_create, _exists, _curr, _desc,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
@@ -225,13 +241,10 @@ class TestValidateApplyBranch:
         assert mock_create.call_count == 2
         mock_create.assert_any_call("spex/add-feature", None)
         mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature", None)
-        mock_switch.assert_called_once_with(
-            "spex/2026-05-27-10-00-add-feature", None
-        )
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch", side_effect=subprocess.CalledProcessError(1, "git"))
+    @patch("branch.create_and_switch_branch", side_effect=subprocess.CalledProcessError(1, "git"))
     @patch("common.is_spec_completed", return_value=False)
     def test_both_candidates_fail_exits(
         self, _completed, _create, _exists, _curr, tmp_path,

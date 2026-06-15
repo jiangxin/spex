@@ -59,7 +59,7 @@ def cli_submit(argv=None) -> None:
     import common
     import config as cfg
     import hooks
-    from branch import branch_exists, create_branch, merge_branch
+    from branch import branch_exists, create_and_switch_branch, merge_branch
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
@@ -123,7 +123,7 @@ def cli_submit(argv=None) -> None:
             "Creating from '%s'.", target, source,
         )
         try:
-            create_branch(target, cwd=ctx.main_worktree)
+            create_and_switch_branch(target, cwd=ctx.main_worktree)
         except subprocess.CalledProcessError as e:
             errors.append(
                 f"Failed to create target branch '{target}': "
