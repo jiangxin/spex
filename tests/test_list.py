@@ -8,6 +8,7 @@ from config import ProjectContext
 from list import (  # noqa: A004
     _wrap_text,
     collect_topics,
+    filter_topics,
     format_json_output,
     format_output,
     format_verbose_output,
@@ -556,6 +557,14 @@ class TestBuildParser:
         with pytest.raises(SystemExit):
             self._parse(["-h"])
 
+    def test_patterns_positional(self):
+        args = self._parse(["foo", "bar"])
+        assert args.patterns == ["foo", "bar"]
+
+    def test_no_patterns_default(self):
+        args = self._parse([])
+        assert args.patterns == []
+
 
 class TestJsonOutput:
     def test_json_empty_topics(self):
@@ -600,6 +609,67 @@ class TestJsonOutput:
         result = json.loads(format_json_output(topics))
         for obj in result:
             assert set(obj.keys()) == {"topic_name", "topic_path"}
+
+
+class TestFilterTopics:
+    def _topic(self, name):
+        return Topic(
+            name=name, path=Path("/tmp") / name,
+            meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                           prompts=["test"]),
+            done=0, total=1,
+        )
+
+    def test_no_patterns_returns_all(self):
+        topics = [self._topic("alpha"), self._topic("beta")]
+        result = filter_topics(topics, [])
+        assert len(result) == 2
+
+    def test_substring_match(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["json"])
+        assert len(result) == 1
+
+    def test_substring_no_match(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["xyz"])
+        assert len(result) == 0
+
+    def test_glob_match_star(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["*-json-*"])
+        assert len(result) == 1
+
+    def test_glob_match_question(self):
+        topics = [self._topic("list")]
+        result = filter_topics(topics, ["lis?"])
+        assert len(result) == 1
+
+    def test_regex_match(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["^list-.*output$"])
+        assert len(result) == 1
+
+    def test_regex_no_match(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["^xyz"])
+        assert len(result) == 0
+
+    def test_multiple_patterns_or_logic(self):
+        topics = [
+            self._topic("list-json-output"),
+            self._topic("e2e-test-create"),
+            self._topic("other-topic"),
+        ]
+        result = filter_topics(topics, ["json", "test"])
+        assert len(result) == 2
+        names = {t.name for t in result}
+        assert names == {"list-json-output", "e2e-test-create"}
+
+    def test_invalid_regex_skipped(self):
+        topics = [self._topic("list-json-output")]
+        result = filter_topics(topics, ["^[invalid"])
+        assert len(result) == 0
 
 
 class TestMainJsonFlag:
@@ -798,6 +868,17 @@ class TestMainFlags:
         # [repo] prefix visible
         assert "[project-a]" in out
         assert "[project-b]" in out
+
+    def test_main_with_pattern_filter(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["related"])
+
+        out = capsys.readouterr().out
+        assert "related-spec" in out
+        assert "other-spec" not in out
 
     def test_old_all_flag_rejected(
         self, tmp_path, monkeypatch,
