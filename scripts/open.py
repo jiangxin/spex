@@ -62,7 +62,7 @@ def _build_parser() -> ArgumentParser:
         description="Open a spec directory in the system file browser.",
     )
     parser.add_argument(
-        "topic",
+        "name",
         nargs="?",
         default="",
         help="Spec name or substring to open (interactive selection if omitted)",
@@ -92,7 +92,7 @@ def main(argv=None):
     """CLI entry point for the open command."""
     parser = _build_parser()
     args = parser.parse(argv)
-    spec_name = args.topic
+    spec_name = args.name
 
     if spec_name:
         spec_dir = resolve_spec(spec_name, include_archives=args.archives)

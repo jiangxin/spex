@@ -347,7 +347,7 @@ def _build_parser():
         help="Render prompt for the next undone task",
     )
     p.add_argument(
-        "--topic", required=True, help="Topic name (required)",
+        "--name", required=True, help="Spec name (required)",
     )
     p.add_argument(
         "--json", action="store_true", dest="json_mode",
@@ -363,7 +363,7 @@ def _build_parser():
         description="Render apply-commit template with spec metadata.",
         help="Render commit instructions for the current task",
     )
-    p.add_argument("--topic", help="Topic name")
+    p.add_argument("--name", help="Spec name")
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
         help="Read raw text from stdin as prompt_context",
@@ -379,7 +379,7 @@ def _build_parser():
         help="Render prompt for modifying a spec",
     )
     p.add_argument(
-        "--topic", required=True, help="Topic name (required)",
+        "--name", required=True, help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -404,7 +404,7 @@ def _build_parser():
         help="Render prompt for modifying a todo list",
     )
     p.add_argument(
-        "--topic", required=True, help="Topic name (required)",
+        "--name", required=True, help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -434,7 +434,7 @@ def _do_apply_one_task(args):
     from jinja2 import TemplateError
 
     try:
-        metadata = _build_metadata("apply-one-task", args.topic)
+        metadata = _build_metadata("apply-one-task", args.name)
 
         # Handle all-done in JSON mode
         if args.json_mode and not metadata.get("current_task_description"):
@@ -451,7 +451,7 @@ def _do_apply_one_task(args):
             if current_task_id:
                 print(f"task_id={current_task_id}", file=sys.stderr)
 
-        rendered = render_prompt("apply-one-task", args.topic, metadata=metadata)
+        rendered = render_prompt("apply-one-task", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -497,7 +497,7 @@ def _do_apply_commit(args):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
-        metadata = _build_metadata("apply-commit", args.topic)
+        metadata = _build_metadata("apply-commit", args.name)
         if extra_vars:
             metadata.update(extra_vars)
 
@@ -505,7 +505,7 @@ def _do_apply_commit(args):
         if not metadata.get("current_task_description"):
             sys.exit(0)
 
-        rendered = render_prompt("apply-commit", args.topic, metadata=metadata)
+        rendered = render_prompt("apply-commit", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -533,7 +533,7 @@ def _do_modify_spec(args):
     try:
         # Side-effect: remove undone tasks from todo.json before building metadata
         if args.remove_undone:
-            spec_dir = resolve_spec_dir(args.topic)
+            spec_dir = resolve_spec_dir(args.name)
             todo_path = spec_dir / "todo.json"
             if todo_path.exists():
                 try:
@@ -544,11 +544,11 @@ def _do_modify_spec(args):
                 except json.JSONDecodeError:
                     pass  # Silently skip if JSON is invalid
 
-        metadata = _build_metadata("modify-spec", args.topic)
+        metadata = _build_metadata("modify-spec", args.name)
         if extra_vars:
             metadata.update(extra_vars)
 
-        rendered = render_prompt("modify-spec", args.topic, metadata=metadata)
+        rendered = render_prompt("modify-spec", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -577,12 +577,12 @@ def _do_modify_todo(args):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
-        metadata = _build_metadata("modify-todo", args.topic)
+        metadata = _build_metadata("modify-todo", args.name)
         if extra_vars:
             metadata.update(extra_vars)
 
         # Side-effect: clean undone todos from todo.json
-        spec_dir = resolve_spec_dir(args.topic)
+        spec_dir = resolve_spec_dir(args.name)
         todo_path = spec_dir / "todo.json"
         if todo_path.exists():
             try:
@@ -593,7 +593,7 @@ def _do_modify_todo(args):
             except json.JSONDecodeError:
                 pass  # Silently skip if JSON is invalid
 
-        rendered = render_prompt("modify-todo", args.topic, metadata=metadata)
+        rendered = render_prompt("modify-todo", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -622,7 +622,7 @@ def cli_render(argv):
         description="Render a Jinja2 template with metadata.",
     )
     parser.add_argument("name", help="Template name (without .md extension)")
-    parser.add_argument("--topic", help="Spec name for spec-specific metadata")
+    parser.add_argument("--name", help="Spec name for spec-specific metadata")
     parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
     parser.add_argument("-o", "--output",
@@ -632,11 +632,11 @@ def cli_render(argv):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
-        metadata = _build_metadata(args.name, args.topic)
+        metadata = _build_metadata(args.name, args.name)
         if extra_vars:
             metadata.update(extra_vars)
 
-        rendered = render_prompt(args.name, args.topic, metadata=metadata)
+        rendered = render_prompt(args.name, args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)

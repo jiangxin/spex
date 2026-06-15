@@ -19,10 +19,10 @@ def _build_submit_parser() -> ArgumentParser:
         description="Submit (merge) a spex branch back to the target branch.",
     )
     parser.add_argument(
-        "topic",
+        "name",
         nargs="?",
         default="",
-        help="Topic name to submit",
+        help="Spec name to submit",
     )
     parser.add_argument(
         "--no-archive",
@@ -63,7 +63,7 @@ def cli_submit(argv=None) -> None:
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
-    spec_name = parsed.topic
+    spec_name = parsed.name
 
     ctx = cfg.get_project_context()
     conf = ctx.config

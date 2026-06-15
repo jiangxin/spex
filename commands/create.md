@@ -83,14 +83,14 @@ Based on `$requirement`, generate a JSON object with two fields:
 
 Example: `{"topic": "add-login-api", "description": "Add user login API with JWT authentication"}`
 
-Parse this JSON and save the values as `$topic` and `$description`.
+Parse this JSON and save the values as `$spec_name` and `$description`.
 
 ### Phase 4: Prepare Topic Directory
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --topic $topic <<'EOF'
+$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name $spec_name <<'EOF'
 $requirement
 EOF
 ```
@@ -179,7 +179,7 @@ Number steps sequentially: `step-1`, `step-2`, etc.
 multi-line Markdown details:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $spec_name append \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
   --id step-1 --name "Short name" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -195,14 +195,14 @@ DETAILS
 **Show** current steps (to review before adding more):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $spec_name show \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name show \
   --format markdown
 ```
 
 **Edit** a step (only specified fields are updated):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --id step-1 --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
@@ -214,7 +214,7 @@ DETAILS
 **Remove** a step:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $spec_name remove \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name remove \
   --id step-1
 ```
 
@@ -229,7 +229,7 @@ The `details` field supports multi-line Markdown:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action --topic $spec_name
+$spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 ```
 
 If the script exits with an error, read the error message, fix the

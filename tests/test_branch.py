@@ -241,7 +241,7 @@ class TestCliPrecheck:
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
-        cli_precheck(["--topic", "test-topic"])
+        cli_precheck(["--name", "test-topic"])
         out = capsys.readouterr().out
         assert out == ""
 
@@ -258,7 +258,7 @@ class TestCliPostAction:
         )
         mock_resolve.return_value = tmp_path
         with caplog.at_level(logging.INFO):
-            cli_post_action(["--topic", "my-feat"])
+            cli_post_action(["--name", "my-feat"])
         assert "spex/my-feat" in caplog.text
         assert "Development completed" in caplog.text
         assert "main" in caplog.text
@@ -269,7 +269,7 @@ class TestCliPostAction:
     def test_no_branch_no_output(self, _meta, _resolve, _ctx, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
-        cli_post_action(["--topic", "no-branch"])
+        cli_post_action(["--name", "no-branch"])
         out = capsys.readouterr().out
         assert out == ""
 

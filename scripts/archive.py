@@ -136,7 +136,7 @@ def main(argv=None):
         prog="spex archive",
         description="Archive completed specs.",
     )
-    parser.add_argument("--topic", help="Archive a single spec by name")
+    parser.add_argument("--name", help="Archive a single spec by name")
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
@@ -153,17 +153,17 @@ def main(argv=None):
     archives_dir = get_archives_dir()
 
     if args.restore:
-        if not args.topic:
+        if not args.name:
             logger.error(
-                "Error: --restore requires --topic to specify what to restore."
+                "Error: --restore requires --name to specify what to restore."
             )
             sys.exit(1)
-        restore_single_spec(args.topic, specs_dir, archives_dir,
+        restore_single_spec(args.name, specs_dir, archives_dir,
                              dry_run=args.dry_run)
         return
 
-    if args.topic:
-        archive_single_spec(args.topic, specs_dir, archives_dir, args.force,
+    if args.name:
+        archive_single_spec(args.name, specs_dir, archives_dir, args.force,
                              dry_run=args.dry_run)
         return
 

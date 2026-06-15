@@ -150,7 +150,7 @@ def _do_prepare_spec(args):
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
-        spec_name, spec_dir = create_spec(args.topic, specs_dir)
+        spec_name, spec_dir = create_spec(args.name, specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
@@ -190,7 +190,7 @@ def _do_post_action(args):
     )
     from config import get_project_context
 
-    spec_dir = resolve_spec_dir(args.topic)
+    spec_dir = resolve_spec_dir(args.name)
     json_path = spec_dir / "todo.json"
 
     if not json_path.is_file():
@@ -272,7 +272,7 @@ def _build_parser():
         help="Create spec directory and return JSON metadata",
     )
     p_prepare.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
     p_prepare.add_argument(
         "--description", default="",
@@ -287,7 +287,7 @@ def _build_parser():
         help="Validate todo.json and run post-action hook",
     )
     p_post.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
     p_post.add_argument(
         "--event-type", default="create",

@@ -44,7 +44,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper precheck --topic $spec_name
+$spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
 ```
 
 If the script exits with an error (non-zero), the error message is already
@@ -55,7 +55,7 @@ printed to stderr. Stop execution. On success, continue to the next phase.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $spec_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 ```
 
 Parse the JSON output from stdout:
@@ -88,7 +88,7 @@ and stop.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit --topic $spec_name
+$spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
 ```
 
 Save the output to `$commit_prompt`. Using `$commit_prompt` as the
@@ -112,7 +112,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --id "$current_task_id" --completed_at now \
   --commit_title "$commit_title"
 ```
@@ -135,7 +135,7 @@ Phase 2.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper post-action --topic $spec_name
+$spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
 Display the output to the user.

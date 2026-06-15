@@ -131,7 +131,7 @@ def _do_precheck(args):
     import config as cfg
 
     ctx = cfg.get_project_context()
-    spec_dir = common.resolve_spec_dir(args.topic)
+    spec_dir = common.resolve_spec_dir(args.name)
     validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
 
 
@@ -148,7 +148,7 @@ def _do_post_action(args):
     import config as cfg
     import hooks
 
-    spec_dir = common.resolve_spec_dir(args.topic)
+    spec_dir = common.resolve_spec_dir(args.name)
     spec_name = strip_date_prefix(spec_dir.name)
     meta = common.load_meta(spec_dir)
     spex_branch = meta.spex_branch if meta else ""
@@ -201,7 +201,7 @@ def _build_parser():
         help="Validate branch setup for applying a spec",
     )
     p_precheck.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
 
     p_post = subs.add_parser(
@@ -210,7 +210,7 @@ def _build_parser():
         help="Run post-action hook and show hint",
     )
     p_post.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
 
     return parser

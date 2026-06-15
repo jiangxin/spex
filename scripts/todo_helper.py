@@ -389,8 +389,8 @@ def _resolve_todo_path(args):
             is_xml = True
         return (todo_path, is_xml)
 
-    # --topic mode: resolve spec dir for todo file
-    spec_dir = resolve_spec_dir(args.topic)
+    # --name mode: resolve spec dir for todo file
+    spec_dir = resolve_spec_dir(args.name)
     filename = "todo.xml" if is_xml else "todo.json"
     return (spec_dir / filename, is_xml)
 
@@ -406,7 +406,7 @@ def _build_parser():
     )
     locator = parser.add_mutually_exclusive_group()
     locator.add_argument(
-        "--topic", help="Resolve spec dir for todo file",
+        "--name", help="Resolve spec dir for todo file",
     )
     locator.add_argument(
         "--todo-file", help="Direct path to todo file",
@@ -559,9 +559,9 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         sys.exit(0)
 
-    if not args.topic and not args.todo_file:
+    if not args.name and not args.todo_file:
         logger.error(
-            "Error: one of the arguments --topic"
+            "Error: one of the arguments --name"
             " --todo-file is required.",
         )
         sys.exit(2)

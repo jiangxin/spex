@@ -64,7 +64,7 @@ class TestFileLocating:
             lambda name, **kw: spec_dir,
         )
         todo_helper.main([
-            "--topic", "my-topic", "validate",
+            "--name", "my-topic", "validate",
         ])
 
     def test_todo_file_direct_path(self, todo_file):
@@ -76,7 +76,7 @@ class TestFileLocating:
     def test_both_topic_and_todo_file_error(self, todo_file):
         with pytest.raises(SystemExit):
             todo_helper.main([
-                "--topic", "x",
+                "--name", "x",
                 "--todo-file", str(todo_file),
                 "validate",
             ])
@@ -101,7 +101,7 @@ class TestFileLocating:
         )
         with caplog.at_level(logging.INFO):
             todo_helper.main([
-                "--topic", "my-topic", "--xml", "validate",
+                "--name", "my-topic", "--xml", "validate",
             ])
         assert "OK" in caplog.text
 
@@ -893,7 +893,7 @@ class TestXmlFormat:
 
 
 class TestSubcommandHelp:
-    """Tests for subcommand -h/--help working without --topic/--todo-file."""
+    """Tests for subcommand -h/--help working without --name/--todo-file."""
 
     def test_validate_help_exits_0(self, capsys):
         """validate -h should show help and exit 0."""
@@ -920,10 +920,10 @@ class TestSubcommandHelp:
         assert "--format" in out
 
     def test_no_locator_errors(self, caplog):
-        """Without --topic or --todo-file, should error with exit 2."""
+        """Without --name or --todo-file, should error with exit 2."""
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc_info:
                 todo_helper.main(["validate"])
         assert exc_info.value.code == 2
-        assert "--topic" in caplog.text
+        assert "--name" in caplog.text
         assert "--todo-file" in caplog.text

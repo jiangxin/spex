@@ -82,7 +82,7 @@ def main(argv=None):
         prog="spex show",
         description="Show detailed information about a spec.",
     )
-    parser.add_argument("topic", nargs="?", help="Topic name or substring")
+    parser.add_argument("name", nargs="?", help="Spec name or substring")
     parser.add_argument("-l", "--list", action="store_true",
                         dest="brief",
                         help="Show brief list format instead of full details")
@@ -98,8 +98,8 @@ def main(argv=None):
     )
     args = parser.parse(argv)
 
-    if args.topic:
-        spec_dir = resolve_spec(args.topic, include_archives=args.archives)
+    if args.name:
+        spec_dir = resolve_spec(args.name, include_archives=args.archives)
     else:
         spec_dir = select_spec_interactive(
             include_archives=args.archives,

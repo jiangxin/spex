@@ -305,7 +305,7 @@ class TestCliPrepareSpec:
             common, "get_specs_dir", return_value=str(tmp_path)
         ):
             with pytest.raises(SystemExit) as exc_info:
-                cli_prepare_spec(["--topic", "INVALID"])
+                cli_prepare_spec(["--name", "INVALID"])
             assert exc_info.value.code == 1
 
     def test_existing_topic_exits(self, monkeypatch, tmp_path):
@@ -317,7 +317,7 @@ class TestCliPrepareSpec:
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cli_prepare_spec(
-                    ["--topic", "2026-05-20-14-30-existing"])
+                    ["--name", "2026-05-20-14-30-existing"])
             assert exc_info.value.code == 1
 
     def test_success_outputs_json(self, monkeypatch, tmp_path, capsys):
@@ -349,7 +349,7 @@ class TestCliPrepareSpec:
                 return_value="# Rendered Template"),
         ):
             cli_prepare_spec(
-                ["--topic", "2026-05-20-14-30-new-topic",
+                ["--name", "2026-05-20-14-30-new-topic",
                  "--description", "Test desc"])
 
         output = json.loads(capsys.readouterr().out.strip())
@@ -480,7 +480,7 @@ class TestCliPostAction:
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "my-topic"],
+                ["--name", "my-topic"],
             )
 
         assert (spec_dir / "todo.json").is_file()
@@ -495,7 +495,7 @@ class TestCliPostAction:
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "no-json"],
+                ["--name", "no-json"],
             )
 
     def test_missing_required_field_fails(
@@ -512,7 +512,7 @@ class TestCliPostAction:
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "bad-field"],
+                ["--name", "bad-field"],
             )
 
     def test_duplicate_id_fails(self, tmp_path, monkeypatch):
@@ -532,7 +532,7 @@ class TestCliPostAction:
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "dup-id"],
+                ["--name", "dup-id"],
             )
 
     def test_default_event_type_is_create(
@@ -551,7 +551,7 @@ class TestCliPostAction:
 
         with patch("hooks.run_post_action") as mock_hook:
             create_helper.cli_post_action(
-                ["--topic", "evt-topic"],
+                ["--name", "evt-topic"],
             )
             mock_hook.assert_called_once()
             assert mock_hook.call_args[0][0] == "create"
@@ -641,7 +641,7 @@ class TestDescriptionWrapping:
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "desc-topic"],
+                ["--name", "desc-topic"],
             )
 
         updated_meta = json.loads(
@@ -692,7 +692,7 @@ class TestDescriptionWrapping:
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "no-desc-topic"],
+                ["--name", "no-desc-topic"],
             )
 
         updated_meta = json.loads(

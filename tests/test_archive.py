@@ -337,7 +337,7 @@ class TestMain:
         _write_todo(specs / "other-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--topic", "target-topic"]
+            sys, "argv", ["archive.py", "--name", "target-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -356,7 +356,7 @@ class TestMain:
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--topic", "done-topic", "-n"]
+            sys, "argv", ["archive.py", "--name", "done-topic", "-n"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -373,7 +373,7 @@ class TestMain:
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive.py", "--topic"])
+        monkeypatch.setattr(sys, "argv", ["archive.py", "--name"])
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
         ), patch.object(
@@ -383,7 +383,7 @@ class TestMain:
                 spex_archive.main()
             assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "--topic" in err
+        assert "--name" in err
 
 
 class TestArchiveSingleTopic:
@@ -709,7 +709,7 @@ class TestMainWithBranchGuard:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive.py", "--topic", "branch-guard"],
+            ["archive.py", "--name", "branch-guard"],
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -808,7 +808,7 @@ class TestRestoreFlagCLI:
     """Integration tests for --restore flag in main()."""
 
     def test_restore_without_topic_errors(self, tmp_path, caplog, monkeypatch):
-        """--restore without --topic → error."""
+        """--restore without --name → error."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -823,16 +823,16 @@ class TestRestoreFlagCLI:
                 spex_archive.main()
             assert exc_info.value.code == 1
         assert "--restore" in caplog.text
-        assert "--topic" in caplog.text
+        assert "--name" in caplog.text
 
     def test_restore_restores_from_archives(self, tmp_path, caplog, monkeypatch):
-        """--restore --topic restores spec from archives to specs."""
+        """--restore --name restores spec from archives to specs."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--restore", "--topic", "my-topic"]
+            sys, "argv", ["archive.py", "--restore", "--name", "my-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -851,7 +851,7 @@ class TestRestoreFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--restore", "--topic", "my-topic", "-n"]
+            sys, "argv", ["archive.py", "--restore", "--name", "my-topic", "-n"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -876,7 +876,7 @@ class TestRestoreFlagCLI:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive.py", "--restore", "--topic", "branch-guard"],
+            ["archive.py", "--restore", "--name", "branch-guard"],
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -897,7 +897,7 @@ class TestRestoreFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--not", "--topic", "my-topic"]
+            sys, "argv", ["archive.py", "--not", "--name", "my-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs

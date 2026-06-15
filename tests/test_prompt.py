@@ -85,7 +85,7 @@ class TestAllDoneDetection:
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-one-task", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -314,7 +314,7 @@ class TestTaskIdStderr:
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-one-task", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -336,7 +336,7 @@ class TestTaskIdStderr:
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-commit", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-commit", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -363,7 +363,7 @@ class TestJsonMode:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+            ["prompt", "apply-one-task", "--name", "test-topic", "--json"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -391,7 +391,7 @@ class TestJsonMode:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+            ["prompt", "apply-one-task", "--name", "test-topic", "--json"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -426,7 +426,7 @@ class TestStdinExtraVars:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-commit", "--topic", "test-topic", "--stdin"],
+            ["prompt", "apply-commit", "--name", "test-topic", "--stdin"],
         )
         monkeypatch.setattr("sys.stdin", io.StringIO("Fix the login bug"))
 
@@ -720,7 +720,7 @@ class TestApplyCommitWithTopic:
     """Test apply-commit loads spec and task context from a spec."""
 
     def test_spec_provides_content_and_current_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic loads spec content, completed, current, future tasks."""
+        """apply-commit with --name loads spec content, completed, current, future tasks."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task(
@@ -745,7 +745,7 @@ class TestApplyCommitWithTopic:
         assert "**step-3**: Add tests" in rendered
 
     def test_spec_all_done_empty_next_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic but all tasks done returns None."""
+        """apply-commit with --name but all tasks done returns None."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
@@ -759,7 +759,7 @@ class TestApplyCommitWithTopic:
         assert not result
 
     def test_no_spec_fails_validation(self, tmp_path, monkeypatch):
-        """apply-commit without --topic returns None (no spec to render)."""
+        """apply-commit without --name returns None (no spec to render)."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _init_git_repo(repo)
@@ -918,7 +918,7 @@ class TestModifySpecTemplate:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-spec", "--topic", "test-topic", "--stdin"],
+            ["prompt", "modify-spec", "--name", "test-topic", "--stdin"],
         )
         monkeypatch.setattr("sys.stdin", io.StringIO("Refactor the auth module"))
 
@@ -986,7 +986,7 @@ class TestModifyTodoTemplate:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1014,7 +1014,7 @@ class TestModifyTodoTemplate:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1038,7 +1038,7 @@ class TestModifyTodoTemplate:
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1066,7 +1066,7 @@ class TestCliApplyOneTask:
 
         from prompt import cli_apply_one_task
 
-        cli_apply_one_task(["--topic", "test-topic", "--json"])
+        cli_apply_one_task(["--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1084,7 +1084,7 @@ class TestCliApplyOneTask:
 
         from prompt import cli_apply_one_task
 
-        cli_apply_one_task(["--topic", "test-topic"])
+        cli_apply_one_task(["--name", "test-topic"])
 
         captured = capsys.readouterr()
         assert "task_id=step-1" in captured.err
@@ -1101,7 +1101,7 @@ class TestCliApplyOneTask:
         from prompt import cli_apply_one_task
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_one_task(["--topic", "test-topic", "--json"])
+            cli_apply_one_task(["--name", "test-topic", "--json"])
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
@@ -1119,7 +1119,7 @@ class TestCliApplyOneTask:
         from prompt import cli_apply_one_task
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_one_task(["--topic", "test-topic"])
+            cli_apply_one_task(["--name", "test-topic"])
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
@@ -1142,7 +1142,7 @@ class TestCliApplyCommit:
 
         from prompt import cli_apply_commit
 
-        cli_apply_commit(["--topic", "test-topic"])
+        cli_apply_commit(["--name", "test-topic"])
 
         captured = capsys.readouterr()
         assert "<current-task>" in captured.out
@@ -1160,7 +1160,7 @@ class TestCliApplyCommit:
         from prompt import cli_apply_commit
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_commit(["--topic", "test-topic"])
+            cli_apply_commit(["--name", "test-topic"])
         assert exc_info.value.code == 0
 
 
@@ -1179,7 +1179,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+        cli_modify_spec(["--name", "test-topic", "--stdin"])
 
         captured = capsys.readouterr()
         assert "Add caching support" in captured.out
@@ -1195,7 +1195,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--json"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1216,7 +1216,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone"])
 
         # Verify todo.json only contains completed tasks
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1238,7 +1238,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone", "--json"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1260,7 +1260,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone"])
 
         # Verify todo.json is empty list
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1279,7 +1279,7 @@ class TestCliModifySpec:
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+        cli_modify_spec(["--name", "test-topic", "--stdin"])
 
         # Verify todo.json is unchanged
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1304,7 +1304,7 @@ class TestCliModifyTodo:
 
         from prompt import cli_modify_todo
 
-        cli_modify_todo(["--topic", "test-topic"])
+        cli_modify_todo(["--name", "test-topic"])
 
         # Verify todo.json only contains completed tasks
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1323,7 +1323,7 @@ class TestCliModifyTodo:
 
         from prompt import cli_modify_todo
 
-        cli_modify_todo(["--topic", "test-topic", "--json"])
+        cli_modify_todo(["--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1344,7 +1344,7 @@ class TestMainRouting:
 
         from prompt import main
 
-        main(["apply-one-task", "--topic", "test-topic", "--json"])
+        main(["apply-one-task", "--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)

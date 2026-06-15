@@ -121,7 +121,7 @@ Run:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
-  --json --topic $spec_name --stdin --remove-undone <<'EOF'
+  --json --name $spec_name --stdin --remove-undone <<'EOF'
 $request
 EOF
 ```
@@ -148,7 +148,7 @@ updated design integrates properly with existing code.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt modify-todo --json --topic $spec_name
+$spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
 ```
 
 Parse the JSON output from stdout:
@@ -170,7 +170,7 @@ Run:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper post-action \
-  --topic $spec_name --event-type modify
+  --name $spec_name --event-type modify
 ```
 
 If the script exits with an error, report the error and stop.
