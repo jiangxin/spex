@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from pathlib import Path
@@ -160,6 +161,24 @@ def format_json_output(topics: list) -> str:
     )
 
 
+def filter_topics(topics: list, patterns: list) -> list:
+    """Filter topics by name patterns (substring, glob, or regex)."""
+    if not patterns:
+        return topics
+
+    def matches(name: str, pattern: str) -> bool:
+        if pattern.startswith("^"):
+            try:
+                return re.search(pattern, name) is not None
+            except re.error:
+                return False
+        if "*" in pattern or "?" in pattern:
+            return fnmatch.fnmatch(name, pattern)
+        return pattern in name
+
+    return [t for t in topics if any(matches(t.name, p) for p in patterns)]
+
+
 def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex list``."""
     parser = ArgumentParser(
@@ -188,6 +207,13 @@ def _build_parser() -> ArgumentParser:
         default=0,
         help="Increase verbosity (-v, -vv)",
     )
+    parser.add_argument(
+        "patterns",
+        nargs="*",
+        default=[],
+        metavar="pattern",
+        help="Filter topics by name pattern",
+    )
     return parser
 
 
@@ -199,6 +225,8 @@ def main(argv=None):
         include_archives=args.archives,
         all_projects=args.all_projects,
     )
+
+    topics = filter_topics(topics, args.patterns)
 
     if args.json:
         print(format_json_output(topics))
