@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -149,6 +150,16 @@ def format_verbose_output(
     return "\n\n".join(blocks)
 
 
+def format_json_output(topics: list) -> str:
+    """Format topics as a JSON array."""
+    topics.sort(key=lambda t: t.created_at, reverse=True)
+    return json.dumps(
+        [{"topic_name": t.name, "topic_path": str(t.path)} for t in topics],
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
 def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex list``."""
     parser = ArgumentParser(
@@ -164,6 +175,11 @@ def _build_parser() -> ArgumentParser:
         "--all-projects",
         action="store_true",
         help="Show topics from all projects (disables project filter)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON array",
     )
     parser.add_argument(
         "-v",
@@ -183,6 +199,10 @@ def main(argv=None):
         include_archives=args.archives,
         all_projects=args.all_projects,
     )
+
+    if args.json:
+        print(format_json_output(topics))
+        return
 
     verbosity = args.verbose
     if verbosity > 0:

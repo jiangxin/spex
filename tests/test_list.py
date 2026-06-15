@@ -8,6 +8,7 @@ from config import ProjectContext
 from list import (  # noqa: A004
     _wrap_text,
     collect_topics,
+    format_json_output,
     format_output,
     format_verbose_output,
     main,
@@ -534,6 +535,19 @@ class TestBuildParser:
         assert args.all_projects is True
         assert args.verbose == 2
 
+    def test_json_flag(self):
+        args = self._parse(["--json"])
+        assert args.json is True
+
+    def test_json_default_false(self):
+        args = self._parse([])
+        assert args.json is False
+
+    def test_json_with_archives(self):
+        args = self._parse(["--json", "--archives"])
+        assert args.json is True
+        assert args.archives is True
+
     def test_unknown_flag_exits(self):
         with pytest.raises(SystemExit):
             self._parse(["--unknown"])
@@ -541,6 +555,112 @@ class TestBuildParser:
     def test_help_exits(self):
         with pytest.raises(SystemExit):
             self._parse(["-h"])
+
+
+class TestJsonOutput:
+    def test_json_empty_topics(self):
+        assert format_json_output([]) == "[]"
+
+    def test_json_single_topic(self):
+        p = Path("/tmp/my-topic")
+        topics = [
+            Topic(name="my-topic", path=p,
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["test"]),
+                  done=0, total=1),
+        ]
+        result = json.loads(format_json_output(topics))
+        assert result == [{"topic_name": "my-topic", "topic_path": "/tmp/my-topic"}]
+
+    def test_json_multiple_topics_sorted(self):
+        p = Path("/tmp")
+        topics = [
+            Topic(name="older", path=p / "older",
+                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+                                 prompts=["old"]),
+                  done=0, total=1),
+            Topic(name="newer", path=p / "newer",
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["new"]),
+                  done=0, total=1),
+        ]
+        result = json.loads(format_json_output(topics))
+        assert result[0]["topic_name"] == "newer"
+        assert result[1]["topic_name"] == "older"
+
+    def test_json_only_required_fields(self):
+        p = Path("/tmp/my-topic")
+        topics = [
+            Topic(name="my-topic", path=p,
+                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 prompts=["test"],
+                                 description="Some description"),
+                  done=1, total=2),
+        ]
+        result = json.loads(format_json_output(topics))
+        for obj in result:
+            assert set(obj.keys()) == {"topic_name", "topic_path"}
+
+
+class TestMainJsonFlag:
+    """Test main() with --json flag."""
+
+    def _setup(self, tmp_path, monkeypatch):
+        """Set up specs/archives dirs and monkeypatches."""
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        project_workdir = str(tmp_path / "project-a")
+        other_workdir = str(tmp_path / "project-b")
+
+        # Related topics (same workdir as project context)
+        _setup_topic(specs / "related-spec", project_workdir)
+        _setup_topic(archives / "related-archive", project_workdir)
+
+        # Unrelated topics (different workdir)
+        _setup_topic(specs / "other-spec", other_workdir)
+        _setup_topic(archives / "other-archive", other_workdir)
+
+        ctx = _make_project_context(project_workdir)
+
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(common_mod, "get_archives_dir", lambda _w=None: archives)
+        monkeypatch.setattr(common_mod, "get_project_context", lambda _w=None: ctx)
+
+        return specs, archives
+
+    def test_main_json_output(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--json"])
+
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        names = [t["topic_name"] for t in result]
+        assert "related-spec" in names
+
+    def test_main_json_with_archives(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--json", "--archives"])
+
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        names = [t["topic_name"] for t in result]
+        assert "related-spec" in names
+        assert "related-archive" in names
+
+    def test_main_json_ignores_verbose(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--json", "-v"])
+
+        out = capsys.readouterr().out
+        # Output should be valid JSON, not verbose text format
+        result = json.loads(out)
+        assert isinstance(result, list)
 
 
 class TestWrapText:
