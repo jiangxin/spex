@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List spec topics with progress and prompt summary."""
+"""List specs with progress and prompt summary."""
 
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    Topic,
+    Spec,
     display_ljust,
     display_truncate,
     display_width,
-    format_topic,
-    gather_topics,
+    format_spec,
+    gather_specs,
     repo_label,
 )
 
 PROMPT_LOG = "prompt.log"
-MAX_TOPIC_WIDTH = 38
+MAX_SPEC_WIDTH = 38
 MAX_LINE_WIDTH = 80
 
 
@@ -44,10 +44,10 @@ def parse_prompt_log(log_path: Path) -> tuple:
     return (timestamp, prompt_text)
 
 
-def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
-    """Collect topic info from given directories."""
+def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
+    """Collect spec info from given directories."""
     archive_dirs = set(archive_dirs or [])
-    topics: list[Topic] = []
+    specs: list[Spec] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -55,25 +55,25 @@ def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Topic]:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            topic = Topic.from_dir(sub, archived=archived)
-            if topic is not None:
-                topics.append(topic)
-    return topics
+            spec = Spec.from_dir(sub, archived=archived)
+            if spec is not None:
+                specs.append(spec)
+    return specs
 
 
 MAX_REPO_WIDTH = 11
 
 
 def format_output(
-    topics: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
+    specs: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
 ) -> str:
-    """Format topics into aligned columns."""
-    if not topics:
+    """Format specs into aligned columns."""
+    if not specs:
         return ""
 
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+    specs.sort(key=lambda t: t.created_at, reverse=True)
 
-    progress_strs = [f"{t.done}/{t.total}" for t in topics]
+    progress_strs = [f"{t.done}/{t.total}" for t in specs]
     progress_width = max(len(s) for s in progress_strs)
 
     if show_repo:
@@ -83,20 +83,20 @@ def format_output(
         repo_col_width = 0
 
     icon_width = 3
-    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_TOPIC_WIDTH + 2
+    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_SPEC_WIDTH + 2
     prompt_width = max_width - fixed_width
 
     lines = []
-    for topic, prog_str in zip(topics, progress_strs):
-        icon = topic.icon
-        name = display_truncate(topic.name, MAX_TOPIC_WIDTH)
-        name_col = display_ljust(name, MAX_TOPIC_WIDTH)
+    for spec, prog_str in zip(specs, progress_strs):
+        icon = spec.icon
+        name = display_truncate(spec.name, MAX_SPEC_WIDTH)
+        name_col = display_ljust(name, MAX_SPEC_WIDTH)
         prog_col = f"({prog_str})".rjust(progress_width + 2)
-        desc = topic.display_text
+        desc = spec.display_text
         prompt_col = display_truncate(desc, prompt_width) if prompt_width > 3 else ""
 
         if show_repo:
-            label = repo_label(topic.workdir)
+            label = repo_label(spec.workdir)
             repo_col = display_ljust(f"[{label}]", repo_col_width - 1) + " "
         else:
             repo_col = ""
@@ -133,39 +133,39 @@ def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
 
 
 def format_verbose_output(
-    topics: list, verbosity: int = 1, show_repo: bool = False
+    specs: list, verbosity: int = 1, show_repo: bool = False
 ) -> str:
-    """Format topics with expanded detail based on verbosity level."""
-    if not topics:
+    """Format specs with expanded detail based on verbosity level."""
+    if not specs:
         return ""
 
     if verbosity >= 3:
-        return "Use 'spex show <topic>' for detailed view."
+        return "Use 'spex show <spec>' for detailed view."
 
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+    specs.sort(key=lambda t: t.created_at, reverse=True)
 
     blocks = [
-        format_topic(topic, verbose=verbosity, show_repo=show_repo)
-        for topic in topics
+        format_spec(spec, verbose=verbosity, show_repo=show_repo)
+        for spec in specs
     ]
 
     return "\n\n".join(blocks)
 
 
-def format_json_output(topics: list) -> str:
-    """Format topics as a JSON array."""
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+def format_json_output(specs: list) -> str:
+    """Format specs as a JSON array."""
+    specs.sort(key=lambda t: t.created_at, reverse=True)
     return json.dumps(
-        [{"topic_name": t.name, "topic_path": str(t.path)} for t in topics],
+        [{"spec_name": t.name, "spec_path": str(t.path)} for t in specs],
         ensure_ascii=False,
         indent=2,
     )
 
 
-def filter_topics(topics: list, patterns: list) -> list:
-    """Filter topics by name patterns (substring, glob, or regex)."""
+def filter_specs(specs: list, patterns: list) -> list:
+    """Filter specs by name patterns (substring, glob, or regex)."""
     if not patterns:
-        return topics
+        return specs
 
     def matches(name: str, pattern: str) -> bool:
         if pattern.startswith("^"):
@@ -177,24 +177,24 @@ def filter_topics(topics: list, patterns: list) -> list:
             return fnmatch.fnmatch(name, pattern)
         return pattern in name
 
-    return [t for t in topics if any(matches(t.name, p) for p in patterns)]
+    return [t for t in specs if any(matches(t.name, p) for p in patterns)]
 
 
 def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex list``."""
     parser = ArgumentParser(
         prog="spex list",
-        description="List spec topics with progress.",
+        description="List specs with progress.",
     )
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics",
+        help="Include archived specs",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     parser.add_argument(
         "--json",
@@ -212,19 +212,19 @@ def _build_parser() -> ArgumentParser:
     group.add_argument(
         "--must-done",
         action="store_true",
-        help="Only show completed topics",
+        help="Only show completed specs",
     )
     group.add_argument(
         "--must-undone",
         action="store_true",
-        help="Only show topics with undone steps",
+        help="Only show specs with undone steps",
     )
     parser.add_argument(
         "patterns",
         nargs="*",
         default=[],
         metavar="pattern",
-        help="Filter topics by name pattern",
+        help="Filter specs by name pattern",
     )
     return parser
 
@@ -233,31 +233,31 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    topics, show_repo = gather_topics(
+    specs, show_repo = gather_specs(
         include_archives=args.archives,
         all_projects=args.all_projects,
     )
 
-    topics = filter_topics(topics, args.patterns)
+    specs = filter_specs(specs, args.patterns)
 
     if args.must_done:
-        topics = [t for t in topics if t.is_completed]
+        specs = [t for t in specs if t.is_completed]
     elif args.must_undone:
-        topics = [t for t in topics if not t.is_completed]
+        specs = [t for t in specs if not t.is_completed]
 
-    if not topics:
+    if not specs:
         print("No specs found.", file=sys.stderr)
         sys.exit(1)
 
     if args.json:
-        print(format_json_output(topics))
+        print(format_json_output(specs))
         return
 
     verbosity = args.verbose
     if verbosity > 0:
-        print(format_verbose_output(topics, verbosity=verbosity, show_repo=show_repo))
+        print(format_verbose_output(specs, verbosity=verbosity, show_repo=show_repo))
     else:
-        print(format_output(topics, show_repo=show_repo))
+        print(format_output(specs, show_repo=show_repo))
 
 
 if __name__ == "__main__":

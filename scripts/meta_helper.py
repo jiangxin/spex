@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Get or set key/value in a topic's meta.json.
+"""Get or set key/value in a spec's meta.json.
 
-Usage: spex meta-helper <topic_name> [key] [value] [--stdin]
+Usage: spex meta-helper <spec_name> [key] [value] [--stdin]
 
 When no key is given, display all meta.json contents.
 When key is given without value, display that key's value.
@@ -18,11 +18,11 @@ from dataclasses import fields
 
 from cli import ArgumentParser
 from common import (
-    TopicMeta,
+    SpecMeta,
     atomic_write_json,
     logger,
     normalize_prompt_entry,
-    resolve_topic_dir,
+    resolve_spec_dir,
 )
 
 
@@ -82,7 +82,7 @@ def _add_images_only(meta, images, meta_path):
 
 
 def _set_key(meta, key, value, meta_path, images=None):
-    """Set a key in TopicMeta and write back."""
+    """Set a key in SpecMeta and write back."""
     if key == "prompts":
         from common import local_iso_timestamp
         if not isinstance(meta.prompts, list):
@@ -92,7 +92,7 @@ def _set_key(meta, key, value, meta_path, images=None):
             entry["images"] = list(images)
         meta.prompts.append(entry)
     else:
-        known = {f.name for f in fields(TopicMeta)} - {"extras"}
+        known = {f.name for f in fields(SpecMeta)} - {"extras"}
         if key in known:
             setattr(meta, key, value)
         else:
@@ -108,11 +108,11 @@ def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex meta-helper``."""
     parser = ArgumentParser(
         prog="spex meta-helper",
-        description="Get or set key/value in a topic's meta.json.",
+        description="Get or set key/value in a spec's meta.json.",
     )
     parser.add_argument(
-        "topic_name",
-        help="Topic name to look up",
+        "spec_name",
+        help="Spec name to look up",
     )
     parser.add_argument(
         "key",
@@ -146,14 +146,14 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    topic_name = args.topic_name
+    spec_name = args.spec_name
     key = args.key
     value = args.value
     stdin_flag = args.stdin_flag
     add_images = args.add_images
 
-    topic_dir = resolve_topic_dir(topic_name)
-    meta_path = topic_dir / "meta.json"
+    spec_dir = resolve_spec_dir(spec_name)
+    meta_path = spec_dir / "meta.json"
 
     if not meta_path.is_file():
         logger.error("Error: file not found: %s", meta_path)
@@ -165,7 +165,7 @@ def main(argv=None):
         logger.error("Error: invalid JSON: %s", e)
         sys.exit(1)
 
-    meta = TopicMeta.from_dict(data)
+    meta = SpecMeta.from_dict(data)
 
     if key is None:
         _display_all(meta.to_dict())

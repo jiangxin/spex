@@ -14,7 +14,7 @@ from branch import (
     get_current_branch,
     merge_branch,
 )
-from common import TopicMeta, strip_date_prefix
+from common import SpecMeta, strip_date_prefix
 from config import ProjectContext
 from merge import cli_submit
 
@@ -122,8 +122,8 @@ class TestValidateApplyBranch:
         # Should return without error when branch_management is False
         validate_apply_branch({"branch_management": False}, tmp_path)
 
-    @patch("common.is_topic_completed", return_value=True)
-    def test_completed_topic_exits(self, _mock, tmp_path, capsys):
+    @patch("common.is_spec_completed", return_value=True)
+    def test_completed_spec_exits(self, _mock, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
         try:
@@ -145,7 +145,7 @@ class TestValidateApplyBranch:
     @patch("branch.switch_branch")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=True)
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_spex_branch_switches(self, _completed, _exists, _curr, mock_switch, tmp_path):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -156,7 +156,7 @@ class TestValidateApplyBranch:
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_spex_branch_missing_exits(self, _completed, _exists, _curr, tmp_path):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -173,14 +173,14 @@ class TestValidateApplyBranch:
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
     @patch("branch.create_branch")
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_creates_branch_with_short_name(
         self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            json.dumps({"name": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
@@ -195,14 +195,14 @@ class TestValidateApplyBranch:
         subprocess.CalledProcessError(1, "git"),
         None,
     ])
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_fallback_to_long_name(
         self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            json.dumps({"name": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
@@ -217,13 +217,13 @@ class TestValidateApplyBranch:
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
     @patch("branch.create_branch", side_effect=subprocess.CalledProcessError(1, "git"))
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_both_candidates_fail_exits(
         self, _completed, _create, _exists, _curr, tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "add-feature"}), encoding="utf-8"
+            json.dumps({"name": "add-feature"}), encoding="utf-8"
         )
         try:
             validate_apply_branch({"branch_management": True}, tmp_path)
@@ -233,7 +233,7 @@ class TestValidateApplyBranch:
 
 
 class TestCliPrecheck:
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"branch_management": False}))
     def test_disabled_no_output(self, _ctx, mock_resolve, tmp_path,
@@ -241,14 +241,14 @@ class TestCliPrecheck:
         mock_resolve.return_value = tmp_path
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
-        cli_precheck(["--topic", "test-topic"])
+        cli_precheck(["--name", "test-topic"])
         out = capsys.readouterr().out
         assert out == ""
 
 
 class TestCliPostAction:
     @patch("config.get_project_context", return_value=_fake_context())
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_outputs_text_with_branch(self, mock_resolve, _ctx,
                                       tmp_path, caplog):
         import logging
@@ -258,26 +258,26 @@ class TestCliPostAction:
         )
         mock_resolve.return_value = tmp_path
         with caplog.at_level(logging.INFO):
-            cli_post_action(["--topic", "my-feat"])
+            cli_post_action(["--name", "my-feat"])
         assert "spex/my-feat" in caplog.text
         assert "Development completed" in caplog.text
         assert "main" in caplog.text
 
     @patch("config.get_project_context", return_value=_fake_context())
-    @patch("common.resolve_topic_dir")
-    @patch("common.load_meta", return_value=TopicMeta())
+    @patch("common.resolve_spec_dir")
+    @patch("common.load_meta", return_value=SpecMeta())
     def test_no_branch_no_output(self, _meta, _resolve, _ctx, capsys,
                                  tmp_path):
         _resolve.return_value = tmp_path
-        cli_post_action(["--topic", "no-branch"])
+        cli_post_action(["--name", "no-branch"])
         out = capsys.readouterr().out
         assert out == ""
 
 
 class TestCliSubmit:
-    @patch("merge._find_submittable_topics", return_value=[])
-    def test_no_topic_arg_exits(self, _mock, caplog):
-        """Empty topic argument causes error exit."""
+    @patch("merge._find_submittable_specs", return_value=[])
+    def test_no_spec_arg_exits(self, _mock, caplog):
+        """Empty spec argument causes error exit."""
         import logging
         with caplog.at_level(logging.ERROR):
             try:
@@ -285,14 +285,14 @@ class TestCliSubmit:
                 assert False, "Should have called sys.exit(1)"
             except SystemExit as e:
                 assert e.code == 1
-        assert "topic" in caplog.text.lower()
+        assert "spec" in caplog.text.lower()
 
     @patch("config.get_project_context")
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
-    def test_unrelated_topic_exits(self, mock_resolve, _specs, mock_ctx,
+    @patch("common.resolve_spec_dir")
+    def test_unrelated_spec_exits(self, mock_resolve, _specs, mock_ctx,
                                    tmp_path, caplog):
-        """Topic not related to current project causes error exit."""
+        """Spec not related to current project causes error exit."""
         import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -320,12 +320,12 @@ class TestCliSubmit:
         assert "not related to current project" in caplog.text
         assert "/other/project" in caplog.text
 
-    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
+    @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success(self, mock_resolve, _specs, _ctx, mock_merge,
                            mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
@@ -343,12 +343,12 @@ class TestCliSubmit:
         assert "archived" in out
         mock_merge.assert_called_once_with("main", "spex/done", cwd=None)
 
-    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
+    @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
                                     mock_merge, mock_archive, tmp_path,
                                     capsys):
@@ -363,12 +363,12 @@ class TestCliSubmit:
         assert out["archived"] is True
         mock_archive.assert_called_once()
 
-    @patch("archive.archive_single_topic")
+    @patch("archive.archive_single_spec")
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
                                            mock_merge, mock_archive,
                                            tmp_path, capsys):
@@ -383,13 +383,13 @@ class TestCliSubmit:
         assert out["archived"] is False
         mock_archive.assert_not_called()
 
-    @patch("archive.archive_single_topic")
+    @patch("archive.archive_single_spec")
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
                                       _merge, mock_archive, tmp_path,
                                       capsys):
@@ -413,7 +413,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
                                          _merge, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
@@ -456,8 +456,8 @@ class TestCliRouting:
         assert result.returncode in (1, 2)
         assert "usage:" in result.stderr
 
-    def test_submit_no_topic_exits(self, tmp_path):
+    def test_submit_no_spec_exits(self, tmp_path):
         result = self._run_spex("submit", cwd=tmp_path)
         assert result.returncode in (1, 2)
         err = result.stderr.lower()
-        assert "topic" in err or "auto-selected" in err
+        assert "spec" in err or "auto-selected" in err

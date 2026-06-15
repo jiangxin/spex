@@ -87,16 +87,16 @@ def run_hook(hook_name: str, event_data: dict, workdir=None) -> None:
 
 
 def run_post_action(event_type: str, payload: dict, workdir=None,
-                    topic_name: str | None = None) -> None:
+                    spec_name: str | None = None) -> None:
     """Convenience wrapper to run the post-action hook.
 
     Args:
         event_type: The spex command that triggered this hook.
         payload: Command-specific audit information.
         workdir: Working directory for hook execution.
-        topic_name: Optional topic name added to the payload.
+        spec_name: Optional spec name added to the payload.
     """
-    if topic_name:
-        payload = {**payload, "topic_name": topic_name}
+    if spec_name:
+        payload = {**payload, "spec_name": spec_name}
     data = _build_event_data(event_type, payload, workdir)
     run_hook("post-action", data, workdir)

@@ -5,11 +5,11 @@ Submit completed work by merging the feature branch or creating a PR.
 ## Usage
 
 ```text
-/spex submit [topic_name] [--dry-run | -n] [--no-archive]
+/spex submit [spec_name] [--dry-run | -n] [--no-archive]
 ```
 
-When `topic_name` is omitted, the CLI automatically searches for
-submittable topics (completed tasks + has `spex_branch` + related to
+When `spec_name` is omitted, the CLI automatically searches for
+submittable specs (completed tasks + has `spex_branch` + related to
 the current project). If exactly one is found it is auto-selected;
 if multiple are found a numbered list is displayed for interactive
 selection.
@@ -18,36 +18,36 @@ selection.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex list --json --must-done "$topic_name"
+$spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
 ```
 
 Read the command output and parse it as a JSON array:
 
-- If the array contains a single element, set `$topic_name` to its
-  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains a single element, set `$spec_name` to its
+  `spec_name` and `$spec_path` to its `spec_path`.
 - If the array contains multiple elements, present a numbered list of
-  `topic_name` values to the user and ask them to choose. Set
-  `$topic_name` and `$topic_path` from the selected entry.
+  `spec_name` values to the user and ask them to choose. Set
+  `$spec_name` and `$spec_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Phase 2: Validate
 
-Read `$topic_path/meta.json` and check:
+Read `$spec_path/meta.json` and check:
 
 - If `spex_branch` is not set, report that branch management is not
-  active for this topic and stop.
+  active for this spec and stop.
 
 ### Phase 3: Submit
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex submit $topic_name
+$spex_skill_dir/scripts/spex submit $spec_name
 ```
 
 Parse the JSON output:
@@ -60,7 +60,7 @@ Parse the JSON output:
 Display the following summary to the user:
 
 ```text
-**Submit**: `$topic_name`
+**Submit**: `$spec_name`
 
 - Action: $action
 - Source branch: $source

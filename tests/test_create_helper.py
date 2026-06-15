@@ -1,4 +1,4 @@
-"""Tests for create_helper.py — topic creation and branch validation."""
+"""Tests for create_helper.py — spec creation and branch validation."""
 
 import io
 import json
@@ -14,7 +14,7 @@ from config import ProjectContext
 from create_helper import (
     cli_create_validate,
     cli_prepare_spec,
-    create_topic,
+    create_spec,
     validate_create_branch,
 )
 
@@ -63,57 +63,57 @@ class TestCreateTopic:
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        spec_name, spec_dir = create_spec(
             "2026-05-20-14-30-hello", specs_dir
         )
 
-        assert topic_name == "2026-05-20-14-30-hello"
-        assert topic_dir == specs_dir / "2026-05-20-14-30-hello"
-        assert topic_dir.is_dir()
+        assert spec_name == "2026-05-20-14-30-hello"
+        assert spec_dir == specs_dir / "2026-05-20-14-30-hello"
+        assert spec_dir.is_dir()
 
     def test_creates_specs_dir_if_missing(self, tmp_path):
         specs_dir = tmp_path / "specs"
 
-        topic_name, topic_dir = create_topic(
+        spec_name, spec_dir = create_spec(
             "2026-05-20-14-30-new-topic", specs_dir
         )
 
         assert specs_dir.is_dir()
-        assert topic_dir.is_dir()
+        assert spec_dir.is_dir()
 
     def test_invalid_name_no_date(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("no-date-prefix", tmp_path, auto_prefix=False)
+        with pytest.raises(ValueError, match="invalid spec name"):
+            create_spec("no-date-prefix", tmp_path, auto_prefix=False)
 
     def test_invalid_name_uppercase(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-14-30-UpperCase", tmp_path)
+        with pytest.raises(ValueError, match="invalid spec name"):
+            create_spec("2026-05-20-14-30-UpperCase", tmp_path)
 
     def test_invalid_name_spaces(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-14-30-has space", tmp_path)
+        with pytest.raises(ValueError, match="invalid spec name"):
+            create_spec("2026-05-20-14-30-has space", tmp_path)
 
     def test_exceeds_max_bytes(self, tmp_path):
         long_name = "2026-05-20-14-30-" + "a" * 54
         with pytest.raises(ValueError, match="exceeds 64 bytes"):
-            create_topic(long_name, tmp_path)
+            create_spec(long_name, tmp_path)
 
     def test_already_exists(self, tmp_path):
         specs_dir = tmp_path / "specs"
         (specs_dir / "2026-05-20-14-30-existing").mkdir(parents=True)
 
         with pytest.raises(FileExistsError, match="already exists"):
-            create_topic("2026-05-20-14-30-existing", specs_dir)
+            create_spec("2026-05-20-14-30-existing", specs_dir)
 
     def test_valid_name_with_numbers(self, tmp_path):
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        spec_name, spec_dir = create_spec(
             "2026-01-01-09-15-add-v2-api", specs_dir
         )
 
-        assert topic_dir.is_dir()
+        assert spec_dir.is_dir()
 
     def test_auto_prefix_adds_date(self, tmp_path):
         specs_dir = tmp_path / "specs"
@@ -123,32 +123,32 @@ class TestCreateTopic:
             create_helper, "datetime"
         ) as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-05-24-20-00"
-            topic_name, topic_dir = create_topic("my-topic", specs_dir)
+            spec_name, spec_dir = create_spec("my-topic", specs_dir)
 
-        assert topic_name == "2026-05-24-20-00-my-topic"
-        assert topic_dir == specs_dir / "2026-05-24-20-00-my-topic"
-        assert topic_dir.is_dir()
+        assert spec_name == "2026-05-24-20-00-my-topic"
+        assert spec_dir == specs_dir / "2026-05-24-20-00-my-topic"
+        assert spec_dir.is_dir()
 
     def test_explicit_prefix_kept(self, tmp_path):
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        spec_name, spec_dir = create_spec(
             "2026-05-20-14-30-hello", specs_dir
         )
 
-        assert topic_name == "2026-05-20-14-30-hello"
-        assert topic_dir.is_dir()
+        assert spec_name == "2026-05-20-14-30-hello"
+        assert spec_dir.is_dir()
 
     def test_auto_prefix_false_no_prefix_fails(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("my-topic", tmp_path, auto_prefix=False)
+        with pytest.raises(ValueError, match="invalid spec name"):
+            create_spec("my-topic", tmp_path, auto_prefix=False)
 
 
 class TestWriteMeta:
     def test_meta_with_prompt(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=Path("/home/user/project"),
@@ -159,11 +159,11 @@ class TestWriteMeta:
             user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "fix the login bug",
+            spec_dir, ctx, "fix the login bug",
             "2026-05-24T20:00:00+08:00"
         )
 
-        meta_path = topic_dir / "meta.json"
+        meta_path = spec_dir / "meta.json"
         assert meta_path.exists()
         meta = json.loads(meta_path.read_text())
         assert meta["workdir"] == "/home/user/project"
@@ -179,8 +179,8 @@ class TestWriteMeta:
         ]
 
     def test_meta_with_empty_prompt(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=Path("/home/user/project"),
@@ -190,16 +190,16 @@ class TestWriteMeta:
             user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "", "2026-05-24T20:00:00+08:00"
+            spec_dir, ctx, "", "2026-05-24T20:00:00+08:00"
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         assert meta["prompts"] == []
         assert meta["remote_url"] == ""
 
     def test_worktree_main_worktree_points_to_main(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=Path("/home/user/project-wt"),
@@ -210,17 +210,17 @@ class TestWriteMeta:
             user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "add feature",
+            spec_dir, ctx, "add feature",
             "2026-05-29T10:00:00+08:00"
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         assert meta["workdir"] == "/home/user/project-wt"
         assert meta["main_worktree"] == "/home/user/project"
 
     def test_ctx_none_workdir_is_empty(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=None,
@@ -230,18 +230,18 @@ class TestWriteMeta:
             user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "",
+            spec_dir, ctx, "",
             "2026-05-29T10:00:00+08:00"
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         assert meta["workdir"] == ""
         assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
-        """Verify JSON field order from TopicMeta matches legacy format."""
-        topic_dir = tmp_path / "2026-01-01-10-00-order-test"
-        topic_dir.mkdir()
+        """Verify JSON field order from SpecMeta matches legacy format."""
+        spec_dir = tmp_path / "2026-01-01-10-00-order-test"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=Path("/work"),
@@ -252,14 +252,14 @@ class TestWriteMeta:
             user_email="a@e.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "hello",
+            spec_dir, ctx, "hello",
             "2026-01-01T10:00:00+08:00",
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         keys = list(meta.keys())
         expected_keys = [
-            "topic", "workdir", "main_worktree", "remote_url",
+            "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
             "prompts",
         ]
@@ -269,8 +269,8 @@ class TestWriteMeta:
 
     def test_json_field_order_with_description(self, tmp_path):
         """Verify description appears in correct position."""
-        topic_dir = tmp_path / "2026-01-01-10-00-desc-order"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "2026-01-01-10-00-desc-order"
+        spec_dir.mkdir()
 
         ctx = _mock_ctx(
             top_workdir=Path("/work"),
@@ -280,12 +280,12 @@ class TestWriteMeta:
             user_email="a@e.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "",
+            spec_dir, ctx, "",
             "2026-01-01T10:00:00+08:00",
             description="My feature desc",
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         keys = list(meta.keys())
         assert "description" in keys
         assert keys.index("description") == keys.index("prompts") + 1
@@ -305,7 +305,7 @@ class TestCliPrepareSpec:
             common, "get_specs_dir", return_value=str(tmp_path)
         ):
             with pytest.raises(SystemExit) as exc_info:
-                cli_prepare_spec(["--topic", "INVALID"])
+                cli_prepare_spec(["--name", "INVALID"])
             assert exc_info.value.code == 1
 
     def test_existing_topic_exits(self, monkeypatch, tmp_path):
@@ -317,7 +317,7 @@ class TestCliPrepareSpec:
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cli_prepare_spec(
-                    ["--topic", "2026-05-20-14-30-existing"])
+                    ["--name", "2026-05-20-14-30-existing"])
             assert exc_info.value.code == 1
 
     def test_success_outputs_json(self, monkeypatch, tmp_path, capsys):
@@ -349,12 +349,12 @@ class TestCliPrepareSpec:
                 return_value="# Rendered Template"),
         ):
             cli_prepare_spec(
-                ["--topic", "2026-05-20-14-30-new-topic",
+                ["--name", "2026-05-20-14-30-new-topic",
                  "--description", "Test desc"])
 
         output = json.loads(capsys.readouterr().out.strip())
-        assert output["topic_name"] == "2026-05-20-14-30-new-topic"
-        assert output["topic_path"] == str(
+        assert output["spec_name"] == "2026-05-20-14-30-new-topic"
+        assert output["spec_path"] == str(
             tmp_path / "2026-05-20-14-30-new-topic"
         )
         assert output["spec_template"] == "# Rendered Template"
@@ -454,48 +454,48 @@ class TestValidateCreateBranch:
 
 class TestCliPostAction:
     def _setup_topic(self, tmp_path, name, todo_data):
-        topic_dir = tmp_path / name
-        topic_dir.mkdir()
-        (topic_dir / "todo.json").write_text(
+        spec_dir = tmp_path / name
+        spec_dir.mkdir()
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo_data, indent=2), encoding="utf-8",
         )
-        meta = {"topic": name, "workdir": str(tmp_path)}
-        (topic_dir / "meta.json").write_text(
+        meta = {"name": name, "workdir": str(tmp_path)}
+        (spec_dir / "meta.json").write_text(
             json.dumps(meta), encoding="utf-8",
         )
-        return topic_dir
+        return spec_dir
 
     def test_validates_json(self, tmp_path, monkeypatch):
         """post-action validates todo.json successfully."""
         todo = [{"id": "step-1", "name": "First",
                  "details": "D", "completed_at": "",
                  "commit_title": ""}]
-        topic_dir = self._setup_topic(
+        spec_dir = self._setup_topic(
             tmp_path, "my-topic", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "my-topic"],
+                ["--name", "my-topic"],
             )
 
-        assert (topic_dir / "todo.json").is_file()
+        assert (spec_dir / "todo.json").is_file()
 
     def test_missing_json_fails(self, tmp_path, monkeypatch):
         """post-action errors when todo.json does not exist."""
-        topic_dir = tmp_path / "no-json"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "no-json"
+        spec_dir.mkdir()
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "no-json"],
+                ["--name", "no-json"],
             )
 
     def test_missing_required_field_fails(
@@ -503,16 +503,16 @@ class TestCliPostAction:
     ):
         """post-action fails when a required field is missing."""
         todo = [{"id": "step-1", "name": "First"}]
-        topic_dir = self._setup_topic(
+        spec_dir = self._setup_topic(
             tmp_path, "bad-field", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "bad-field"],
+                ["--name", "bad-field"],
             )
 
     def test_duplicate_id_fails(self, tmp_path, monkeypatch):
@@ -523,16 +523,16 @@ class TestCliPostAction:
             {"id": "step-1", "name": "B", "details": "D",
              "completed_at": "", "commit_title": ""},
         ]
-        topic_dir = self._setup_topic(
+        spec_dir = self._setup_topic(
             tmp_path, "dup-id", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
         with pytest.raises(SystemExit):
             create_helper.cli_post_action(
-                ["--topic", "dup-id"],
+                ["--name", "dup-id"],
             )
 
     def test_default_event_type_is_create(
@@ -541,17 +541,17 @@ class TestCliPostAction:
         """post-action defaults event-type to 'create'."""
         todo = [{"id": "s1", "name": "N", "details": "D",
                  "completed_at": "", "commit_title": ""}]
-        topic_dir = self._setup_topic(
+        spec_dir = self._setup_topic(
             tmp_path, "evt-topic", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
 
         with patch("hooks.run_post_action") as mock_hook:
             create_helper.cli_post_action(
-                ["--topic", "evt-topic"],
+                ["--name", "evt-topic"],
             )
             mock_hook.assert_called_once()
             assert mock_hook.call_args[0][0] == "create"
@@ -575,8 +575,8 @@ class TestCliCreateValidate:
 class TestDescriptionWrapping:
     def test_write_meta_wraps_long_description(self, tmp_path):
         """_write_meta wraps descriptions longer than 68 chars."""
-        topic_dir = tmp_path / "2026-01-01-10-00-wrap-test"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "2026-01-01-10-00-wrap-test"
+        spec_dir.mkdir()
 
         long_desc = (
             "This is a very long description that should definitely "
@@ -591,11 +591,11 @@ class TestDescriptionWrapping:
             user_email="alice@example.com",
         )
         create_helper._write_meta(
-            topic_dir, ctx, "",
+            spec_dir, ctx, "",
             "2026-01-01T10:00:00+08:00", long_desc,
         )
 
-        meta = json.loads((topic_dir / "meta.json").read_text())
+        meta = json.loads((spec_dir / "meta.json").read_text())
         desc = meta["description"]
         assert "\n" in desc
         for line in desc.splitlines():
@@ -605,8 +605,8 @@ class TestDescriptionWrapping:
         self, tmp_path, monkeypatch,
     ):
         """post-action updates meta.json description from spec.md."""
-        topic_dir = tmp_path / "desc-topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "desc-topic"
+        spec_dir.mkdir()
 
         # Write spec.md with front-matter description
         spec_content = (
@@ -617,35 +617,35 @@ class TestDescriptionWrapping:
             "---\n"
             "\n# Spec content\n"
         )
-        (topic_dir / "spec.md").write_text(
+        (spec_dir / "spec.md").write_text(
             spec_content, encoding="utf-8",
         )
 
         # Write valid todo.json
         todo = [{"id": "s1", "name": "Step 1", "details": "D",
                  "completed_at": "", "commit_title": ""}]
-        (topic_dir / "todo.json").write_text(
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo, indent=2), encoding="utf-8",
         )
 
         # Write initial meta.json
-        meta = {"topic": "desc-topic", "workdir": str(tmp_path)}
-        (topic_dir / "meta.json").write_text(
+        meta = {"name": "desc-topic", "workdir": str(tmp_path)}
+        (spec_dir / "meta.json").write_text(
             json.dumps(meta), encoding="utf-8",
         )
 
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "desc-topic"],
+                ["--name", "desc-topic"],
             )
 
         updated_meta = json.loads(
-            (topic_dir / "meta.json").read_text(),
+            (spec_dir / "meta.json").read_text(),
         )
         assert "description" in updated_meta
         assert updated_meta["description"] != ""
@@ -654,8 +654,8 @@ class TestDescriptionWrapping:
         self, tmp_path, monkeypatch,
     ):
         """post-action leaves meta.json unchanged if no description."""
-        topic_dir = tmp_path / "no-desc-topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "no-desc-topic"
+        spec_dir.mkdir()
 
         # Write spec.md without description in front-matter
         spec_content = (
@@ -664,38 +664,38 @@ class TestDescriptionWrapping:
             "---\n"
             "\n# Spec content\n"
         )
-        (topic_dir / "spec.md").write_text(
+        (spec_dir / "spec.md").write_text(
             spec_content, encoding="utf-8",
         )
 
         # Write valid todo.json
         todo = [{"id": "s1", "name": "Step 1", "details": "D",
                  "completed_at": "", "commit_title": ""}]
-        (topic_dir / "todo.json").write_text(
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo, indent=2), encoding="utf-8",
         )
 
         # Write initial meta.json with existing description
         meta = {
-            "topic": "no-desc-topic",
+            "name": "no-desc-topic",
             "workdir": str(tmp_path),
             "description": "original description",
         }
-        (topic_dir / "meta.json").write_text(
+        (spec_dir / "meta.json").write_text(
             json.dumps(meta), encoding="utf-8",
         )
 
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
-            lambda _name: topic_dir,
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
         )
 
         with patch("hooks.run_post_action"):
             create_helper.cli_post_action(
-                ["--topic", "no-desc-topic"],
+                ["--name", "no-desc-topic"],
             )
 
         updated_meta = json.loads(
-            (topic_dir / "meta.json").read_text(),
+            (spec_dir / "meta.json").read_text(),
         )
         assert updated_meta["description"] == "original description"

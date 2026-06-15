@@ -5,28 +5,28 @@ Apply a single step from a specification's todo list.
 ## Usage
 
 ```text
-/spex apply-one-step [topic_name]
+/spex apply-one-step [spec_name]
 ```
 
 ## Procedure
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex list --json --must-undone "$topic_name"
+$spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
 ```
 
 Read the command output and parse it as a JSON array:
 
-- If the array contains a single element, set `$topic_name` to its
-  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains a single element, set `$spec_name` to its
+  `spec_name` and `$spec_path` to its `spec_path`.
 - If the array contains multiple elements, present a numbered list of
-  `topic_name` values to the user and ask them to choose. Set
-  `$topic_name` and `$topic_path` from the selected entry.
+  `spec_name` values to the user and ask them to choose. Set
+  `$spec_name` and `$spec_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Phase 2: Validate Branch
@@ -34,7 +34,7 @@ Read the command output and parse it as a JSON array:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper precheck --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
 ```
 
 If the script exits with an error (non-zero), the error message is already
@@ -45,7 +45,7 @@ printed to stderr. Stop execution. On success, continue to the next phase.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --topic $topic_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 ```
 
 Parse the JSON output from stdout:
@@ -72,7 +72,7 @@ and stop.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit --topic $topic_name
+$spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
 ```
 
 Save the output to `$commit_prompt`. Using `$commit_prompt` as the
@@ -96,7 +96,7 @@ Save the output to `$commit_title`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --id "$current_task_id" --completed_at now \
   --commit_title "$commit_title"
 ```
@@ -119,7 +119,7 @@ The user must invoke `/spex apply-one-step` again to continue.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper post-action --topic $topic_name
+$spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
 Display the output to the user.

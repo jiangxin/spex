@@ -2,7 +2,7 @@
 version: "0.1.0"
 required:
   - spec_content
-  - topic_name
+  - spec_name
 optional:
   - completed_tasks
 ---
@@ -72,7 +72,7 @@ final plan is coherent and complete.
 multi-line Markdown details:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} append \
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
   --id step-N --name "Short name" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -85,14 +85,14 @@ DETAILS
 **Show** current steps (to review before adding more):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} show \
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} show \
   --format markdown
 ```
 
 **Edit** a step (only specified fields are updated):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} edit \
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} edit \
   --id step-N --name "Updated name" --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
@@ -104,6 +104,6 @@ DETAILS
 **Remove** a step:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic {{ topic_name }} remove \
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} remove \
   --id step-N
 ```

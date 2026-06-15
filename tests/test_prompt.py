@@ -36,32 +36,32 @@ def _make_task(task_id, name="Task", details="Details here", completed=False):
     }
 
 
-def _setup_topic(tmp_path, topic_name, tasks):
-    """Set up a git repo with spex root, topic dir, and todo.json."""
+def _setup_topic(tmp_path, spec_name, tasks):
+    """Set up a git repo with spex root, spec dir, and todo.json."""
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_git_repo(repo)
 
     spex_root = repo / ".spex"
     specs_dir = spex_root / "specs"
-    topic_dir = specs_dir / topic_name
-    topic_dir.mkdir(parents=True)
+    spec_dir = specs_dir / spec_name
+    spec_dir.mkdir(parents=True)
 
     # Write todo.json
-    todo_path = topic_dir / "todo.json"
+    todo_path = spec_dir / "todo.json"
     todo_path.write_text(json.dumps(tasks), encoding="utf-8")
 
     # Write meta.json
-    meta_path = topic_dir / "meta.json"
+    meta_path = spec_dir / "meta.json"
     meta_path.write_text(
         json.dumps({"workdir": str(repo)}), encoding="utf-8"
     )
 
     # Write a minimal spec.md
-    spec_path = topic_dir / "spec.md"
+    spec_path = spec_dir / "spec.md"
     spec_path.write_text("# Test Spec\n\nSome content.", encoding="utf-8")
 
-    return repo, topic_dir
+    return repo, spec_dir
 
 
 @pytest.fixture(autouse=True)
@@ -81,11 +81,11 @@ class TestAllDoneDetection:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-one-task", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -124,7 +124,7 @@ class TestAllDoneDetection:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import render_prompt
@@ -146,7 +146,7 @@ class TestFutureTasks:
             _make_task("step-3", name="Third step", completed=False),
             _make_task("step-4", name="Fourth step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -170,7 +170,7 @@ class TestFutureTasks:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -191,15 +191,15 @@ class TestFutureTasks:
 
         spex_root = repo / ".spex"
         specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = specs_dir / "test-topic"
+        spec_dir.mkdir(parents=True)
 
         # Write meta.json but NO todo.json
-        meta_path = topic_dir / "meta.json"
+        meta_path = spec_dir / "meta.json"
         meta_path.write_text(
             json.dumps({"workdir": str(repo)}), encoding="utf-8"
         )
-        spec_path = topic_dir / "spec.md"
+        spec_path = spec_dir / "spec.md"
         spec_path.write_text("# Spec\n", encoding="utf-8")
 
         monkeypatch.chdir(repo)
@@ -219,7 +219,7 @@ class TestFutureTasks:
             _make_task("step-2", name="Do B", completed=False),
             _make_task("step-3", name="Do C", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -241,7 +241,7 @@ class TestApplyOneTaskRendering:
             _make_task("step-1", name="First step", completed=False),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -255,7 +255,7 @@ class TestApplyOneTaskRendering:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -273,7 +273,7 @@ class TestApplyOneTaskRendering:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -291,7 +291,7 @@ class TestApplyOneTaskRendering:
         tasks = [
             _make_task("step-1", name="Only step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -310,11 +310,11 @@ class TestTaskIdStderr:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-one-task", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-one-task", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -332,11 +332,11 @@ class TestTaskIdStderr:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", details="Do something"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
-            "sys.argv", ["prompt", "apply-commit", "--topic", "test-topic"]
+            "sys.argv", ["prompt", "apply-commit", "--name", "test-topic"]
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -358,12 +358,12 @@ class TestJsonMode:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+            ["prompt", "apply-one-task", "--name", "test-topic", "--json"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -386,12 +386,12 @@ class TestJsonMode:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-one-task", "--topic", "test-topic", "--json"],
+            ["prompt", "apply-one-task", "--name", "test-topic", "--json"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -421,12 +421,12 @@ class TestStdinExtraVars:
         tasks = [
             _make_task("step-1", name="First step", details="Do first"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "apply-commit", "--topic", "test-topic", "--stdin"],
+            ["prompt", "apply-commit", "--name", "test-topic", "--stdin"],
         )
         monkeypatch.setattr("sys.stdin", io.StringIO("Fix the login bug"))
 
@@ -471,7 +471,7 @@ class TestBuildTaskContext:
     """Test _build_task_context helper function."""
 
     def test_build_task_context(self, tmp_path):
-        """Verifies correct return with sample topic data."""
+        """Verifies correct return with sample spec data."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", details="Do second thing"),
@@ -483,18 +483,18 @@ class TestBuildTaskContext:
 
         spex_root = repo / ".spex"
         specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = specs_dir / "test-topic"
+        spec_dir.mkdir(parents=True)
 
-        todo_path = topic_dir / "todo.json"
+        todo_path = spec_dir / "todo.json"
         todo_path.write_text(json.dumps(tasks), encoding="utf-8")
 
-        spec_path = topic_dir / "spec.md"
+        spec_path = spec_dir / "spec.md"
         spec_path.write_text("# My Spec\n\nSpec body.", encoding="utf-8")
 
         from prompt import _build_task_context
 
-        result = _build_task_context(topic_dir)
+        result = _build_task_context(spec_dir)
 
         assert result["spec_content"] == "# My Spec\n\nSpec body."
         assert "- **step-1**: First step" in result["completed_tasks"]
@@ -516,13 +516,13 @@ class TestBuildTaskContext:
 
         spex_root = repo / ".spex"
         specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = specs_dir / "test-topic"
+        spec_dir.mkdir(parents=True)
 
-        todo_path = topic_dir / "todo.json"
+        todo_path = spec_dir / "todo.json"
         todo_path.write_text(json.dumps(tasks), encoding="utf-8")
 
-        spec_path = topic_dir / "spec.md"
+        spec_path = spec_dir / "spec.md"
         spec_path.write_text(
             "---\ndescription: My desc.\n---\n\n"
             "<!-- spex:begin:requirement -->\n# Requirement\n\nDo X.\n\n"
@@ -535,7 +535,7 @@ class TestBuildTaskContext:
 
         from prompt import _build_task_context
 
-        result = _build_task_context(topic_dir)
+        result = _build_task_context(spec_dir)
 
         assert "spec_content_concise" in result
         concise = result["spec_content_concise"]
@@ -558,18 +558,18 @@ class TestBuildTaskContext:
 
         spex_root = repo / ".spex"
         specs_dir = spex_root / "specs"
-        topic_dir = specs_dir / "test-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = specs_dir / "test-topic"
+        spec_dir.mkdir(parents=True)
 
-        todo_path = topic_dir / "todo.json"
+        todo_path = spec_dir / "todo.json"
         todo_path.write_text(json.dumps(tasks), encoding="utf-8")
 
-        spec_path = topic_dir / "spec.md"
+        spec_path = spec_dir / "spec.md"
         spec_path.write_text("# Done Spec\n", encoding="utf-8")
 
         from prompt import _build_task_context
 
-        result = _build_task_context(topic_dir)
+        result = _build_task_context(spec_dir)
 
         assert result["spec_content"] == "# Done Spec\n"
         assert "- **step-1**: First step" in result["completed_tasks"]
@@ -717,10 +717,10 @@ class TestTrimSpecContent:
 
 @pytest.mark.slow
 class TestApplyCommitWithTopic:
-    """Test apply-commit loads spec and task context from topic."""
+    """Test apply-commit loads spec and task context from a spec."""
 
-    def test_topic_provides_spec_and_current_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic loads spec, completed, current, future tasks."""
+    def test_spec_provides_content_and_current_task(self, tmp_path, monkeypatch):
+        """apply-commit with --name loads spec content, completed, current, future tasks."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task(
@@ -728,7 +728,7 @@ class TestApplyCommitWithTopic:
             ),
             _make_task("step-3", name="Add tests"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -744,13 +744,13 @@ class TestApplyCommitWithTopic:
         assert "Implement /login endpoint" in rendered
         assert "**step-3**: Add tests" in rendered
 
-    def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic but all tasks done returns None."""
+    def test_spec_all_done_empty_next_task(self, tmp_path, monkeypatch):
+        """apply-commit with --name but all tasks done returns None."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import render_prompt
@@ -758,8 +758,8 @@ class TestApplyCommitWithTopic:
         result = render_prompt("apply-commit", "test-topic")
         assert not result
 
-    def test_no_topic_fails_validation(self, tmp_path, monkeypatch):
-        """apply-commit without --topic returns None (no topic to render)."""
+    def test_no_spec_fails_validation(self, tmp_path, monkeypatch):
+        """apply-commit without --name returns None (no spec to render)."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _init_git_repo(repo)
@@ -781,10 +781,10 @@ class TestApplyCommitUserIdentity:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature", details="Implement X"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
 
         # Add user_name and user_email to meta.json
-        meta_path = topic_dir / "meta.json"
+        meta_path = spec_dir / "meta.json"
         meta_path.write_text(
             json.dumps({
                 "workdir": str(repo),
@@ -807,7 +807,7 @@ class TestApplyCommitUserIdentity:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature", details="Implement X"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import render_prompt
@@ -824,10 +824,10 @@ class TestApplyCommitUserIdentity:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature", details="Implement X"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
 
         # Write meta.json with explicit user identity
-        meta_path = topic_dir / "meta.json"
+        meta_path = spec_dir / "meta.json"
         meta_path.write_text(
             json.dumps({
                 "workdir": str(repo),
@@ -875,7 +875,7 @@ class TestModifySpecTemplate:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -896,7 +896,7 @@ class TestModifySpecTemplate:
         tasks = [
             _make_task("step-1", name="First step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -913,12 +913,12 @@ class TestModifySpecTemplate:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-spec", "--topic", "test-topic", "--stdin"],
+            ["prompt", "modify-spec", "--name", "test-topic", "--stdin"],
         )
         monkeypatch.setattr("sys.stdin", io.StringIO("Refactor the auth module"))
 
@@ -944,7 +944,7 @@ class TestModifyTodoTemplate:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -961,7 +961,7 @@ class TestModifyTodoTemplate:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
 
@@ -980,13 +980,13 @@ class TestModifyTodoTemplate:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1008,13 +1008,13 @@ class TestModifyTodoTemplate:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1032,13 +1032,13 @@ class TestModifyTodoTemplate:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
 
         monkeypatch.setattr(
             "sys.argv",
-            ["prompt", "modify-todo", "--topic", "test-topic"],
+            ["prompt", "modify-todo", "--name", "test-topic"],
         )
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
@@ -1061,12 +1061,12 @@ class TestCliApplyOneTask:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import cli_apply_one_task
 
-        cli_apply_one_task(["--topic", "test-topic", "--json"])
+        cli_apply_one_task(["--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1079,12 +1079,12 @@ class TestCliApplyOneTask:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import cli_apply_one_task
 
-        cli_apply_one_task(["--topic", "test-topic"])
+        cli_apply_one_task(["--name", "test-topic"])
 
         captured = capsys.readouterr()
         assert "task_id=step-1" in captured.err
@@ -1095,13 +1095,13 @@ class TestCliApplyOneTask:
         tasks = [
             _make_task("step-1", name="First step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import cli_apply_one_task
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_one_task(["--topic", "test-topic", "--json"])
+            cli_apply_one_task(["--name", "test-topic", "--json"])
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
@@ -1113,13 +1113,13 @@ class TestCliApplyOneTask:
         tasks = [
             _make_task("step-1", name="First step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import cli_apply_one_task
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_one_task(["--topic", "test-topic"])
+            cli_apply_one_task(["--name", "test-topic"])
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
@@ -1136,13 +1136,13 @@ class TestCliApplyCommit:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature", details="Implement X"),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
         from prompt import cli_apply_commit
 
-        cli_apply_commit(["--topic", "test-topic"])
+        cli_apply_commit(["--name", "test-topic"])
 
         captured = capsys.readouterr()
         assert "<current-task>" in captured.out
@@ -1153,14 +1153,14 @@ class TestCliApplyCommit:
         tasks = [
             _make_task("step-1", name="First step", completed=True),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
         from prompt import cli_apply_commit
 
         with pytest.raises(SystemExit) as exc_info:
-            cli_apply_commit(["--topic", "test-topic"])
+            cli_apply_commit(["--name", "test-topic"])
         assert exc_info.value.code == 0
 
 
@@ -1173,13 +1173,13 @@ class TestCliModifySpec:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Add caching support"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+        cli_modify_spec(["--name", "test-topic", "--stdin"])
 
         captured = capsys.readouterr()
         assert "Add caching support" in captured.out
@@ -1189,13 +1189,13 @@ class TestCliModifySpec:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Refactor module"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--json"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1209,14 +1209,14 @@ class TestCliModifySpec:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Update the spec"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone"])
 
         # Verify todo.json only contains completed tasks
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1232,13 +1232,13 @@ class TestCliModifySpec:
             _make_task("step-2", name="Second step", completed=False),
             _make_task("step-3", name="Third step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Revise the plan"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone", "--json"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1253,14 +1253,14 @@ class TestCliModifySpec:
             _make_task("step-1", name="First step", completed=False),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Start fresh"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin", "--remove-undone"])
+        cli_modify_spec(["--name", "test-topic", "--stdin", "--remove-undone"])
 
         # Verify todo.json is empty list
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1272,14 +1272,14 @@ class TestCliModifySpec:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", io.StringIO("Just modify spec"))
 
         from prompt import cli_modify_spec
 
-        cli_modify_spec(["--topic", "test-topic", "--stdin"])
+        cli_modify_spec(["--name", "test-topic", "--stdin"])
 
         # Verify todo.json is unchanged
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1297,14 +1297,14 @@ class TestCliModifyTodo:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        todo_path = topic_dir / "todo.json"
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        todo_path = spec_dir / "todo.json"
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
         from prompt import cli_modify_todo
 
-        cli_modify_todo(["--topic", "test-topic"])
+        cli_modify_todo(["--name", "test-topic"])
 
         # Verify todo.json only contains completed tasks
         data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -1317,13 +1317,13 @@ class TestCliModifyTodo:
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
         monkeypatch.setattr("sys.stdin", open("/dev/null"))
 
         from prompt import cli_modify_todo
 
-        cli_modify_todo(["--topic", "test-topic", "--json"])
+        cli_modify_todo(["--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -1339,12 +1339,12 @@ class TestMainRouting:
         tasks = [
             _make_task("step-1", name="First step", completed=False),
         ]
-        repo, topic_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
 
         from prompt import main
 
-        main(["apply-one-task", "--topic", "test-topic", "--json"])
+        main(["apply-one-task", "--name", "test-topic", "--json"])
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)

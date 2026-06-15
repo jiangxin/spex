@@ -18,7 +18,7 @@ from common import (
     load_and_validate_todo_json,
     local_iso_timestamp,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
     validate_unique_ids,
 )
 
@@ -187,7 +187,7 @@ def cmd_append(todo_path, is_xml, args):
 
     entry = {
         "id": args.id,
-        "name": args.name,
+        "name": args.step_name,
         "details": details,
         "completed_at": _resolve_completed_at(args.completed_at),
         "commit_title": args.commit_title,
@@ -211,8 +211,8 @@ def cmd_edit(todo_path, is_xml, args):
     found = False
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
-            if args.name is not None:
-                item["name"] = args.name
+            if args.step_name is not None:
+                item["name"] = args.step_name
             if details is not None:
                 item["details"] = details
             if args.completed_at is not None:
@@ -389,10 +389,10 @@ def _resolve_todo_path(args):
             is_xml = True
         return (todo_path, is_xml)
 
-    # --topic mode
-    topic_dir = resolve_topic_dir(args.topic)
+    # --name mode: resolve spec dir for todo file
+    spec_dir = resolve_spec_dir(args.name)
     filename = "todo.xml" if is_xml else "todo.json"
-    return (topic_dir / filename, is_xml)
+    return (spec_dir / filename, is_xml)
 
 
 def _build_parser():
@@ -406,7 +406,7 @@ def _build_parser():
     )
     locator = parser.add_mutually_exclusive_group()
     locator.add_argument(
-        "--topic", help="Resolve topic dir for todo file",
+        "--name", help="Resolve spec dir for todo file",
     )
     locator.add_argument(
         "--todo-file", help="Direct path to todo file",
@@ -437,7 +437,7 @@ def _build_parser():
         "--id", required=True, help="Task ID",
     )
     p_append.add_argument(
-        "--name", required=True, help="Task name",
+        "--step-name", required=True, help="Task name",
     )
     p_append.add_argument(
         "--details", default=None, help="Task details text",
@@ -465,7 +465,7 @@ def _build_parser():
         "--id", required=True, help="Task ID to edit",
     )
     p_edit.add_argument(
-        "--name", default=None, help="New task name",
+        "--step-name", default=None, help="New task name",
     )
     p_edit.add_argument(
         "--details", default=None, help="New details text",
@@ -559,9 +559,9 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         sys.exit(0)
 
-    if not args.topic and not args.todo_file:
+    if not args.name and not args.todo_file:
         logger.error(
-            "Error: one of the arguments --topic"
+            "Error: one of the arguments --name"
             " --todo-file is required.",
         )
         sys.exit(2)

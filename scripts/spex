@@ -16,17 +16,17 @@ _skill_dir = _scripts_dir.parent
 
 GROUPED_HELP = """\
 Commands (run directly):
-  archive [-n] [--topic <topic>]
-              Archive completed spec topics (--dry-run to preview)
+  archive [-n] [--name <name>]
+              Archive completed specs (--dry-run to preview)
   config [get] [--all] [var ...]
                 Show spex configuration variables
   init          Initialize spex environment
   list [--archives] [--all-projects]
-                List spec topics with progress
-  merge [topic]
+                List specs with progress
+  merge [name]
                 Merge a spex branch back to target (alias: submit)
   open          Open spec directory in file browser
-  show [topic]  Show detailed topic information (-l for brief)
+  show [name]   Show detailed spec information (-l for brief)
 
 Commands (LLM skill only — invoked via /spex, not directly):
   apply       Apply all steps of a spec (or apply-one-step for single step)
@@ -40,13 +40,13 @@ Internal commands (used by skill):
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  meta-helper <topic_name> [key] [value] [--stdin]
+  meta-helper <spec_name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
-  prompt <name> [--topic <topic>] [-o <file>]
+  prompt <template> [--name <name>] [-o <file>]
                 Render a Jinja2 template with metadata
-  run-hook <hook_name> --event-type <type> --topic <name>
+  run-hook <hook_name> --event-type <type> --name <name>
                 Execute a hook script with event data
-  todo-helper [--topic <name> | --todo-file <path>] [--xml] <subcmd>
+  todo-helper [--name <name> | --todo-file <path>] [--xml] <subcmd>
                 Operate on todo files (validate, append, edit, remove,
                 show, xml2json, json2xml)"""
 
@@ -66,14 +66,14 @@ def _run_archive(argv=None):
 
 
 def _run_show(argv=None):
-    """Show detailed topic information."""
+    """Show detailed spec information."""
     import show as spex_show
 
     spex_show.main(argv)
 
 
 def _run_open(argv=None):
-    """Open a topic directory in the system file browser."""
+    """Open a spec directory in the system file browser."""
     import open as spex_open
 
     spex_open.main(argv)
@@ -303,12 +303,12 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge [topic] [--no-archive] [-n/--dry-run]
+Usage: spex merge [name] [--no-archive] [-n/--dry-run]
 
 Merge a spex branch back to target.
 
 Positional arguments:
-  topic           Topic name (required)
+  name            Spec name
 
 Options:
   --no-archive    Skip automatic archiving after successful merge
@@ -322,14 +322,14 @@ def _run_merge(argv=None):
     import merge
 
     parser = ArgumentParser(prog="spex merge", usage=_MERGE_USAGE)
-    parser.add_argument("topic", nargs="?", default="")
+    parser.add_argument("name", nargs="?", default="")
     parser.add_argument("--no-archive", action="store_true")
     parser.add_argument("-n", "--dry-run", action="store_true")
     args = parser.parse(argv)
 
     submit_args = []
-    if args.topic:
-        submit_args.append(args.topic)
+    if args.name:
+        submit_args.append(args.name)
     if args.no_archive:
         submit_args.append("--no-archive")
     if args.dry_run:
@@ -368,14 +368,14 @@ def _run_init(argv=None):
 
 
 _RUN_HOOK_USAGE = """\
-Usage: spex run-hook <hook_name> --event-type <type> --topic <name>
+Usage: spex run-hook <hook_name> --event-type <type> --name <name>
        --json-payload '{"key": "value"}'
 
 Execute a hook script with event data.
 
 Options:
   --event-type <type>   Event type (required)
-  --topic <name>        Topic name
+  --name <name>         Spec name
   --json-payload <json> JSON payload string
   --workdir <path>      Working directory
   -h, --help            Show this help message and exit
@@ -391,7 +391,7 @@ def _run_hook(argv=None):
     parser = ArgumentParser(prog="spex run-hook", usage=_RUN_HOOK_USAGE)
     parser.add_argument("hook_name")
     parser.add_argument("--event-type")
-    parser.add_argument("--topic")
+    parser.add_argument("--name")
     parser.add_argument("--json-payload")
     parser.add_argument("--workdir")
     args = parser.parse(argv)
@@ -402,8 +402,8 @@ def _run_hook(argv=None):
         sys.exit(1)
 
     payload = json.loads(args.json_payload or "{}")
-    if args.topic:
-        payload = {**payload, "topic_name": args.topic}
+    if args.name:
+        payload = {**payload, "spec_name": args.name}
     event_data = hooks._build_event_data(args.event_type, payload,
                                          args.workdir)
     hooks.run_hook(args.hook_name, event_data, args.workdir)

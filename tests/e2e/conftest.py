@@ -153,9 +153,9 @@ def create_sample_topic(
     done: bool = False,
     cwd: Path | None = None,
 ) -> dict:
-    """Create a topic via spex CLI and optionally mark all tasks done.
+    """Create a spec via spex CLI and optionally mark all tasks done.
 
-    Returns the parsed JSON output from create-topic (topic_name, topic_path).
+    Returns the parsed JSON output from create-topic (spec_name, spec_path).
     """
     cmd_args = ["create-topic", "--json", name]
     if description:
@@ -165,9 +165,9 @@ def create_sample_topic(
     assert result.returncode == 0, f"create-topic failed: {result.stderr}"
 
     data = json.loads(result.stdout)
-    topic_path = Path(data["topic_path"])
+    spec_path = Path(data["spec_path"])
 
-    (topic_path / "spec.md").write_text(
+    (spec_path / "spec.md").write_text(
         f"# {name}\n\nTest spec.\n", encoding="utf-8",
     )
 
@@ -180,7 +180,7 @@ def create_sample_topic(
             item["completed_at"] = "2026-05-30T00:00:00"
             item["commit_title"] = f"abc1234: {item['name']}"
 
-    (topic_path / "todo.json").write_text(
+    (spec_path / "todo.json").write_text(
         json.dumps(todo, indent=2), encoding="utf-8",
     )
 

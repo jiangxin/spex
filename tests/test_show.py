@@ -10,9 +10,9 @@ from config import ProjectContext
 
 def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
                 subdir="specs", workdir="", main_worktree=""):
-    """Create a topic directory with optional spec and todo."""
-    topic_dir = tmp_path / subdir / name
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    """Create a spec directory with optional spec and todo."""
+    spec_dir = tmp_path / subdir / name
+    spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "created_at": "2026-05-20T10:00:00+08:00",
         "prompts": ["test"],
@@ -20,16 +20,16 @@ def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
     if workdir:
         meta["workdir"] = workdir
         meta["main_worktree"] = main_worktree or workdir
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(meta, indent=2), encoding="utf-8"
     )
     if spec_content:
-        (topic_dir / "spec.md").write_text(spec_content, encoding="utf-8")
+        (spec_dir / "spec.md").write_text(spec_content, encoding="utf-8")
     if todo:
-        (topic_dir / "todo.json").write_text(
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo, indent=2), encoding="utf-8"
         )
-    return topic_dir
+    return spec_dir
 
 
 def _make_ctx(top_workdir):
@@ -48,7 +48,7 @@ def _make_ctx(top_workdir):
 
 class TestFormatDefault:
     def test_shows_icon_progress_name(self, tmp_path):
-        topic_dir = _make_topic(
+        spec_dir = _make_topic(
             tmp_path,
             spec_content='---\ndescription: "A desc"\n---\n\n# Spec',
             todo=[
@@ -58,7 +58,7 @@ class TestFormatDefault:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = spex_show._format_default(topic_dir)
+        output = spex_show._format_default(spec_dir)
         lines = output.splitlines()
         assert "(1/2)" in lines[0]
         assert "my-topic" in lines[0]
@@ -67,8 +67,8 @@ class TestFormatDefault:
         assert "    step-2: Second" in output
 
     def test_no_spec_no_steps(self, tmp_path):
-        topic_dir = _make_topic(tmp_path)
-        output = spex_show._format_default(topic_dir)
+        spec_dir = _make_topic(tmp_path)
+        output = spex_show._format_default(spec_dir)
         assert "(0/0)" in output
         assert "step-" not in output
 
@@ -76,7 +76,7 @@ class TestFormatDefault:
 class TestFormatVerbose:
     def test_shows_spec_and_todo(self, tmp_path):
         spec = '---\nversion: "0.0.1"\n---\n\n# My Spec\n\nContent here.'
-        topic_dir = _make_topic(
+        spec_dir = _make_topic(
             tmp_path,
             spec_content=spec,
             todo=[
@@ -84,7 +84,7 @@ class TestFormatVerbose:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = spex_show._format_verbose(topic_dir)
+        output = spex_show._format_verbose(spec_dir)
         lines = output.splitlines()
         assert "(0/1)" in lines[0]
         assert "my-topic" in lines[0]
@@ -97,21 +97,21 @@ class TestFormatVerbose:
         assert "  Detail text" in output
 
     def test_no_spec_file(self, tmp_path):
-        topic_dir = _make_topic(tmp_path)
-        output = spex_show._format_verbose(topic_dir)
+        spec_dir = _make_topic(tmp_path)
+        output = spex_show._format_verbose(spec_dir)
         assert "(no spec.md found)" in output
 
     def test_no_todo(self, tmp_path):
         spec = '---\nversion: "0.0.1"\n---\n\n# Spec'
-        topic_dir = _make_topic(tmp_path, spec_content=spec)
-        output = spex_show._format_verbose(topic_dir)
+        spec_dir = _make_topic(tmp_path, spec_content=spec)
+        output = spex_show._format_verbose(spec_dir)
         assert "(no tasks)" in output
 
     def test_missing_meta_returns_error(self, tmp_path):
-        topic_dir = tmp_path / "specs" / "bad-topic"
-        topic_dir.mkdir(parents=True)
-        output = spex_show._format_verbose(topic_dir)
-        assert "(unable to load topic: bad-topic)" in output
+        spec_dir = tmp_path / "specs" / "bad-topic"
+        spec_dir.mkdir(parents=True)
+        output = spex_show._format_verbose(spec_dir)
+        assert "(unable to load spec: bad-topic)" in output
 
 
 class TestMain:
@@ -146,8 +146,8 @@ class TestMain:
         assert exc_info.value.code == 1
 
 
-class TestResolveTopic:
-    """Tests for resolve_topic: specs lookup, archive fallback, multi-match."""
+class TestResolveSpec:
+    """Tests for resolve_spec: specs lookup, archive fallback, multi-match."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -162,7 +162,7 @@ class TestResolveTopic:
         specs, _archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="my-feature", subdir="specs")
 
-        result = spex_common.resolve_topic("my-feature")
+        result = spex_common.resolve_spec("my-feature")
         assert result == specs / "my-feature"
 
     def test_no_fallback_without_flag(self, tmp_path, monkeypatch, caplog):
@@ -170,7 +170,7 @@ class TestResolveTopic:
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.resolve_topic("old-feature")
+            spex_common.resolve_spec("old-feature")
         assert exc_info.value.code == 1
         assert "--archives" in caplog.text
 
@@ -178,14 +178,14 @@ class TestResolveTopic:
         _specs, archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
-        result = spex_common.resolve_topic("old-feature", include_archives=True)
+        result = spex_common.resolve_spec("old-feature", include_archives=True)
         assert result == archives / "old-feature"
 
     def test_no_match_exits(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.resolve_topic("nonexistent")
+            spex_common.resolve_spec("nonexistent")
         assert exc_info.value.code == 1
 
     def test_multi_match_interactive(self, tmp_path, monkeypatch):
@@ -196,7 +196,7 @@ class TestResolveTopic:
         # Simulate user selecting "2" (second item in reverse-sorted list)
         monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
 
-        result = spex_common.resolve_topic("feature")
+        result = spex_common.resolve_spec("feature")
         # Reverse sorted: feature-beta=1, feature-alpha=2
         assert result == specs / "feature-alpha"
 
@@ -209,15 +209,15 @@ class TestResolveTopic:
         # Simulate user selecting "1"
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.resolve_topic("my-topic", include_archives=True)
+        result = spex_common.resolve_spec("my-topic", include_archives=True)
         # Reverse sorted: my-topic-old=1? No, my-topic > my-topic-old
         # Actually sorted reverse: my-topic-old, my-topic
         # Wait: reverse=True means descending, so my-topic-old > my-topic
         assert result.name in ("my-topic", "my-topic-old")
 
 
-class TestSelectTopicInteractive:
-    """Tests for select_topic_interactive with --archives and --all-projects."""
+class TestSelectSpecInteractive:
+    """Tests for select_spec_interactive with --archives and --all-projects."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -258,16 +258,16 @@ class TestSelectTopicInteractive:
         specs, _archives = self._setup(tmp_path, monkeypatch)
 
         # Only one related spec -> returns directly
-        result = spex_common.select_topic_interactive()
+        result = spex_common.select_spec_interactive()
         assert result == specs / "related-spec"
 
     def test_archives_includes_archived(self, tmp_path, monkeypatch):
         specs, archives = self._setup(tmp_path, monkeypatch)
 
-        # Two related topics (spec + archive) -> prompt selection
+        # Two related specs (spec + archive) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.select_topic_interactive(include_archives=True)
+        result = spex_common.select_spec_interactive(include_archives=True)
         assert result.name in ("related-spec", "related-archive")
 
     def test_all_projects_no_filter(self, tmp_path, monkeypatch):
@@ -276,7 +276,7 @@ class TestSelectTopicInteractive:
         # Two specs (related + other) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.select_topic_interactive(all_projects=True)
+        result = spex_common.select_spec_interactive(all_projects=True)
         assert result.name in ("related-spec", "other-spec")
 
     def test_no_topics_exits(self, tmp_path, monkeypatch):
@@ -291,7 +291,7 @@ class TestSelectTopicInteractive:
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.select_topic_interactive()
+            spex_common.select_spec_interactive()
         assert exc_info.value.code == 1
 
 
@@ -360,8 +360,8 @@ class TestPromptSelection:
         assert result == d1
 
 
-class TestSelectTopicInteractiveAllowEmpty:
-    """Tests for select_topic_interactive allow_empty behavior."""
+class TestSelectSpecInteractiveAllowEmpty:
+    """Tests for select_spec_interactive allow_empty behavior."""
 
     def test_no_topics_returns_none(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -374,7 +374,7 @@ class TestSelectTopicInteractiveAllowEmpty:
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
-        result = spex_common.select_topic_interactive(allow_empty=True)
+        result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None
 
     def test_empty_input_returns_none(self, tmp_path, monkeypatch):
@@ -405,5 +405,5 @@ class TestSelectTopicInteractiveAllowEmpty:
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
 
-        result = spex_common.select_topic_interactive(allow_empty=True)
+        result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None

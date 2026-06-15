@@ -11,12 +11,12 @@ import pytest
 SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta_helper.py")
 
 
-def _make_topic(tmp_path, topic_name, data):
-    """Create a topic directory with meta.json and return the meta path."""
+def _make_topic(tmp_path, spec_name, data):
+    """Create a spec directory with meta.json and return the meta path."""
     specs_dir = tmp_path / "specs"
-    topic_dir = specs_dir / topic_name
-    topic_dir.mkdir(parents=True)
-    meta_path = topic_dir / "meta.json"
+    spec_dir = specs_dir / spec_name
+    spec_dir.mkdir(parents=True)
+    meta_path = spec_dir / "meta.json"
     meta_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return meta_path
 
@@ -30,11 +30,11 @@ def _setup_spex_toml(tmp_path):
         )
 
 
-def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
+def _run_script(tmp_path, spec_name, key=None, value=None, stdin_flag=False,
                 input_data=None, add_images=None):
     """Run meta_helper.py as subprocess with .spex.toml pointing to tmp_path."""
     _setup_spex_toml(tmp_path)
-    args = [sys.executable, SCRIPT, topic_name]
+    args = [sys.executable, SCRIPT, spec_name]
     if key is not None:
         args.append(key)
     if value is not None:
@@ -200,17 +200,17 @@ class TestReadValueFromStdin:
 
 
 class TestErrorOnMissingTopic:
-    """Verify error when topic does not exist."""
+    """Verify error when spec does not exist."""
 
-    def test_missing_topic_exits_1(self, tmp_path):
+    def test_missing_spec_exits_1(self, tmp_path):
         (tmp_path / "specs").mkdir(parents=True)
 
         result = _run_script(tmp_path, "nonexistent", "key", "value")
 
         assert result.returncode == 1
-        assert "no topic matching" in result.stderr
+        assert "no spec matching" in result.stderr
 
-    def test_missing_topic_via_main(self, monkeypatch, tmp_path):
+    def test_missing_spec_via_main(self, monkeypatch, tmp_path):
         from config import ProjectContext
         (tmp_path / "specs").mkdir(parents=True)
         ctx = ProjectContext(
@@ -259,14 +259,14 @@ class TestGetMode:
 
     def test_get_all_keys(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "branch": "main",
         })
 
         result = _run_script(tmp_path, "my-topic")
 
         assert result.returncode == 0
-        assert "topic: my-topic" in result.stdout
+        assert "name: my-topic" in result.stdout
         assert "branch: main" in result.stdout
 
     def test_get_single_key(self, tmp_path):
@@ -296,25 +296,25 @@ class TestGetMode:
 
     def test_get_all_with_list(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {
-            "topic": "test",
+            "name": "test",
             "prompts": ["hello"],
         })
 
         result = _run_script(tmp_path, "my-topic")
 
         assert result.returncode == 0
-        assert "topic: test" in result.stdout
+        assert "name: test" in result.stdout
         assert "prompts:" in result.stdout
         assert "- hello" in result.stdout
 
 
 class TestSetKeyKnownFields:
-    """Verify that known TopicMeta fields use setattr, not extras."""
+    """Verify that known SpecMeta fields use setattr, not extras."""
 
     def test_set_known_field_branch(self, tmp_path):
         """Setting a known field updates it via setattr."""
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "branch": "old-branch",
         })
 
@@ -327,7 +327,7 @@ class TestSetKeyKnownFields:
 
     def test_set_unknown_field_goes_to_extras(self, tmp_path):
         """Setting an unknown field stores it (appears in output JSON)."""
-        _make_topic(tmp_path, "my-topic", {"topic": "my-topic"})
+        _make_topic(tmp_path, "my-topic", {"name": "my-topic"})
 
         result = _run_script(
             tmp_path, "my-topic", "custom_flag", "enabled",
@@ -341,7 +341,7 @@ class TestSetKeyKnownFields:
     def test_set_preserves_field_order(self, tmp_path):
         """Known fields appear in canonical order after set."""
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "workdir": "/work",
             "main_worktree": "/work",
             "remote_url": "",
@@ -361,13 +361,13 @@ class TestSetKeyKnownFields:
         output = json.loads(result.stdout)
         keys = list(output.keys())
         assert keys.index("branch") < keys.index("prompts")
-        assert keys.index("topic") < keys.index("branch")
+        assert keys.index("name") < keys.index("branch")
         assert output["branch"] == "feature-x"
 
     def test_roundtrip_preserves_json_format(self, tmp_path):
         """Write-then-read roundtrip preserves all fields."""
         original = {
-            "topic": "rt-topic",
+            "name": "rt-topic",
             "workdir": "/work",
             "main_worktree": "/work",
             "remote_url": "git@example.com:repo.git",
@@ -389,7 +389,7 @@ class TestSetKeyKnownFields:
         meta_path = tmp_path / "specs" / "rt-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
         assert data["user_name"] == "NewDev"
-        assert data["topic"] == "rt-topic"
+        assert data["name"] == "rt-topic"
         assert data["description"] == "A description"
         assert data["spex_branch"] == "spex/rt-topic"
         assert data["prompts"] == ["initial"]

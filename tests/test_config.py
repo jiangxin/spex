@@ -1068,13 +1068,13 @@ class TestIsRelatedTo:
         )
 
     def test_top_workdir_matches(self, tmp_path):
-        """top_workdir matches topic's workdir -> True."""
+        """top_workdir matches spec's workdir -> True."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
         topic_dict = {"workdir": str(tmp_path), "main_worktree": ""}
         assert ctx.is_related_to(topic_dict) is True
 
     def test_main_worktree_matches(self, tmp_path):
-        """main_worktree matches topic's main_worktree -> True."""
+        """main_worktree matches spec's main_worktree -> True."""
         other = tmp_path / "other"
         other.mkdir()
         ctx = self._make_ctx(top_workdir=other, main_worktree=tmp_path)
@@ -1099,7 +1099,7 @@ class TestIsRelatedTo:
         assert ctx.is_related_to(topic_dict) is True
 
     def test_topic_workdir_empty(self, tmp_path):
-        """Topic's workdir is empty string -> True."""
+        """Spec's workdir is empty string -> True."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
         topic_dict = {"workdir": "", "main_worktree": ""}
         assert ctx.is_related_to(topic_dict) is True
@@ -1121,35 +1121,35 @@ class TestIsRelatedTo:
         assert ctx.is_related_to(FakeMeta()) is True
 
     def test_accepts_topic_with_meta_attribute(self, tmp_path):
-        """Accepts Topic-like object with .meta attribute."""
+        """Accepts Spec-like object with .meta attribute."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
 
         class FakeMeta:
             workdir = str(tmp_path)
             main_worktree = str(tmp_path)
 
-        class FakeTopic:
+        class FakeSpec:
             meta = FakeMeta()
 
-        assert ctx.is_related_to(FakeTopic()) is True
+        assert ctx.is_related_to(FakeSpec()) is True
 
     def test_accepts_path(self, tmp_path):
         """Accepts Path as parameter (reads meta.json from directory)."""
         import json
 
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         meta = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
-        (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        (spec_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
-        assert ctx.is_related_to(topic_dir) is True
+        assert ctx.is_related_to(spec_dir) is True
 
     def test_path_with_no_meta_json(self, tmp_path):
         """Path with no meta.json returns True (no filtering possible)."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
-        topic_dir = tmp_path / "empty-topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "empty-topic"
+        spec_dir.mkdir()
 
-        assert ctx.is_related_to(topic_dir) is True
+        assert ctx.is_related_to(spec_dir) is True
 

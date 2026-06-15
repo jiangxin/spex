@@ -3,12 +3,12 @@ from pathlib import Path
 
 import common as common_mod
 import pytest
-from common import Topic, TopicMeta, get_todo_progress, load_meta
+from common import Spec, SpecMeta, get_todo_progress, load_meta
 from config import ProjectContext
 from list import (  # noqa: A004
     _wrap_text,
-    collect_topics,
-    filter_topics,
+    collect_specs,
+    filter_specs,
     format_json_output,
     format_output,
     format_verbose_output,
@@ -17,30 +17,30 @@ from list import (  # noqa: A004
 )
 
 
-def _make_meta(topic_dir, created_at="2026-05-20T10:00:00+08:00",
+def _make_meta(spec_dir, created_at="2026-05-20T10:00:00+08:00",
                prompts=None):
-    """Create a meta.json file in topic_dir."""
+    """Create a meta.json file in spec_dir."""
     if prompts is None:
         prompts = ["some prompt text"]
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.mkdir(parents=True, exist_ok=True)
     data = {"created_at": created_at, "prompts": prompts}
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(data), encoding="utf-8"
     )
 
 
-def _make_prompt_log(topic_dir, timestamp="2026-05-20T10:00:00+08:00",
+def _make_prompt_log(spec_dir, timestamp="2026-05-20T10:00:00+08:00",
                      prompt="some prompt text"):
-    """Create a prompt.log file in topic_dir."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    """Create a prompt.log file in spec_dir."""
+    spec_dir.mkdir(parents=True, exist_ok=True)
     content = f'**[{timestamp}]**\n\n```prompt\n    {prompt}\n```\n'
-    (topic_dir / "prompt.log").write_text(content, encoding="utf-8")
+    (spec_dir / "prompt.log").write_text(content, encoding="utf-8")
 
 
-def _make_todo(topic_dir, tasks):
-    """Create a todo.json file in topic_dir."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
-    (topic_dir / "todo.json").write_text(
+def _make_todo(spec_dir, tasks):
+    """Create a todo.json file in spec_dir."""
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    (spec_dir / "todo.json").write_text(
         json.dumps(tasks), encoding="utf-8"
     )
 
@@ -57,10 +57,10 @@ def _task(task_id, completed=True):
 
 class TestLoadMeta:
     def test_normal_read(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        _make_meta(topic, "2026-05-24T20:00:00+08:00", ["hello world"])
+        spec = tmp_path / "my-topic"
+        _make_meta(spec, "2026-05-24T20:00:00+08:00", ["hello world"])
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
         assert result.created_at == "2026-05-24T20:00:00+08:00"
         assert result.prompts == ["hello world"]
@@ -69,41 +69,41 @@ class TestLoadMeta:
         assert load_meta(tmp_path / "nonexistent") is None
 
     def test_invalid_json(self, tmp_path):
-        topic = tmp_path / "bad"
-        topic.mkdir(parents=True)
-        (topic / "meta.json").write_text("not json", encoding="utf-8")
+        spec = tmp_path / "bad"
+        spec.mkdir(parents=True)
+        (spec / "meta.json").write_text("not json", encoding="utf-8")
 
-        assert load_meta(topic) is None
+        assert load_meta(spec) is None
 
     def test_empty_prompts(self, tmp_path):
-        topic = tmp_path / "empty"
-        _make_meta(topic, "2026-05-24T20:00:00+08:00", [])
+        spec = tmp_path / "empty"
+        _make_meta(spec, "2026-05-24T20:00:00+08:00", [])
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
         assert result.created_at == "2026-05-24T20:00:00+08:00"
         assert result.prompts == []
 
     def test_missing_fields(self, tmp_path):
-        from common import TopicMeta
+        from common import SpecMeta
 
-        topic = tmp_path / "minimal"
-        topic.mkdir(parents=True)
-        (topic / "meta.json").write_text("{}", encoding="utf-8")
+        spec = tmp_path / "minimal"
+        spec.mkdir(parents=True)
+        (spec / "meta.json").write_text("{}", encoding="utf-8")
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
-        assert isinstance(result, TopicMeta)
-        assert result.topic == ""
+        assert isinstance(result, SpecMeta)
+        assert result.name == ""
         assert result.prompts == []
 
 
 class TestParsePromptLog:
     def test_normal_parse(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        _make_prompt_log(topic, "2026-05-20T18:00:00+08:00", "hello world")
+        spec = tmp_path / "my-topic"
+        _make_prompt_log(spec, "2026-05-20T18:00:00+08:00", "hello world")
 
-        ts, prompt = parse_prompt_log(topic / "prompt.log")
+        ts, prompt = parse_prompt_log(spec / "prompt.log")
 
         assert ts == "2026-05-20T18:00:00+08:00"
         assert prompt == "hello world"
@@ -115,8 +115,8 @@ class TestParsePromptLog:
         assert prompt == ""
 
     def test_multiline_prompt(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        topic.mkdir(parents=True)
+        spec = tmp_path / "my-topic"
+        spec.mkdir(parents=True)
         content = (
             "**[2026-05-20T10:00:00+08:00]**\n\n"
             "```prompt\n"
@@ -124,9 +124,9 @@ class TestParsePromptLog:
             "    line two\n"
             "```\n"
         )
-        (topic / "prompt.log").write_text(content, encoding="utf-8")
+        (spec / "prompt.log").write_text(content, encoding="utf-8")
 
-        ts, prompt = parse_prompt_log(topic / "prompt.log")
+        ts, prompt = parse_prompt_log(spec / "prompt.log")
 
         assert ts == "2026-05-20T10:00:00+08:00"
         assert prompt == "line one line two"
@@ -134,16 +134,16 @@ class TestParsePromptLog:
 
 class TestGetTodoProgress:
     def test_all_done(self, tmp_path):
-        topic = tmp_path / "t"
-        _make_todo(topic, [_task("1"), _task("2")])
+        spec = tmp_path / "t"
+        _make_todo(spec, [_task("1"), _task("2")])
 
-        assert get_todo_progress(topic) == (2, 2)
+        assert get_todo_progress(spec) == (2, 2)
 
     def test_partial(self, tmp_path):
-        topic = tmp_path / "t"
-        _make_todo(topic, [_task("1"), _task("2", completed=False)])
+        spec = tmp_path / "t"
+        _make_todo(spec, [_task("1"), _task("2", completed=False)])
 
-        assert get_todo_progress(topic) == (1, 2)
+        assert get_todo_progress(spec) == (1, 2)
 
     def test_missing_file(self, tmp_path):
         assert get_todo_progress(tmp_path / "no-topic") == (0, 0)
@@ -155,27 +155,27 @@ class TestFormatOutput:
 
     def test_sort_descending(self):
         p = Path("/tmp")
-        topics = [
-            Topic(name="older", path=p,
-                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+        specs = [
+            Spec(name="older", path=p,
+                  meta=SpecMeta(created_at="2026-05-01T10:00:00+08:00",
                                  prompts=["old"]),
                   done=1, total=2),
-            Topic(name="newer", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="newer", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["new"]),
                   done=0, total=1),
         ]
-        output = format_output(topics)
+        output = format_output(specs)
         lines = output.splitlines()
         assert "newer" in lines[0]
         assert "older" in lines[1]
 
-    def test_topic_truncation(self):
+    def test_spec_name_truncation(self):
         p = Path("/tmp")
         long_name = "a" * 40
         topics = [
-            Topic(name=long_name, path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name=long_name, path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"]),
                   done=0, total=1),
         ]
@@ -186,8 +186,8 @@ class TestFormatOutput:
     def test_line_width_limit(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x" * 200]),
                   done=1, total=3),
         ]
@@ -203,10 +203,10 @@ class TestCollectTopics:
         _make_meta(topic, "2026-05-20T10:00:00+08:00", ["hello"])
         _make_todo(topic, [_task("1", completed=False)])
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 1
-        assert isinstance(result[0], Topic)
+        assert isinstance(result[0], Spec)
         assert result[0].name == "my-topic"
         assert result[0].done == 0
         assert result[0].total == 1
@@ -218,7 +218,7 @@ class TestCollectTopics:
         _make_meta(topic, "2026-05-24T20:00:00+08:00", ["from meta"])
         _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "from log")
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 1
         assert result[0].created_at == "2026-05-24T20:00:00+08:00"
@@ -229,7 +229,7 @@ class TestCollectTopics:
         topic = specs / "old-topic"
         _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "legacy prompt")
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 0
 
@@ -246,7 +246,7 @@ class TestCollectTopics:
             json.dumps(data), encoding="utf-8"
         )
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert result[0].workdir == "/home/user/project-a"
 
@@ -255,8 +255,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_false(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/bar"),
                   done=0, total=1),
         ]
@@ -266,8 +266,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_true_short_name(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/bar"),
                   done=0, total=1),
         ]
@@ -277,8 +277,8 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_true_long_name(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["x"],
                                  workdir="/foo/my-very-long-project-name"),
                   done=0, total=1),
@@ -289,12 +289,12 @@ class TestFormatOutputRepoPrefix:
     def test_show_repo_alignment(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-21T10:00:00+08:00",
                                  prompts=["x"], workdir="/foo/ab"),
                   done=0, total=1),
-            Topic(name="topic-b", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-b", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["y"],
                                  workdir="/foo/longername"),
                   done=1, total=1),
@@ -311,8 +311,8 @@ class TestDescriptionDisplay:
     def test_description_shown_over_prompt(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["old prompt"],
                                  description="Better description"),
                   done=0, total=1),
@@ -324,8 +324,8 @@ class TestDescriptionDisplay:
     def test_prompt_fallback_when_no_description(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["fallback prompt"]),
                   done=0, total=1),
         ]
@@ -335,15 +335,15 @@ class TestDescriptionDisplay:
     def test_prompt_fallback_when_description_missing(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="topic-a", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-a", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["shown prompt"]),
                   done=0, total=1),
         ]
         output = format_output(topics)
         assert "shown prompt" in output
 
-    def test_collect_topics_includes_description(self, tmp_path):
+    def test_collect_specs_includes_description(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "my-topic"
         topic.mkdir(parents=True)
@@ -353,21 +353,21 @@ class TestDescriptionDisplay:
             '---\ndescription: "From spec"\n---\n\n# Spec',
             encoding="utf-8",
         )
-        topics = collect_topics([specs])
+        topics = collect_specs([specs])
         assert topics[0].description == "From spec"
 
 
 class TestVerboseOutput:
     def test_level1_brackets_and_description(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Full description text here"\n---\n',
             encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["old prompt"],
                                  description="Full description text here"),
                   done=1, total=3),
@@ -379,11 +379,11 @@ class TestVerboseOutput:
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["fallback prompt"]),
                   done=0, total=1),
         ]
@@ -405,12 +405,12 @@ class TestVerboseOutput:
             '---\ndescription: "D2"\n---\n', encoding="utf-8",
         )
         topics = [
-            Topic(name="topic-a", path=dir1,
-                  meta=TopicMeta(created_at="2026-05-21T10:00:00+08:00",
+            Spec(name="topic-a", path=dir1,
+                  meta=SpecMeta(created_at="2026-05-21T10:00:00+08:00",
                                  prompts=["p1"], description="D1"),
                   done=0, total=1),
-            Topic(name="topic-b", path=dir2,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="topic-b", path=dir2,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p2"], description="D2"),
                   done=1, total=1),
         ]
@@ -418,37 +418,37 @@ class TestVerboseOutput:
         assert "\n\n" in output
 
     def test_level1_word_wrap(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         long_desc = "word " * 20  # 100 chars
-        (topic_dir / "spec.md").write_text(
+        (spec_dir / "spec.md").write_text(
             f'---\ndescription: "{long_desc.strip()}"\n---\n',
             encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  description=long_desc.strip()),
                   done=0, total=1),
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic doesn't wrap -- description is raw from spec front-matter
+        # format_spec doesn't wrap -- description is raw from spec front-matter
         assert any("word word" in line for line in lines[1:])
 
     def test_level2_shows_steps(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
-        _make_todo(topic_dir, [
+        _make_todo(spec_dir, [
             _task("step-1", completed=True),
             _task("step-2", completed=False),
         ])
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["some prompt"],
                                  description="Desc"),
                   done=1, total=2),
@@ -462,14 +462,14 @@ class TestVerboseOutput:
         assert "step-2:" in lines[4]
 
     def test_level2_no_steps_when_no_todo(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="Desc"),
                   done=0, total=0),
         ]
@@ -479,11 +479,11 @@ class TestVerboseOutput:
         assert "step-" not in output
 
     def test_level3_hint_message(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         topics = [
-            Topic(name="my-topic", path=topic_dir,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=spec_dir,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="D"),
                   done=0, total=1),
         ]
@@ -587,86 +587,86 @@ class TestJsonOutput:
     def test_json_single_topic(self):
         p = Path("/tmp/my-topic")
         topics = [
-            Topic(name="my-topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"]),
                   done=0, total=1),
         ]
         result = json.loads(format_json_output(topics))
-        assert result == [{"topic_name": "my-topic", "topic_path": "/tmp/my-topic"}]
+        assert result == [{"spec_name": "my-topic", "spec_path": "/tmp/my-topic"}]
 
     def test_json_multiple_topics_sorted(self):
         p = Path("/tmp")
         topics = [
-            Topic(name="older", path=p / "older",
-                  meta=TopicMeta(created_at="2026-05-01T10:00:00+08:00",
+            Spec(name="older", path=p / "older",
+                  meta=SpecMeta(created_at="2026-05-01T10:00:00+08:00",
                                  prompts=["old"]),
                   done=0, total=1),
-            Topic(name="newer", path=p / "newer",
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="newer", path=p / "newer",
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["new"]),
                   done=0, total=1),
         ]
         result = json.loads(format_json_output(topics))
-        assert result[0]["topic_name"] == "newer"
-        assert result[1]["topic_name"] == "older"
+        assert result[0]["spec_name"] == "newer"
+        assert result[1]["spec_name"] == "older"
 
     def test_json_only_required_fields(self):
         p = Path("/tmp/my-topic")
         topics = [
-            Topic(name="my-topic", path=p,
-                  meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            Spec(name="my-topic", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["test"],
                                  description="Some description"),
                   done=1, total=2),
         ]
         result = json.loads(format_json_output(topics))
         for obj in result:
-            assert set(obj.keys()) == {"topic_name", "topic_path"}
+            assert set(obj.keys()) == {"spec_name", "spec_path"}
 
 
 class TestFilterTopics:
     def _topic(self, name):
-        return Topic(
+        return Spec(
             name=name, path=Path("/tmp") / name,
-            meta=TopicMeta(created_at="2026-05-20T10:00:00+08:00",
+            meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                            prompts=["test"]),
             done=0, total=1,
         )
 
     def test_no_patterns_returns_all(self):
         topics = [self._topic("alpha"), self._topic("beta")]
-        result = filter_topics(topics, [])
+        result = filter_specs(topics, [])
         assert len(result) == 2
 
     def test_substring_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["json"])
+        result = filter_specs(topics, ["json"])
         assert len(result) == 1
 
     def test_substring_no_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["xyz"])
+        result = filter_specs(topics, ["xyz"])
         assert len(result) == 0
 
     def test_glob_match_star(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["*-json-*"])
+        result = filter_specs(topics, ["*-json-*"])
         assert len(result) == 1
 
     def test_glob_match_question(self):
         topics = [self._topic("list")]
-        result = filter_topics(topics, ["lis?"])
+        result = filter_specs(topics, ["lis?"])
         assert len(result) == 1
 
     def test_regex_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^list-.*output$"])
+        result = filter_specs(topics, ["^list-.*output$"])
         assert len(result) == 1
 
     def test_regex_no_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^xyz"])
+        result = filter_specs(topics, ["^xyz"])
         assert len(result) == 0
 
     def test_multiple_patterns_or_logic(self):
@@ -675,14 +675,14 @@ class TestFilterTopics:
             self._topic("e2e-test-create"),
             self._topic("other-topic"),
         ]
-        result = filter_topics(topics, ["json", "test"])
+        result = filter_specs(topics, ["json", "test"])
         assert len(result) == 2
         names = {t.name for t in result}
         assert names == {"list-json-output", "e2e-test-create"}
 
     def test_invalid_regex_skipped(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^[invalid"])
+        result = filter_specs(topics, ["^[invalid"])
         assert len(result) == 0
 
 
@@ -699,11 +699,11 @@ class TestMainJsonFlag:
         project_workdir = str(tmp_path / "project-a")
         other_workdir = str(tmp_path / "project-b")
 
-        # Related topics (same workdir as project context)
+        # Related specs (same workdir as project context)
         _setup_topic(specs / "related-spec", project_workdir)
         _setup_topic(archives / "related-archive", project_workdir)
 
-        # Unrelated topics (different workdir)
+        # Unrelated specs (different workdir)
         _setup_topic(specs / "other-spec", other_workdir)
         _setup_topic(archives / "other-archive", other_workdir)
 
@@ -722,7 +722,7 @@ class TestMainJsonFlag:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "related-spec" in names
 
     def test_main_json_with_archives(self, tmp_path, monkeypatch, capsys):
@@ -732,7 +732,7 @@ class TestMainJsonFlag:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "related-spec" in names
         assert "related-archive" in names
 
@@ -767,17 +767,17 @@ class TestWrapText:
         assert result == "    " + text
 
 
-def _setup_topic(topic_dir, workdir, main_worktree=None):
-    """Create a topic directory with meta.json and todo.json."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
+def _setup_topic(spec_dir, workdir, main_worktree=None):
+    """Create a spec directory with meta.json and todo.json."""
+    spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "created_at": "2026-05-20T10:00:00+08:00",
-        "prompts": ["prompt for " + topic_dir.name],
+        "prompts": ["prompt for " + spec_dir.name],
         "workdir": workdir,
         "main_worktree": main_worktree or workdir,
     }
-    (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    (topic_dir / "todo.json").write_text("[]", encoding="utf-8")
+    (spec_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (spec_dir / "todo.json").write_text("[]", encoding="utf-8")
 
 
 def _make_project_context(top_workdir, main_worktree=None):
@@ -883,11 +883,11 @@ class TestMainFlags:
         project_workdir = str(tmp_path / "project-a")
         other_workdir = str(tmp_path / "project-b")
 
-        # Related topics (same workdir as project context)
+        # Related specs (same workdir as project context)
         _setup_topic(specs / "related-spec", project_workdir)
         _setup_topic(archives / "related-archive", project_workdir)
 
-        # Unrelated topics (different workdir)
+        # Unrelated specs (different workdir)
         _setup_topic(specs / "other-spec", other_workdir)
         _setup_topic(archives / "other-archive", other_workdir)
 
@@ -1058,7 +1058,7 @@ class TestDoneUndoneFilter:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        names = [t["topic_name"] for t in result]
+        names = [t["spec_name"] for t in result]
         assert "done-topic" in names
         assert "undone-topic" not in names
 

@@ -11,55 +11,55 @@ from pathlib import Path
 from cli import ArgumentParser
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
-    TopicMeta,
+    SpecMeta,
     atomic_write_json,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
     strip_date_prefix,
     wrap_text,
 )
 
-TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
+SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
-MAX_TOPIC_BYTES = 64
+MAX_SPEC_NAME_BYTES = 64
 
 
-def create_topic(topic, specs_dir, auto_prefix=True):
-    """Create a topic directory under specs_dir.
+def create_spec(spec, specs_dir, auto_prefix=True):
+    """Create a spec directory under specs_dir.
 
-    Returns (topic_name, topic_dir) tuple.
-    Raises ValueError on invalid input, FileExistsError if topic exists.
+    Returns (spec_name, spec_dir) tuple.
+    Raises ValueError on invalid input, FileExistsError if spec exists.
     """
     specs_dir = Path(specs_dir)
 
-    if not DATE_PREFIX_PATTERN.match(topic) and auto_prefix:
+    if not DATE_PREFIX_PATTERN.match(spec) and auto_prefix:
         prefix = datetime.now().strftime("%Y-%m-%d-%H-%M")
-        topic = f"{prefix}-{topic}"
+        spec = f"{prefix}-{spec}"
 
-    if not TOPIC_PATTERN.match(topic):
+    if not SPEC_NAME_PATTERN.match(spec):
         raise ValueError(
-            f"invalid topic name '{topic}'. "
+            f"invalid spec name '{spec}'. "
             "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
         )
 
-    if len(topic.encode("utf-8")) > MAX_TOPIC_BYTES:
-        raise ValueError(f"topic name '{topic}' exceeds {MAX_TOPIC_BYTES} bytes.")
+    if len(spec.encode("utf-8")) > MAX_SPEC_NAME_BYTES:
+        raise ValueError(f"spec name '{spec}' exceeds {MAX_SPEC_NAME_BYTES} bytes.")
 
-    topic_dir = specs_dir / topic
-    if topic_dir.exists():
-        raise FileExistsError(f"'{topic}' already exists, use a different name.")
+    spec_dir = specs_dir / spec
+    if spec_dir.exists():
+        raise FileExistsError(f"'{spec}' already exists, use a different name.")
 
     specs_dir.mkdir(parents=True, exist_ok=True)
-    topic_dir.mkdir()
-    return (topic, topic_dir)
+    spec_dir.mkdir()
+    return (spec, spec_dir)
 
 
-def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
-    """Write meta.json into topic_dir with project context and prompt."""
+def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
+    """Write meta.json into spec_dir with project context and prompt."""
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
-    meta = TopicMeta(
-        topic=strip_date_prefix(Path(topic_dir).name),
+    meta = SpecMeta(
+        name=strip_date_prefix(Path(spec_dir).name),
         workdir=workdir,
         main_worktree=main_worktree,
         remote_url=ctx.remote_url,
@@ -70,7 +70,7 @@ def _write_meta(topic_dir, ctx, prompt, timestamp, description=""):
         prompts=[{"text": prompt, "timestamp": timestamp}] if prompt else [],
         description=wrap_text(description) if description else "",
     )
-    meta_path = Path(topic_dir) / "meta.json"
+    meta_path = Path(spec_dir) / "meta.json"
     atomic_write_json(meta_path, meta.to_dict())
 
 
@@ -140,7 +140,7 @@ def cli_create_validate() -> None:
 
 
 def _do_prepare_spec(args):
-    """Create topic directory and return JSON with metadata."""
+    """Create spec directory and return JSON with metadata."""
     import json
 
     import config as cfg
@@ -150,27 +150,27 @@ def _do_prepare_spec(args):
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
-        topic_name, topic_dir = create_topic(args.topic, specs_dir)
+        spec_name, spec_dir = create_spec(args.name, specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
 
     ctx = cfg.get_project_context()
     timestamp = local_iso_timestamp()
-    _write_meta(topic_dir, ctx, prompt, timestamp, args.description)
+    _write_meta(spec_dir, ctx, prompt, timestamp, args.description)
 
     import prompt as prompt_mod
 
     result = {
-        "topic_name": topic_name,
-        "topic_path": str(topic_dir),
-        "spec_template": prompt_mod.render_prompt("spec-template", topic_name),
+        "spec_name": spec_name,
+        "spec_path": str(spec_dir),
+        "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
     }
     print(json.dumps(result, indent=2))
 
 
 def cli_prepare_spec(argv=None):
-    """CLI: create topic directory and return JSON with metadata."""
+    """CLI: create spec directory and return JSON with metadata."""
 
     args = _build_parser().parse(["prepare-spec"] + (argv or []))
     _do_prepare_spec(args)
@@ -182,7 +182,7 @@ REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 def _do_post_action(args):
     """Validate todo.json and trigger post-action hook."""
     from common import (
-        TopicMeta,
+        SpecMeta,
         load_and_validate_todo_json,
         load_meta,
         parse_front_matter_description,
@@ -190,8 +190,8 @@ def _do_post_action(args):
     )
     from config import get_project_context
 
-    topic_dir = resolve_topic_dir(args.topic)
-    json_path = topic_dir / "todo.json"
+    spec_dir = resolve_spec_dir(args.name)
+    json_path = spec_dir / "todo.json"
 
     if not json_path.is_file():
         logger.error(f"Error: {json_path} not found.")
@@ -210,21 +210,21 @@ def _do_post_action(args):
     logger.info(f"OK: {len(data)} step(s) validated.")
 
     # Update description from spec.md front-matter
-    spec_path = topic_dir / "spec.md"
+    spec_path = spec_dir / "spec.md"
     if spec_path.is_file():
         spec_content = spec_path.read_text(encoding="utf-8")
         desc = parse_front_matter_description(spec_content)
         if desc:
-            meta_path = topic_dir / "meta.json"
-            meta_data = load_meta(topic_dir) or TopicMeta()
+            meta_path = spec_dir / "meta.json"
+            meta_data = load_meta(spec_dir) or SpecMeta()
             meta_data.description = wrap_text(desc)
             atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
 
-    meta = load_meta(topic_dir)
-    topic_name = (meta.topic if meta else "") or (
-        strip_date_prefix(topic_dir.name)
+    meta = load_meta(spec_dir)
+    spec_name = (meta.name if meta else "") or (
+        strip_date_prefix(spec_dir.name)
     )
     ctx = get_project_context()
     workdir = (meta.workdir if meta else "") or (
@@ -237,9 +237,9 @@ def _do_post_action(args):
     undone = len(data) - done
     hooks.run_post_action(
         args.event_type,
-        {"topic": topic_name, "done": done, "undone": undone},
+        {"spec": spec_name, "done": done, "undone": undone},
         workdir or None,
-        topic_name,
+        spec_name,
     )
 
 
@@ -267,12 +267,12 @@ def _build_parser():
     p_prepare = subs.add_parser(
         "prepare-spec",
         description=(
-            "Create topic directory and return JSON metadata."
+            "Create spec directory and return JSON metadata."
         ),
-        help="Create topic directory and return JSON metadata",
+        help="Create spec directory and return JSON metadata",
     )
     p_prepare.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
     p_prepare.add_argument(
         "--description", default="",
@@ -287,7 +287,7 @@ def _build_parser():
         help="Validate todo.json and run post-action hook",
     )
     p_post.add_argument(
-        "--topic", required=True, help="Topic name",
+        "--name", required=True, help="Spec name",
     )
     p_post.add_argument(
         "--event-type", default="create",

@@ -19,10 +19,10 @@ def _build_submit_parser() -> ArgumentParser:
         description="Submit (merge) a spex branch back to the target branch.",
     )
     parser.add_argument(
-        "topic",
+        "name",
         nargs="?",
         default="",
-        help="Topic name to submit",
+        help="Spec name to submit",
     )
     parser.add_argument(
         "--no-archive",
@@ -37,20 +37,20 @@ def _build_submit_parser() -> ArgumentParser:
     return parser
 
 
-def _find_submittable_topics(ctx):
-    """Find topics ready to submit: all tasks done + has spex_branch."""
+def _find_submittable_specs(ctx):
+    """Find specs ready to submit: all tasks done + has spex_branch."""
     import common
-    from common import Topic, find_completed_topics
+    from common import Spec, find_completed_specs
 
     specs_dir = common.get_specs_dir()
-    completed = find_completed_topics(specs_dir, ctx, force=True)
+    completed = find_completed_specs(specs_dir, ctx, force=True)
     results = []
     for d in completed:
         meta = common.load_meta(d)
         if meta and meta.spex_branch:
-            topic = Topic.from_dir(d)
-            if topic is not None:
-                results.append(topic)
+            spec = Spec.from_dir(d)
+            if spec is not None:
+                results.append(spec)
     return results
 
 
@@ -63,45 +63,45 @@ def cli_submit(argv=None) -> None:
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
-    topic_name = parsed.topic
+    spec_name = parsed.name
 
     ctx = cfg.get_project_context()
     conf = ctx.config
 
-    if not topic_name:
-        candidates = _find_submittable_topics(ctx)
+    if not spec_name:
+        candidates = _find_submittable_specs(ctx)
         if not candidates:
-            logger.error("No submittable topics found.")
+            logger.error("No submittable specs found.")
             sys.exit(1)
         elif len(candidates) == 1:
-            topic_dir = candidates[0].path
-            topic_name = candidates[0].name
-            logger.error("Auto-selected: %s", topic_name)
+            spec_dir = candidates[0].path
+            spec_name = candidates[0].name
+            logger.error("Auto-selected: %s", spec_name)
         else:
             from common import prompt_selection
 
             selected = prompt_selection(candidates)
-            topic_dir = selected.path
-            topic_name = selected.name
+            spec_dir = selected.path
+            spec_name = selected.name
     else:
-        topic_dir = common.resolve_topic_dir(topic_name)
+        spec_dir = common.resolve_spec_dir(spec_name)
 
-    if not ctx.is_related_to(topic_dir):
-        meta = common.load_meta(topic_dir)
+    if not ctx.is_related_to(spec_dir):
+        meta = common.load_meta(spec_dir)
         workdir = meta.workdir if meta else "(unknown)"
         logger.error(
-            "Error: topic '%s' is not related to current project, "
-            "it is associated with %s", topic_name, workdir
+            "Error: spec '%s' is not related to current project, "
+            "it is associated with %s", spec_name, workdir
         )
         sys.exit(1)
-    meta = common.load_meta(topic_dir)
+    meta = common.load_meta(spec_dir)
     source = meta.spex_branch if meta else ""
     target = (meta.branch or "main") if meta else "main"
     method = conf["submit_method"]
     errors: list[str] = []
 
     if not source:
-        errors.append("No spex_branch in topic meta.json")
+        errors.append("No spex_branch in spec meta.json")
         print(json.dumps({"action": method, "source": "", "target": target,
                           "errors": errors}))
         sys.exit(1)
@@ -109,7 +109,7 @@ def cli_submit(argv=None) -> None:
     if parsed.dry_run:
         logger.info("Would merge: %s -> %s", source, target)
         if not parsed.no_archive:
-            logger.info("Would archive: %s", topic_dir.name)
+            logger.info("Would archive: %s", spec_dir.name)
         print(json.dumps({"action": method, "source": source,
                           "target": target, "archived": not parsed.no_archive,
                           "dry_run": True, "errors": []}))
@@ -130,13 +130,13 @@ def cli_submit(argv=None) -> None:
         sys.exit(1)
 
     # Run post-action hook on success
-    short_name = strip_date_prefix(topic_dir.name)
-    done, total = common.get_todo_progress(topic_dir)
+    short_name = strip_date_prefix(spec_dir.name)
+    done, total = common.get_todo_progress(spec_dir)
     workdir = ctx.top_workdir
     hooks.run_post_action(
         "submit",
         {
-            "topic": short_name,
+            "spec": short_name,
             "source_branch": source,
             "target_branch": target,
             "action": method,
@@ -147,15 +147,15 @@ def cli_submit(argv=None) -> None:
         short_name,
     )
 
-    # Auto-archive the topic unless --no-archive is set
+    # Auto-archive the spec unless --no-archive is set
     archived = False
     if not parsed.no_archive:
         try:
             import archive as archive_mod
 
             with contextlib.redirect_stdout(io.StringIO()):
-                result = archive_mod.archive_single_topic(
-                    topic_name,
+                result = archive_mod.archive_single_spec(
+                    spec_name,
                     common.get_specs_dir(),
                     common.get_archives_dir(),
                     force=True,

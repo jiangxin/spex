@@ -3,7 +3,7 @@
 **PLAN only** — this command produces spec documents and a todo list.
 It does NOT write any application code.
 
-Create a new specification topic with requirement analysis, detailed design,
+Create a new spec with requirement analysis, detailed design,
 and test plan.
 
 ## Usage
@@ -18,7 +18,7 @@ and test plan.
   completeness, edge cases, and testability.
 
 **SCOPE: This command creates documents only — `spec.md`, `todo.json`,
-`meta.json` inside the topic directory. NO application code is written.
+`meta.json` inside the spec directory. NO application code is written.
 NO existing project files are modified. Implementation happens later
 via `/spex apply` or `/spex apply-one-step`.**
 
@@ -71,38 +71,38 @@ materially change the spec.
 After clarification (or if none was needed), record the complete,
 unambiguous requirement as `$requirement`.
 
-### Phase 3: Generate Topic and Description
+### Phase 3: Generate Name and Description
 
 Based on `$requirement`, generate a JSON object with two fields:
 
-- `topic`: a short English name (<32 bytes) using only `[a-z0-9-]`,
+- `name`: a short English name (<32 bytes) using only `[a-z0-9-]`,
   replacing spaces with `-`. Do NOT prepend any date prefix.
 - `description`: a brief English summary of the requirement, used as
   merge commit message and PR description. Keep it as a single line
   (do NOT embed newlines) — line wrapping is handled automatically.
 
-Example: `{"topic": "add-login-api", "description": "Add user login API with JWT authentication"}`
+Example: `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`
 
-Parse this JSON and save the values as `$topic` and `$description`.
+Parse this JSON and save the values as `$name` and `$description`.
 
-### Phase 4: Prepare Topic Directory
+### Phase 4: Prepare Spec Directory
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --topic $topic <<'EOF'
+$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name "$name" <<'EOF'
 $requirement
 EOF
 ```
 
-The script creates the topic directory and `meta.json` (with the
+The script creates the spec directory and `meta.json` (with the
 requirement saved to its `prompts` field and the description saved to
 its `description` field). Parse the JSON output and
 save these variables:
 
-- `$topic_name` ← `topic_name` (topic with date prefix,
+- `$spec_name` ← `spec_name` (spec with date prefix,
   e.g., `2026-05-24-10-30-add-login-api`)
-- `$topic_path` ← `topic_path`
+- `$spec_path` ← `spec_path`
 - `$spec_template` ← `spec_template`
 
 If the script exits with an error, return to Phase 3 and retry with a
@@ -112,8 +112,8 @@ Example JSON output:
 
 ```json
 {
-  "topic_name": "2026-05-24-10-30-add-login-api",
-  "topic_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
+  "spec_name": "2026-05-24-10-30-add-login-api",
+  "spec_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
   "spec_template": "# [Title]\n..."
 }
 ```
@@ -132,8 +132,8 @@ extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
 
 If images are found from either source:
 
-1. Create the assets directory: `mkdir -p $topic_path/assets/`
-2. Copy each discovered image file into `$topic_path/assets/`, keeping
+1. Create the assets directory: `mkdir -p $spec_path/assets/`
+2. Copy each discovered image file into `$spec_path/assets/`, keeping
    the original filename.
 3. When writing `spec.md` below, reference the images using Markdown
    syntax `![description](assets/filename.png)` in the appropriate
@@ -142,7 +142,7 @@ If images are found from either source:
    (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta-helper $topic_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 
@@ -150,7 +150,7 @@ Perform detailed requirement analysis and solution design based on
 `$requirement`. Consider functional requirements, non-functional requirements,
 data models, API contracts, error handling, and edge cases.
 
-Using `$spec_template` as the template, create `$topic_path/spec.md`
+Using `$spec_template` as the template, create `$spec_path/spec.md`
 in the same language as the user's requirement (e.g., English or Chinese).
 Replace the placeholder sections (HTML comments like
 `<!-- Replace this section with ... -->`) with the analysis and design
@@ -160,7 +160,7 @@ Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 
 ### Phase 6: Plan Implementation Steps
 
-Based on the design in `$topic_path/spec.md`, break down the work into
+Based on the design in `$spec_path/spec.md`, break down the work into
 incremental development steps. Each step should be independently
 committable and verifiable.
 
@@ -179,8 +179,8 @@ Number steps sequentially: `step-1`, `step-2`, etc.
 multi-line Markdown details:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name append \
-  --id step-1 --name "Short name" --details-from-stdin <<'DETAILS'
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
+  --id step-1 --step-name "Short description for the step" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -195,14 +195,14 @@ DETAILS
 **Show** current steps (to review before adding more):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name show \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name show \
   --format markdown
 ```
 
 **Edit** a step (only specified fields are updated):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --id step-1 --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
@@ -214,7 +214,7 @@ DETAILS
 **Remove** a step:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --topic $topic_name remove \
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name remove \
   --id step-1
 ```
 
@@ -229,7 +229,7 @@ The `details` field supports multi-line Markdown:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action --topic $topic_name
+$spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 ```
 
 If the script exits with an error, read the error message, fix the
@@ -240,11 +240,11 @@ JSON format in `todo.json`, and re-run until validation succeeds.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$topic_name`
+**Spec**: `$spec_name`
 
-- Spec: `$topic_path/spec.md`
-- Todo: `$topic_path/todo.json`
-- Meta: `$topic_path/meta.json`
+- Spec: `$spec_path/spec.md`
+- Todo: `$spec_path/todo.json`
+- Meta: `$spec_path/meta.json`
 ```
 
 ### Phase 9: STOP — Do NOT Implement
@@ -254,7 +254,7 @@ project files, or begin implementing the steps planned in `todo.json`.**
 
 Planning is complete. The `/spex create` command's sole responsibility
 was to produce the spec documents (`spec.md`, `todo.json`, `meta.json`)
-inside the topic directory.
+inside the spec directory.
 
 Wait for the user to review the spec and invoke `/spex apply` or
 `/spex apply-one-step` when ready.

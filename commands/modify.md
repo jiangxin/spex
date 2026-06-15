@@ -6,7 +6,7 @@ development plan.
 ## Usage
 
 ```text
-/spex modify [topic_name] [request]
+/spex modify [spec_name] [request]
 ```
 
 ## Procedure
@@ -15,27 +15,27 @@ development plan.
   specification evolution while preserving completed work.
 
 **SCOPE: This command updates spec documents only — `spec.md`,
-`todo.json`, `meta.json` inside the topic directory. NO application
+`todo.json`, `meta.json` inside the spec directory. NO application
 code is written. NO existing project files are modified.
 Implementation is handled by `/spex apply` or `/spex apply-one-step`.**
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex list --json "$topic_name"
+$spex_skill_dir/scripts/spex list --json "$spec_name"
 ```
 
 Read the command output and parse it as a JSON array:
 
-- If the array contains a single element, set `$topic_name` to its
-  `topic_name` and `$topic_path` to its `topic_path`.
+- If the array contains a single element, set `$spec_name` to its
+  `spec_name` and `$spec_path` to its `spec_path`.
 - If the array contains multiple elements, present a numbered list of
-  `topic_name` values to the user and ask them to choose. Set `$topic_name`
-  and `$topic_path` from the selected entry.
+  `spec_name` values to the user and ask them to choose. Set `$spec_name`
+  and `$spec_path` from the selected entry.
 - If the script exits with an error, report the error and stop.
 
 ### Phase 2: Understand Context and Clarify
@@ -44,7 +44,7 @@ If `$request` is not provided or empty, ask the user to describe what
 changes they want to make to the spec. The user's full input becomes
 `$request`.
 
-Read the current specification at `$topic_path/spec.md` to understand
+Read the current specification at `$spec_path/spec.md` to understand
 the existing requirements and design. Then explore the workspace **only
 enough to understand where the relevant code lives and what existing
 patterns are referenced in the spec**. Do NOT dig into full
@@ -84,7 +84,7 @@ becomes the modification request.
 Record the modification request in `meta.json`:
 
 ```bash
-$spex_skill_dir/scripts/spex meta-helper $topic_name prompts --stdin <<'EOF'
+$spex_skill_dir/scripts/spex meta-helper $spec_name prompts --stdin <<'EOF'
 $request
 EOF
 ```
@@ -101,13 +101,13 @@ extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
 
 If images are found from either source:
 
-1. Create the assets directory: `mkdir -p $topic_path/assets/`
-2. Copy each discovered image file into `$topic_path/assets/`, keeping
+1. Create the assets directory: `mkdir -p $spec_path/assets/`
+2. Copy each discovered image file into `$spec_path/assets/`, keeping
    the original filename.
 3. Register the images in `meta.json` (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta-helper $topic_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 
@@ -121,7 +121,7 @@ Run:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
-  --json --topic $topic_name --stdin --remove-undone <<'EOF'
+  --json --name $spec_name --stdin --remove-undone <<'EOF'
 $request
 EOF
 ```
@@ -137,7 +137,7 @@ before rendering, so the prompt only includes completed step context.
 
 ### Phase 5: Modify spec.md
 
-Using `$modify_prompt` as the prompt, update `$topic_path/spec.md`
+Using `$modify_prompt` as the prompt, update `$spec_path/spec.md`
 according to the instructions rendered in the prompt.
 
 Before writing, review the current codebase structure to ensure the
@@ -148,7 +148,7 @@ updated design integrates properly with existing code.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt modify-todo --json --topic $topic_name
+$spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
 ```
 
 Parse the JSON output from stdout:
@@ -170,7 +170,7 @@ Run:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper post-action \
-  --topic $topic_name --event-type modify
+  --name $spec_name --event-type modify
 ```
 
 If the script exits with an error, report the error and stop.
@@ -180,11 +180,11 @@ If the script exits with an error, report the error and stop.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$topic_name`
+**Spec**: `$spec_name`
 
-- Spec: `$topic_path/spec.md`
-- Todo: `$topic_path/todo.json`
-- Meta: `$topic_path/meta.json`
+- Spec: `$spec_path/spec.md`
+- Todo: `$spec_path/todo.json`
+- Meta: `$spec_path/meta.json`
 ```
 
 ### Phase 10: STOP — Do NOT Implement

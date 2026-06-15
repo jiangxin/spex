@@ -46,11 +46,11 @@ class ProjectContext:
     def in_git_workdir(self) -> bool:
         return self.top_workdir is not None
 
-    def is_related_to(self, topic) -> bool:
-        """Check if this project context is related to the given topic.
+    def is_related_to(self, spec) -> bool:
+        """Check if this project context is related to the given spec.
 
-        Accepts a TopicMeta instance, a Topic instance (with .meta attribute),
-        a dict (like load_meta().to_dict()), or a Path (topic directory).
+        Accepts a SpecMeta instance, a Spec instance (with .meta attribute),
+        a dict (like load_meta().to_dict()), or a Path (spec directory).
         """
         from common import load_meta, same_path
 
@@ -58,37 +58,37 @@ class ProjectContext:
         if self.top_workdir is None and self.main_worktree is None:
             return True
 
-        # Extract workdir and main_worktree from the topic parameter
-        if isinstance(topic, Path):
-            meta = load_meta(topic)
+        # Extract workdir and main_worktree from the spec parameter
+        if isinstance(spec, Path):
+            meta = load_meta(spec)
             if meta is None:
                 return True
-            topic_workdir = meta.workdir
-            topic_main_worktree = meta.main_worktree
-        elif hasattr(topic, "meta"):
-            # Topic instance with .meta attribute
-            topic_workdir = topic.meta.workdir
-            topic_main_worktree = topic.meta.main_worktree
-        elif isinstance(topic, dict):
-            topic_workdir = topic.get("workdir", "")
-            topic_main_worktree = topic.get("main_worktree", "")
+            spec_workdir = meta.workdir
+            spec_main_worktree = meta.main_worktree
+        elif hasattr(spec, "meta"):
+            # Spec instance with .meta attribute
+            spec_workdir = spec.meta.workdir
+            spec_main_worktree = spec.meta.main_worktree
+        elif isinstance(spec, dict):
+            spec_workdir = spec.get("workdir", "")
+            spec_main_worktree = spec.get("main_worktree", "")
         else:
             # Assume object with .workdir and .main_worktree attributes
-            topic_workdir = getattr(topic, "workdir", "")
-            topic_main_worktree = getattr(topic, "main_worktree", "")
+            spec_workdir = getattr(spec, "workdir", "")
+            spec_main_worktree = getattr(spec, "main_worktree", "")
 
         # No workdir record means matches any project
-        if not topic_workdir:
+        if not spec_workdir:
             return True
 
         # Compare top_workdir
-        if self.top_workdir is not None and topic_workdir:
-            if same_path(str(self.top_workdir), topic_workdir):
+        if self.top_workdir is not None and spec_workdir:
+            if same_path(str(self.top_workdir), spec_workdir):
                 return True
 
         # Compare main_worktree
-        if self.main_worktree is not None and topic_main_worktree:
-            if same_path(str(self.main_worktree), topic_main_worktree):
+        if self.main_worktree is not None and spec_main_worktree:
+            if same_path(str(self.main_worktree), spec_main_worktree):
                 return True
 
         return False
@@ -399,8 +399,8 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     Aggregates git metadata, discovered TOML paths, merged config, and
     resolved spex_root/spex_roots into a single object.
     """
-    cwd = Path(workdir).resolve() if workdir else Path.cwd().resolve()
-    cache_key = str(cwd)
+    workdir = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+    cache_key = str(workdir)
 
     if cache_key in _project_context_cache:
         return _project_context_cache[cache_key]
@@ -427,7 +427,7 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     spex_root = spex_roots[0] if spex_roots else ""
 
     ctx = ProjectContext(
-        cwd=cwd,
+        cwd=workdir,
         top_workdir=top_workdir,
         main_worktree=main_worktree,
         remote_url=remote_url,

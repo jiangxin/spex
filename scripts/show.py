@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Show detailed information about a single spec topic."""
+"""Show detailed information about a single spec."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ import sys
 
 from cli import ArgumentParser
 from common import (
-    Topic,
-    format_topic,
-    resolve_topic,
-    select_topic_interactive,
+    Spec,
+    format_spec,
+    resolve_spec,
+    select_spec_interactive,
     strip_front_matter,
 )
 
@@ -30,16 +30,16 @@ def _paged_output(text):
         print(text)
 
 
-def _format_default(topic_dir):
-    """Format topic in list -vv style, reused from common."""
-    return format_topic(topic_dir, verbose=2)
+def _format_default(spec_dir):
+    """Format spec in list -vv style, reused from common."""
+    return format_spec(spec_dir, verbose=2)
 
 
-def _format_verbose(topic_dir):
-    """Format topic with full spec and structured todo."""
-    t = Topic.from_dir(topic_dir)
+def _format_verbose(spec_dir):
+    """Format spec with full content and structured todo."""
+    t = Spec.from_dir(spec_dir)
     if t is None:
-        return f"(unable to load topic: {topic_dir.name})"
+        return f"(unable to load spec: {spec_dir.name})"
 
     parts = []
 
@@ -80,36 +80,36 @@ def _format_verbose(topic_dir):
 def main(argv=None):
     parser = ArgumentParser(
         prog="spex show",
-        description="Show detailed information about a spec topic.",
+        description="Show detailed information about a spec.",
     )
-    parser.add_argument("topic", nargs="?", help="Topic name or substring")
+    parser.add_argument("name", nargs="?", help="Spec name or substring")
     parser.add_argument("-l", "--list", action="store_true",
                         dest="brief",
                         help="Show brief list format instead of full details")
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics in search",
+        help="Include archived specs in search",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     args = parser.parse(argv)
 
-    if args.topic:
-        topic_dir = resolve_topic(args.topic, include_archives=args.archives)
+    if args.name:
+        spec_dir = resolve_spec(args.name, include_archives=args.archives)
     else:
-        topic_dir = select_topic_interactive(
+        spec_dir = select_spec_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
         )
 
     if args.brief:
-        print(_format_default(topic_dir))
+        print(_format_default(spec_dir))
     else:
-        _paged_output(_format_verbose(topic_dir))
+        _paged_output(_format_verbose(spec_dir))
 
 
 if __name__ == "__main__":

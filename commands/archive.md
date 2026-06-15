@@ -1,33 +1,33 @@
 # spex archive
 
-Archive completed specification topics.
+Archive completed specs.
 
 ## Usage
 
 ```text
-/spex archive [--topic <topic>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects]
+/spex archive [--name <name>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects]
 ```
 
 ## Options
 
 | Flag           | Description                            |
 |----------------|----------------------------------------|
-| `--topic`      | Archive a single topic by name         |
+| `--name`      | Archive a single spec by name         |
 | `--dry-run, -n`| Preview without moving                 |
 | `--force, -f`  | Bypass spex_branch existence check     |
-| `--restore`    | Restore a topic from archives to specs |
-| `--all-projects` | Archive topics from all projects     |
+| `--restore`    | Restore a spec from archives to specs |
+| `--all-projects` | Archive specs from all projects     |
 
 ## Behavior
 
-Topics are only archived if all tasks in `todo.json` are completed.
-Additionally, if a topic has `spex_branch` in `meta.json` and the
-referenced git branch still exists, the topic is skipped with a warning
+Specs are only archived if all tasks in `todo.json` are completed.
+Additionally, if a spec has `spex_branch` in `meta.json` and the
+referenced git branch still exists, the spec is skipped with a warning
 unless `--force` is provided.
 
-When `--restore` is used with `--topic <name>`, the operation is reversed:
-the topic is searched in `archives_dir` with fuzzy substring matching.
-If exactly one topic matches, it is moved back to `specs_dir`. Errors
+When `--restore` is used with `--name <name>`, the operation is reversed:
+the spec is searched in `archives_dir` with fuzzy substring matching.
+If exactly one spec matches, it is moved back to `specs_dir`. Errors
 out if no match or multiple matches are found.
 
 ## Procedure
@@ -44,7 +44,7 @@ $spex_skill_dir/scripts/spex archive
 
 ### Phase 2: Report Results
 
-- If the script output indicates topics were archived, report the list of
-  archived topics to the user.
-- If no topics were archived, inform the user that there are no completed
-  topics to archive.
+- If the script output indicates specs were archived, report the list of
+  archived specs to the user.
+- If no specs were archived, inform the user that there are no completed
+  specs to archive.

@@ -139,14 +139,14 @@ class TestSafeUpdateToml:
         assert result is False
 
 
-# ===================== archive_single_topic refuses incomplete =====================
+# ===================== archive_single_spec refuses incomplete =====================
 
 
 class TestArchiveSingleTopicIncomplete:
-    """Test that archive_single_topic refuses incomplete topics."""
+    """Test that archive_single_spec refuses incomplete specs."""
 
     def test_refuses_incomplete_without_force(self, tmp_path, caplog):
-        from archive import archive_single_topic
+        from archive import archive_single_spec
 
         specs = tmp_path / "specs"
         topic = specs / "wip-topic"
@@ -163,14 +163,14 @@ class TestArchiveSingleTopicIncomplete:
         archives = tmp_path / "archives"
 
         with caplog.at_level(logging.INFO):
-            result = archive_single_topic("wip-topic", specs, archives)
+            result = archive_single_spec("wip-topic", specs, archives)
 
         assert result is None
         assert not (archives / "wip-topic").exists()
         assert "not completed" in caplog.text
 
     def test_archives_incomplete_with_force(self, tmp_path, capsys):
-        from archive import archive_single_topic
+        from archive import archive_single_spec
 
         specs = tmp_path / "specs"
         topic = specs / "wip-topic"
@@ -187,7 +187,7 @@ class TestArchiveSingleTopicIncomplete:
         archives = tmp_path / "archives"
 
         with patch("branch.branch_exists", return_value=False):
-            result = archive_single_topic(
+            result = archive_single_spec(
                 "wip-topic", specs, archives, force=True
             )
 

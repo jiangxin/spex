@@ -372,7 +372,7 @@ class TestRunPostAction:
                 "email": "test@test.com",
                 "workdir": "/tmp",
                 "event_type": "apply",
-                "payload": {"foo": "bar", "topic_name": "my-topic"},
+                "payload": {"foo": "bar", "spec_name": "my-topic"},
             },
         )
 
@@ -384,7 +384,7 @@ class TestRunPostAction:
             "#!/usr/bin/env python3\n"
             "import sys, json\n"
             "data = json.loads(sys.stdin.read())\n"
-            f"open('{output_file}', 'w').write(f'topic={{data[\"payload\"][\"topic_name\"]}}')\n"
+            f"open('{output_file}', 'w').write(f'topic={{data[\"payload\"][\"spec_name\"]}}')\n"
         )
         os.chmod(hook_file, 0o755)
 
@@ -403,7 +403,7 @@ class TestRunPostAction:
         )
         with patch("common.get_project_context", return_value=ctx):
             hooks.run_post_action(
-                "apply", {"foo": "bar"}, str(tmp_path), topic_name="my-topic"
+                "apply", {"foo": "bar"}, str(tmp_path), spec_name="my-topic"
             )
 
         assert output_file.read_text() == "topic=my-topic"

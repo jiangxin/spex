@@ -54,17 +54,17 @@ SAMPLE_DATA = [
 # -----------------------------------------------------------------------
 class TestFileLocating:
     def test_topic_resolves_todo_json(self, tmp_path, monkeypatch):
-        topic_dir = tmp_path / "my-topic"
-        topic_dir.mkdir()
-        todo = topic_dir / "todo.json"
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
+        todo = spec_dir / "todo.json"
         _write(todo, SAMPLE_DATA)
 
         monkeypatch.setattr(
-            todo_helper, "resolve_topic_dir",
-            lambda name, **kw: topic_dir,
+            todo_helper, "resolve_spec_dir",
+            lambda name, **kw: spec_dir,
         )
         todo_helper.main([
-            "--topic", "my-topic", "validate",
+            "--name", "my-topic", "validate",
         ])
 
     def test_todo_file_direct_path(self, todo_file):
@@ -76,7 +76,7 @@ class TestFileLocating:
     def test_both_topic_and_todo_file_error(self, todo_file):
         with pytest.raises(SystemExit):
             todo_helper.main([
-                "--topic", "x",
+                "--name", "x",
                 "--todo-file", str(todo_file),
                 "validate",
             ])
@@ -88,20 +88,20 @@ class TestFileLocating:
     def test_xml_flag_with_topic(
         self, tmp_path, monkeypatch, caplog,
     ):
-        topic_dir = tmp_path / "my-topic"
-        topic_dir.mkdir()
-        xml_file = topic_dir / "todo.xml"
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
+        xml_file = spec_dir / "todo.xml"
         xml_file.write_text(
             "<todo></todo>\n", encoding="utf-8",
         )
 
         monkeypatch.setattr(
-            todo_helper, "resolve_topic_dir",
-            lambda name, **kw: topic_dir,
+            todo_helper, "resolve_spec_dir",
+            lambda name, **kw: spec_dir,
         )
         with caplog.at_level(logging.INFO):
             todo_helper.main([
-                "--topic", "my-topic", "--xml", "validate",
+                "--name", "my-topic", "--xml", "validate",
             ])
         assert "OK" in caplog.text
 
@@ -170,7 +170,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "step-4",
-            "--name", "Fourth step",
+            "--step-name", "Fourth step",
             "--details", "Do the fourth thing",
         ])
         result = _read(todo_file)
@@ -185,7 +185,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "step-1",
-            "--name", "First",
+            "--step-name", "First",
             "--details", "Details here",
         ])
         result = _read(todo_file)
@@ -198,7 +198,7 @@ class TestAppend:
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
                 "--id", "step-1",
-                "--name", "Dup",
+                "--step-name", "Dup",
                 "--details", "Dup details",
             ])
         assert exc.value.code == 1
@@ -208,7 +208,7 @@ class TestAppend:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "s1",
-            "--name", "Done task",
+            "--step-name", "Done task",
             "--details", "Already done",
             "--completed_at", "2026-05-30",
             "--commit_title", "feat: done",
@@ -225,7 +225,7 @@ class TestAppend:
         ))
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1", "--name", "Stdin step",
+            "--id", "s1", "--step-name", "Stdin step",
             "--details-from-stdin",
         ])
         result = _read(todo_file)
@@ -237,7 +237,7 @@ class TestAppend:
         with pytest.raises(SystemExit):
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
-                "--id", "s1", "--name", "No details",
+                "--id", "s1", "--step-name", "No details",
             ])
 
 
@@ -266,7 +266,7 @@ class TestEdit:
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
             "--id", "step-2",
-            "--name", "Updated name",
+            "--step-name", "Updated name",
         ])
         result = _read(todo_file)
         step2 = [i for i in result if i["id"] == "step-2"][0]
@@ -296,7 +296,7 @@ class TestEdit:
             todo_helper.main([
                 "--todo-file", str(todo_file), "edit",
                 "--id", "no-such-id",
-                "--name", "X",
+                "--step-name", "X",
             ])
         assert exc.value.code == 1
 
@@ -337,7 +337,7 @@ class TestAppendCompletedAtNow:
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
             "--id", "s1",
-            "--name", "Task done now",
+            "--step-name", "Task done now",
             "--details", "Details",
             "--completed_at", "now",
         ])
@@ -858,7 +858,7 @@ class TestXmlFormat:
         todo_helper.main([
             "--todo-file", str(xml_file), "append",
             "--id", "step-4",
-            "--name", "Fourth step",
+            "--step-name", "Fourth step",
             "--details", "Do the fourth thing",
         ])
         data = todo_helper.load_todo_xml(xml_file)
@@ -871,7 +871,7 @@ class TestXmlFormat:
         todo_helper.main([
             "--todo-file", str(xml_file), "edit",
             "--id", "step-2",
-            "--name", "Updated name",
+            "--step-name", "Updated name",
         ])
         data = todo_helper.load_todo_xml(xml_file)
         step2 = [
@@ -893,7 +893,7 @@ class TestXmlFormat:
 
 
 class TestSubcommandHelp:
-    """Tests for subcommand -h/--help working without --topic/--todo-file."""
+    """Tests for subcommand -h/--help working without --name/--todo-file."""
 
     def test_validate_help_exits_0(self, capsys):
         """validate -h should show help and exit 0."""
@@ -920,10 +920,10 @@ class TestSubcommandHelp:
         assert "--format" in out
 
     def test_no_locator_errors(self, caplog):
-        """Without --topic or --todo-file, should error with exit 2."""
+        """Without --name or --todo-file, should error with exit 2."""
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc_info:
                 todo_helper.main(["validate"])
         assert exc_info.value.code == 2
-        assert "--topic" in caplog.text
+        assert "--name" in caplog.text
         assert "--todo-file" in caplog.text

@@ -48,15 +48,15 @@ def _make_todo_json(done: bool = False) -> list[dict]:
 
 
 def _create_topic(sandbox, name, *, done=False):
-    """Create a topic directory with meta.json, spec.md, todo.json.
+    """Create a spec directory with meta.json, spec.md, todo.json.
 
-    Returns dict with topic_name and topic_path keys.
+    Returns dict with spec_name and spec_path keys.
     """
     specs_dir = sandbox.spex_root / "specs"
     specs_dir.mkdir(parents=True, exist_ok=True)
 
-    topic_dir = specs_dir / name
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir = specs_dir / name
+    spec_dir.mkdir(parents=True, exist_ok=True)
 
     meta = {
         "workdir": str(sandbox.repo),
@@ -67,33 +67,33 @@ def _create_topic(sandbox, name, *, done=False):
         "description": "",
         "prompts": [],
     }
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(meta, indent=2), encoding="utf-8",
     )
-    (topic_dir / "spec.md").write_text(
+    (spec_dir / "spec.md").write_text(
         f"# {name}\n\nTest spec.\n", encoding="utf-8",
     )
 
     todo = _make_todo_json(done=done)
-    (topic_dir / "todo.json").write_text(
+    (spec_dir / "todo.json").write_text(
         json.dumps(todo, indent=2), encoding="utf-8",
     )
 
     return {
-        "topic_name": name,
-        "topic_path": str(topic_dir),
+        "spec_name": name,
+        "spec_path": str(spec_dir),
     }
 
 
 @pytest.mark.e2e
 class TestTodoHelperValidate:
     def test_validate_json_via_topic(self, sandbox):
-        """Validate a topic's todo.json via --topic."""
+        """Validate a spec's todo.json via --name."""
         data = _create_topic(sandbox, "val-json")
-        topic_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "validate",
             sandbox=sandbox,
         )
@@ -119,20 +119,20 @@ class TestTodoHelperAppendShow:
     def test_append_and_show(self, sandbox):
         """Append a step and verify it appears in show output."""
         data = _create_topic(sandbox, "append-test")
-        topic_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "append",
             "--id", "step-3",
-            "--name", "New step",
+            "--step-name", "New step",
             "--details", "New details",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
 
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "show",
             sandbox=sandbox,
         )
@@ -146,10 +146,10 @@ class TestTodoHelperAppendShow:
         data = _create_topic(
             sandbox, "done-filter", done=True,
         )
-        topic_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "show", "--done",
             sandbox=sandbox,
         )
@@ -183,19 +183,19 @@ class TestTodoHelperConversion:
         assert items[0]["id"] == "step-1"
 
     def test_json2xml_via_cli(self, sandbox):
-        """json2xml converts a topic's todo.json to XML."""
+        """json2xml converts a spec's todo.json to XML."""
         data = _create_topic(sandbox, "j2x-test")
-        topic_name = data["topic_name"]
-        topic_path = Path(data["topic_path"])
+        spec_name = data["spec_name"]
+        spec_path = Path(data["spec_path"])
 
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "json2xml",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
 
-        xml_path = topic_path / "todo.xml"
+        xml_path = spec_path / "todo.xml"
         assert xml_path.is_file()
         content = xml_path.read_text(encoding="utf-8")
         assert "<todo>" in content
@@ -207,14 +207,14 @@ class TestTodoHelperWorkflow:
     def test_full_crud_workflow(self, sandbox):
         """Exercise append, edit, show, remove sequence."""
         data = _create_topic(sandbox, "crud-test")
-        topic_name = data["topic_name"]
+        spec_name = data["spec_name"]
 
         # 1. Append step-3
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "append",
             "--id", "step-3",
-            "--name", "Task 3",
+            "--step-name", "Task 3",
             "--details", "Do thing 3",
             sandbox=sandbox,
         )
@@ -222,17 +222,17 @@ class TestTodoHelperWorkflow:
 
         # 2. Edit step-3
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "edit",
             "--id", "step-3",
-            "--name", "Updated Task 3",
+            "--step-name", "Updated Task 3",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
 
         # 3. Show all — verify updated name
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "show",
             sandbox=sandbox,
         )
@@ -246,7 +246,7 @@ class TestTodoHelperWorkflow:
 
         # 4. Remove step-3
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "remove",
             "--id", "step-3",
             sandbox=sandbox,
@@ -255,7 +255,7 @@ class TestTodoHelperWorkflow:
 
         # 5. Show again — step-3 should be gone
         result = run_spex(
-            "todo-helper", "--topic", topic_name,
+            "todo-helper", "--name", spec_name,
             "show",
             sandbox=sandbox,
         )

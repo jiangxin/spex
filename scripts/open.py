@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Open a topic directory in the system file browser.
+"""Open a spec directory in the system file browser.
 
-If no topic is given, lists topics for interactive selection.
-If a topic is given, searches specs (and optionally archives) for a match.
-When no selection is made or no topics exist, opens the spex root directory.
+If no spec name is given, lists specs for interactive selection.
+If a spec name is given, searches specs (and optionally archives) for a match.
+When no selection is made or no specs exist, opens the spex root directory.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from cli import ArgumentParser
-from common import get_spex_root, resolve_topic, select_topic_interactive
+from common import get_spex_root, resolve_spec, select_spec_interactive
 
 
 def open_directory(path):
@@ -59,23 +59,23 @@ def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex open``."""
     parser = ArgumentParser(
         prog="spex open",
-        description="Open a topic directory in the system file browser.",
+        description="Open a spec directory in the system file browser.",
     )
     parser.add_argument(
-        "topic",
+        "name",
         nargs="?",
         default="",
-        help="Topic name or substring to open (interactive selection if omitted)",
+        help="Spec name or substring to open (interactive selection if omitted)",
     )
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics in search",
+        help="Include archived specs in search",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     parser.add_argument(
         "--run",
@@ -83,7 +83,7 @@ def _build_parser() -> ArgumentParser:
         const="",
         default=None,
         metavar="COMMAND",
-        help="Run a command in the topic directory instead of opening it",
+        help="Run a command in the spec directory instead of opening it",
     )
     return parser
 
@@ -92,13 +92,13 @@ def main(argv=None):
     """CLI entry point for the open command."""
     parser = _build_parser()
     args = parser.parse(argv)
-    topic = args.topic
+    spec_name = args.name
 
-    if topic:
-        topic_dir = resolve_topic(topic, include_archives=args.archives)
-        _perform_action(str(topic_dir), args.run)
+    if spec_name:
+        spec_dir = resolve_spec(spec_name, include_archives=args.archives)
+        _perform_action(str(spec_dir), args.run)
     else:
-        selected = select_topic_interactive(
+        selected = select_spec_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
             allow_empty=True,

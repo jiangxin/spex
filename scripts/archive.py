@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Archive completed spec topics.
+"""Archive completed specs.
 
-Moves topic directories whose todo.json items are all completed
+Moves spec directories whose todo.json items are all completed
 into the archives directory.
 """
 
@@ -14,20 +14,20 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    find_completed_topics,
-    find_matching_topics,
+    find_completed_specs,
+    find_matching_specs,
     get_archives_dir,
     get_specs_dir,
     has_active_branch,
-    is_topic_completed,
+    is_spec_completed,
     load_meta,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
 )
 from config import get_project_context
 
 
-def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
+def move_spec_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
     """Move source_dir into dest_dir, appending suffix on conflict.
 
     Returns the final destination path.
@@ -46,34 +46,34 @@ def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
         counter += 1
 
 
-def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
-    """Move topic_dir into archives_dir, appending suffix on conflict.
+def move_spec(spec_dir: Path, archives_dir: Path) -> Path:
+    """Move spec_dir into archives_dir, appending suffix on conflict.
 
-    Thin wrapper around move_topic_with_conflict for backward compatibility.
+    Thin wrapper around move_spec_with_conflict for backward compatibility.
     Returns the final destination path.
     """
-    return move_topic_with_conflict(topic_dir, archives_dir)
+    return move_spec_with_conflict(spec_dir, archives_dir)
 
 
-def archive_single_topic(
-    topic_name: str,
+def archive_single_spec(
+    spec_name: str,
     specs_dir: Path,
     archives_dir: Path,
     force: bool = False,
     dry_run: bool = False,
 ) -> Path | None:
-    """Archive a single topic by name. Supports partial topic name matching.
+    """Archive a single spec by name. Supports partial name matching.
 
     Returns the destination path, or None if skipped due to active branch.
     """
-    topic_dir = resolve_topic_dir(topic_name, specs_dir)
-    if not force and not is_topic_completed(topic_dir):
+    spec_dir = resolve_spec_dir(spec_name, specs_dir)
+    if not force and not is_spec_completed(spec_dir):
         logger.info(
-            "Skipping: topic is not completed (use --force to archive)"
+            "Skipping: spec is not completed (use --force to archive)"
         )
         return None
-    if not force and has_active_branch(topic_dir):
-        meta = load_meta(topic_dir)
+    if not force and has_active_branch(spec_dir):
+        meta = load_meta(spec_dir)
         spex_branch = meta.spex_branch if meta else ""
         logger.info(
             "Skipping: spex branch '%s' still exists"
@@ -81,21 +81,21 @@ def archive_single_topic(
         )
         return None
     if dry_run:
-        logger.info("Would archive: %s", topic_dir.name)
-        return archives_dir / topic_dir.name
+        logger.info("Would archive: %s", spec_dir.name)
+        return archives_dir / spec_dir.name
     archives_dir.mkdir(parents=True, exist_ok=True)
-    dest = move_topic(topic_dir, archives_dir)
-    logger.info("Archived: %s -> %s", topic_dir.name, dest)
+    dest = move_spec(spec_dir, archives_dir)
+    logger.info("Archived: %s -> %s", spec_dir.name, dest)
     return dest
 
 
-def restore_single_topic(
-    topic_name: str,
+def restore_single_spec(
+    spec_name: str,
     specs_dir: Path,
     archives_dir: Path,
     dry_run: bool = False,
 ) -> Path | None:
-    """Restore a single topic from archives back to specs.
+    """Restore a single spec from archives back to specs.
 
     Uses fuzzy substring matching against archives_dir. Exits with error
     if no match or multiple matches.
@@ -108,17 +108,17 @@ def restore_single_topic(
         )
         sys.exit(1)
 
-    matches = find_matching_topics(topic_name, archives_dir)
+    matches = find_matching_specs(spec_name, archives_dir)
     if not matches:
         logger.error(
-            "Error: no topic matching '%s' found in archives.", topic_name
+            "Error: no spec matching '%s' found in archives.", spec_name
         )
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
         logger.error(
-            "Error: multiple topics match '%s' in archives:\n  %s",
-            topic_name, names
+            "Error: multiple specs match '%s' in archives:\n  %s",
+            spec_name, names
         )
         sys.exit(1)
 
@@ -126,7 +126,7 @@ def restore_single_topic(
         logger.info("Would restore: %s", matches[0].name)
         return specs_dir / matches[0].name
     specs_dir.mkdir(parents=True, exist_ok=True)
-    dest = move_topic_with_conflict(matches[0], specs_dir)
+    dest = move_spec_with_conflict(matches[0], specs_dir)
     logger.info("Restored: %s -> %s", matches[0].name, dest)
     return dest
 
@@ -134,36 +134,36 @@ def restore_single_topic(
 def main(argv=None):
     parser = ArgumentParser(
         prog="spex archive",
-        description="Archive completed spec topics.",
+        description="Archive completed specs.",
     )
-    parser.add_argument("--topic", help="Archive a single topic by name")
+    parser.add_argument("--name", help="Archive a single spec by name")
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
     parser.add_argument("--restore", action="store_true",
-                        help="Restore a topic from archives back to specs")
+                        help="Restore a spec from archives back to specs")
     parser.add_argument("--not", action="store_true", dest="restore",
                         help=argparse.SUPPRESS)
     parser.add_argument("--all-projects", action="store_true",
-                        help="Archive topics from all projects")
+                        help="Archive specs from all projects")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
 
     if args.restore:
-        if not args.topic:
+        if not args.name:
             logger.error(
-                "Error: --restore requires --topic to specify what to restore."
+                "Error: --restore requires --name to specify what to restore."
             )
             sys.exit(1)
-        restore_single_topic(args.topic, specs_dir, archives_dir,
+        restore_single_spec(args.name, specs_dir, archives_dir,
                              dry_run=args.dry_run)
         return
 
-    if args.topic:
-        archive_single_topic(args.topic, specs_dir, archives_dir, args.force,
+    if args.name:
+        archive_single_spec(args.name, specs_dir, archives_dir, args.force,
                              dry_run=args.dry_run)
         return
 
@@ -172,41 +172,41 @@ def main(argv=None):
     if not ctx.in_git_workdir() and not args.all_projects:
         logger.info(
             "Not in a git workdir. Use --all-projects to archive"
-            " topics from all projects."
+            " specs from all projects."
         )
         return
 
-    completed = find_completed_topics(
+    completed = find_completed_specs(
         specs_dir, ctx, args.force, all_projects=args.all_projects,
     )
 
     if not completed:
-        logger.info("No completed topics to archive.")
+        logger.info("No completed specs to archive.")
         return
 
     if args.dry_run:
-        # Show topics that would be skipped due to active branches
+        # Show specs that would be skipped due to active branches
         skipped = [
             d for d in sorted(specs_dir.iterdir())
-            if d.is_dir() and is_topic_completed(d) and has_active_branch(d)
+            if d.is_dir() and is_spec_completed(d) and has_active_branch(d)
         ]
-        logger.info("Would archive %d topic(s):", len(completed))
-        for topic_dir in completed:
-            logger.info("  %s", topic_dir.name)
+        logger.info("Would archive %d spec(s):", len(completed))
+        for spec_dir in completed:
+            logger.info("  %s", spec_dir.name)
         if skipped:
             logger.info(
-                "Would skip %d topic(s) (active spex_branch):", len(skipped)
+                "Would skip %d spec(s) (active spex_branch):", len(skipped)
             )
-            for topic_dir in skipped:
-                meta = load_meta(topic_dir)
+            for spec_dir in skipped:
+                meta = load_meta(spec_dir)
                 branch = meta.spex_branch if meta else ""
-                logger.info("  %s (%s)", topic_dir.name, branch)
+                logger.info("  %s (%s)", spec_dir.name, branch)
         return
 
     archives_dir.mkdir(parents=True, exist_ok=True)
-    for topic_dir in completed:
-        dest = move_topic(topic_dir, archives_dir)
-        logger.info("Archived: %s -> %s", topic_dir.name, dest)
+    for spec_dir in completed:
+        dest = move_spec(spec_dir, archives_dir)
+        logger.info("Archived: %s -> %s", spec_dir.name, dest)
 
 
 if __name__ == "__main__":
