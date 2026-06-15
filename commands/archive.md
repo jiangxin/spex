@@ -20,7 +20,7 @@ Archive completed specs.
 
 ## Behavior
 
-Topics are only archived if all tasks in `todo.json` are completed.
+Specs are only archived if all tasks in `todo.json` are completed.
 Additionally, if a spec has `spex_branch` in `meta.json` and the
 referenced git branch still exists, the spec is skipped with a warning
 unless `--force` is provided.

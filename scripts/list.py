@@ -21,7 +21,7 @@ from common import (
 )
 
 PROMPT_LOG = "prompt.log"
-MAX_TOPIC_WIDTH = 38
+MAX_SPEC_WIDTH = 38
 MAX_LINE_WIDTH = 80
 
 
@@ -83,14 +83,14 @@ def format_output(
         repo_col_width = 0
 
     icon_width = 3
-    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_TOPIC_WIDTH + 2
+    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_SPEC_WIDTH + 2
     prompt_width = max_width - fixed_width
 
     lines = []
     for spec, prog_str in zip(specs, progress_strs):
         icon = spec.icon
-        name = display_truncate(spec.name, MAX_TOPIC_WIDTH)
-        name_col = display_ljust(name, MAX_TOPIC_WIDTH)
+        name = display_truncate(spec.name, MAX_SPEC_WIDTH)
+        name_col = display_ljust(name, MAX_SPEC_WIDTH)
         prog_col = f"({prog_str})".rjust(progress_width + 2)
         desc = spec.display_text
         prompt_col = display_truncate(desc, prompt_width) if prompt_width > 3 else ""

@@ -19,9 +19,9 @@ from common import (
     wrap_text,
 )
 
-TOPIC_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
+SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
-MAX_TOPIC_BYTES = 64
+MAX_SPEC_NAME_BYTES = 64
 
 
 def create_spec(spec, specs_dir, auto_prefix=True):
@@ -36,14 +36,14 @@ def create_spec(spec, specs_dir, auto_prefix=True):
         prefix = datetime.now().strftime("%Y-%m-%d-%H-%M")
         spec = f"{prefix}-{spec}"
 
-    if not TOPIC_PATTERN.match(spec):
+    if not SPEC_NAME_PATTERN.match(spec):
         raise ValueError(
             f"invalid spec name '{spec}'. "
             "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
         )
 
-    if len(spec.encode("utf-8")) > MAX_TOPIC_BYTES:
-        raise ValueError(f"spec name '{spec}' exceeds {MAX_TOPIC_BYTES} bytes.")
+    if len(spec.encode("utf-8")) > MAX_SPEC_NAME_BYTES:
+        raise ValueError(f"spec name '{spec}' exceeds {MAX_SPEC_NAME_BYTES} bytes.")
 
     spec_dir = specs_dir / spec
     if spec_dir.exists():

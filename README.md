@@ -23,11 +23,11 @@ and prompt templates to match their team's conventions.
   system levels with nearest-wins merging, and `SPEX_CONFIG_FILE` overrides
   all discovery. Each level can set its own `spex_root` to control where
   specs are stored.
-- **Branch management** — optionally create and switch `spex/<topic>` branches
+- **Branch management** — optionally create and switch `spex/<name>` branches
   per spec, with auto-merge or PR submission.
 - **Worktree & submodule aware** — specs are anchored to the main worktree,
   so all worktrees share a single spec store; submodules are also supported.
-- **Fuzzy topic matching** — all commands accept partial topic names with
+- **Fuzzy name matching** — all commands accept partial spec names with
   interactive disambiguation.
 - **Hooks** — extensible `post-action` hooks receive JSON events on stdin
   for create, modify, apply, and submit actions — useful for telemetry,
@@ -105,29 +105,29 @@ AI agent:
 
 | Command          | Description                                      |
 |------------------|--------------------------------------------------|
-| `spex list`      | List spec topics with status and progress         |
-| `spex show`      | Show summary info for a topic                     |
-| `spex open`      | Open a topic directory in the system file browser |
+| `spex list`      | List specs with status and progress               |
+| `spex show`      | Show summary info for a spec                      |
+| `spex open`      | Open a spec directory in the system file browser  |
 | `spex config`    | Display resolved configuration                   |
 | `spex archive`   | Archive completed specs                           |
 | `spex init`      | Initialize spex environment                       |
 
 #### `spex list`
 
-Lists all spec topics with status icons and progress ratios:
+Lists all specs with status icons and progress ratios:
 
-- `spex list` — compact view: topic name, status, and progress (e.g.,
+- `spex list` — compact view: spec name, status, and progress (e.g.,
   `3/5`).
-- `spex list -v` — adds the topic description.
+- `spex list -v` — adds the spec description.
 - `spex list -vv` — adds individual step listing with completion status.
-- `spex list --all` — includes topics from all repositories, not just
+- `spex list --all` — includes specs from all repositories, not just
   the current one.
 
-#### `spex show <topic>`
+#### `spex show <name>`
 
-- `spex show <topic>` — displays topic summary (status, dates,
+- `spex show <name>` — displays spec summary (status, dates,
   branch, progress).
-- `spex show -v <topic>` — shows the full spec content and structured
+- `spex show -v <name>` — shows the full spec content and structured
   todo with step-level details.
 
 ## Configuration
@@ -180,7 +180,7 @@ All options live under the `[spex]` section:
 | Key                 | Type   | Default    | Description                                                                |
 |---------------------|--------|------------|----------------------------------------------------------------------------|
 | `spex_root`         | string | `".spex"`  | Spec storage directory (relative to the `.spex.toml` location, or absolute)|
-| `branch_management` | bool   | `true`     | Automatically create/switch branches per spec topic                        |
+| `branch_management` | bool   | `true`     | Automatically create/switch branches per spec                              |
 | `main_branch_name`  | string | `""`       | Only allow spec creation on this branch (empty = any)                      |
 | `submit_method`     | string | `"merge"`  | How to submit completed work: `merge` or `pr`                              |
 
