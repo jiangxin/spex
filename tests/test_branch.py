@@ -58,12 +58,27 @@ class TestGetCurrentBranch:
         )
         assert get_current_branch() == "main"
         mock_run.assert_called_once_with(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", "symbolic-ref", "--short", "HEAD"],
             capture_output=True,
             text=True,
-            check=True,
             cwd=None,
         )
+
+    @patch("branch.subprocess.run")
+    def test_detached_head_raises(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="",
+            stderr="fatal: ref HEAD is not a symbolic ref",
+        )
+        import unittest
+
+        class _TestCase(unittest.TestCase):
+            pass
+
+        tc = _TestCase()
+        with tc.assertRaises(RuntimeError) as ctx:
+            get_current_branch()
+        assert "detached HEAD" in str(ctx.exception)
 
 
 class TestBranchExists:

@@ -14,18 +14,23 @@ def _strip_refs_prefix(name: str) -> str:
 
 
 def get_current_branch(cwd: str | Path | None = None) -> str:
-    """Return the current git branch name in short format (no refs/heads/ prefix)."""
+    """Return the current git branch name in short format (no refs/heads/ prefix).
+
+    Uses ``git symbolic-ref --short HEAD`` to support unborn branches
+    (fresh ``git init`` repos with no commits).  Raises RuntimeError on
+    detached HEAD state.
+    """
     result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "symbolic-ref", "--short", "HEAD"],
         capture_output=True,
         text=True,
-        check=True,
         cwd=cwd,
     )
-    branch_name = result.stdout.strip()
-    if branch_name == "HEAD":
-        raise RuntimeError("Currently in detached HEAD state, no branch name.")
-    return branch_name
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Currently in detached HEAD state, no branch name."
+        )
+    return result.stdout.strip()
 
 
 def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
