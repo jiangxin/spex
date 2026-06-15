@@ -245,12 +245,12 @@ def main(argv=None):
     elif args.must_undone:
         topics = [t for t in topics if not t.is_completed]
 
-    if args.json:
-        print(format_json_output(topics))
-        return
-
     if not topics:
         print("No specs found.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.json:
+        print(format_json_output(topics))
         return
 
     verbosity = args.verbose
