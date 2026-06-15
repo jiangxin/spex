@@ -39,7 +39,7 @@ def validate_apply_branch(
     import common
     from branch import (
         branch_exists,
-        create_branch,
+        create_and_switch_branch,
         get_current_branch,
         set_branch_description,
         switch_branch,
@@ -90,7 +90,7 @@ def validate_apply_branch(
             created_branch = candidate
             break
         try:
-            create_branch(candidate, cwd)
+            create_and_switch_branch(candidate, cwd)
             created_branch = candidate
             break
         except subprocess.CalledProcessError:
@@ -102,14 +102,8 @@ def validate_apply_branch(
         )
         sys.exit(1)
 
-    try:
-        switch_branch(created_branch, cwd)
-    except subprocess.CalledProcessError as e:
-        logger.error(
-            f"Error: failed to switch to '{created_branch}': "
-            f"{e.stderr.strip() or e}",
-        )
-        sys.exit(1)
+    # create_and_switch_branch already uses `git switch -c` which switches to the new
+    # branch, so no separate switch_branch call is needed here.
 
     description = common.get_spec_description(spec_dir)
     if description:

@@ -11,6 +11,7 @@ from apply_helper import (
 )
 from branch import (
     branch_exists,
+    create_and_switch_branch,
     get_current_branch,
     merge_branch,
 )
@@ -58,12 +59,27 @@ class TestGetCurrentBranch:
         )
         assert get_current_branch() == "main"
         mock_run.assert_called_once_with(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", "symbolic-ref", "--short", "HEAD"],
             capture_output=True,
             text=True,
-            check=True,
             cwd=None,
         )
+
+    @patch("branch.subprocess.run")
+    def test_detached_head_raises(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="",
+            stderr="fatal: ref HEAD is not a symbolic ref",
+        )
+        import unittest
+
+        class _TestCase(unittest.TestCase):
+            pass
+
+        tc = _TestCase()
+        with tc.assertRaises(RuntimeError) as ctx:
+            get_current_branch()
+        assert "detached HEAD" in str(ctx.exception)
 
 
 class TestBranchExists:
@@ -80,6 +96,24 @@ class TestBranchExists:
             args=[], returncode=128, stdout="", stderr="fatal: not a valid ref"
         )
         assert branch_exists("spex/nonexistent") is False
+
+
+class TestCreateBranch:
+    def test_create_branch_on_unborn_branch(self, tmp_path):
+        """create_and_switch_branch should work on an unborn branch (no commits)."""
+        subprocess.run(
+            ["git", "init"], cwd=tmp_path, capture_output=True, check=True,
+        )
+        # Verify we're on an unborn branch
+        current = get_current_branch(tmp_path)
+        assert current  # e.g., "master" or "main"
+
+        create_and_switch_branch("spex/test-feature", cwd=tmp_path)
+
+        # On an unborn branch, git switch -c succeeds and switches HEAD,
+        # but the branch won't show in rev-parse --verify until a commit
+        # is made. Verify we're on the new branch via symbolic-ref.
+        assert get_current_branch(tmp_path) == "spex/test-feature"
 
 
 class TestMergeBranch:
@@ -168,14 +202,13 @@ class TestValidateApplyBranch:
         except SystemExit as e:
             assert e.code == 1
 
-    @patch("branch.switch_branch")
     @patch("branch.set_branch_description")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch")
+    @patch("branch.create_and_switch_branch")
     @patch("common.is_spec_completed", return_value=False)
     def test_creates_branch_with_short_name(
-        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        self, _completed, mock_create, _exists, _curr, _desc,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
@@ -185,19 +218,17 @@ class TestValidateApplyBranch:
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
         mock_create.assert_called_once_with("spex/add-feature", None)
-        mock_switch.assert_called_once_with("spex/add-feature", None)
 
-    @patch("branch.switch_branch")
     @patch("branch.set_branch_description")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch", side_effect=[
+    @patch("branch.create_and_switch_branch", side_effect=[
         subprocess.CalledProcessError(1, "git"),
         None,
     ])
     @patch("common.is_spec_completed", return_value=False)
     def test_fallback_to_long_name(
-        self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
+        self, _completed, mock_create, _exists, _curr, _desc,
         tmp_path,
     ):
         meta_path = tmp_path / "meta.json"
@@ -210,13 +241,10 @@ class TestValidateApplyBranch:
         assert mock_create.call_count == 2
         mock_create.assert_any_call("spex/add-feature", None)
         mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature", None)
-        mock_switch.assert_called_once_with(
-            "spex/2026-05-27-10-00-add-feature", None
-        )
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("branch.create_branch", side_effect=subprocess.CalledProcessError(1, "git"))
+    @patch("branch.create_and_switch_branch", side_effect=subprocess.CalledProcessError(1, "git"))
     @patch("common.is_spec_completed", return_value=False)
     def test_both_candidates_fail_exits(
         self, _completed, _create, _exists, _curr, tmp_path,
@@ -320,13 +348,15 @@ class TestCliSubmit:
         assert "not related to current project" in caplog.text
         assert "/other/project" in caplog.text
 
+
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
+    @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
-    def test_merge_success(self, mock_resolve, _specs, _ctx, mock_merge,
+    def test_merge_success(self, mock_resolve, _specs, _ctx, _exists, mock_merge,
                            mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -345,12 +375,13 @@ class TestCliSubmit:
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
+    @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
-                                    mock_merge, mock_archive, tmp_path,
+                                    _exists, mock_merge, mock_archive, tmp_path,
                                     capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -364,13 +395,14 @@ class TestCliSubmit:
         mock_archive.assert_called_once()
 
     @patch("archive.archive_single_spec")
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
-                                           mock_merge, mock_archive,
+                                           _exists, mock_merge, mock_archive,
                                            tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -384,6 +416,7 @@ class TestCliSubmit:
         mock_archive.assert_not_called()
 
     @patch("archive.archive_single_spec")
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
@@ -391,7 +424,7 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
-                                      _merge, mock_archive, tmp_path,
+                                      _exists, _merge, mock_archive, tmp_path,
                                       capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -408,6 +441,7 @@ class TestCliSubmit:
         assert "Merge failed" in out["errors"][0]
         mock_archive.assert_not_called()
 
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
@@ -415,7 +449,7 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
-                                         _merge, tmp_path, capsys):
+                                         _exists, _merge, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),

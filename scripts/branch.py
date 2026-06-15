@@ -14,18 +14,23 @@ def _strip_refs_prefix(name: str) -> str:
 
 
 def get_current_branch(cwd: str | Path | None = None) -> str:
-    """Return the current git branch name in short format (no refs/heads/ prefix)."""
+    """Return the current git branch name in short format (no refs/heads/ prefix).
+
+    Uses ``git symbolic-ref --short HEAD`` to support unborn branches
+    (fresh ``git init`` repos with no commits).  Raises RuntimeError on
+    detached HEAD state.
+    """
     result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "symbolic-ref", "--short", "HEAD"],
         capture_output=True,
         text=True,
-        check=True,
         cwd=cwd,
     )
-    branch_name = result.stdout.strip()
-    if branch_name == "HEAD":
-        raise RuntimeError("Currently in detached HEAD state, no branch name.")
-    return branch_name
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Currently in detached HEAD state, no branch name."
+        )
+    return result.stdout.strip()
 
 
 def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
@@ -40,11 +45,17 @@ def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
     return result.returncode == 0
 
 
-def create_branch(branch_name: str, cwd: str | Path | None = None) -> None:
-    """Create a new local branch. Raises subprocess.CalledProcessError on failure."""
+def create_and_switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
+    """Create a new local branch and switch to it.
+
+    Uses ``git switch -c`` instead of ``git branch`` so that it works on
+    unborn branches (fresh ``git init`` repos with no commits) where
+    ``git branch`` fails with "not a valid object name: 'master'".
+    Raises subprocess.CalledProcessError on failure.
+    """
     branch_name = _strip_refs_prefix(branch_name)
     subprocess.run(
-        ["git", "branch", branch_name],
+        ["git", "switch", "-c", branch_name],
         capture_output=True,
         text=True,
         check=True,

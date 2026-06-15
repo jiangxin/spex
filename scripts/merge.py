@@ -59,7 +59,7 @@ def cli_submit(argv=None) -> None:
     import common
     import config as cfg
     import hooks
-    from branch import merge_branch
+    from branch import branch_exists, create_and_switch_branch, merge_branch
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
@@ -115,6 +115,23 @@ def cli_submit(argv=None) -> None:
                           "target": target, "archived": not parsed.no_archive,
                           "dry_run": True, "errors": []}))
         return
+
+    # If target branch doesn't exist, create it from the current branch
+    if not branch_exists(target, cwd=ctx.main_worktree):
+        logger.warning(
+            "Warning: target branch '%s' does not exist. "
+            "Creating from '%s'.", target, source,
+        )
+        try:
+            create_and_switch_branch(target, cwd=ctx.main_worktree)
+        except subprocess.CalledProcessError as e:
+            errors.append(
+                f"Failed to create target branch '{target}': "
+                f"{e.stderr.strip() or str(e)}"
+            )
+            print(json.dumps({"action": method, "source": source,
+                              "target": target, "errors": errors}))
+            sys.exit(1)
 
     if method == "merge":
         try:
