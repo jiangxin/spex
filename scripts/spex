@@ -40,8 +40,6 @@ Internal commands (used by skill):
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  get-topic [name]
-                Resolve a topic directory
   meta-helper <topic_name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <name> [--topic <topic>] [-o <file>]
@@ -276,13 +274,6 @@ def _run_config(argv=None):
     _print_config_sections(sections, requested)
 
 
-def _run_get_topic(argv=None):
-    """Resolve a topic directory."""
-    import get_topic
-
-    get_topic.main(argv)
-
-
 def _run_prompt(argv=None):
     """Render a Jinja2 template with metadata."""
     import prompt
@@ -458,7 +449,6 @@ _LLM_COMMAND_NAMES = ["apply", "create", "modify", "new"]
 _INTERNAL_COMMANDS = [
     ("apply-helper", _run_apply_helper),
     ("create-helper", _run_create_helper),
-    ("get-topic", _run_get_topic),
     ("meta-helper", _run_meta_helper),
     ("prompt", _run_prompt),
     ("run-hook", _run_hook),

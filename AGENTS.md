@@ -42,7 +42,6 @@ naming convention.
 | Subcommand (user sees) | Script file |
 |------------------------|-------------|
 | `spex todo-helper` | `todo_helper.py` |
-| `spex get-topic` | `get_topic.py` |
 | `spex archive` | `archive.py` |
 
 ### CLI Display

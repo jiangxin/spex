@@ -813,7 +813,9 @@ class TestNoSpecsStderr:
             common_mod, "get_project_context", lambda _w=None: ctx,
         )
 
-        main([])
+        with pytest.raises(SystemExit) as exc_info:
+            main([])
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -834,13 +836,15 @@ class TestNoSpecsStderr:
             common_mod, "get_project_context", lambda _w=None: ctx,
         )
 
-        main(["-v"])
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-v"])
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "No specs found." in captured.err
 
-    def test_empty_json_outputs_empty_array_to_stdout(
+    def test_empty_json_exits_nonzero(
         self, tmp_path, monkeypatch, capsys,
     ):
         specs = tmp_path / "specs"
@@ -857,11 +861,13 @@ class TestNoSpecsStderr:
             common_mod, "get_project_context", lambda _w=None: ctx,
         )
 
-        main(["--json"])
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--json"])
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
-        assert json.loads(captured.out) == []
-        assert captured.err == ""
+        assert captured.out == ""
+        assert "No specs found." in captured.err
 
 
 class TestMainFlags:
@@ -968,7 +974,9 @@ class TestMainFlags:
     ):
         self._setup(tmp_path, monkeypatch)
 
-        main(["nonexistent-pattern-xyz"])
+        with pytest.raises(SystemExit) as exc_info:
+            main(["nonexistent-pattern-xyz"])
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert captured.out == ""

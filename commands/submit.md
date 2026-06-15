@@ -23,7 +23,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex get-topic --json --must-done "$topic_name"
+$spex_skill_dir/scripts/spex list --json --must-done "$topic_name"
 ```
 
 Read the command output and parse it as a JSON array:
