@@ -208,6 +208,17 @@ def _build_parser() -> ArgumentParser:
         default=0,
         help="Increase verbosity (-v, -vv)",
     )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--must-done",
+        action="store_true",
+        help="Only show completed topics",
+    )
+    group.add_argument(
+        "--must-undone",
+        action="store_true",
+        help="Only show topics with undone steps",
+    )
     parser.add_argument(
         "patterns",
         nargs="*",
@@ -228,6 +239,11 @@ def main(argv=None):
     )
 
     topics = filter_topics(topics, args.patterns)
+
+    if args.must_done:
+        topics = [t for t in topics if t.is_completed]
+    elif args.must_undone:
+        topics = [t for t in topics if not t.is_completed]
 
     if args.json:
         print(format_json_output(topics))

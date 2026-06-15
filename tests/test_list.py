@@ -549,6 +549,20 @@ class TestBuildParser:
         assert args.json is True
         assert args.archives is True
 
+    def test_must_done_flag(self):
+        args = self._parse(["--must-done"])
+        assert args.must_done is True
+        assert args.must_undone is False
+
+    def test_must_undone_flag(self):
+        args = self._parse(["--must-undone"])
+        assert args.must_undone is True
+        assert args.must_done is False
+
+    def test_must_done_undone_mutually_exclusive(self):
+        with pytest.raises(SystemExit):
+            self._parse(["--must-done", "--must-undone"])
+
     def test_unknown_flag_exits(self):
         with pytest.raises(SystemExit):
             self._parse(["--unknown"])
@@ -968,3 +982,82 @@ class TestMainFlags:
         # --all is not a recognized flag; argparse rejects it
         with pytest.raises(SystemExit):
             main(["--all"])
+
+
+class TestDoneUndoneFilter:
+    """Test main() with --must-done and --must-undone flags."""
+
+    def _setup(self, tmp_path, monkeypatch):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        project_workdir = str(tmp_path / "project-a")
+
+        _setup_topic(specs / "done-topic", project_workdir)
+        _make_todo(specs / "done-topic", [_task("1"), _task("2")])
+
+        _setup_topic(specs / "undone-topic", project_workdir)
+        _make_todo(specs / "undone-topic", [
+            _task("1"), _task("2", completed=False),
+        ])
+
+        ctx = _make_project_context(project_workdir)
+
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(
+            common_mod, "get_archives_dir", lambda _w=None: archives,
+        )
+        monkeypatch.setattr(
+            common_mod, "get_project_context", lambda _w=None: ctx,
+        )
+
+    def test_default_shows_all(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main([])
+
+        out = capsys.readouterr().out
+        assert "done-topic" in out
+        assert "undone-topic" in out
+
+    def test_must_done_only_completed(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--must-done"])
+
+        out = capsys.readouterr().out
+        assert "done-topic" in out
+        assert "undone-topic" not in out
+
+    def test_must_undone_only_incomplete(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--must-undone"])
+
+        out = capsys.readouterr().out
+        assert "undone-topic" in out
+        # "done-topic" is a substring of "undone-topic", so check that
+        # only "undone-topic" appears by removing it first
+        remaining = out.replace("undone-topic", "")
+        assert "done-topic" not in remaining
+
+    def test_must_done_with_json(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--must-done", "--json"])
+
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        names = [t["topic_name"] for t in result]
+        assert "done-topic" in names
+        assert "undone-topic" not in names
+
+    def test_must_undone_with_pattern(self, tmp_path, monkeypatch, capsys):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--must-undone", "undone"])
+
+        out = capsys.readouterr().out
+        assert "undone-topic" in out
