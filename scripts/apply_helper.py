@@ -149,7 +149,7 @@ def _do_post_action(args):
     import hooks
 
     spec_dir = common.resolve_spec_dir(args.name)
-    spec_name = strip_date_prefix(spec_dir.name)
+    spec_name = spec_dir.name
     meta = common.load_meta(spec_dir)
     spex_branch = meta.spex_branch if meta else ""
     if not spex_branch:
@@ -162,7 +162,6 @@ def _do_post_action(args):
     hooks.run_post_action(
         "apply",
         {
-            "spec": spec_name,
             "source_branch": spex_branch,
             "target_branch": target,
         },

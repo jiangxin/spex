@@ -223,9 +223,7 @@ def _do_post_action(args):
     import hooks
 
     meta = load_meta(spec_dir)
-    spec_name = (meta.name if meta else "") or (
-        strip_date_prefix(spec_dir.name)
-    )
+    spec_name = spec_dir.name
     ctx = get_project_context()
     workdir = (meta.workdir if meta else "") or (
         str(ctx.top_workdir) if ctx.in_git_workdir() else None
@@ -237,7 +235,7 @@ def _do_post_action(args):
     undone = len(data) - done
     hooks.run_post_action(
         args.event_type,
-        {"spec": spec_name, "done": done, "undone": undone},
+        {"done": done, "undone": undone},
         workdir or None,
         spec_name,
     )

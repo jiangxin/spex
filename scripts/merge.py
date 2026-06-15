@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from cli import ArgumentParser
-from common import logger, strip_date_prefix
+from common import logger
 
 
 def _build_submit_parser() -> ArgumentParser:
@@ -85,6 +85,7 @@ def cli_submit(argv=None) -> None:
             spec_name = selected.name
     else:
         spec_dir = common.resolve_spec_dir(spec_name)
+        spec_name = spec_dir.name if spec_dir else spec_name
 
     if not ctx.is_related_to(spec_dir):
         meta = common.load_meta(spec_dir)
@@ -130,13 +131,11 @@ def cli_submit(argv=None) -> None:
         sys.exit(1)
 
     # Run post-action hook on success
-    short_name = strip_date_prefix(spec_dir.name)
     done, total = common.get_todo_progress(spec_dir)
     workdir = ctx.top_workdir
     hooks.run_post_action(
         "submit",
         {
-            "spec": short_name,
             "source_branch": source,
             "target_branch": target,
             "action": method,
@@ -144,7 +143,7 @@ def cli_submit(argv=None) -> None:
             "undone": total - done,
         },
         workdir,
-        short_name,
+        spec_name,
     )
 
     # Auto-archive the spec unless --no-archive is set
