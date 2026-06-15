@@ -90,7 +90,7 @@ Parse this JSON and save the values as `$name` and `$description`.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name $spec_name <<'EOF'
+$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name "$name" <<'EOF'
 $requirement
 EOF
 ```
