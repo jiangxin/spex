@@ -259,7 +259,7 @@ class TestWriteMeta:
         meta = json.loads((spec_dir / "meta.json").read_text())
         keys = list(meta.keys())
         expected_keys = [
-            "topic", "workdir", "main_worktree", "remote_url",
+            "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
             "prompts",
         ]
@@ -459,7 +459,7 @@ class TestCliPostAction:
         (spec_dir / "todo.json").write_text(
             json.dumps(todo_data, indent=2), encoding="utf-8",
         )
-        meta = {"topic": name, "workdir": str(tmp_path)}
+        meta = {"name": name, "workdir": str(tmp_path)}
         (spec_dir / "meta.json").write_text(
             json.dumps(meta), encoding="utf-8",
         )
@@ -629,7 +629,7 @@ class TestDescriptionWrapping:
         )
 
         # Write initial meta.json
-        meta = {"topic": "desc-topic", "workdir": str(tmp_path)}
+        meta = {"name": "desc-topic", "workdir": str(tmp_path)}
         (spec_dir / "meta.json").write_text(
             json.dumps(meta), encoding="utf-8",
         )
@@ -677,7 +677,7 @@ class TestDescriptionWrapping:
 
         # Write initial meta.json with existing description
         meta = {
-            "topic": "no-desc-topic",
+            "name": "no-desc-topic",
             "workdir": str(tmp_path),
             "description": "original description",
         }

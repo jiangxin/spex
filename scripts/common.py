@@ -45,7 +45,7 @@ ICON_ARCHIVED = "\U0001f4e6"
 
 # Field names for SpecMeta serialization order.
 _SPEC_META_FIELD_ORDER = [
-    "topic", "workdir", "main_worktree", "remote_url", "branch",
+    "name", "workdir", "main_worktree", "remote_url", "branch",
     "user_name", "user_email", "created_at", "prompts", "description",
     "spex_branch",
 ]
@@ -55,7 +55,7 @@ _SPEC_META_FIELD_ORDER = [
 class SpecMeta:
     """Typed representation of a spec's meta.json."""
 
-    topic: str = ""
+    name: str = ""
     workdir: str = ""
     main_worktree: str = ""
     remote_url: str = ""
@@ -70,22 +70,30 @@ class SpecMeta:
 
     @classmethod
     def from_dict(cls, data: dict) -> SpecMeta:
-        """Create a SpecMeta from a dict, capturing unknown keys in extras."""
+        """Create a SpecMeta from a dict, capturing unknown keys in extras.
+
+        Accepts legacy "topic" key as an alias for "name".
+        """
         known = {f.name for f in fields(cls)} - {"extras"}
-        kwargs = {k: v for k, v in data.items() if k in known}
-        extras = {k: v for k, v in data.items() if k not in known}
-        return cls(**kwargs, extras=extras)
+        mapped = {}
+        extras = {}
+        for k, v in data.items():
+            if k == "topic":
+                mapped["name"] = v
+            elif k in known:
+                mapped[k] = v
+            else:
+                extras[k] = v
+        return cls(**mapped, extras=extras)
 
     def to_dict(self) -> dict:
         """Serialize to dict in fixed order, omitting empty optional fields."""
         result: dict = {}
         for key in _SPEC_META_FIELD_ORDER:
             value = getattr(self, key)
-            # Omit description and spex_branch when empty
             if key in ("description", "spex_branch") and not value:
                 continue
             result[key] = value
-        # Merge extras (never include the "extras" key itself)
         result.update(self.extras)
         return result
 

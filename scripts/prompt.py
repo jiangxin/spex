@@ -265,7 +265,7 @@ def _build_metadata(template_name, spec_name=None):
         if ctx.main_worktree:
             metadata["main_worktree"] = ctx.main_worktree
         metadata["created_at"] = local_iso_timestamp()
-        metadata["topic"] = ""
+        metadata["name"] = ""
 
     if template_name == "apply-commit":
         metadata["spex_root"] = ""

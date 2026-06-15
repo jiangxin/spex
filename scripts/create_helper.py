@@ -59,7 +59,7 @@ def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
     meta = SpecMeta(
-        topic=strip_date_prefix(Path(spec_dir).name),
+        name=strip_date_prefix(Path(spec_dir).name),
         workdir=workdir,
         main_worktree=main_worktree,
         remote_url=ctx.remote_url,
@@ -223,7 +223,7 @@ def _do_post_action(args):
     import hooks
 
     meta = load_meta(spec_dir)
-    spec_name = (meta.topic if meta else "") or (
+    spec_name = (meta.name if meta else "") or (
         strip_date_prefix(spec_dir.name)
     )
     ctx = get_project_context()

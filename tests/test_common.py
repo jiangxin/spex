@@ -367,7 +367,7 @@ class TestLinkedWorktreeResolution:
         spec = specs / "2026-01-15-10-00-my-feature"
         spec.mkdir()
         meta = SpecMeta(
-            topic="my-feature",
+            name="my-feature",
             workdir=str(main),
             main_worktree=str(main),
         )
@@ -689,7 +689,7 @@ class TestFormatSpec:
     @staticmethod
     def _write_meta(spec_dir):
         (spec_dir / "meta.json").write_text(
-            '{"topic":"t","workdir":"","prompts":[]}', encoding="utf-8",
+            '{"name":"t","workdir":"","prompts":[]}', encoding="utf-8",
         )
 
     def test_verbose_0_header_only(self, tmp_path):
@@ -945,7 +945,7 @@ class TestNormalizePromptEntry:
 class TestSpecMeta:
     def test_spec_meta_defaults(self):
         m = SpecMeta()
-        assert m.topic == ""
+        assert m.name == ""
         assert m.workdir == ""
         assert m.main_worktree == ""
         assert m.remote_url == ""
@@ -960,7 +960,7 @@ class TestSpecMeta:
 
     def test_spec_meta_from_dict_full(self):
         data = {
-            "topic": "my-topic",
+            "name": "my-topic",
             "workdir": "/work",
             "main_worktree": "/main",
             "remote_url": "git@example.com:repo.git",
@@ -978,7 +978,7 @@ class TestSpecMeta:
 
     def test_spec_meta_from_dict_partial(self):
         data = {
-            "topic": "old-topic",
+            "name": "old-topic",
             "workdir": "/work",
             "main_worktree": "/main",
             "remote_url": "",
@@ -998,24 +998,29 @@ class TestSpecMeta:
 
     def test_spec_meta_from_dict_extras(self):
         data = {
-            "topic": "t",
+            "name": "t",
             "custom_key": "custom_value",
             "another": 42,
         }
         m = SpecMeta.from_dict(data)
         assert m.extras == {"custom_key": "custom_value", "another": 42}
-        assert m.topic == "t"
+        assert m.name == "t"
+
+    def test_spec_meta_from_dict_legacy_topic_key(self):
+        """Verify from_dict backward compatibility: 'topic' key maps to name."""
+        m = SpecMeta.from_dict({"topic": "old"})
+        assert m.name == "old"
 
     def test_spec_meta_to_dict_omits_empty(self):
-        m = SpecMeta(topic="t", description="", spex_branch="")
+        m = SpecMeta(name="t", description="", spex_branch="")
         result = m.to_dict()
         assert "description" not in result
         assert "spex_branch" not in result
-        assert result["topic"] == "t"
+        assert result["name"] == "t"
 
     def test_spec_meta_to_dict_includes_extras(self):
         m = SpecMeta(
-            topic="t",
+            name="t",
             extras={"custom": "val", "flag": True},
         )
         result = m.to_dict()
@@ -1173,7 +1178,7 @@ class TestSpec:
         spec_dir = tmp_path / "my-topic"
         spec_dir.mkdir()
         meta_data = {
-            "topic": "my-topic",
+            "name": "my-topic",
             "workdir": "/work",
             "created_at": "2026-01-01T00:00:00+00:00",
             "prompts": ["do stuff"],
@@ -1217,7 +1222,7 @@ class TestSpec:
         spec_dir = tmp_path / "archived-topic"
         spec_dir.mkdir()
         (spec_dir / "meta.json").write_text(
-            json.dumps({"topic": "archived-topic"}), encoding="utf-8",
+            json.dumps({"name": "archived-topic"}), encoding="utf-8",
         )
         t = Spec.from_dir(spec_dir, archived=True)
         assert t is not None
@@ -1225,9 +1230,9 @@ class TestSpec:
 
 
 class TestLoadMetaSpecMeta:
-    def test_load_meta_returns_topic_meta(self, tmp_path):
+    def test_load_meta_returns_spec_meta(self, tmp_path):
         data = {
-            "topic": "my-feature",
+            "name": "my-feature",
             "workdir": "/work",
             "description": "A feature",
         }
@@ -1235,7 +1240,7 @@ class TestLoadMetaSpecMeta:
         meta_path.write_text(json.dumps(data), encoding="utf-8")
         result = load_meta(tmp_path)
         assert isinstance(result, SpecMeta)
-        assert result.topic == "my-feature"
+        assert result.name == "my-feature"
         assert result.workdir == "/work"
         assert result.description == "A feature"
 
@@ -1244,7 +1249,7 @@ class TestLoadMetaSpecMeta:
         assert result is None
 
     def test_load_meta_backward_compat(self, tmp_path):
-        """Old meta.json without description/spex_branch still loads."""
+        """Old meta.json with legacy 'topic' key still loads correctly."""
         data = {
             "topic": "old-topic",
             "workdir": "/work",
@@ -1260,7 +1265,7 @@ class TestLoadMetaSpecMeta:
         meta_path.write_text(json.dumps(data), encoding="utf-8")
         result = load_meta(tmp_path)
         assert isinstance(result, SpecMeta)
-        assert result.topic == "old-topic"
+        assert result.name == "old-topic"
         assert result.description == ""
         assert result.spex_branch == ""
         assert result.prompts == ["initial"]

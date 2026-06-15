@@ -180,7 +180,7 @@ class TestValidateApplyBranch:
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            json.dumps({"name": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
@@ -202,7 +202,7 @@ class TestValidateApplyBranch:
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "2026-05-27-10-00-add-feature"}),
+            json.dumps({"name": "2026-05-27-10-00-add-feature"}),
             encoding="utf-8",
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
@@ -223,7 +223,7 @@ class TestValidateApplyBranch:
     ):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
-            json.dumps({"topic": "add-feature"}), encoding="utf-8"
+            json.dumps({"name": "add-feature"}), encoding="utf-8"
         )
         try:
             validate_apply_branch({"branch_management": True}, tmp_path)

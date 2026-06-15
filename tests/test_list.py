@@ -94,7 +94,7 @@ class TestLoadMeta:
         result = load_meta(spec)
 
         assert isinstance(result, SpecMeta)
-        assert result.topic == ""
+        assert result.name == ""
         assert result.prompts == []
 
 

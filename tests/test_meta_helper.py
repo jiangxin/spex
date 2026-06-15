@@ -259,14 +259,14 @@ class TestGetMode:
 
     def test_get_all_keys(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "branch": "main",
         })
 
         result = _run_script(tmp_path, "my-topic")
 
         assert result.returncode == 0
-        assert "topic: my-topic" in result.stdout
+        assert "name: my-topic" in result.stdout
         assert "branch: main" in result.stdout
 
     def test_get_single_key(self, tmp_path):
@@ -296,14 +296,14 @@ class TestGetMode:
 
     def test_get_all_with_list(self, tmp_path):
         _make_topic(tmp_path, "my-topic", {
-            "topic": "test",
+            "name": "test",
             "prompts": ["hello"],
         })
 
         result = _run_script(tmp_path, "my-topic")
 
         assert result.returncode == 0
-        assert "topic: test" in result.stdout
+        assert "name: test" in result.stdout
         assert "prompts:" in result.stdout
         assert "- hello" in result.stdout
 
@@ -314,7 +314,7 @@ class TestSetKeyKnownFields:
     def test_set_known_field_branch(self, tmp_path):
         """Setting a known field updates it via setattr."""
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "branch": "old-branch",
         })
 
@@ -327,7 +327,7 @@ class TestSetKeyKnownFields:
 
     def test_set_unknown_field_goes_to_extras(self, tmp_path):
         """Setting an unknown field stores it (appears in output JSON)."""
-        _make_topic(tmp_path, "my-topic", {"topic": "my-topic"})
+        _make_topic(tmp_path, "my-topic", {"name": "my-topic"})
 
         result = _run_script(
             tmp_path, "my-topic", "custom_flag", "enabled",
@@ -341,7 +341,7 @@ class TestSetKeyKnownFields:
     def test_set_preserves_field_order(self, tmp_path):
         """Known fields appear in canonical order after set."""
         _make_topic(tmp_path, "my-topic", {
-            "topic": "my-topic",
+            "name": "my-topic",
             "workdir": "/work",
             "main_worktree": "/work",
             "remote_url": "",
@@ -361,13 +361,13 @@ class TestSetKeyKnownFields:
         output = json.loads(result.stdout)
         keys = list(output.keys())
         assert keys.index("branch") < keys.index("prompts")
-        assert keys.index("topic") < keys.index("branch")
+        assert keys.index("name") < keys.index("branch")
         assert output["branch"] == "feature-x"
 
     def test_roundtrip_preserves_json_format(self, tmp_path):
         """Write-then-read roundtrip preserves all fields."""
         original = {
-            "topic": "rt-topic",
+            "name": "rt-topic",
             "workdir": "/work",
             "main_worktree": "/work",
             "remote_url": "git@example.com:repo.git",
@@ -389,7 +389,7 @@ class TestSetKeyKnownFields:
         meta_path = tmp_path / "specs" / "rt-topic" / "meta.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
         assert data["user_name"] == "NewDev"
-        assert data["topic"] == "rt-topic"
+        assert data["name"] == "rt-topic"
         assert data["description"] == "A description"
         assert data["spex_branch"] == "spex/rt-topic"
         assert data["prompts"] == ["initial"]

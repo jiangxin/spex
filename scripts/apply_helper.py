@@ -17,7 +17,7 @@ from common import (
 
 def _extract_spec_name_for_branch(spec_dir: Path, meta) -> str:
     """Get the spec name to use for branch naming."""
-    return meta.topic or spec_dir.name
+    return meta.name or spec_dir.name
 
 
 def validate_apply_branch(
