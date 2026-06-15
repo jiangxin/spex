@@ -135,6 +135,24 @@ following Makefile targets:
 - `make version-check` — verify both files are in sync (runs in `make check`)
 - `make bump VERSION=x.y.z` — update version in both files
 
+### Release SOP
+
+When releasing a new version:
+
+1. **Bump version**: Run `make bump VERSION=x.y.z`. This updates
+   `pyproject.toml` and `SKILL.md` via `scripts/version.py`.
+2. **Update changelog**: Add a new `## x.y.z` section to `CHANGELOG.md`
+   above the previous version. Group changes by heading: `### Features`,
+   `### Bug Fixes`, `### Refactoring`.
+3. **Commit**: Commit both changes with message
+   `chore: bump version to x.y.z and update changelog`.
+4. **Tag**: Create a tag `git tag vx.y.z` at the commit.
+5. **Push**: Ask the user to manually push the commit and tag
+   (`git push` and `git push --tags`).
+
+Run `make check` before committing to verify version consistency and
+pass all tests.
+
 ## Quality Checks
 
 Before committing, `make check` runs automatically via a husky pre-commit hook. It executes:
