@@ -46,7 +46,7 @@ def validate_apply_branch(
     )
 
     if common.is_spec_completed(topic_dir):
-        status = common.format_topic(topic_dir, verbose=2)
+        status = common.format_spec(topic_dir, verbose=2)
         logger.error(f"Error: topic is already completed.\n{status}")
         sys.exit(1)
 
@@ -131,7 +131,7 @@ def _do_precheck(args):
     import config as cfg
 
     ctx = cfg.get_project_context()
-    topic_dir = common.resolve_topic_dir(args.topic)
+    topic_dir = common.resolve_spec_dir(args.topic)
     validate_apply_branch(ctx.config, topic_dir, cwd=ctx.top_workdir)
 
 
@@ -148,7 +148,7 @@ def _do_post_action(args):
     import config as cfg
     import hooks
 
-    topic_dir = common.resolve_topic_dir(args.topic)
+    topic_dir = common.resolve_spec_dir(args.topic)
     topic_name = strip_date_prefix(topic_dir.name)
     meta = common.load_meta(topic_dir)
     spex_branch = meta.spex_branch if meta else ""

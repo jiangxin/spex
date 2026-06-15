@@ -818,7 +818,7 @@ def find_matching_specs(topic_name, specs_dir):
     )
 
 
-def resolve_topic_dir(topic_name, specs_dir=None):
+def resolve_spec_dir(topic_name, specs_dir=None):
     """Resolve a topic name to its directory path.
 
     Tries exact match first, then fuzzy substring match against directory
@@ -899,7 +899,7 @@ def repo_label(workdir: str) -> str:
     return name
 
 
-def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
+def format_spec(topic, verbose: int = 0, show_repo: bool = False) -> str:
     """Format a single topic with progress, description, and optional todo steps.
 
     Args:
@@ -941,7 +941,7 @@ def format_topic(topic, verbose: int = 0, show_repo: bool = False) -> str:
     return "\n".join(lines)
 
 
-def gather_topics(
+def gather_specs(
     include_archives: bool = False, all_projects: bool = False,
 ) -> tuple[list, bool]:
     """Collect and filter topics from specs/archives directories.
@@ -980,23 +980,23 @@ def gather_topics(
     return topics, show_repo
 
 
-def prompt_selection(topics, show_repo=False, allow_empty=False):
+def prompt_selection(specs, show_repo=False, allow_empty=False):
     """Show a numbered list of topics and prompt user to choose one.
 
     Args:
-        topics: List of Spec objects or Path objects (must be non-empty).
+        specs: List of Spec objects or Path objects (must be non-empty).
         show_repo: If True, display repository labels.
         allow_empty: If True, empty input returns None instead of exiting.
 
     Returns:
         The selected item, or None if allow_empty and user enters nothing.
     """
-    display = topics[:10]
+    display = specs[:10]
     for i, topic in enumerate(display, 1):
-        label = format_topic(topic, show_repo=show_repo)
+        label = format_spec(topic, show_repo=show_repo)
         logger.info("  [%d] %s", i, label)
-    if len(topics) > 10:
-        logger.info("  ... (%d more)", len(topics) - 10)
+    if len(specs) > 10:
+        logger.info("  ... (%d more)", len(specs) - 10)
 
     try:
         sys.stderr.write("Enter number to show: ")
@@ -1021,7 +1021,7 @@ def prompt_selection(topics, show_repo=False, allow_empty=False):
     return display[idx]
 
 
-def resolve_topic(name, include_archives=False):
+def resolve_spec(name, include_archives=False):
     """Resolve a topic name to its directory, with optional archive search.
 
     Searches specs_dir first. When include_archives is True, also
@@ -1070,7 +1070,7 @@ def resolve_topic(name, include_archives=False):
     return selected.path
 
 
-def select_topic_interactive(
+def select_spec_interactive(
     include_archives=False, all_projects=False, allow_empty=False,
 ):
     """List topics and prompt user to select one.
@@ -1081,7 +1081,7 @@ def select_topic_interactive(
         allow_empty: If True, return None when no topics found or user
             enters empty input, instead of exiting.
     """
-    topics, show_repo = gather_topics(
+    topics, show_repo = gather_specs(
         include_archives=include_archives,
         all_projects=all_projects,
     )

@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from cli import ArgumentParser
-from common import get_spex_root, resolve_topic, select_topic_interactive
+from common import get_spex_root, resolve_spec, select_spec_interactive
 
 
 def open_directory(path):
@@ -95,10 +95,10 @@ def main(argv=None):
     topic = args.topic
 
     if topic:
-        topic_dir = resolve_topic(topic, include_archives=args.archives)
+        topic_dir = resolve_spec(topic, include_archives=args.archives)
         _perform_action(str(topic_dir), args.run)
     else:
-        selected = select_topic_interactive(
+        selected = select_spec_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
             allow_empty=True,

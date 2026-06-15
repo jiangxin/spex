@@ -60,7 +60,7 @@ class TestFileLocating:
         _write(todo, SAMPLE_DATA)
 
         monkeypatch.setattr(
-            todo_helper, "resolve_topic_dir",
+            todo_helper, "resolve_spec_dir",
             lambda name, **kw: topic_dir,
         )
         todo_helper.main([
@@ -96,7 +96,7 @@ class TestFileLocating:
         )
 
         monkeypatch.setattr(
-            todo_helper, "resolve_topic_dir",
+            todo_helper, "resolve_spec_dir",
             lambda name, **kw: topic_dir,
         )
         with caplog.at_level(logging.INFO):

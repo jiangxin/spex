@@ -22,7 +22,7 @@ from common import (
     is_spec_completed,
     load_meta,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
 )
 from config import get_project_context
 
@@ -66,7 +66,7 @@ def archive_single_topic(
 
     Returns the destination path, or None if skipped due to active branch.
     """
-    topic_dir = resolve_topic_dir(topic_name, specs_dir)
+    topic_dir = resolve_spec_dir(topic_name, specs_dir)
     if not force and not is_spec_completed(topic_dir):
         logger.info(
             "Skipping: topic is not completed (use --force to archive)"

@@ -12,7 +12,7 @@ from common import (
     SpecMeta,
     _resolve_template_roots,
     clear_spex_root_cache,
-    format_topic,
+    format_spec,
     get_archives_dir,
     get_spec_description,
     get_specs_dir,
@@ -24,7 +24,7 @@ from common import (
     local_iso_timestamp,
     normalize_prompt_entry,
     parse_front_matter_description,
-    resolve_topic_dir,
+    resolve_spec_dir,
     wrap_text,
 )
 
@@ -308,13 +308,13 @@ def test_auto_init_skips_toml_when_exists(monkeypatch, tmp_path):
     assert (repo / ".spex.toml").read_text() == '[spex]\nspex_root = ".spex"\n'
 
 
-class TestResolveTopicDir:
+class TestResolveSpecDir:
     def test_exact_match(self, tmp_path):
         specs = tmp_path / "specs"
         specs.mkdir()
         topic = specs / "2026-01-01-my-topic"
         topic.mkdir()
-        result = resolve_topic_dir("2026-01-01-my-topic", specs_dir=specs)
+        result = resolve_spec_dir("2026-01-01-my-topic", specs_dir=specs)
         assert result == topic
 
     def test_fuzzy_match(self, tmp_path):
@@ -322,7 +322,7 @@ class TestResolveTopicDir:
         specs.mkdir()
         topic = specs / "2026-01-01-10-00-my-topic"
         topic.mkdir()
-        result = resolve_topic_dir("my-topic", specs_dir=specs)
+        result = resolve_spec_dir("my-topic", specs_dir=specs)
         assert result == topic
 
     def test_ambiguous_match(self, tmp_path):
@@ -331,14 +331,14 @@ class TestResolveTopicDir:
         (specs / "2026-01-01-my-topic-a").mkdir()
         (specs / "2026-01-02-my-topic-b").mkdir()
         with pytest.raises(SystemExit) as exc_info:
-            resolve_topic_dir("my-topic", specs_dir=specs)
+            resolve_spec_dir("my-topic", specs_dir=specs)
         assert exc_info.value.code == 1
 
     def test_not_found(self, tmp_path):
         specs = tmp_path / "specs"
         specs.mkdir()
         with pytest.raises(SystemExit) as exc_info:
-            resolve_topic_dir("nonexistent", specs_dir=specs)
+            resolve_spec_dir("nonexistent", specs_dir=specs)
         assert exc_info.value.code == 1
 
 
@@ -413,11 +413,11 @@ class TestLinkedWorktreeResolution:
         assert no_args == explicit
         assert no_args == main / ".spex" / "specs"
 
-    def test_resolve_topic_dir_from_linked(self, linked_repo, monkeypatch):
+    def test_resolve_spec_dir_from_linked(self, linked_repo, monkeypatch):
         main, linked, topic = linked_repo
         monkeypatch.chdir(linked)
 
-        result = resolve_topic_dir("my-feature")
+        result = resolve_spec_dir("my-feature")
 
         assert result == topic
 
@@ -438,7 +438,7 @@ class TestLinkedWorktreeResolution:
 
         assert get_specs_dir() == main / ".spex" / "specs"
         clear_spex_root_cache()
-        assert resolve_topic_dir("my-feature") == topic
+        assert resolve_spec_dir("my-feature") == topic
 
 
 class TestGetTemplate:
@@ -685,7 +685,7 @@ class TestGetSpecDescription:
         assert get_spec_description(tmp_path) == ""
 
 
-class TestFormatTopic:
+class TestFormatSpec:
     @staticmethod
     def _write_meta(topic_dir):
         (topic_dir / "meta.json").write_text(
@@ -696,7 +696,7 @@ class TestFormatTopic:
         topic_dir = tmp_path / "my-feature"
         topic_dir.mkdir()
         self._write_meta(topic_dir)
-        out = format_topic(topic_dir, verbose=0)
+        out = format_spec(topic_dir, verbose=0)
         assert out.startswith("🔧 (0/0) my-feature")
         assert len(out.splitlines()) == 1
 
@@ -707,7 +707,7 @@ class TestFormatTopic:
         (topic_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
-        out = format_topic(topic_dir, verbose=1)
+        out = format_spec(topic_dir, verbose=1)
         lines = out.splitlines()
         assert "Build the API" in lines[1]
 
@@ -723,7 +723,7 @@ class TestFormatTopic:
             '[{"id": "1", "name": "Design"}, {"id": "2", "name": "Code"}]',
             encoding="utf-8",
         )
-        out = format_topic(topic_dir, verbose=2)
+        out = format_spec(topic_dir, verbose=2)
         lines = out.splitlines()
         assert "Build the API" in lines[1]
         assert "1: Design" in out
@@ -738,13 +738,13 @@ class TestFormatTopic:
             '[{"id": "1", "name": "Step", "completed_at": "2026-01-01"}]',
             encoding="utf-8",
         )
-        out = format_topic(topic_dir, verbose=0)
+        out = format_spec(topic_dir, verbose=0)
         assert out.startswith("✅ (1/1) done")
 
     def test_path_without_meta_returns_error(self, tmp_path):
         topic_dir = tmp_path / "no-meta"
         topic_dir.mkdir()
-        out = format_topic(topic_dir, verbose=0)
+        out = format_spec(topic_dir, verbose=0)
         assert "unable to load" in out
 
     def test_show_repo_flag(self, tmp_path):
@@ -752,7 +752,7 @@ class TestFormatTopic:
         t = Spec(name="my-topic", path=tmp_path / "my-topic",
                  meta=SpecMeta(workdir="/projects/myapp"),
                  done=2, total=5)
-        out = format_topic(t, verbose=0, show_repo=True)
+        out = format_spec(t, verbose=0, show_repo=True)
         assert "[myapp]" in out
         assert "(2/5)" in out
 

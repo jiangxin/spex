@@ -433,7 +433,7 @@ class TestVerboseOutput:
         ]
         output = format_verbose_output(topics, verbosity=1)
         lines = output.splitlines()
-        # format_topic doesn't wrap -- description is raw from spec front-matter
+        # format_spec doesn't wrap -- description is raw from spec front-matter
         assert any("word word" in line for line in lines[1:])
 
     def test_level2_shows_steps(self, tmp_path):

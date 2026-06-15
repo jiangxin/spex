@@ -146,8 +146,8 @@ class TestMain:
         assert exc_info.value.code == 1
 
 
-class TestResolveTopic:
-    """Tests for resolve_topic: specs lookup, archive fallback, multi-match."""
+class TestResolveSpec:
+    """Tests for resolve_spec: specs lookup, archive fallback, multi-match."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -162,7 +162,7 @@ class TestResolveTopic:
         specs, _archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="my-feature", subdir="specs")
 
-        result = spex_common.resolve_topic("my-feature")
+        result = spex_common.resolve_spec("my-feature")
         assert result == specs / "my-feature"
 
     def test_no_fallback_without_flag(self, tmp_path, monkeypatch, caplog):
@@ -170,7 +170,7 @@ class TestResolveTopic:
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.resolve_topic("old-feature")
+            spex_common.resolve_spec("old-feature")
         assert exc_info.value.code == 1
         assert "--archives" in caplog.text
 
@@ -178,14 +178,14 @@ class TestResolveTopic:
         _specs, archives = self._setup(tmp_path, monkeypatch)
         _make_topic(tmp_path, name="old-feature", subdir="archives")
 
-        result = spex_common.resolve_topic("old-feature", include_archives=True)
+        result = spex_common.resolve_spec("old-feature", include_archives=True)
         assert result == archives / "old-feature"
 
     def test_no_match_exits(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.resolve_topic("nonexistent")
+            spex_common.resolve_spec("nonexistent")
         assert exc_info.value.code == 1
 
     def test_multi_match_interactive(self, tmp_path, monkeypatch):
@@ -196,7 +196,7 @@ class TestResolveTopic:
         # Simulate user selecting "2" (second item in reverse-sorted list)
         monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
 
-        result = spex_common.resolve_topic("feature")
+        result = spex_common.resolve_spec("feature")
         # Reverse sorted: feature-beta=1, feature-alpha=2
         assert result == specs / "feature-alpha"
 
@@ -209,15 +209,15 @@ class TestResolveTopic:
         # Simulate user selecting "1"
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.resolve_topic("my-topic", include_archives=True)
+        result = spex_common.resolve_spec("my-topic", include_archives=True)
         # Reverse sorted: my-topic-old=1? No, my-topic > my-topic-old
         # Actually sorted reverse: my-topic-old, my-topic
         # Wait: reverse=True means descending, so my-topic-old > my-topic
         assert result.name in ("my-topic", "my-topic-old")
 
 
-class TestSelectTopicInteractive:
-    """Tests for select_topic_interactive with --archives and --all-projects."""
+class TestSelectSpecInteractive:
+    """Tests for select_spec_interactive with --archives and --all-projects."""
 
     def _setup(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -258,7 +258,7 @@ class TestSelectTopicInteractive:
         specs, _archives = self._setup(tmp_path, monkeypatch)
 
         # Only one related spec -> returns directly
-        result = spex_common.select_topic_interactive()
+        result = spex_common.select_spec_interactive()
         assert result == specs / "related-spec"
 
     def test_archives_includes_archived(self, tmp_path, monkeypatch):
@@ -267,7 +267,7 @@ class TestSelectTopicInteractive:
         # Two related topics (spec + archive) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.select_topic_interactive(include_archives=True)
+        result = spex_common.select_spec_interactive(include_archives=True)
         assert result.name in ("related-spec", "related-archive")
 
     def test_all_projects_no_filter(self, tmp_path, monkeypatch):
@@ -276,7 +276,7 @@ class TestSelectTopicInteractive:
         # Two specs (related + other) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
-        result = spex_common.select_topic_interactive(all_projects=True)
+        result = spex_common.select_spec_interactive(all_projects=True)
         assert result.name in ("related-spec", "other-spec")
 
     def test_no_topics_exits(self, tmp_path, monkeypatch):
@@ -291,7 +291,7 @@ class TestSelectTopicInteractive:
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
         with pytest.raises(SystemExit) as exc_info:
-            spex_common.select_topic_interactive()
+            spex_common.select_spec_interactive()
         assert exc_info.value.code == 1
 
 
@@ -360,8 +360,8 @@ class TestPromptSelection:
         assert result == d1
 
 
-class TestSelectTopicInteractiveAllowEmpty:
-    """Tests for select_topic_interactive allow_empty behavior."""
+class TestSelectSpecInteractiveAllowEmpty:
+    """Tests for select_spec_interactive allow_empty behavior."""
 
     def test_no_topics_returns_none(self, tmp_path, monkeypatch):
         specs = tmp_path / "specs"
@@ -374,7 +374,7 @@ class TestSelectTopicInteractiveAllowEmpty:
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
 
-        result = spex_common.select_topic_interactive(allow_empty=True)
+        result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None
 
     def test_empty_input_returns_none(self, tmp_path, monkeypatch):
@@ -405,5 +405,5 @@ class TestSelectTopicInteractiveAllowEmpty:
         monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
 
-        result = spex_common.select_topic_interactive(allow_empty=True)
+        result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None

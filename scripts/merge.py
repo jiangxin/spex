@@ -84,7 +84,7 @@ def cli_submit(argv=None) -> None:
             topic_dir = selected.path
             topic_name = selected.name
     else:
-        topic_dir = common.resolve_topic_dir(topic_name)
+        topic_dir = common.resolve_spec_dir(topic_name)
 
     if not ctx.is_related_to(topic_dir):
         meta = common.load_meta(topic_dir)

@@ -22,7 +22,7 @@ from common import (
     atomic_write_json,
     logger,
     normalize_prompt_entry,
-    resolve_topic_dir,
+    resolve_spec_dir,
 )
 
 
@@ -152,7 +152,7 @@ def main(argv=None):
     stdin_flag = args.stdin_flag
     add_images = args.add_images
 
-    topic_dir = resolve_topic_dir(topic_name)
+    topic_dir = resolve_spec_dir(topic_name)
     meta_path = topic_dir / "meta.json"
 
     if not meta_path.is_file():

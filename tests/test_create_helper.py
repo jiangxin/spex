@@ -474,7 +474,7 @@ class TestCliPostAction:
             tmp_path, "my-topic", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
 
@@ -490,7 +490,7 @@ class TestCliPostAction:
         topic_dir = tmp_path / "no-json"
         topic_dir.mkdir()
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
         with pytest.raises(SystemExit):
@@ -507,7 +507,7 @@ class TestCliPostAction:
             tmp_path, "bad-field", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
         with pytest.raises(SystemExit):
@@ -527,7 +527,7 @@ class TestCliPostAction:
             tmp_path, "dup-id", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
         with pytest.raises(SystemExit):
@@ -545,7 +545,7 @@ class TestCliPostAction:
             tmp_path, "evt-topic", todo,
         )
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
 
@@ -635,7 +635,7 @@ class TestDescriptionWrapping:
         )
 
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
 
@@ -686,7 +686,7 @@ class TestDescriptionWrapping:
         )
 
         monkeypatch.setattr(
-            "create_helper.resolve_topic_dir",
+            "create_helper.resolve_spec_dir",
             lambda _name: topic_dir,
         )
 

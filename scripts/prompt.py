@@ -17,7 +17,7 @@ from common import (
     load_todo,
     local_iso_timestamp,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
     strip_front_matter,
 )
 from common import filter_completed_todos as _filter_completed_todos
@@ -250,7 +250,7 @@ def _build_metadata(template_name, topic_name=None):
     """
     metadata = {}
     if topic_name:
-        topic_dir = resolve_topic_dir(topic_name)
+        topic_dir = resolve_spec_dir(topic_name)
         metadata["topic_name"] = topic_dir.name
         meta = load_meta(topic_dir)
         if meta:
@@ -533,7 +533,7 @@ def _do_modify_spec(args):
     try:
         # Side-effect: remove undone tasks from todo.json before building metadata
         if args.remove_undone:
-            topic_dir = resolve_topic_dir(args.topic)
+            topic_dir = resolve_spec_dir(args.topic)
             todo_path = topic_dir / "todo.json"
             if todo_path.exists():
                 try:
@@ -582,7 +582,7 @@ def _do_modify_todo(args):
             metadata.update(extra_vars)
 
         # Side-effect: clean undone todos from todo.json
-        topic_dir = resolve_topic_dir(args.topic)
+        topic_dir = resolve_spec_dir(args.topic)
         todo_path = topic_dir / "todo.json"
         if todo_path.exists():
             try:

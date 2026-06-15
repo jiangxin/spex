@@ -18,7 +18,7 @@ from common import (
     load_and_validate_todo_json,
     local_iso_timestamp,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
     validate_unique_ids,
 )
 
@@ -390,7 +390,7 @@ def _resolve_todo_path(args):
         return (todo_path, is_xml)
 
     # --topic mode
-    topic_dir = resolve_topic_dir(args.topic)
+    topic_dir = resolve_spec_dir(args.topic)
     filename = "todo.xml" if is_xml else "todo.json"
     return (topic_dir / filename, is_xml)
 

@@ -15,8 +15,8 @@ from common import (
     display_ljust,
     display_truncate,
     display_width,
-    format_topic,
-    gather_topics,
+    format_spec,
+    gather_specs,
     repo_label,
 )
 
@@ -145,7 +145,7 @@ def format_verbose_output(
     topics.sort(key=lambda t: t.created_at, reverse=True)
 
     blocks = [
-        format_topic(topic, verbose=verbosity, show_repo=show_repo)
+        format_spec(topic, verbose=verbosity, show_repo=show_repo)
         for topic in topics
     ]
 
@@ -233,7 +233,7 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    topics, show_repo = gather_topics(
+    topics, show_repo = gather_specs(
         include_archives=args.archives,
         all_projects=args.all_projects,
     )

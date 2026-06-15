@@ -14,7 +14,7 @@ from common import (
     SpecMeta,
     atomic_write_json,
     logger,
-    resolve_topic_dir,
+    resolve_spec_dir,
     strip_date_prefix,
     wrap_text,
 )
@@ -190,7 +190,7 @@ def _do_post_action(args):
     )
     from config import get_project_context
 
-    topic_dir = resolve_topic_dir(args.topic)
+    topic_dir = resolve_spec_dir(args.topic)
     json_path = topic_dir / "todo.json"
 
     if not json_path.is_file():

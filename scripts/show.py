@@ -10,9 +10,9 @@ import sys
 from cli import ArgumentParser
 from common import (
     Spec,
-    format_topic,
-    resolve_topic,
-    select_topic_interactive,
+    format_spec,
+    resolve_spec,
+    select_spec_interactive,
     strip_front_matter,
 )
 
@@ -32,7 +32,7 @@ def _paged_output(text):
 
 def _format_default(topic_dir):
     """Format topic in list -vv style, reused from common."""
-    return format_topic(topic_dir, verbose=2)
+    return format_spec(topic_dir, verbose=2)
 
 
 def _format_verbose(topic_dir):
@@ -99,9 +99,9 @@ def main(argv=None):
     args = parser.parse(argv)
 
     if args.topic:
-        topic_dir = resolve_topic(args.topic, include_archives=args.archives)
+        topic_dir = resolve_spec(args.topic, include_archives=args.archives)
     else:
-        topic_dir = select_topic_interactive(
+        topic_dir = select_spec_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
         )

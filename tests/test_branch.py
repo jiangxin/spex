@@ -233,7 +233,7 @@ class TestValidateApplyBranch:
 
 
 class TestCliPrecheck:
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"branch_management": False}))
     def test_disabled_no_output(self, _ctx, mock_resolve, tmp_path,
@@ -248,7 +248,7 @@ class TestCliPrecheck:
 
 class TestCliPostAction:
     @patch("config.get_project_context", return_value=_fake_context())
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_outputs_text_with_branch(self, mock_resolve, _ctx,
                                       tmp_path, caplog):
         import logging
@@ -264,7 +264,7 @@ class TestCliPostAction:
         assert "main" in caplog.text
 
     @patch("config.get_project_context", return_value=_fake_context())
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     @patch("common.load_meta", return_value=SpecMeta())
     def test_no_branch_no_output(self, _meta, _resolve, _ctx, capsys,
                                  tmp_path):
@@ -289,7 +289,7 @@ class TestCliSubmit:
 
     @patch("config.get_project_context")
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_unrelated_topic_exits(self, mock_resolve, _specs, mock_ctx,
                                    tmp_path, caplog):
         """Topic not related to current project causes error exit."""
@@ -325,7 +325,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success(self, mock_resolve, _specs, _ctx, mock_merge,
                            mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
@@ -348,7 +348,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
                                     mock_merge, mock_archive, tmp_path,
                                     capsys):
@@ -368,7 +368,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
                                            mock_merge, mock_archive,
                                            tmp_path, capsys):
@@ -389,7 +389,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
                                       _merge, mock_archive, tmp_path,
                                       capsys):
@@ -413,7 +413,7 @@ class TestCliSubmit:
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
-    @patch("common.resolve_topic_dir")
+    @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
                                          _merge, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"

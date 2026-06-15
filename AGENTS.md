@@ -91,8 +91,8 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `parse_front_matter_description(content)` | Extract `description` from YAML front-matter. |
 | `get_spec_description(topic_dir)` | Return topic description from `meta.json` or `spec.md` front-matter. |
 | `get_template(name, workdir)` | Return template content (front-matter stripped). |
-| `resolve_topic_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
-| `format_topic(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
+| `resolve_spec_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
+| `format_spec(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
 | `escape_xml_text(text)` | Escape &, <, > unconditionally in text content. |
 | `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
