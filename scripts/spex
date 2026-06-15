@@ -66,14 +66,14 @@ def _run_archive(argv=None):
 
 
 def _run_show(argv=None):
-    """Show detailed topic information."""
+    """Show detailed spec information."""
     import show as spex_show
 
     spex_show.main(argv)
 
 
 def _run_open(argv=None):
-    """Open a topic directory in the system file browser."""
+    """Open a spec directory in the system file browser."""
     import open as spex_open
 
     spex_open.main(argv)
@@ -303,12 +303,12 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge [topic] [--no-archive] [-n/--dry-run]
+Usage: spex merge [name] [--no-archive] [-n/--dry-run]
 
 Merge a spex branch back to target.
 
 Positional arguments:
-  topic           Topic name (required)
+  name            Spec name
 
 Options:
   --no-archive    Skip automatic archiving after successful merge

@@ -12,17 +12,17 @@ Apply a specification to implement code step by step.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 If `$spec_name` is `--all`:
 
 - Run `$spex_skill_dir/scripts/spex list --json --all-projects --must-undone`
-  to get all topics with undone tasks.
+  to get all specs with undone tasks.
 - Parse the output as a JSON array of objects, each containing
   `spec_name` and `spec_path`.
 - For each entry, set `$spec_name` and `$spec_path` and execute
   Phases 2 through 7.
-- After completing all topics, proceed to Phase 8.
+- After completing all specs, proceed to Phase 8.
 
 Otherwise, run:
 
@@ -127,7 +127,7 @@ keeping token usage independent between steps.
 Stop looping when Phase 3 reports `"all_done": true`.
 
 If running in `--all` mode (Phase 1), after completing all steps
-for the current topic, move to the next topic and repeat from
+for the current spec, move to the next spec and repeat from
 Phase 2.
 
 ### Phase 8: Post Action
@@ -140,6 +140,6 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 
 Display the output to the user.
 
-**STOP.** All topics and steps in this run are complete. Do NOT start
+**STOP.** All specs and steps in this run are complete. Do NOT start
 implementing additional steps or modifying project files beyond what
 was already committed.

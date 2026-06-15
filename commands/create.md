@@ -3,7 +3,7 @@
 **PLAN only** — this command produces spec documents and a todo list.
 It does NOT write any application code.
 
-Create a new specification topic with requirement analysis, detailed design,
+Create a new spec with requirement analysis, detailed design,
 and test plan.
 
 ## Usage
@@ -18,7 +18,7 @@ and test plan.
   completeness, edge cases, and testability.
 
 **SCOPE: This command creates documents only — `spec.md`, `todo.json`,
-`meta.json` inside the topic directory. NO application code is written.
+`meta.json` inside the spec directory. NO application code is written.
 NO existing project files are modified. Implementation happens later
 via `/spex apply` or `/spex apply-one-step`.**
 
@@ -71,21 +71,21 @@ materially change the spec.
 After clarification (or if none was needed), record the complete,
 unambiguous requirement as `$requirement`.
 
-### Phase 3: Generate Topic and Description
+### Phase 3: Generate Name and Description
 
 Based on `$requirement`, generate a JSON object with two fields:
 
-- `topic`: a short English name (<32 bytes) using only `[a-z0-9-]`,
+- `name`: a short English name (<32 bytes) using only `[a-z0-9-]`,
   replacing spaces with `-`. Do NOT prepend any date prefix.
 - `description`: a brief English summary of the requirement, used as
   merge commit message and PR description. Keep it as a single line
   (do NOT embed newlines) — line wrapping is handled automatically.
 
-Example: `{"topic": "add-login-api", "description": "Add user login API with JWT authentication"}`
+Example: `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`
 
-Parse this JSON and save the values as `$spec_name` and `$description`.
+Parse this JSON and save the values as `$name` and `$description`.
 
-### Phase 4: Prepare Topic Directory
+### Phase 4: Prepare Spec Directory
 
 Run:
 
@@ -95,12 +95,12 @@ $requirement
 EOF
 ```
 
-The script creates the topic directory and `meta.json` (with the
+The script creates the spec directory and `meta.json` (with the
 requirement saved to its `prompts` field and the description saved to
 its `description` field). Parse the JSON output and
 save these variables:
 
-- `$spec_name` ← `spec_name` (topic with date prefix,
+- `$spec_name` ← `spec_name` (spec with date prefix,
   e.g., `2026-05-24-10-30-add-login-api`)
 - `$spec_path` ← `spec_path`
 - `$spec_template` ← `spec_template`
@@ -240,7 +240,7 @@ JSON format in `todo.json`, and re-run until validation succeeds.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$spec_name`
+**Spec**: `$spec_name`
 
 - Spec: `$spec_path/spec.md`
 - Todo: `$spec_path/todo.json`
@@ -254,7 +254,7 @@ project files, or begin implementing the steps planned in `todo.json`.**
 
 Planning is complete. The `/spex create` command's sole responsibility
 was to produce the spec documents (`spec.md`, `todo.json`, `meta.json`)
-inside the topic directory.
+inside the spec directory.
 
 Wait for the user to review the spec and invoke `/spex apply` or
 `/spex apply-one-step` when ready.

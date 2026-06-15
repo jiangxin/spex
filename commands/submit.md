@@ -9,7 +9,7 @@ Submit completed work by merging the feature branch or creating a PR.
 ```
 
 When `spec_name` is omitted, the CLI automatically searches for
-submittable topics (completed tasks + has `spex_branch` + related to
+submittable specs (completed tasks + has `spex_branch` + related to
 the current project). If exactly one is found it is auto-selected;
 if multiple are found a numbered list is displayed for interactive
 selection.
@@ -18,7 +18,7 @@ selection.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 
@@ -40,7 +40,7 @@ Read the command output and parse it as a JSON array:
 Read `$spec_path/meta.json` and check:
 
 - If `spex_branch` is not set, report that branch management is not
-  active for this topic and stop.
+  active for this spec and stop.
 
 ### Phase 3: Submit
 

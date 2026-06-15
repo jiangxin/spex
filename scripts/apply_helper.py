@@ -162,7 +162,7 @@ def _do_post_action(args):
     hooks.run_post_action(
         "apply",
         {
-            "topic": spec_name,
+            "spec": spec_name,
             "source_branch": spex_branch,
             "target_branch": target,
         },

@@ -12,7 +12,7 @@ Apply a single step from a specification's todo list.
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 

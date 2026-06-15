@@ -136,7 +136,7 @@ def cli_submit(argv=None) -> None:
     hooks.run_post_action(
         "submit",
         {
-            "topic": short_name,
+            "spec": short_name,
             "source_branch": source,
             "target_branch": target,
             "action": method,

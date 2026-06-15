@@ -15,13 +15,13 @@ development plan.
   specification evolution while preserving completed work.
 
 **SCOPE: This command updates spec documents only — `spec.md`,
-`todo.json`, `meta.json` inside the topic directory. NO application
+`todo.json`, `meta.json` inside the spec directory. NO application
 code is written. NO existing project files are modified.
 Implementation is handled by `/spex apply` or `/spex apply-one-step`.**
 
 Follow these steps in order. Do not skip or reorder.
 
-### Phase 1: Resolve Topic
+### Phase 1: Resolve Spec
 
 Run:
 
@@ -180,7 +180,7 @@ If the script exits with an error, report the error and stop.
 Display the following summary to the user:
 
 ```text
-**Topic**: `$spec_name`
+**Spec**: `$spec_name`
 
 - Spec: `$spec_path/spec.md`
 - Todo: `$spec_path/todo.json`

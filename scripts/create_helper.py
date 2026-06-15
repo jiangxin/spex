@@ -237,7 +237,7 @@ def _do_post_action(args):
     undone = len(data) - done
     hooks.run_post_action(
         args.event_type,
-        {"topic": spec_name, "done": done, "undone": undone},
+        {"spec": spec_name, "done": done, "undone": undone},
         workdir or None,
         spec_name,
     )
