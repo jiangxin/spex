@@ -833,14 +833,13 @@ def resolve_topic_dir(topic_name, specs_dir=None):
     Args:
         topic_name: Topic name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
-            get_specs_dir(get_project_context().top_workdir).
+            get_specs_dir().
 
     Returns:
         Path to the resolved topic directory.
     """
     if specs_dir is None:
-        ctx = get_project_context()
-        specs_dir = get_specs_dir(str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+        specs_dir = get_specs_dir()
     else:
         specs_dir = Path(specs_dir)
 

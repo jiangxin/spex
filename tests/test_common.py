@@ -342,6 +342,105 @@ class TestResolveTopicDir:
         assert exc_info.value.code == 1
 
 
+@pytest.mark.slow
+class TestLinkedWorktreeResolution:
+    """Verify specs resolve to main worktree's .spex/ from a linked worktree."""
+
+    @pytest.fixture()
+    def linked_repo(self, tmp_path):
+        """Create a git repo with a linked worktree and a topic in .spex/specs/."""
+        main = tmp_path / "main"
+        main.mkdir()
+        subprocess.run(
+            ["git", "init", str(main)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(main), "commit",
+             "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+
+        toml = main / ".spex.toml"
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+        specs = main / ".spex" / "specs"
+        specs.mkdir(parents=True)
+        topic = specs / "2026-01-15-10-00-my-feature"
+        topic.mkdir()
+        meta = TopicMeta(
+            topic="my-feature",
+            workdir=str(main),
+            main_worktree=str(main),
+        )
+        (topic / "meta.json").write_text(
+            json.dumps(meta.to_dict(), indent=2), encoding="utf-8",
+        )
+
+        linked = tmp_path / "linked"
+        subprocess.run(
+            ["git", "-C", str(main), "worktree", "add",
+             str(linked), "-b", "feature"],
+            capture_output=True, check=True,
+        )
+
+        clear_spex_root_cache()
+        return main, linked, topic
+
+    def test_get_spex_root_from_linked(self, linked_repo, monkeypatch):
+        main, linked, _ = linked_repo
+        monkeypatch.chdir(linked)
+
+        result = get_spex_root()
+
+        assert result == str(main / ".spex")
+
+    def test_get_specs_dir_from_linked(self, linked_repo, monkeypatch):
+        main, linked, _ = linked_repo
+        monkeypatch.chdir(linked)
+
+        result = get_specs_dir()
+
+        assert result == main / ".spex" / "specs"
+
+    def test_get_specs_dir_no_args_same_as_explicit(self, linked_repo, monkeypatch):
+        """get_specs_dir() and get_specs_dir(top_workdir) return the same path."""
+        main, linked, _ = linked_repo
+        monkeypatch.chdir(linked)
+
+        no_args = get_specs_dir()
+        clear_spex_root_cache()
+        explicit = get_specs_dir(str(linked))
+
+        assert no_args == explicit
+        assert no_args == main / ".spex" / "specs"
+
+    def test_resolve_topic_dir_from_linked(self, linked_repo, monkeypatch):
+        main, linked, topic = linked_repo
+        monkeypatch.chdir(linked)
+
+        result = resolve_topic_dir("my-feature")
+
+        assert result == topic
+
+    def test_get_archives_dir_from_linked(self, linked_repo, monkeypatch):
+        main, linked, _ = linked_repo
+        monkeypatch.chdir(linked)
+
+        result = get_archives_dir()
+
+        assert result == main / ".spex" / "archives"
+
+    def test_subdir_of_linked_worktree(self, linked_repo, monkeypatch):
+        """Running from a subdirectory of the linked worktree still works."""
+        main, linked, topic = linked_repo
+        subdir = linked / "src" / "lib"
+        subdir.mkdir(parents=True)
+        monkeypatch.chdir(subdir)
+
+        assert get_specs_dir() == main / ".spex" / "specs"
+        clear_spex_root_cache()
+        assert resolve_topic_dir("my-feature") == topic
+
+
 class TestGetTemplate:
     def test_get_template_generic(self, monkeypatch, tmp_path):
         """get_template works with any template name."""

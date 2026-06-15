@@ -42,8 +42,7 @@ def _find_submittable_topics(ctx):
     import common
     from common import Topic, find_completed_topics
 
-    specs_dir = common.get_specs_dir(
-        str(ctx.top_workdir) if ctx.in_git_workdir() else None)
+    specs_dir = common.get_specs_dir()
     completed = find_completed_topics(specs_dir, ctx, force=True)
     results = []
     for d in completed:
@@ -85,9 +84,7 @@ def cli_submit(argv=None) -> None:
             topic_dir = selected.path
             topic_name = selected.name
     else:
-        specs_dir = common.get_specs_dir(
-            str(ctx.top_workdir) if ctx.in_git_workdir() else None)
-        topic_dir = common.resolve_topic_dir(topic_name, specs_dir)
+        topic_dir = common.resolve_topic_dir(topic_name)
 
     if not ctx.is_related_to(topic_dir):
         meta = common.load_meta(topic_dir)
