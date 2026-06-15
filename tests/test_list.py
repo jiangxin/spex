@@ -151,7 +151,7 @@ class TestGetTodoProgress:
 
 class TestFormatOutput:
     def test_empty_list(self):
-        assert format_output([]) == "No specs found."
+        assert format_output([]) == ""
 
     def test_sort_descending(self):
         p = Path("/tmp")
@@ -781,6 +781,75 @@ def _make_project_context(top_workdir, main_worktree=None):
     )
 
 
+class TestNoSpecsStderr:
+    """Test that 'No specs found.' goes to stderr, not stdout."""
+
+    def test_empty_specs_prints_to_stderr(self, tmp_path, monkeypatch, capsys):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        ctx = _make_project_context(str(tmp_path / "project"))
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(
+            common_mod, "get_archives_dir", lambda _w=None: archives,
+        )
+        monkeypatch.setattr(
+            common_mod, "get_project_context", lambda _w=None: ctx,
+        )
+
+        main([])
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "No specs found." in captured.err
+
+    def test_empty_verbose_prints_to_stderr(self, tmp_path, monkeypatch, capsys):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        ctx = _make_project_context(str(tmp_path / "project"))
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(
+            common_mod, "get_archives_dir", lambda _w=None: archives,
+        )
+        monkeypatch.setattr(
+            common_mod, "get_project_context", lambda _w=None: ctx,
+        )
+
+        main(["-v"])
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "No specs found." in captured.err
+
+    def test_empty_json_outputs_empty_array_to_stdout(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        ctx = _make_project_context(str(tmp_path / "project"))
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(
+            common_mod, "get_archives_dir", lambda _w=None: archives,
+        )
+        monkeypatch.setattr(
+            common_mod, "get_project_context", lambda _w=None: ctx,
+        )
+
+        main(["--json"])
+
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == []
+        assert captured.err == ""
+
+
 class TestMainFlags:
     """Test main() with --archives, --all-projects, and --all flags."""
 
@@ -879,6 +948,17 @@ class TestMainFlags:
         out = capsys.readouterr().out
         assert "related-spec" in out
         assert "other-spec" not in out
+
+    def test_no_match_prints_to_stderr(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["nonexistent-pattern-xyz"])
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "No specs found." in captured.err
 
     def test_old_all_flag_rejected(
         self, tmp_path, monkeypatch,
