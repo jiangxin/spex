@@ -46,17 +46,17 @@ def move_spec_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
         counter += 1
 
 
-def move_spec(topic_dir: Path, archives_dir: Path) -> Path:
-    """Move topic_dir into archives_dir, appending suffix on conflict.
+def move_spec(spec_dir: Path, archives_dir: Path) -> Path:
+    """Move spec_dir into archives_dir, appending suffix on conflict.
 
     Thin wrapper around move_spec_with_conflict for backward compatibility.
     Returns the final destination path.
     """
-    return move_spec_with_conflict(topic_dir, archives_dir)
+    return move_spec_with_conflict(spec_dir, archives_dir)
 
 
 def archive_single_spec(
-    topic_name: str,
+    spec_name: str,
     specs_dir: Path,
     archives_dir: Path,
     force: bool = False,
@@ -66,14 +66,14 @@ def archive_single_spec(
 
     Returns the destination path, or None if skipped due to active branch.
     """
-    topic_dir = resolve_spec_dir(topic_name, specs_dir)
-    if not force and not is_spec_completed(topic_dir):
+    spec_dir = resolve_spec_dir(spec_name, specs_dir)
+    if not force and not is_spec_completed(spec_dir):
         logger.info(
             "Skipping: topic is not completed (use --force to archive)"
         )
         return None
-    if not force and has_active_branch(topic_dir):
-        meta = load_meta(topic_dir)
+    if not force and has_active_branch(spec_dir):
+        meta = load_meta(spec_dir)
         spex_branch = meta.spex_branch if meta else ""
         logger.info(
             "Skipping: spex branch '%s' still exists"
@@ -81,16 +81,16 @@ def archive_single_spec(
         )
         return None
     if dry_run:
-        logger.info("Would archive: %s", topic_dir.name)
-        return archives_dir / topic_dir.name
+        logger.info("Would archive: %s", spec_dir.name)
+        return archives_dir / spec_dir.name
     archives_dir.mkdir(parents=True, exist_ok=True)
-    dest = move_spec(topic_dir, archives_dir)
-    logger.info("Archived: %s -> %s", topic_dir.name, dest)
+    dest = move_spec(spec_dir, archives_dir)
+    logger.info("Archived: %s -> %s", spec_dir.name, dest)
     return dest
 
 
 def restore_single_spec(
-    topic_name: str,
+    spec_name: str,
     specs_dir: Path,
     archives_dir: Path,
     dry_run: bool = False,
@@ -108,17 +108,17 @@ def restore_single_spec(
         )
         sys.exit(1)
 
-    matches = find_matching_specs(topic_name, archives_dir)
+    matches = find_matching_specs(spec_name, archives_dir)
     if not matches:
         logger.error(
-            "Error: no topic matching '%s' found in archives.", topic_name
+            "Error: no topic matching '%s' found in archives.", spec_name
         )
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
         logger.error(
             "Error: multiple topics match '%s' in archives:\n  %s",
-            topic_name, names
+            spec_name, names
         )
         sys.exit(1)
 
@@ -191,22 +191,22 @@ def main(argv=None):
             if d.is_dir() and is_spec_completed(d) and has_active_branch(d)
         ]
         logger.info("Would archive %d topic(s):", len(completed))
-        for topic_dir in completed:
-            logger.info("  %s", topic_dir.name)
+        for spec_dir in completed:
+            logger.info("  %s", spec_dir.name)
         if skipped:
             logger.info(
                 "Would skip %d topic(s) (active spex_branch):", len(skipped)
             )
-            for topic_dir in skipped:
-                meta = load_meta(topic_dir)
+            for spec_dir in skipped:
+                meta = load_meta(spec_dir)
                 branch = meta.spex_branch if meta else ""
-                logger.info("  %s (%s)", topic_dir.name, branch)
+                logger.info("  %s (%s)", spec_dir.name, branch)
         return
 
     archives_dir.mkdir(parents=True, exist_ok=True)
-    for topic_dir in completed:
-        dest = move_spec(topic_dir, archives_dir)
-        logger.info("Archived: %s -> %s", topic_dir.name, dest)
+    for spec_dir in completed:
+        dest = move_spec(spec_dir, archives_dir)
+        logger.info("Archived: %s -> %s", spec_dir.name, dest)
 
 
 if __name__ == "__main__":

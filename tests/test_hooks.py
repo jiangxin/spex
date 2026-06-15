@@ -403,7 +403,7 @@ class TestRunPostAction:
         )
         with patch("common.get_project_context", return_value=ctx):
             hooks.run_post_action(
-                "apply", {"foo": "bar"}, str(tmp_path), topic_name="my-topic"
+                "apply", {"foo": "bar"}, str(tmp_path), spec_name="my-topic"
             )
 
         assert output_file.read_text() == "topic=my-topic"

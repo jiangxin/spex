@@ -312,18 +312,18 @@ class TestResolveSpecDir:
     def test_exact_match(self, tmp_path):
         specs = tmp_path / "specs"
         specs.mkdir()
-        topic = specs / "2026-01-01-my-topic"
-        topic.mkdir()
+        spec = specs / "2026-01-01-my-topic"
+        spec.mkdir()
         result = resolve_spec_dir("2026-01-01-my-topic", specs_dir=specs)
-        assert result == topic
+        assert result == spec
 
     def test_fuzzy_match(self, tmp_path):
         specs = tmp_path / "specs"
         specs.mkdir()
-        topic = specs / "2026-01-01-10-00-my-topic"
-        topic.mkdir()
+        spec = specs / "2026-01-01-10-00-my-topic"
+        spec.mkdir()
         result = resolve_spec_dir("my-topic", specs_dir=specs)
-        assert result == topic
+        assert result == spec
 
     def test_ambiguous_match(self, tmp_path):
         specs = tmp_path / "specs"
@@ -364,14 +364,14 @@ class TestLinkedWorktreeResolution:
         toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
         specs = main / ".spex" / "specs"
         specs.mkdir(parents=True)
-        topic = specs / "2026-01-15-10-00-my-feature"
-        topic.mkdir()
+        spec = specs / "2026-01-15-10-00-my-feature"
+        spec.mkdir()
         meta = SpecMeta(
             topic="my-feature",
             workdir=str(main),
             main_worktree=str(main),
         )
-        (topic / "meta.json").write_text(
+        (spec / "meta.json").write_text(
             json.dumps(meta.to_dict(), indent=2), encoding="utf-8",
         )
 
@@ -383,7 +383,7 @@ class TestLinkedWorktreeResolution:
         )
 
         clear_spex_root_cache()
-        return main, linked, topic
+        return main, linked, spec
 
     def test_get_spex_root_from_linked(self, linked_repo, monkeypatch):
         main, linked, _ = linked_repo
@@ -414,12 +414,12 @@ class TestLinkedWorktreeResolution:
         assert no_args == main / ".spex" / "specs"
 
     def test_resolve_spec_dir_from_linked(self, linked_repo, monkeypatch):
-        main, linked, topic = linked_repo
+        main, linked, spec = linked_repo
         monkeypatch.chdir(linked)
 
         result = resolve_spec_dir("my-feature")
 
-        assert result == topic
+        assert result == spec
 
     def test_get_archives_dir_from_linked(self, linked_repo, monkeypatch):
         main, linked, _ = linked_repo
@@ -431,14 +431,14 @@ class TestLinkedWorktreeResolution:
 
     def test_subdir_of_linked_worktree(self, linked_repo, monkeypatch):
         """Running from a subdirectory of the linked worktree still works."""
-        main, linked, topic = linked_repo
+        main, linked, spec = linked_repo
         subdir = linked / "src" / "lib"
         subdir.mkdir(parents=True)
         monkeypatch.chdir(subdir)
 
         assert get_specs_dir() == main / ".spex" / "specs"
         clear_spex_root_cache()
-        assert resolve_spec_dir("my-feature") == topic
+        assert resolve_spec_dir("my-feature") == spec
 
 
 class TestGetTemplate:
@@ -687,64 +687,64 @@ class TestGetSpecDescription:
 
 class TestFormatSpec:
     @staticmethod
-    def _write_meta(topic_dir):
-        (topic_dir / "meta.json").write_text(
+    def _write_meta(spec_dir):
+        (spec_dir / "meta.json").write_text(
             '{"topic":"t","workdir":"","prompts":[]}', encoding="utf-8",
         )
 
     def test_verbose_0_header_only(self, tmp_path):
-        topic_dir = tmp_path / "my-feature"
-        topic_dir.mkdir()
-        self._write_meta(topic_dir)
-        out = format_spec(topic_dir, verbose=0)
+        spec_dir = tmp_path / "my-feature"
+        spec_dir.mkdir()
+        self._write_meta(spec_dir)
+        out = format_spec(spec_dir, verbose=0)
         assert out.startswith("🔧 (0/0) my-feature")
         assert len(out.splitlines()) == 1
 
     def test_verbose_1_with_description(self, tmp_path):
-        topic_dir = tmp_path / "my-feature"
-        topic_dir.mkdir()
-        self._write_meta(topic_dir)
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "my-feature"
+        spec_dir.mkdir()
+        self._write_meta(spec_dir)
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
-        out = format_spec(topic_dir, verbose=1)
+        out = format_spec(spec_dir, verbose=1)
         lines = out.splitlines()
         assert "Build the API" in lines[1]
 
     def test_verbose_2_with_todo(self, tmp_path):
-        topic_dir = tmp_path / "my-feature"
-        topic_dir.mkdir()
-        self._write_meta(topic_dir)
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "my-feature"
+        spec_dir.mkdir()
+        self._write_meta(spec_dir)
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Build the API"\n---\n', encoding="utf-8",
         )
-        todo_path = topic_dir / "todo.json"
+        todo_path = spec_dir / "todo.json"
         todo_path.write_text(
             '[{"id": "1", "name": "Design"}, {"id": "2", "name": "Code"}]',
             encoding="utf-8",
         )
-        out = format_spec(topic_dir, verbose=2)
+        out = format_spec(spec_dir, verbose=2)
         lines = out.splitlines()
         assert "Build the API" in lines[1]
         assert "1: Design" in out
         assert "2: Code" in out
 
     def test_completed_shows_checkmark(self, tmp_path):
-        topic_dir = tmp_path / "done"
-        topic_dir.mkdir()
-        self._write_meta(topic_dir)
-        todo_path = topic_dir / "todo.json"
+        spec_dir = tmp_path / "done"
+        spec_dir.mkdir()
+        self._write_meta(spec_dir)
+        todo_path = spec_dir / "todo.json"
         todo_path.write_text(
             '[{"id": "1", "name": "Step", "completed_at": "2026-01-01"}]',
             encoding="utf-8",
         )
-        out = format_spec(topic_dir, verbose=0)
+        out = format_spec(spec_dir, verbose=0)
         assert out.startswith("✅ (1/1) done")
 
     def test_path_without_meta_returns_error(self, tmp_path):
-        topic_dir = tmp_path / "no-meta"
-        topic_dir.mkdir()
-        out = format_spec(topic_dir, verbose=0)
+        spec_dir = tmp_path / "no-meta"
+        spec_dir.mkdir()
+        out = format_spec(spec_dir, verbose=0)
         assert "unable to load" in out
 
     def test_show_repo_flag(self, tmp_path):
@@ -1170,8 +1170,8 @@ class TestSpec:
         assert t.todo_progress == (2, 5)
 
     def test_from_dir_valid(self, tmp_path):
-        topic_dir = tmp_path / "my-topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
         meta_data = {
             "topic": "my-topic",
             "workdir": "/work",
@@ -1179,21 +1179,21 @@ class TestSpec:
             "prompts": ["do stuff"],
             "description": "A feature",
         }
-        (topic_dir / "meta.json").write_text(
+        (spec_dir / "meta.json").write_text(
             json.dumps(meta_data), encoding="utf-8",
         )
         todo = [
             {"id": "1", "name": "Step 1", "completed_at": "2026-01-01"},
             {"id": "2", "name": "Step 2", "completed_at": ""},
         ]
-        (topic_dir / "todo.json").write_text(
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo), encoding="utf-8",
         )
 
-        t = Spec.from_dir(topic_dir)
+        t = Spec.from_dir(spec_dir)
         assert t is not None
         assert t.name == "my-topic"
-        assert t.path == topic_dir
+        assert t.path == spec_dir
         assert t.workdir == "/work"
         assert t.created_at == "2026-01-01T00:00:00+00:00"
         assert t.prompt == "do stuff"
@@ -1203,23 +1203,23 @@ class TestSpec:
         assert t.archived is False
 
     def test_from_dir_missing_meta(self, tmp_path):
-        topic_dir = tmp_path / "no-meta"
-        topic_dir.mkdir()
-        assert Spec.from_dir(topic_dir) is None
+        spec_dir = tmp_path / "no-meta"
+        spec_dir.mkdir()
+        assert Spec.from_dir(spec_dir) is None
 
     def test_from_dir_invalid_meta(self, tmp_path):
-        topic_dir = tmp_path / "bad-meta"
-        topic_dir.mkdir()
-        (topic_dir / "meta.json").write_text("not json", encoding="utf-8")
-        assert Spec.from_dir(topic_dir) is None
+        spec_dir = tmp_path / "bad-meta"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text("not json", encoding="utf-8")
+        assert Spec.from_dir(spec_dir) is None
 
     def test_from_dir_archived(self, tmp_path):
-        topic_dir = tmp_path / "archived-topic"
-        topic_dir.mkdir()
-        (topic_dir / "meta.json").write_text(
+        spec_dir = tmp_path / "archived-topic"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text(
             json.dumps({"topic": "archived-topic"}), encoding="utf-8",
         )
-        t = Spec.from_dir(topic_dir, archived=True)
+        t = Spec.from_dir(spec_dir, archived=True)
         assert t is not None
         assert t.archived is True
 

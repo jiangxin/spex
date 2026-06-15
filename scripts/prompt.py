@@ -150,13 +150,13 @@ def _trim_spec_content(spec_content):
     return "\n\n".join(parts)
 
 
-def _build_task_context(topic_dir, verbose_items=20):
+def _build_task_context(spec_dir, verbose_items=20):
     """Extract task context from a topic directory.
 
     Reads spec.md and todo.json, computes completed/current/future task info.
 
     Args:
-        topic_dir: Path to the topic directory.
+        spec_dir: Path to the topic directory.
         verbose_items: Max number of items to show with full details.
             Items beyond this limit are shown in brief format.
 
@@ -164,14 +164,14 @@ def _build_task_context(topic_dir, verbose_items=20):
         Dict with keys: spec_content, completed_tasks, current_task_id,
         current_task_description, future_tasks.
     """
-    spec_path = topic_dir / "spec.md"
+    spec_path = spec_dir / "spec.md"
     if spec_path.exists():
         spec_content = spec_path.read_text(encoding="utf-8")
     else:
         spec_content = ""
     spec_content_concise = _trim_spec_content(spec_content)
 
-    todo = load_todo(topic_dir)
+    todo = load_todo(spec_dir)
     if todo:
         done = [item for item in todo if item.get("completed_at")]
         if len(done) <= verbose_items:
@@ -243,16 +243,16 @@ def _build_task_context(topic_dir, verbose_items=20):
 
 
 
-def _build_metadata(template_name, topic_name=None):
+def _build_metadata(template_name, spec_name=None):
     """Build the metadata dict for template rendering.
 
     Different template names may produce different metadata.
     """
     metadata = {}
-    if topic_name:
-        topic_dir = resolve_spec_dir(topic_name)
-        metadata["topic_name"] = topic_dir.name
-        meta = load_meta(topic_dir)
+    if spec_name:
+        spec_dir = resolve_spec_dir(spec_name)
+        metadata["topic_name"] = spec_dir.name
+        meta = load_meta(spec_dir)
         if meta:
             metadata.update(meta.to_dict())
     if not metadata:
@@ -285,18 +285,18 @@ def _build_metadata(template_name, topic_name=None):
             metadata["user_email"] = ""
     # All topic-based templates except spec-template need task context:
     # apply-commit, apply-one-task, modify-spec, modify-todo
-    if template_name != "spec-template" and topic_name:
-        metadata.update(_build_task_context(topic_dir))
+    if template_name != "spec-template" and spec_name:
+        metadata.update(_build_task_context(spec_dir))
 
     return metadata
 
 
-def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
+def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
     """Render a template by name and return the result string.
 
     Args:
         name: Template name without .md extension (e.g. "spec-template").
-        topic_name: Optional topic name for topic-specific metadata.
+        spec_name: Optional topic name for topic-specific metadata.
         extra_vars: Optional dict of additional variables to merge into metadata.
         metadata: Optional pre-built metadata dict. Skips _build_metadata when provided.
 
@@ -307,7 +307,7 @@ def render_prompt(name, topic_name=None, extra_vars=None, metadata=None):
 
     content = get_template(name + ".md")
     if metadata is None:
-        metadata = _build_metadata(name, topic_name)
+        metadata = _build_metadata(name, spec_name)
         if extra_vars:
             metadata.update(extra_vars)
 
@@ -533,8 +533,8 @@ def _do_modify_spec(args):
     try:
         # Side-effect: remove undone tasks from todo.json before building metadata
         if args.remove_undone:
-            topic_dir = resolve_spec_dir(args.topic)
-            todo_path = topic_dir / "todo.json"
+            spec_dir = resolve_spec_dir(args.topic)
+            todo_path = spec_dir / "todo.json"
             if todo_path.exists():
                 try:
                     data = json.loads(todo_path.read_text(encoding="utf-8"))
@@ -582,8 +582,8 @@ def _do_modify_todo(args):
             metadata.update(extra_vars)
 
         # Side-effect: clean undone todos from todo.json
-        topic_dir = resolve_spec_dir(args.topic)
-        todo_path = topic_dir / "todo.json"
+        spec_dir = resolve_spec_dir(args.topic)
+        todo_path = spec_dir / "todo.json"
         if todo_path.exists():
             try:
                 data = json.loads(todo_path.read_text(encoding="utf-8"))

@@ -17,30 +17,30 @@ from list import (  # noqa: A004
 )
 
 
-def _make_meta(topic_dir, created_at="2026-05-20T10:00:00+08:00",
+def _make_meta(spec_dir, created_at="2026-05-20T10:00:00+08:00",
                prompts=None):
-    """Create a meta.json file in topic_dir."""
+    """Create a meta.json file in spec_dir."""
     if prompts is None:
         prompts = ["some prompt text"]
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.mkdir(parents=True, exist_ok=True)
     data = {"created_at": created_at, "prompts": prompts}
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(data), encoding="utf-8"
     )
 
 
-def _make_prompt_log(topic_dir, timestamp="2026-05-20T10:00:00+08:00",
+def _make_prompt_log(spec_dir, timestamp="2026-05-20T10:00:00+08:00",
                      prompt="some prompt text"):
-    """Create a prompt.log file in topic_dir."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    """Create a prompt.log file in spec_dir."""
+    spec_dir.mkdir(parents=True, exist_ok=True)
     content = f'**[{timestamp}]**\n\n```prompt\n    {prompt}\n```\n'
-    (topic_dir / "prompt.log").write_text(content, encoding="utf-8")
+    (spec_dir / "prompt.log").write_text(content, encoding="utf-8")
 
 
-def _make_todo(topic_dir, tasks):
-    """Create a todo.json file in topic_dir."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
-    (topic_dir / "todo.json").write_text(
+def _make_todo(spec_dir, tasks):
+    """Create a todo.json file in spec_dir."""
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    (spec_dir / "todo.json").write_text(
         json.dumps(tasks), encoding="utf-8"
     )
 
@@ -57,10 +57,10 @@ def _task(task_id, completed=True):
 
 class TestLoadMeta:
     def test_normal_read(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        _make_meta(topic, "2026-05-24T20:00:00+08:00", ["hello world"])
+        spec = tmp_path / "my-topic"
+        _make_meta(spec, "2026-05-24T20:00:00+08:00", ["hello world"])
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
         assert result.created_at == "2026-05-24T20:00:00+08:00"
         assert result.prompts == ["hello world"]
@@ -69,17 +69,17 @@ class TestLoadMeta:
         assert load_meta(tmp_path / "nonexistent") is None
 
     def test_invalid_json(self, tmp_path):
-        topic = tmp_path / "bad"
-        topic.mkdir(parents=True)
-        (topic / "meta.json").write_text("not json", encoding="utf-8")
+        spec = tmp_path / "bad"
+        spec.mkdir(parents=True)
+        (spec / "meta.json").write_text("not json", encoding="utf-8")
 
-        assert load_meta(topic) is None
+        assert load_meta(spec) is None
 
     def test_empty_prompts(self, tmp_path):
-        topic = tmp_path / "empty"
-        _make_meta(topic, "2026-05-24T20:00:00+08:00", [])
+        spec = tmp_path / "empty"
+        _make_meta(spec, "2026-05-24T20:00:00+08:00", [])
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
         assert result.created_at == "2026-05-24T20:00:00+08:00"
         assert result.prompts == []
@@ -87,11 +87,11 @@ class TestLoadMeta:
     def test_missing_fields(self, tmp_path):
         from common import SpecMeta
 
-        topic = tmp_path / "minimal"
-        topic.mkdir(parents=True)
-        (topic / "meta.json").write_text("{}", encoding="utf-8")
+        spec = tmp_path / "minimal"
+        spec.mkdir(parents=True)
+        (spec / "meta.json").write_text("{}", encoding="utf-8")
 
-        result = load_meta(topic)
+        result = load_meta(spec)
 
         assert isinstance(result, SpecMeta)
         assert result.topic == ""
@@ -100,10 +100,10 @@ class TestLoadMeta:
 
 class TestParsePromptLog:
     def test_normal_parse(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        _make_prompt_log(topic, "2026-05-20T18:00:00+08:00", "hello world")
+        spec = tmp_path / "my-topic"
+        _make_prompt_log(spec, "2026-05-20T18:00:00+08:00", "hello world")
 
-        ts, prompt = parse_prompt_log(topic / "prompt.log")
+        ts, prompt = parse_prompt_log(spec / "prompt.log")
 
         assert ts == "2026-05-20T18:00:00+08:00"
         assert prompt == "hello world"
@@ -115,8 +115,8 @@ class TestParsePromptLog:
         assert prompt == ""
 
     def test_multiline_prompt(self, tmp_path):
-        topic = tmp_path / "my-topic"
-        topic.mkdir(parents=True)
+        spec = tmp_path / "my-topic"
+        spec.mkdir(parents=True)
         content = (
             "**[2026-05-20T10:00:00+08:00]**\n\n"
             "```prompt\n"
@@ -124,9 +124,9 @@ class TestParsePromptLog:
             "    line two\n"
             "```\n"
         )
-        (topic / "prompt.log").write_text(content, encoding="utf-8")
+        (spec / "prompt.log").write_text(content, encoding="utf-8")
 
-        ts, prompt = parse_prompt_log(topic / "prompt.log")
+        ts, prompt = parse_prompt_log(spec / "prompt.log")
 
         assert ts == "2026-05-20T10:00:00+08:00"
         assert prompt == "line one line two"
@@ -134,16 +134,16 @@ class TestParsePromptLog:
 
 class TestGetTodoProgress:
     def test_all_done(self, tmp_path):
-        topic = tmp_path / "t"
-        _make_todo(topic, [_task("1"), _task("2")])
+        spec = tmp_path / "t"
+        _make_todo(spec, [_task("1"), _task("2")])
 
-        assert get_todo_progress(topic) == (2, 2)
+        assert get_todo_progress(spec) == (2, 2)
 
     def test_partial(self, tmp_path):
-        topic = tmp_path / "t"
-        _make_todo(topic, [_task("1"), _task("2", completed=False)])
+        spec = tmp_path / "t"
+        _make_todo(spec, [_task("1"), _task("2", completed=False)])
 
-        assert get_todo_progress(topic) == (1, 2)
+        assert get_todo_progress(spec) == (1, 2)
 
     def test_missing_file(self, tmp_path):
         assert get_todo_progress(tmp_path / "no-topic") == (0, 0)
@@ -155,7 +155,7 @@ class TestFormatOutput:
 
     def test_sort_descending(self):
         p = Path("/tmp")
-        topics = [
+        specs = [
             Spec(name="older", path=p,
                   meta=SpecMeta(created_at="2026-05-01T10:00:00+08:00",
                                  prompts=["old"]),
@@ -165,7 +165,7 @@ class TestFormatOutput:
                                  prompts=["new"]),
                   done=0, total=1),
         ]
-        output = format_output(topics)
+        output = format_output(specs)
         lines = output.splitlines()
         assert "newer" in lines[0]
         assert "older" in lines[1]
@@ -359,14 +359,14 @@ class TestDescriptionDisplay:
 
 class TestVerboseOutput:
     def test_level1_brackets_and_description(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Full description text here"\n---\n',
             encoding="utf-8",
         )
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["old prompt"],
                                  description="Full description text here"),
@@ -379,10 +379,10 @@ class TestVerboseOutput:
         assert lines[1] == "    Full description text here"
 
     def test_level1_prompt_fallback(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["fallback prompt"]),
                   done=0, total=1),
@@ -418,15 +418,15 @@ class TestVerboseOutput:
         assert "\n\n" in output
 
     def test_level1_word_wrap(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         long_desc = "word " * 20  # 100 chars
-        (topic_dir / "spec.md").write_text(
+        (spec_dir / "spec.md").write_text(
             f'---\ndescription: "{long_desc.strip()}"\n---\n',
             encoding="utf-8",
         )
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  description=long_desc.strip()),
                   done=0, total=1),
@@ -437,17 +437,17 @@ class TestVerboseOutput:
         assert any("word word" in line for line in lines[1:])
 
     def test_level2_shows_steps(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
-        _make_todo(topic_dir, [
+        _make_todo(spec_dir, [
             _task("step-1", completed=True),
             _task("step-2", completed=False),
         ])
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["some prompt"],
                                  description="Desc"),
@@ -462,13 +462,13 @@ class TestVerboseOutput:
         assert "step-2:" in lines[4]
 
     def test_level2_no_steps_when_no_todo(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
-        (topic_dir / "spec.md").write_text(
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        (spec_dir / "spec.md").write_text(
             '---\ndescription: "Desc"\n---\n', encoding="utf-8",
         )
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="Desc"),
                   done=0, total=0),
@@ -479,10 +479,10 @@ class TestVerboseOutput:
         assert "step-" not in output
 
     def test_level3_hint_message(self, tmp_path):
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         topics = [
-            Spec(name="my-topic", path=topic_dir,
+            Spec(name="my-topic", path=spec_dir,
                   meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
                                  prompts=["p"], description="D"),
                   done=0, total=1),
@@ -767,17 +767,17 @@ class TestWrapText:
         assert result == "    " + text
 
 
-def _setup_topic(topic_dir, workdir, main_worktree=None):
+def _setup_topic(spec_dir, workdir, main_worktree=None):
     """Create a topic directory with meta.json and todo.json."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "created_at": "2026-05-20T10:00:00+08:00",
-        "prompts": ["prompt for " + topic_dir.name],
+        "prompts": ["prompt for " + spec_dir.name],
         "workdir": workdir,
         "main_worktree": main_worktree or workdir,
     }
-    (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    (topic_dir / "todo.json").write_text("[]", encoding="utf-8")
+    (spec_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (spec_dir / "todo.json").write_text("[]", encoding="utf-8")
 
 
 def _make_project_context(top_workdir, main_worktree=None):

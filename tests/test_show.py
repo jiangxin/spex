@@ -11,8 +11,8 @@ from config import ProjectContext
 def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
                 subdir="specs", workdir="", main_worktree=""):
     """Create a topic directory with optional spec and todo."""
-    topic_dir = tmp_path / subdir / name
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir = tmp_path / subdir / name
+    spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "created_at": "2026-05-20T10:00:00+08:00",
         "prompts": ["test"],
@@ -20,16 +20,16 @@ def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
     if workdir:
         meta["workdir"] = workdir
         meta["main_worktree"] = main_worktree or workdir
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(meta, indent=2), encoding="utf-8"
     )
     if spec_content:
-        (topic_dir / "spec.md").write_text(spec_content, encoding="utf-8")
+        (spec_dir / "spec.md").write_text(spec_content, encoding="utf-8")
     if todo:
-        (topic_dir / "todo.json").write_text(
+        (spec_dir / "todo.json").write_text(
             json.dumps(todo, indent=2), encoding="utf-8"
         )
-    return topic_dir
+    return spec_dir
 
 
 def _make_ctx(top_workdir):
@@ -48,7 +48,7 @@ def _make_ctx(top_workdir):
 
 class TestFormatDefault:
     def test_shows_icon_progress_name(self, tmp_path):
-        topic_dir = _make_topic(
+        spec_dir = _make_topic(
             tmp_path,
             spec_content='---\ndescription: "A desc"\n---\n\n# Spec',
             todo=[
@@ -58,7 +58,7 @@ class TestFormatDefault:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = spex_show._format_default(topic_dir)
+        output = spex_show._format_default(spec_dir)
         lines = output.splitlines()
         assert "(1/2)" in lines[0]
         assert "my-topic" in lines[0]
@@ -67,8 +67,8 @@ class TestFormatDefault:
         assert "    step-2: Second" in output
 
     def test_no_spec_no_steps(self, tmp_path):
-        topic_dir = _make_topic(tmp_path)
-        output = spex_show._format_default(topic_dir)
+        spec_dir = _make_topic(tmp_path)
+        output = spex_show._format_default(spec_dir)
         assert "(0/0)" in output
         assert "step-" not in output
 
@@ -76,7 +76,7 @@ class TestFormatDefault:
 class TestFormatVerbose:
     def test_shows_spec_and_todo(self, tmp_path):
         spec = '---\nversion: "0.0.1"\n---\n\n# My Spec\n\nContent here.'
-        topic_dir = _make_topic(
+        spec_dir = _make_topic(
             tmp_path,
             spec_content=spec,
             todo=[
@@ -84,7 +84,7 @@ class TestFormatVerbose:
                  "completed_at": "", "commit_title": ""},
             ],
         )
-        output = spex_show._format_verbose(topic_dir)
+        output = spex_show._format_verbose(spec_dir)
         lines = output.splitlines()
         assert "(0/1)" in lines[0]
         assert "my-topic" in lines[0]
@@ -97,20 +97,20 @@ class TestFormatVerbose:
         assert "  Detail text" in output
 
     def test_no_spec_file(self, tmp_path):
-        topic_dir = _make_topic(tmp_path)
-        output = spex_show._format_verbose(topic_dir)
+        spec_dir = _make_topic(tmp_path)
+        output = spex_show._format_verbose(spec_dir)
         assert "(no spec.md found)" in output
 
     def test_no_todo(self, tmp_path):
         spec = '---\nversion: "0.0.1"\n---\n\n# Spec'
-        topic_dir = _make_topic(tmp_path, spec_content=spec)
-        output = spex_show._format_verbose(topic_dir)
+        spec_dir = _make_topic(tmp_path, spec_content=spec)
+        output = spex_show._format_verbose(spec_dir)
         assert "(no tasks)" in output
 
     def test_missing_meta_returns_error(self, tmp_path):
-        topic_dir = tmp_path / "specs" / "bad-topic"
-        topic_dir.mkdir(parents=True)
-        output = spex_show._format_verbose(topic_dir)
+        spec_dir = tmp_path / "specs" / "bad-topic"
+        spec_dir.mkdir(parents=True)
+        output = spex_show._format_verbose(spec_dir)
         assert "(unable to load topic: bad-topic)" in output
 
 

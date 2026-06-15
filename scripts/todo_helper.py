@@ -390,9 +390,9 @@ def _resolve_todo_path(args):
         return (todo_path, is_xml)
 
     # --topic mode
-    topic_dir = resolve_spec_dir(args.topic)
+    spec_dir = resolve_spec_dir(args.topic)
     filename = "todo.xml" if is_xml else "todo.json"
-    return (topic_dir / filename, is_xml)
+    return (spec_dir / filename, is_xml)
 
 
 def _build_parser():

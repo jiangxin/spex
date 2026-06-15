@@ -47,7 +47,7 @@ def parse_prompt_log(log_path: Path) -> tuple:
 def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
     """Collect topic info from given directories."""
     archive_dirs = set(archive_dirs or [])
-    topics: list[Spec] = []
+    specs: list[Spec] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -55,25 +55,25 @@ def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            topic = Spec.from_dir(sub, archived=archived)
-            if topic is not None:
-                topics.append(topic)
-    return topics
+            spec = Spec.from_dir(sub, archived=archived)
+            if spec is not None:
+                specs.append(spec)
+    return specs
 
 
 MAX_REPO_WIDTH = 11
 
 
 def format_output(
-    topics: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
+    specs: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
 ) -> str:
     """Format topics into aligned columns."""
-    if not topics:
+    if not specs:
         return ""
 
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+    specs.sort(key=lambda t: t.created_at, reverse=True)
 
-    progress_strs = [f"{t.done}/{t.total}" for t in topics]
+    progress_strs = [f"{t.done}/{t.total}" for t in specs]
     progress_width = max(len(s) for s in progress_strs)
 
     if show_repo:
@@ -87,16 +87,16 @@ def format_output(
     prompt_width = max_width - fixed_width
 
     lines = []
-    for topic, prog_str in zip(topics, progress_strs):
-        icon = topic.icon
-        name = display_truncate(topic.name, MAX_TOPIC_WIDTH)
+    for spec, prog_str in zip(specs, progress_strs):
+        icon = spec.icon
+        name = display_truncate(spec.name, MAX_TOPIC_WIDTH)
         name_col = display_ljust(name, MAX_TOPIC_WIDTH)
         prog_col = f"({prog_str})".rjust(progress_width + 2)
-        desc = topic.display_text
+        desc = spec.display_text
         prompt_col = display_truncate(desc, prompt_width) if prompt_width > 3 else ""
 
         if show_repo:
-            label = repo_label(topic.workdir)
+            label = repo_label(spec.workdir)
             repo_col = display_ljust(f"[{label}]", repo_col_width - 1) + " "
         else:
             repo_col = ""
@@ -133,39 +133,39 @@ def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
 
 
 def format_verbose_output(
-    topics: list, verbosity: int = 1, show_repo: bool = False
+    specs: list, verbosity: int = 1, show_repo: bool = False
 ) -> str:
     """Format topics with expanded detail based on verbosity level."""
-    if not topics:
+    if not specs:
         return ""
 
     if verbosity >= 3:
         return "Use 'spex show <topic>' for detailed view."
 
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+    specs.sort(key=lambda t: t.created_at, reverse=True)
 
     blocks = [
-        format_spec(topic, verbose=verbosity, show_repo=show_repo)
-        for topic in topics
+        format_spec(spec, verbose=verbosity, show_repo=show_repo)
+        for spec in specs
     ]
 
     return "\n\n".join(blocks)
 
 
-def format_json_output(topics: list) -> str:
+def format_json_output(specs: list) -> str:
     """Format topics as a JSON array."""
-    topics.sort(key=lambda t: t.created_at, reverse=True)
+    specs.sort(key=lambda t: t.created_at, reverse=True)
     return json.dumps(
-        [{"topic_name": t.name, "topic_path": str(t.path)} for t in topics],
+        [{"topic_name": t.name, "topic_path": str(t.path)} for t in specs],
         ensure_ascii=False,
         indent=2,
     )
 
 
-def filter_specs(topics: list, patterns: list) -> list:
+def filter_specs(specs: list, patterns: list) -> list:
     """Filter topics by name patterns (substring, glob, or regex)."""
     if not patterns:
-        return topics
+        return specs
 
     def matches(name: str, pattern: str) -> bool:
         if pattern.startswith("^"):
@@ -177,7 +177,7 @@ def filter_specs(topics: list, patterns: list) -> list:
             return fnmatch.fnmatch(name, pattern)
         return pattern in name
 
-    return [t for t in topics if any(matches(t.name, p) for p in patterns)]
+    return [t for t in specs if any(matches(t.name, p) for p in patterns)]
 
 
 def _build_parser() -> ArgumentParser:
@@ -233,31 +233,31 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    topics, show_repo = gather_specs(
+    specs, show_repo = gather_specs(
         include_archives=args.archives,
         all_projects=args.all_projects,
     )
 
-    topics = filter_specs(topics, args.patterns)
+    specs = filter_specs(specs, args.patterns)
 
     if args.must_done:
-        topics = [t for t in topics if t.is_completed]
+        specs = [t for t in specs if t.is_completed]
     elif args.must_undone:
-        topics = [t for t in topics if not t.is_completed]
+        specs = [t for t in specs if not t.is_completed]
 
-    if not topics:
+    if not specs:
         print("No specs found.", file=sys.stderr)
         sys.exit(1)
 
     if args.json:
-        print(format_json_output(topics))
+        print(format_json_output(specs))
         return
 
     verbosity = args.verbose
     if verbosity > 0:
-        print(format_verbose_output(topics, verbosity=verbosity, show_repo=show_repo))
+        print(format_verbose_output(specs, verbosity=verbosity, show_repo=show_repo))
     else:
-        print(format_output(topics, show_repo=show_repo))
+        print(format_output(specs, show_repo=show_repo))
 
 
 if __name__ == "__main__":

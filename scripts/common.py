@@ -113,18 +113,18 @@ class Spec:
     archived: bool = False
 
     @classmethod
-    def from_dir(cls, topic_dir: Path, *, archived: bool = False) -> Spec | None:
+    def from_dir(cls, spec_dir: Path, *, archived: bool = False) -> Spec | None:
         """Create a Spec from a topic directory.
 
         Returns None if meta.json is missing or invalid.
         """
-        meta = load_meta(topic_dir)
+        meta = load_meta(spec_dir)
         if meta is None:
             return None
-        done, total = get_todo_progress(topic_dir)
+        done, total = get_todo_progress(spec_dir)
         return cls(
-            name=topic_dir.name,
-            path=topic_dir,
+            name=spec_dir.name,
+            path=spec_dir,
             meta=meta,
             done=done,
             total=total,
@@ -381,12 +381,12 @@ def same_path(a: str, b: str) -> bool:
     return Path(a).resolve() == Path(b).resolve()
 
 
-def load_meta(topic_dir: Path) -> SpecMeta | None:
+def load_meta(spec_dir: Path) -> SpecMeta | None:
     """Load meta.json from a topic directory.
 
     Returns a SpecMeta instance, or None if missing/invalid.
     """
-    meta_path = topic_dir / META_FILE
+    meta_path = spec_dir / META_FILE
     if not meta_path.is_file():
         return None
     try:
@@ -398,23 +398,23 @@ def load_meta(topic_dir: Path) -> SpecMeta | None:
     return SpecMeta.from_dict(data)
 
 
-def get_spec_workdir(topic_dir: Path) -> str:
+def get_spec_workdir(spec_dir: Path) -> str:
     """Read workdir from meta.json in a topic directory.
 
     Returns the workdir string, or empty string if not found.
     """
-    meta = load_meta(topic_dir)
+    meta = load_meta(spec_dir)
     if meta is None:
         return ""
     return meta.workdir
 
 
-def load_todo(topic_dir: Path):
+def load_todo(spec_dir: Path):
     """Load todo.json from a topic directory.
 
     Returns the parsed list, or None if missing/invalid/empty.
     """
-    todo_path = topic_dir / TODO_FILE
+    todo_path = spec_dir / TODO_FILE
     if not todo_path.is_file():
         return None
     try:
@@ -491,9 +491,9 @@ def validate_unique_ids(data):
         seen_ids[step_id] = i
 
 
-def is_spec_completed(topic_dir: Path) -> bool:
+def is_spec_completed(spec_dir: Path) -> bool:
     """Return True if all tasks in todo.json have non-empty completed_at."""
-    data = load_todo(topic_dir)
+    data = load_todo(spec_dir)
     if data is None:
         return False
     return all(
@@ -502,9 +502,9 @@ def is_spec_completed(topic_dir: Path) -> bool:
     )
 
 
-def has_undone_tasks(topic_dir: Path) -> bool:
+def has_undone_tasks(spec_dir: Path) -> bool:
     """Return True if the topic's todo.json has incomplete items."""
-    data = load_todo(topic_dir)
+    data = load_todo(spec_dir)
     if data is None:
         return False
     return any(
@@ -513,9 +513,9 @@ def has_undone_tasks(topic_dir: Path) -> bool:
     )
 
 
-def get_todo_progress(topic_dir: Path) -> tuple:
+def get_todo_progress(spec_dir: Path) -> tuple:
     """Return (completed_count, total_count) from todo.json."""
-    data = load_todo(topic_dir)
+    data = load_todo(spec_dir)
     if data is None:
         return (0, 0)
     total = len(data)
@@ -526,11 +526,11 @@ def get_todo_progress(topic_dir: Path) -> tuple:
     return (done, total)
 
 
-def has_active_branch(topic_dir: Path) -> bool:
+def has_active_branch(spec_dir: Path) -> bool:
     """Return True if meta.json has spex_branch and that git branch exists."""
     from branch import branch_exists
 
-    meta = load_meta(topic_dir)
+    meta = load_meta(spec_dir)
     if not meta:
         return False
     spex_branch = meta.spex_branch
@@ -595,9 +595,9 @@ def local_iso_timestamp() -> str:
     return f"{base}{offset[:3]}:{offset[3:]}"
 
 
-def strip_date_prefix(topic_name: str) -> str:
+def strip_date_prefix(spec_name: str) -> str:
     """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a topic name."""
-    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", topic_name)
+    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", spec_name)
 
 
 def _get_skill_path() -> Path:
@@ -675,17 +675,17 @@ def wrap_text(text: str, width: int = 68) -> str:
     return textwrap.fill(single_line, width=width, break_long_words=False)
 
 
-def get_spec_description(topic_dir: Path) -> str:
+def get_spec_description(spec_dir: Path) -> str:
     """Return the topic's description.
 
     Reads from meta.json first (authoritative source). Falls back to
     spec.md front-matter description for backwards compatibility.
     """
-    meta = load_meta(topic_dir)
+    meta = load_meta(spec_dir)
     if meta and meta.description:
         return meta.description
 
-    spec_path = topic_dir / "spec.md"
+    spec_path = spec_dir / "spec.md"
     if not spec_path.is_file():
         return ""
     try:
@@ -791,15 +791,15 @@ def get_template(template_name: str, workdir=None) -> str:
 
 
 
-def find_matching_specs(topic_name, specs_dir):
+def find_matching_specs(spec_name, specs_dir):
     """Find topic directories matching a name or substring.
 
     Tries exact match first; if found, returns a single-element list.
-    Otherwise returns all directories whose name contains topic_name
+    Otherwise returns all directories whose name contains spec_name
     as a substring, sorted alphabetically.
 
     Args:
-        topic_name: Topic name or substring to match.
+        spec_name: Topic name or substring to match.
         specs_dir: Path to the specs directory.
 
     Returns:
@@ -809,16 +809,16 @@ def find_matching_specs(topic_name, specs_dir):
     if not specs_dir.is_dir():
         return []
 
-    direct = specs_dir / topic_name
+    direct = specs_dir / spec_name
     if direct.is_dir():
         return [direct]
 
     return sorted(
-        d for d in specs_dir.iterdir() if d.is_dir() and topic_name in d.name
+        d for d in specs_dir.iterdir() if d.is_dir() and spec_name in d.name
     )
 
 
-def resolve_spec_dir(topic_name, specs_dir=None):
+def resolve_spec_dir(spec_name, specs_dir=None):
     """Resolve a topic name to its directory path.
 
     Tries exact match first, then fuzzy substring match against directory
@@ -830,7 +830,7 @@ def resolve_spec_dir(topic_name, specs_dir=None):
     on the resolved directory themselves.
 
     Args:
-        topic_name: Topic name or substring to match.
+        spec_name: Topic name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
             get_specs_dir().
 
@@ -846,15 +846,15 @@ def resolve_spec_dir(topic_name, specs_dir=None):
         logger.error("Error: specs directory does not exist: %s", specs_dir)
         sys.exit(1)
 
-    matches = find_matching_specs(topic_name, specs_dir)
+    matches = find_matching_specs(spec_name, specs_dir)
     if not matches:
-        logger.error("Error: no topic matching '%s' found.", topic_name)
+        logger.error("Error: no topic matching '%s' found.", spec_name)
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
         logger.error(
             "Error: multiple topics match '%s':\n  %s",
-            topic_name, names,
+            spec_name, names,
         )
         sys.exit(1)
     return matches[0]
@@ -899,20 +899,20 @@ def repo_label(workdir: str) -> str:
     return name
 
 
-def format_spec(topic, verbose: int = 0, show_repo: bool = False) -> str:
+def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
     """Format a single topic with progress, description, and optional todo steps.
 
     Args:
-        topic: A Spec instance or a Path to a topic directory.
+        spec: A Spec instance or a Path to a topic directory.
         verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
         show_repo: If True, prepend a ``[repo]`` label from the topic's workdir.
     """
-    if isinstance(topic, Path):
-        t = Spec.from_dir(topic)
+    if isinstance(spec, Path):
+        t = Spec.from_dir(spec)
         if t is None:
-            return f"(unable to load topic: {topic.name})"
+            return f"(unable to load topic: {spec.name})"
     else:
-        t = topic
+        t = spec
 
     progress = f"({t.done}/{t.total})"
     if show_repo:
@@ -958,7 +958,7 @@ def gather_specs(
         archive_dirs.append(ad)
 
     archive_set = set(archive_dirs)
-    topics: list[Spec] = []
+    specs: list[Spec] = []
     for d in dirs:
         if not d.is_dir():
             continue
@@ -966,18 +966,18 @@ def gather_specs(
         for sub in d.iterdir():
             if not sub.is_dir():
                 continue
-            topic = Spec.from_dir(sub, archived=archived)
-            if topic is not None:
-                topics.append(topic)
+            spec = Spec.from_dir(sub, archived=archived)
+            if spec is not None:
+                specs.append(spec)
 
     ctx = get_project_context()
     if not all_projects:
-        topics = [t for t in topics if ctx.is_related_to(t)]
+        specs = [t for t in specs if ctx.is_related_to(t)]
         show_repo = not ctx.in_git_workdir()
     else:
         show_repo = True
 
-    return topics, show_repo
+    return specs, show_repo
 
 
 def prompt_selection(specs, show_repo=False, allow_empty=False):
@@ -992,8 +992,8 @@ def prompt_selection(specs, show_repo=False, allow_empty=False):
         The selected item, or None if allow_empty and user enters nothing.
     """
     display = specs[:10]
-    for i, topic in enumerate(display, 1):
-        label = format_spec(topic, show_repo=show_repo)
+    for i, spec in enumerate(display, 1):
+        label = format_spec(spec, show_repo=show_repo)
         logger.info("  [%d] %s", i, label)
     if len(specs) > 10:
         logger.info("  ... (%d more)", len(specs) - 10)
@@ -1058,15 +1058,15 @@ def resolve_spec(name, include_archives=False):
     if len(matches) == 1:
         return matches[0]
 
-    topics = sorted(
+    specs = sorted(
         [t for t in (Spec.from_dir(m) for m in matches) if t],
         key=lambda t: t.name, reverse=True,
     )
-    if not topics:
+    if not specs:
         logger.error("Error: no loadable topic matching '%s'.", name)
         sys.exit(1)
 
-    selected = prompt_selection(topics)
+    selected = prompt_selection(specs)
     return selected.path
 
 
@@ -1081,22 +1081,22 @@ def select_spec_interactive(
         allow_empty: If True, return None when no topics found or user
             enters empty input, instead of exiting.
     """
-    topics, show_repo = gather_specs(
+    specs, show_repo = gather_specs(
         include_archives=include_archives,
         all_projects=all_projects,
     )
 
-    topics.sort(key=lambda t: t.name, reverse=True)
+    specs.sort(key=lambda t: t.name, reverse=True)
 
-    if not topics:
+    if not specs:
         if allow_empty:
             return None
         logger.error("Error: no topics found.")
         sys.exit(1)
-    if len(topics) == 1:
-        return topics[0].path
+    if len(specs) == 1:
+        return specs[0].path
 
-    selected = prompt_selection(topics, show_repo=show_repo,
+    selected = prompt_selection(specs, show_repo=show_repo,
                                 allow_empty=allow_empty)
     if selected is None:
         return None

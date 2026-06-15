@@ -39,18 +39,18 @@ class TestMain:
 
     def test_has_topic_specs_found(self, tmp_path):
         """When topic arg is given and found in specs, opens the directory."""
-        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        spec_dir.mkdir(parents=True)
 
         with patch.object(sys, "argv", ["open.py", "my-topic"]), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ) as mock_resolve, patch.object(
             spex_open, "open_directory"
         ) as mock_open:
             main()
 
         mock_resolve.assert_called_once_with("my-topic", include_archives=False)
-        mock_open.assert_called_once_with(str(topic_dir))
+        mock_open.assert_called_once_with(str(spec_dir))
 
     def test_has_topic_not_found_suggests_archives(self, capsys):
         """When topic arg is given but not found, resolve_spec exits with hint."""
@@ -126,13 +126,13 @@ class TestMain:
 
     def test_archives_flag_passed_with_topic(self, tmp_path):
         """--archives flag is forwarded to resolve_spec."""
-        topic_dir = tmp_path / "archives" / "2026-05-20-14-30-old-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "archives" / "2026-05-20-14-30-old-topic"
+        spec_dir.mkdir(parents=True)
 
         with patch.object(
             sys, "argv", ["open.py", "--archives", "old-topic"]
         ), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ) as mock_resolve, patch.object(
             spex_open, "open_directory"
         ):
@@ -187,45 +187,45 @@ class TestRunOption:
 
     def test_no_run_with_topic_calls_open_directory(self, tmp_path):
         """No --run + has topic calls open_directory (existing behavior)."""
-        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        spec_dir.mkdir(parents=True)
 
         with patch.object(sys, "argv", ["open.py", "my-topic"]), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ), patch.object(spex_open, "open_directory") as mock_open:
             main()
 
-        mock_open.assert_called_once_with(str(topic_dir))
+        mock_open.assert_called_once_with(str(spec_dir))
 
     def test_run_without_value_calls_open_directory(self, tmp_path):
         """--run without value + has topic calls open_directory."""
-        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        spec_dir.mkdir(parents=True)
 
         with patch.object(
             sys, "argv", ["open.py", "my-topic", "--run"]
         ), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ), patch.object(spex_open, "open_directory") as mock_open:
             main()
 
-        mock_open.assert_called_once_with(str(topic_dir))
+        mock_open.assert_called_once_with(str(spec_dir))
 
     def test_run_with_command_calls_subprocess(self, tmp_path):
         """--run "ls" + has topic calls subprocess.run in topic dir."""
-        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        spec_dir.mkdir(parents=True)
 
         mock_result = MagicMock(returncode=0)
         with patch.object(
             sys, "argv", ["open.py", "--run", "ls", "my-topic"]
         ), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ), patch("open.subprocess.run", return_value=mock_result) as mock_run:
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
-        mock_run.assert_called_once_with("ls", shell=True, cwd=str(topic_dir))
+        mock_run.assert_called_once_with("ls", shell=True, cwd=str(spec_dir))
         assert exc_info.value.code == 0
 
     def test_run_no_topic_no_topics_runs_in_spex_root(self, tmp_path):
@@ -248,14 +248,14 @@ class TestRunOption:
 
     def test_run_command_nonzero_exit_propagates(self, tmp_path):
         """--run command returns non-zero exit code, sys.exit propagates it."""
-        topic_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
-        topic_dir.mkdir(parents=True)
+        spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
+        spec_dir.mkdir(parents=True)
 
         mock_result = MagicMock(returncode=7)
         with patch.object(
             sys, "argv", ["open.py", "--run", "bad-cmd", "my-topic"]
         ), patch.object(
-            spex_open, "resolve_spec", return_value=topic_dir
+            spex_open, "resolve_spec", return_value=spec_dir
         ), patch("open.subprocess.run", return_value=mock_result):
             with pytest.raises(SystemExit) as exc_info:
                 main()

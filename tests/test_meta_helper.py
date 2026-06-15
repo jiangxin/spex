@@ -11,12 +11,12 @@ import pytest
 SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta_helper.py")
 
 
-def _make_topic(tmp_path, topic_name, data):
+def _make_topic(tmp_path, spec_name, data):
     """Create a topic directory with meta.json and return the meta path."""
     specs_dir = tmp_path / "specs"
-    topic_dir = specs_dir / topic_name
-    topic_dir.mkdir(parents=True)
-    meta_path = topic_dir / "meta.json"
+    spec_dir = specs_dir / spec_name
+    spec_dir.mkdir(parents=True)
+    meta_path = spec_dir / "meta.json"
     meta_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return meta_path
 
@@ -30,11 +30,11 @@ def _setup_spex_toml(tmp_path):
         )
 
 
-def _run_script(tmp_path, topic_name, key=None, value=None, stdin_flag=False,
+def _run_script(tmp_path, spec_name, key=None, value=None, stdin_flag=False,
                 input_data=None, add_images=None):
     """Run meta_helper.py as subprocess with .spex.toml pointing to tmp_path."""
     _setup_spex_toml(tmp_path)
-    args = [sys.executable, SCRIPT, topic_name]
+    args = [sys.executable, SCRIPT, spec_name]
     if key is not None:
         args.append(key)
     if value is not None:

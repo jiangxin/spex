@@ -30,16 +30,16 @@ def _paged_output(text):
         print(text)
 
 
-def _format_default(topic_dir):
+def _format_default(spec_dir):
     """Format topic in list -vv style, reused from common."""
-    return format_spec(topic_dir, verbose=2)
+    return format_spec(spec_dir, verbose=2)
 
 
-def _format_verbose(topic_dir):
+def _format_verbose(spec_dir):
     """Format topic with full spec and structured todo."""
-    t = Spec.from_dir(topic_dir)
+    t = Spec.from_dir(spec_dir)
     if t is None:
-        return f"(unable to load topic: {topic_dir.name})"
+        return f"(unable to load topic: {spec_dir.name})"
 
     parts = []
 
@@ -99,17 +99,17 @@ def main(argv=None):
     args = parser.parse(argv)
 
     if args.topic:
-        topic_dir = resolve_spec(args.topic, include_archives=args.archives)
+        spec_dir = resolve_spec(args.topic, include_archives=args.archives)
     else:
-        topic_dir = select_spec_interactive(
+        spec_dir = select_spec_interactive(
             include_archives=args.archives,
             all_projects=args.all_projects,
         )
 
     if args.brief:
-        print(_format_default(topic_dir))
+        print(_format_default(spec_dir))
     else:
-        _paged_output(_format_verbose(topic_dir))
+        _paged_output(_format_verbose(spec_dir))
 
 
 if __name__ == "__main__":

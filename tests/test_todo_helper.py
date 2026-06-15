@@ -54,14 +54,14 @@ SAMPLE_DATA = [
 # -----------------------------------------------------------------------
 class TestFileLocating:
     def test_topic_resolves_todo_json(self, tmp_path, monkeypatch):
-        topic_dir = tmp_path / "my-topic"
-        topic_dir.mkdir()
-        todo = topic_dir / "todo.json"
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
+        todo = spec_dir / "todo.json"
         _write(todo, SAMPLE_DATA)
 
         monkeypatch.setattr(
             todo_helper, "resolve_spec_dir",
-            lambda name, **kw: topic_dir,
+            lambda name, **kw: spec_dir,
         )
         todo_helper.main([
             "--topic", "my-topic", "validate",
@@ -88,16 +88,16 @@ class TestFileLocating:
     def test_xml_flag_with_topic(
         self, tmp_path, monkeypatch, caplog,
     ):
-        topic_dir = tmp_path / "my-topic"
-        topic_dir.mkdir()
-        xml_file = topic_dir / "todo.xml"
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
+        xml_file = spec_dir / "todo.xml"
         xml_file.write_text(
             "<todo></todo>\n", encoding="utf-8",
         )
 
         monkeypatch.setattr(
             todo_helper, "resolve_spec_dir",
-            lambda name, **kw: topic_dir,
+            lambda name, **kw: spec_dir,
         )
         with caplog.at_level(logging.INFO):
             todo_helper.main([

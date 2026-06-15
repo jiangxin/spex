@@ -15,13 +15,13 @@ from common import (
 )
 
 
-def _extract_spec_name_for_branch(topic_dir: Path, meta) -> str:
+def _extract_spec_name_for_branch(spec_dir: Path, meta) -> str:
     """Get the topic name to use for branch naming."""
-    return meta.topic or topic_dir.name
+    return meta.topic or spec_dir.name
 
 
 def validate_apply_branch(
-    config: dict, topic_dir: Path, cwd: str | Path | None = None,
+    config: dict, spec_dir: Path, cwd: str | Path | None = None,
 ) -> None:
     """Perform branch setup for applying a topic spec.
 
@@ -45,15 +45,15 @@ def validate_apply_branch(
         switch_branch,
     )
 
-    if common.is_spec_completed(topic_dir):
-        status = common.format_spec(topic_dir, verbose=2)
+    if common.is_spec_completed(spec_dir):
+        status = common.format_spec(spec_dir, verbose=2)
         logger.error(f"Error: topic is already completed.\n{status}")
         sys.exit(1)
 
     if not bool(config["branch_management"]):
         return
 
-    meta = common.load_meta(topic_dir) or SpecMeta()
+    meta = common.load_meta(spec_dir) or SpecMeta()
     spex_branch = meta.spex_branch
 
     if spex_branch:
@@ -76,12 +76,12 @@ def validate_apply_branch(
             logger.info(f"Switched to branch '{spex_branch}'.")
         return
 
-    topic_name = _extract_spec_name_for_branch(topic_dir, meta)
-    short_name = strip_date_prefix(topic_name)
+    spec_name = _extract_spec_name_for_branch(spec_dir, meta)
+    short_name = strip_date_prefix(spec_name)
 
     candidates = [
         f"{DEFAULT_SPEX_BRANCH_PREFIX}{short_name}",
-        f"{DEFAULT_SPEX_BRANCH_PREFIX}{topic_name}",
+        f"{DEFAULT_SPEX_BRANCH_PREFIX}{spec_name}",
     ]
 
     created_branch = None
@@ -111,14 +111,14 @@ def validate_apply_branch(
         )
         sys.exit(1)
 
-    description = common.get_spec_description(topic_dir)
+    description = common.get_spec_description(spec_dir)
     if description:
         try:
             set_branch_description(created_branch, description, cwd)
         except subprocess.CalledProcessError:
             pass
 
-    meta_path = topic_dir / "meta.json"
+    meta_path = spec_dir / "meta.json"
     meta.spex_branch = created_branch
     common.atomic_write_json(meta_path, meta.to_dict())
 
@@ -131,8 +131,8 @@ def _do_precheck(args):
     import config as cfg
 
     ctx = cfg.get_project_context()
-    topic_dir = common.resolve_spec_dir(args.topic)
-    validate_apply_branch(ctx.config, topic_dir, cwd=ctx.top_workdir)
+    spec_dir = common.resolve_spec_dir(args.topic)
+    validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
 
 
 def cli_precheck(argv=None):
@@ -148,9 +148,9 @@ def _do_post_action(args):
     import config as cfg
     import hooks
 
-    topic_dir = common.resolve_spec_dir(args.topic)
-    topic_name = strip_date_prefix(topic_dir.name)
-    meta = common.load_meta(topic_dir)
+    spec_dir = common.resolve_spec_dir(args.topic)
+    spec_name = strip_date_prefix(spec_dir.name)
+    meta = common.load_meta(spec_dir)
     spex_branch = meta.spex_branch if meta else ""
     if not spex_branch:
         return
@@ -162,12 +162,12 @@ def _do_post_action(args):
     hooks.run_post_action(
         "apply",
         {
-            "topic": topic_name,
+            "topic": spec_name,
             "source_branch": spex_branch,
             "target_branch": target,
         },
         workdir,
-        topic_name,
+        spec_name,
     )
 
     if hooks.find_hook("post-action", workdir) is None:

@@ -32,10 +32,10 @@ def _mock_project_context(top_workdir=None):
     )
 
 
-def _write_todo(topic_dir, tasks):
+def _write_todo(spec_dir, tasks):
     """Write a todo.json file into topic_dir."""
-    topic_dir.mkdir(parents=True, exist_ok=True)
-    todo_path = topic_dir / "todo.json"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    todo_path = spec_dir / "todo.json"
     todo_path.write_text(json.dumps(tasks), encoding="utf-8")
 
 

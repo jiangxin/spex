@@ -146,14 +146,14 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
-    topic_name = args.topic_name
+    spec_name = args.topic_name
     key = args.key
     value = args.value
     stdin_flag = args.stdin_flag
     add_images = args.add_images
 
-    topic_dir = resolve_spec_dir(topic_name)
-    meta_path = topic_dir / "meta.json"
+    spec_dir = resolve_spec_dir(spec_name)
+    meta_path = spec_dir / "meta.json"
 
     if not meta_path.is_file():
         logger.error("Error: file not found: %s", meta_path)

@@ -1138,18 +1138,18 @@ class TestIsRelatedTo:
         import json
 
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
-        topic_dir = tmp_path / "topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
         meta = {"workdir": str(tmp_path), "main_worktree": str(tmp_path)}
-        (topic_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        (spec_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
-        assert ctx.is_related_to(topic_dir) is True
+        assert ctx.is_related_to(spec_dir) is True
 
     def test_path_with_no_meta_json(self, tmp_path):
         """Path with no meta.json returns True (no filtering possible)."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
-        topic_dir = tmp_path / "empty-topic"
-        topic_dir.mkdir()
+        spec_dir = tmp_path / "empty-topic"
+        spec_dir.mkdir()
 
-        assert ctx.is_related_to(topic_dir) is True
+        assert ctx.is_related_to(spec_dir) is True
 

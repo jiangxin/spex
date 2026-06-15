@@ -92,11 +92,11 @@ def main(argv=None):
     """CLI entry point for the open command."""
     parser = _build_parser()
     args = parser.parse(argv)
-    topic = args.topic
+    spec_name = args.topic
 
-    if topic:
-        topic_dir = resolve_spec(topic, include_archives=args.archives)
-        _perform_action(str(topic_dir), args.run)
+    if spec_name:
+        spec_dir = resolve_spec(spec_name, include_archives=args.archives)
+        _perform_action(str(spec_dir), args.run)
     else:
         selected = select_spec_interactive(
             include_archives=args.archives,

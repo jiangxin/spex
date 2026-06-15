@@ -23,15 +23,15 @@ def _mock_project_context(top_workdir=None):
     )
 
 
-def _setup_topic(tmp_path, topic_name="my-topic", spex_branch="spex/test",
+def _setup_topic(tmp_path, spec_name="my-topic", spex_branch="spex/test",
                  branch="main", completed=True):
     """Create a topic directory with meta.json and todo.json."""
     specs = tmp_path / "specs"
-    topic_dir = specs / topic_name
-    topic_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir = specs / spec_name
+    spec_dir.mkdir(parents=True, exist_ok=True)
 
     meta = {"spex_branch": spex_branch, "branch": branch}
-    (topic_dir / "meta.json").write_text(
+    (spec_dir / "meta.json").write_text(
         json.dumps(meta), encoding="utf-8"
     )
 
@@ -44,18 +44,18 @@ def _setup_topic(tmp_path, topic_name="my-topic", spex_branch="spex/test",
             "commit_title": "feat: task 1" if completed else "",
         }
     ]
-    (topic_dir / "todo.json").write_text(
+    (spec_dir / "todo.json").write_text(
         json.dumps(tasks), encoding="utf-8"
     )
 
-    return specs, topic_dir
+    return specs, spec_dir
 
 
 class TestDryRun:
     """Tests for --dry-run flag in cli_submit."""
 
     def test_dry_run_does_not_merge(self, tmp_path, caplog):
-        specs, topic_dir = _setup_topic(tmp_path)
+        specs, spec_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
@@ -69,7 +69,7 @@ class TestDryRun:
         assert "Would merge" in caplog.text
 
     def test_dry_run_json_output(self, tmp_path, capsys):
-        specs, topic_dir = _setup_topic(tmp_path)
+        specs, spec_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
@@ -88,7 +88,7 @@ class TestDryRun:
         assert data["errors"] == []
 
     def test_dry_run_no_archive(self, tmp_path, capsys, caplog):
-        specs, topic_dir = _setup_topic(tmp_path)
+        specs, spec_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
@@ -106,7 +106,7 @@ class TestDryRun:
         assert data["archived"] is False
 
     def test_dry_run_short_flag(self, tmp_path, caplog):
-        specs, topic_dir = _setup_topic(tmp_path)
+        specs, spec_dir = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
 
@@ -124,8 +124,8 @@ class TestAutoSelect:
     """Tests for auto-topic selection when no topic is provided."""
 
     def test_auto_select_single_topic(self, tmp_path, caplog):
-        specs, topic_dir = _setup_topic(
-            tmp_path, topic_name="auto-topic",
+        specs, spec_dir = _setup_topic(
+            tmp_path, spec_name="auto-topic",
             spex_branch="spex/auto", completed=True,
         )
         ctx = _mock_project_context(top_workdir=str(tmp_path))
@@ -162,9 +162,9 @@ class TestAutoSelect:
         self, tmp_path, caplog,
     ):
         specs = tmp_path / "specs"
-        _setup_topic(tmp_path, topic_name="topic-a",
+        _setup_topic(tmp_path, spec_name="topic-a",
                      spex_branch="spex/a", completed=True)
-        _setup_topic(tmp_path, topic_name="topic-b",
+        _setup_topic(tmp_path, spec_name="topic-b",
                      spex_branch="spex/b", completed=True)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
 
