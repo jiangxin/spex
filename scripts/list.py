@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
+import sys
 from pathlib import Path
 
 from cli import ArgumentParser
@@ -67,7 +69,7 @@ def format_output(
 ) -> str:
     """Format topics into aligned columns."""
     if not topics:
-        return "No specs found."
+        return ""
 
     topics.sort(key=lambda t: t.created_at, reverse=True)
 
@@ -135,7 +137,7 @@ def format_verbose_output(
 ) -> str:
     """Format topics with expanded detail based on verbosity level."""
     if not topics:
-        return "No specs found."
+        return ""
 
     if verbosity >= 3:
         return "Use 'spex show <topic>' for detailed view."
@@ -158,6 +160,24 @@ def format_json_output(topics: list) -> str:
         ensure_ascii=False,
         indent=2,
     )
+
+
+def filter_topics(topics: list, patterns: list) -> list:
+    """Filter topics by name patterns (substring, glob, or regex)."""
+    if not patterns:
+        return topics
+
+    def matches(name: str, pattern: str) -> bool:
+        if pattern.startswith("^"):
+            try:
+                return re.search(pattern, name) is not None
+            except re.error:
+                return False
+        if "*" in pattern or "?" in pattern:
+            return fnmatch.fnmatch(name, pattern)
+        return pattern in name
+
+    return [t for t in topics if any(matches(t.name, p) for p in patterns)]
 
 
 def _build_parser() -> ArgumentParser:
@@ -188,6 +208,13 @@ def _build_parser() -> ArgumentParser:
         default=0,
         help="Increase verbosity (-v, -vv)",
     )
+    parser.add_argument(
+        "patterns",
+        nargs="*",
+        default=[],
+        metavar="pattern",
+        help="Filter topics by name pattern",
+    )
     return parser
 
 
@@ -200,8 +227,14 @@ def main(argv=None):
         all_projects=args.all_projects,
     )
 
+    topics = filter_topics(topics, args.patterns)
+
     if args.json:
         print(format_json_output(topics))
+        return
+
+    if not topics:
+        print("No specs found.", file=sys.stderr)
         return
 
     verbosity = args.verbose
