@@ -26,7 +26,7 @@ Follow these steps in order. Do not skip or reorder.
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex get-topic --json "$topic_name"
+$spex_skill_dir/scripts/spex list --json "$topic_name"
 ```
 
 Read the command output and parse it as a JSON array:
