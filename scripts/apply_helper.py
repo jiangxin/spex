@@ -45,7 +45,7 @@ def validate_apply_branch(
         switch_branch,
     )
 
-    if common.is_topic_completed(topic_dir):
+    if common.is_spec_completed(topic_dir):
         status = common.format_topic(topic_dir, verbose=2)
         logger.error(f"Error: topic is already completed.\n{status}")
         sys.exit(1)

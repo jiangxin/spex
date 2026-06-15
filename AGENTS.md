@@ -77,13 +77,13 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
 | `same_path(a, b)` | True if two path strings resolve to the same location (symlink-safe). |
 | `load_meta(topic_dir)` | Load and parse `meta.json`; returns dict or `None`. |
-| `get_topic_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
+| `get_spec_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
 | `load_todo(topic_dir)` | Load and parse `todo.json`; returns list or `None`. |
-| `is_topic_completed(topic_dir)` | True if all tasks in `todo.json` have `completed_at`. |
+| `is_spec_completed(topic_dir)` | True if all tasks in `todo.json` have `completed_at`. |
 | `has_undone_tasks(topic_dir)` | True if `todo.json` has incomplete items. |
 | `get_todo_progress(topic_dir)` | Return `(completed_count, total_count)`. |
 | `has_active_branch(topic_dir)` | True if `meta.json` has `spex_branch` and that git branch exists. |
-| `find_completed_topics(specs_dir, ctx, force, all_projects)` | Return sorted list of completed topic paths, filtered by project context. |
+| `find_completed_specs(specs_dir, ctx, force, all_projects)` | Return sorted list of completed topic paths, filtered by project context. |
 | `atomic_write_json(path, data)` | Atomically write JSON via tempfile + `os.replace`. |
 | `local_iso_timestamp()` | Current local time as ISO 8601 string. |
 | `strip_date_prefix(topic_name)` | Remove `YYYY-MM-DD-HH-MM-` prefix from a topic name. |
@@ -97,7 +97,7 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
 | `validate_unique_ids(data)` | Check unique non-empty 'id' fields, exit on duplicates. |
-| `find_matching_topics(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
+| `find_matching_specs(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
 
 ## Logging Convention
 

@@ -8,13 +8,13 @@ import archive as spex_archive
 import pytest
 from archive import (
     archive_single_topic,
-    find_completed_topics,
+    find_completed_specs,
     has_active_branch,
     move_topic,
     move_topic_with_conflict,
     restore_single_topic,
 )
-from common import is_topic_completed
+from common import is_spec_completed
 from config import ProjectContext
 
 
@@ -50,43 +50,43 @@ def _make_task(task_id, completed=True):
     }
 
 
-class TestIsTopicCompleted:
-    """Tests for is_topic_completed."""
+class TestIsSpecCompleted:
+    """Tests for is_spec_completed."""
 
     def test_all_completed_returns_true(self, tmp_path):
         topic = tmp_path / "my-topic"
         _write_todo(topic, [_make_task("1"), _make_task("2")])
 
-        assert is_topic_completed(topic) is True
+        assert is_spec_completed(topic) is True
 
     def test_partial_completed_returns_false(self, tmp_path):
         topic = tmp_path / "my-topic"
         _write_todo(topic, [_make_task("1"), _make_task("2", completed=False)])
 
-        assert is_topic_completed(topic) is False
+        assert is_spec_completed(topic) is False
 
     def test_missing_todo_returns_false(self, tmp_path):
         topic = tmp_path / "my-topic"
         topic.mkdir()
 
-        assert is_topic_completed(topic) is False
+        assert is_spec_completed(topic) is False
 
     def test_empty_list_returns_false(self, tmp_path):
         topic = tmp_path / "my-topic"
         _write_todo(topic, [])
 
-        assert is_topic_completed(topic) is False
+        assert is_spec_completed(topic) is False
 
     def test_invalid_json_returns_false(self, tmp_path):
         topic = tmp_path / "my-topic"
         topic.mkdir(parents=True, exist_ok=True)
         (topic / "todo.json").write_text("not json", encoding="utf-8")
 
-        assert is_topic_completed(topic) is False
+        assert is_spec_completed(topic) is False
 
 
-class TestFindCompletedTopics:
-    """Tests for find_completed_topics."""
+class TestFindCompletedSpecs:
+    """Tests for find_completed_specs."""
 
     def test_returns_only_completed(self, tmp_path):
         specs = tmp_path / "specs"
@@ -101,14 +101,14 @@ class TestFindCompletedTopics:
         (specs / "empty-topic").mkdir(parents=True)
 
         ctx = _mock_project_context()
-        result = find_completed_topics(specs, ctx)
+        result = find_completed_specs(specs, ctx)
 
         assert len(result) == 1
         assert result[0].name == "done-topic"
 
     def test_nonexistent_dir_returns_empty(self, tmp_path):
         ctx = _mock_project_context()
-        result = find_completed_topics(tmp_path / "nonexistent", ctx)
+        result = find_completed_specs(tmp_path / "nonexistent", ctx)
 
         assert result == []
 
@@ -118,7 +118,7 @@ class TestFindCompletedTopics:
         _write_todo(specs / "alpha-topic", [_make_task("1")])
 
         ctx = _mock_project_context()
-        result = find_completed_topics(specs, ctx)
+        result = find_completed_specs(specs, ctx)
 
         assert [d.name for d in result] == ["alpha-topic", "beta-topic"]
 
@@ -141,7 +141,7 @@ class TestFindCompletedTopics:
         _write_todo(topic_c, [_make_task("1")])
 
         ctx = _mock_project_context(top_workdir="/repo/a")
-        result = find_completed_topics(specs, ctx)
+        result = find_completed_specs(specs, ctx)
 
         names = [d.name for d in result]
         assert "topic-a" in names
@@ -162,7 +162,7 @@ class TestFindCompletedTopics:
         )
 
         ctx = _mock_project_context()
-        result = find_completed_topics(specs, ctx)
+        result = find_completed_specs(specs, ctx)
 
         assert len(result) == 2
 
@@ -461,8 +461,8 @@ class TestHasActiveBranch:
         assert has_active_branch(topic) is False
 
 
-class TestFindCompletedTopicsWithBranchGuard:
-    """Tests for find_completed_topics with force parameter."""
+class TestFindCompletedSpecsWithBranchGuard:
+    """Tests for find_completed_specs with force parameter."""
 
     def test_excludes_active_branch_when_force_false(self, tmp_path):
         specs = tmp_path / "specs"
@@ -478,7 +478,7 @@ class TestFindCompletedTopicsWithBranchGuard:
 
         ctx = _mock_project_context()
         with patch("branch.branch_exists", return_value=True):
-            result = find_completed_topics(specs, ctx, force=False)
+            result = find_completed_specs(specs, ctx, force=False)
 
         names = [d.name for d in result]
         assert "no-branch-topic" in names
@@ -494,7 +494,7 @@ class TestFindCompletedTopicsWithBranchGuard:
 
         ctx = _mock_project_context()
         with patch("branch.branch_exists", return_value=True):
-            result = find_completed_topics(specs, ctx, force=True)
+            result = find_completed_specs(specs, ctx, force=True)
 
         assert len(result) == 1
         assert result[0].name == "active-topic"
@@ -509,7 +509,7 @@ class TestFindCompletedTopicsWithBranchGuard:
 
         ctx = _mock_project_context()
         with patch("branch.branch_exists", return_value=False):
-            result = find_completed_topics(specs, ctx, force=False)
+            result = find_completed_specs(specs, ctx, force=False)
 
         assert len(result) == 1
         assert result[0].name == "merged-topic"

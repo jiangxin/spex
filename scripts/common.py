@@ -398,7 +398,7 @@ def load_meta(topic_dir: Path) -> SpecMeta | None:
     return SpecMeta.from_dict(data)
 
 
-def get_topic_workdir(topic_dir: Path) -> str:
+def get_spec_workdir(topic_dir: Path) -> str:
     """Read workdir from meta.json in a topic directory.
 
     Returns the workdir string, or empty string if not found.
@@ -491,7 +491,7 @@ def validate_unique_ids(data):
         seen_ids[step_id] = i
 
 
-def is_topic_completed(topic_dir: Path) -> bool:
+def is_spec_completed(topic_dir: Path) -> bool:
     """Return True if all tasks in todo.json have non-empty completed_at."""
     data = load_todo(topic_dir)
     if data is None:
@@ -539,7 +539,7 @@ def has_active_branch(topic_dir: Path) -> bool:
     return branch_exists(spex_branch)
 
 
-def find_completed_topics(
+def find_completed_specs(
     specs_dir: Path, ctx, force: bool = False,
     all_projects: bool = False,
 ) -> list:
@@ -554,7 +554,7 @@ def find_completed_topics(
         return []
     results = []
     for d in specs_dir.iterdir():
-        if not d.is_dir() or not is_topic_completed(d):
+        if not d.is_dir() or not is_spec_completed(d):
             continue
         if not force and has_active_branch(d):
             continue
@@ -791,7 +791,7 @@ def get_template(template_name: str, workdir=None) -> str:
 
 
 
-def find_matching_topics(topic_name, specs_dir):
+def find_matching_specs(topic_name, specs_dir):
     """Find topic directories matching a name or substring.
 
     Tries exact match first; if found, returns a single-element list.
@@ -846,7 +846,7 @@ def resolve_topic_dir(topic_name, specs_dir=None):
         logger.error("Error: specs directory does not exist: %s", specs_dir)
         sys.exit(1)
 
-    matches = find_matching_topics(topic_name, specs_dir)
+    matches = find_matching_specs(topic_name, specs_dir)
     if not matches:
         logger.error("Error: no topic matching '%s' found.", topic_name)
         sys.exit(1)
@@ -1038,11 +1038,11 @@ def resolve_topic(name, include_archives=False):
     """
     specs_dir = get_specs_dir()
 
-    matches = find_matching_topics(name, specs_dir)
+    matches = find_matching_specs(name, specs_dir)
 
     if include_archives:
         archives_dir = get_archives_dir()
-        archive_matches = find_matching_topics(name, archives_dir)
+        archive_matches = find_matching_specs(name, archives_dir)
         seen = {m.resolve() for m in matches}
         for m in archive_matches:
             if m.resolve() not in seen:

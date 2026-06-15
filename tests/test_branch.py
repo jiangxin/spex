@@ -122,7 +122,7 @@ class TestValidateApplyBranch:
         # Should return without error when branch_management is False
         validate_apply_branch({"branch_management": False}, tmp_path)
 
-    @patch("common.is_topic_completed", return_value=True)
+    @patch("common.is_spec_completed", return_value=True)
     def test_completed_topic_exits(self, _mock, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
@@ -145,7 +145,7 @@ class TestValidateApplyBranch:
     @patch("branch.switch_branch")
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=True)
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_spex_branch_switches(self, _completed, _exists, _curr, mock_switch, tmp_path):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -156,7 +156,7 @@ class TestValidateApplyBranch:
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_spex_branch_missing_exits(self, _completed, _exists, _curr, tmp_path):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -173,7 +173,7 @@ class TestValidateApplyBranch:
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
     @patch("branch.create_branch")
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_creates_branch_with_short_name(
         self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
         tmp_path,
@@ -195,7 +195,7 @@ class TestValidateApplyBranch:
         subprocess.CalledProcessError(1, "git"),
         None,
     ])
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_fallback_to_long_name(
         self, _completed, mock_create, _exists, _curr, _desc, mock_switch,
         tmp_path,
@@ -217,7 +217,7 @@ class TestValidateApplyBranch:
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
     @patch("branch.create_branch", side_effect=subprocess.CalledProcessError(1, "git"))
-    @patch("common.is_topic_completed", return_value=False)
+    @patch("common.is_spec_completed", return_value=False)
     def test_both_candidates_fail_exits(
         self, _completed, _create, _exists, _curr, tmp_path,
     ):

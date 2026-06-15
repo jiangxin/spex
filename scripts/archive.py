@@ -14,12 +14,12 @@ from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
-    find_completed_topics,
-    find_matching_topics,
+    find_completed_specs,
+    find_matching_specs,
     get_archives_dir,
     get_specs_dir,
     has_active_branch,
-    is_topic_completed,
+    is_spec_completed,
     load_meta,
     logger,
     resolve_topic_dir,
@@ -67,7 +67,7 @@ def archive_single_topic(
     Returns the destination path, or None if skipped due to active branch.
     """
     topic_dir = resolve_topic_dir(topic_name, specs_dir)
-    if not force and not is_topic_completed(topic_dir):
+    if not force and not is_spec_completed(topic_dir):
         logger.info(
             "Skipping: topic is not completed (use --force to archive)"
         )
@@ -108,7 +108,7 @@ def restore_single_topic(
         )
         sys.exit(1)
 
-    matches = find_matching_topics(topic_name, archives_dir)
+    matches = find_matching_specs(topic_name, archives_dir)
     if not matches:
         logger.error(
             "Error: no topic matching '%s' found in archives.", topic_name
@@ -176,7 +176,7 @@ def main(argv=None):
         )
         return
 
-    completed = find_completed_topics(
+    completed = find_completed_specs(
         specs_dir, ctx, args.force, all_projects=args.all_projects,
     )
 
@@ -188,7 +188,7 @@ def main(argv=None):
         # Show topics that would be skipped due to active branches
         skipped = [
             d for d in sorted(specs_dir.iterdir())
-            if d.is_dir() and is_topic_completed(d) and has_active_branch(d)
+            if d.is_dir() and is_spec_completed(d) and has_active_branch(d)
         ]
         logger.info("Would archive %d topic(s):", len(completed))
         for topic_dir in completed:
