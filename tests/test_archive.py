@@ -7,12 +7,12 @@ from unittest.mock import patch
 import archive as spex_archive
 import pytest
 from archive import (
-    archive_single_topic,
+    archive_single_spec,
     find_completed_specs,
     has_active_branch,
-    move_topic,
-    move_topic_with_conflict,
-    restore_single_topic,
+    move_spec,
+    move_spec_with_conflict,
+    restore_single_spec,
 )
 from common import is_spec_completed
 from config import ProjectContext
@@ -168,7 +168,7 @@ class TestFindCompletedSpecs:
 
 
 class TestMoveTopic:
-    """Tests for move_topic."""
+    """Tests for move_spec."""
 
     def test_normal_move(self, tmp_path):
         topic = tmp_path / "specs" / "my-topic"
@@ -176,7 +176,7 @@ class TestMoveTopic:
         archives = tmp_path / "archives"
         archives.mkdir()
 
-        dest = move_topic(topic, archives)
+        dest = move_spec(topic, archives)
 
         assert dest == archives / "my-topic"
         assert dest.is_dir()
@@ -189,7 +189,7 @@ class TestMoveTopic:
         # Pre-existing conflict
         (archives / "my-topic").mkdir(parents=True)
 
-        dest = move_topic(topic, archives)
+        dest = move_spec(topic, archives)
 
         assert dest == archives / "my-topic-2"
         assert dest.is_dir()
@@ -203,7 +203,7 @@ class TestMoveTopic:
         (archives / "my-topic").mkdir(parents=True)
         (archives / "my-topic-2").mkdir(parents=True)
 
-        dest = move_topic(topic, archives)
+        dest = move_spec(topic, archives)
 
         assert dest == archives / "my-topic-3"
         assert dest.is_dir()
@@ -211,7 +211,7 @@ class TestMoveTopic:
 
 
 class TestMoveTopicWithConflict:
-    """Tests for move_topic_with_conflict (bidirectional)."""
+    """Tests for move_spec_with_conflict (bidirectional)."""
 
     def test_specs_to_archives(self, tmp_path):
         """Move from specs to archives direction."""
@@ -220,7 +220,7 @@ class TestMoveTopicWithConflict:
         archives = tmp_path / "archives"
         archives.mkdir()
 
-        dest = move_topic_with_conflict(topic, archives)
+        dest = move_spec_with_conflict(topic, archives)
 
         assert dest == archives / "my-topic"
         assert dest.is_dir()
@@ -233,7 +233,7 @@ class TestMoveTopicWithConflict:
         specs = tmp_path / "specs"
         specs.mkdir()
 
-        dest = move_topic_with_conflict(archives, specs)
+        dest = move_spec_with_conflict(archives, specs)
 
         assert dest == specs / "my-topic"
         assert dest.is_dir()
@@ -246,7 +246,7 @@ class TestMoveTopicWithConflict:
         dest_dir = tmp_path / "dest"
         (dest_dir / "my-topic").mkdir(parents=True)
 
-        dest = move_topic_with_conflict(src, dest_dir)
+        dest = move_spec_with_conflict(src, dest_dir)
 
         assert dest == dest_dir / "my-topic-2"
         assert dest.is_dir()
@@ -260,7 +260,7 @@ class TestMoveTopicWithConflict:
         (dest_dir / "my-topic").mkdir(parents=True)
         (dest_dir / "my-topic-2").mkdir(parents=True)
 
-        dest = move_topic_with_conflict(src, dest_dir)
+        dest = move_spec_with_conflict(src, dest_dir)
 
         assert dest == dest_dir / "my-topic-3"
         assert dest.is_dir()
@@ -387,7 +387,7 @@ class TestMain:
 
 
 class TestArchiveSingleTopic:
-    """Tests for archive_single_topic."""
+    """Tests for archive_single_spec."""
 
     def test_archive_single_existing_topic(self, tmp_path, caplog):
         specs = tmp_path / "specs"
@@ -395,7 +395,7 @@ class TestArchiveSingleTopic:
         archives = tmp_path / "archives"
 
         with caplog.at_level(logging.INFO):
-            dest = archive_single_topic("my-topic", specs, archives)
+            dest = archive_single_spec("my-topic", specs, archives)
 
         assert dest == archives / "my-topic"
         assert dest.is_dir()
@@ -408,18 +408,18 @@ class TestArchiveSingleTopic:
         archives = tmp_path / "archives"
 
         with pytest.raises(SystemExit) as exc_info:
-            archive_single_topic("no-such-topic", specs, archives)
+            archive_single_spec("no-such-topic", specs, archives)
         assert exc_info.value.code == 1
         assert "no-such-topic" in caplog.text
         assert "no topic matching" in caplog.text
 
-    def test_archive_single_topic_conflict(self, tmp_path):
+    def test_archive_single_spec_conflict(self, tmp_path):
         specs = tmp_path / "specs"
         _write_todo(specs / "my-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         (archives / "my-topic").mkdir(parents=True)
 
-        dest = archive_single_topic("my-topic", specs, archives)
+        dest = archive_single_spec("my-topic", specs, archives)
 
         assert dest == archives / "my-topic-2"
         assert dest.is_dir()
@@ -516,7 +516,7 @@ class TestFindCompletedSpecsWithBranchGuard:
 
 
 class TestArchiveSingleWithBranchGuard:
-    """Tests for archive_single_topic with force parameter."""
+    """Tests for archive_single_spec with force parameter."""
 
     def test_skips_when_branch_exists_no_force(self, tmp_path, caplog):
         specs = tmp_path / "specs"
@@ -530,7 +530,7 @@ class TestArchiveSingleWithBranchGuard:
 
         with patch("branch.branch_exists", return_value=True), \
              caplog.at_level(logging.INFO):
-            result = archive_single_topic("active-topic", specs, archives)
+            result = archive_single_spec("active-topic", specs, archives)
 
         assert result is None
         assert not (archives / "active-topic").exists()
@@ -543,7 +543,7 @@ class TestArchiveSingleWithBranchGuard:
         archives = tmp_path / "archives"
 
         with patch("branch.branch_exists", return_value=False):
-            result = archive_single_topic("merged-topic", specs, archives)
+            result = archive_single_spec("merged-topic", specs, archives)
 
         assert result == archives / "merged-topic"
         assert (archives / "merged-topic").is_dir()
@@ -559,7 +559,7 @@ class TestArchiveSingleWithBranchGuard:
         archives = tmp_path / "archives"
 
         with patch("branch.branch_exists", return_value=True):
-            result = archive_single_topic(
+            result = archive_single_spec(
                 "active-topic", specs, archives, force=True
             )
 
@@ -574,7 +574,7 @@ class TestArchiveSingleWithBranchGuard:
         archives = tmp_path / "archives"
 
         with patch("branch.branch_exists", return_value=False):
-            result = archive_single_topic("branch-guard", specs, archives)
+            result = archive_single_spec("branch-guard", specs, archives)
 
         assert result == archives / "2026-05-27-14-11-archive-branch-guard"
         assert (archives / "2026-05-27-14-11-archive-branch-guard").is_dir()
@@ -587,7 +587,7 @@ class TestArchiveSingleWithBranchGuard:
         archives = tmp_path / "archives"
 
         with pytest.raises(SystemExit) as exc_info:
-            archive_single_topic("topic", specs, archives)
+            archive_single_spec("topic", specs, archives)
         assert exc_info.value.code == 1
         assert "multiple topics match" in caplog.text
         assert "topic-a" in caplog.text
@@ -724,7 +724,7 @@ class TestMainWithBranchGuard:
 
 
 class TestRestoreSingleTopic:
-    """Tests for restore_single_topic."""
+    """Tests for restore_single_spec."""
 
     def test_restore_single_match(self, tmp_path, caplog):
         """Single match in archives → moved to specs."""
@@ -734,7 +734,7 @@ class TestRestoreSingleTopic:
         specs.mkdir()
 
         with caplog.at_level(logging.INFO):
-            dest = restore_single_topic("my-topic", specs, archives)
+            dest = restore_single_spec("my-topic", specs, archives)
 
         assert dest == specs / "my-topic"
         assert dest.is_dir()
@@ -751,7 +751,7 @@ class TestRestoreSingleTopic:
 
         with caplog.at_level(logging.ERROR), \
              pytest.raises(SystemExit) as exc_info:
-            restore_single_topic("nonexistent", specs, archives)
+            restore_single_spec("nonexistent", specs, archives)
         assert exc_info.value.code == 1
         assert "no topic matching" in caplog.text
 
@@ -765,7 +765,7 @@ class TestRestoreSingleTopic:
 
         with caplog.at_level(logging.ERROR), \
              pytest.raises(SystemExit) as exc_info:
-            restore_single_topic("topic", specs, archives)
+            restore_single_spec("topic", specs, archives)
         assert exc_info.value.code == 1
         assert "multiple topics match" in caplog.text
         assert "topic-a" in caplog.text
@@ -778,7 +778,7 @@ class TestRestoreSingleTopic:
         specs = tmp_path / "specs"
         (specs / "my-topic").mkdir(parents=True)
 
-        dest = restore_single_topic("my-topic", specs, archives)
+        dest = restore_single_spec("my-topic", specs, archives)
 
         assert dest == specs / "my-topic-2"
         assert dest.is_dir()
@@ -794,7 +794,7 @@ class TestRestoreSingleTopic:
         specs = tmp_path / "specs"
         specs.mkdir()
 
-        dest = restore_single_topic("branch-guard", specs, archives)
+        dest = restore_single_spec("branch-guard", specs, archives)
 
         expected = specs / "2026-05-27-14-11-archive-branch-guard"
         assert dest == expected

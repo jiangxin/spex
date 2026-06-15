@@ -44,7 +44,7 @@ def parse_prompt_log(log_path: Path) -> tuple:
     return (timestamp, prompt_text)
 
 
-def collect_topics(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
+def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
     """Collect topic info from given directories."""
     archive_dirs = set(archive_dirs or [])
     topics: list[Spec] = []
@@ -162,7 +162,7 @@ def format_json_output(topics: list) -> str:
     )
 
 
-def filter_topics(topics: list, patterns: list) -> list:
+def filter_specs(topics: list, patterns: list) -> list:
     """Filter topics by name patterns (substring, glob, or regex)."""
     if not patterns:
         return topics
@@ -238,7 +238,7 @@ def main(argv=None):
         all_projects=args.all_projects,
     )
 
-    topics = filter_topics(topics, args.patterns)
+    topics = filter_specs(topics, args.patterns)
 
     if args.must_done:
         topics = [t for t in topics if t.is_completed]

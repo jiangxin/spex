@@ -24,7 +24,7 @@ DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
 MAX_TOPIC_BYTES = 64
 
 
-def create_topic(topic, specs_dir, auto_prefix=True):
+def create_spec(topic, specs_dir, auto_prefix=True):
     """Create a topic directory under specs_dir.
 
     Returns (topic_name, topic_dir) tuple.
@@ -150,7 +150,7 @@ def _do_prepare_spec(args):
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
-        topic_name, topic_dir = create_topic(args.topic, specs_dir)
+        topic_name, topic_dir = create_spec(args.topic, specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)

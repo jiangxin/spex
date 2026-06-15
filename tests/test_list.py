@@ -7,8 +7,8 @@ from common import Spec, SpecMeta, get_todo_progress, load_meta
 from config import ProjectContext
 from list import (  # noqa: A004
     _wrap_text,
-    collect_topics,
-    filter_topics,
+    collect_specs,
+    filter_specs,
     format_json_output,
     format_output,
     format_verbose_output,
@@ -203,7 +203,7 @@ class TestCollectTopics:
         _make_meta(topic, "2026-05-20T10:00:00+08:00", ["hello"])
         _make_todo(topic, [_task("1", completed=False)])
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 1
         assert isinstance(result[0], Spec)
@@ -218,7 +218,7 @@ class TestCollectTopics:
         _make_meta(topic, "2026-05-24T20:00:00+08:00", ["from meta"])
         _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "from log")
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 1
         assert result[0].created_at == "2026-05-24T20:00:00+08:00"
@@ -229,7 +229,7 @@ class TestCollectTopics:
         topic = specs / "old-topic"
         _make_prompt_log(topic, "2026-05-20T10:00:00+08:00", "legacy prompt")
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert len(result) == 0
 
@@ -246,7 +246,7 @@ class TestCollectTopics:
             json.dumps(data), encoding="utf-8"
         )
 
-        result = collect_topics([specs])
+        result = collect_specs([specs])
 
         assert result[0].workdir == "/home/user/project-a"
 
@@ -343,7 +343,7 @@ class TestDescriptionDisplay:
         output = format_output(topics)
         assert "shown prompt" in output
 
-    def test_collect_topics_includes_description(self, tmp_path):
+    def test_collect_specs_includes_description(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "my-topic"
         topic.mkdir(parents=True)
@@ -353,7 +353,7 @@ class TestDescriptionDisplay:
             '---\ndescription: "From spec"\n---\n\n# Spec',
             encoding="utf-8",
         )
-        topics = collect_topics([specs])
+        topics = collect_specs([specs])
         assert topics[0].description == "From spec"
 
 
@@ -636,37 +636,37 @@ class TestFilterTopics:
 
     def test_no_patterns_returns_all(self):
         topics = [self._topic("alpha"), self._topic("beta")]
-        result = filter_topics(topics, [])
+        result = filter_specs(topics, [])
         assert len(result) == 2
 
     def test_substring_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["json"])
+        result = filter_specs(topics, ["json"])
         assert len(result) == 1
 
     def test_substring_no_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["xyz"])
+        result = filter_specs(topics, ["xyz"])
         assert len(result) == 0
 
     def test_glob_match_star(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["*-json-*"])
+        result = filter_specs(topics, ["*-json-*"])
         assert len(result) == 1
 
     def test_glob_match_question(self):
         topics = [self._topic("list")]
-        result = filter_topics(topics, ["lis?"])
+        result = filter_specs(topics, ["lis?"])
         assert len(result) == 1
 
     def test_regex_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^list-.*output$"])
+        result = filter_specs(topics, ["^list-.*output$"])
         assert len(result) == 1
 
     def test_regex_no_match(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^xyz"])
+        result = filter_specs(topics, ["^xyz"])
         assert len(result) == 0
 
     def test_multiple_patterns_or_logic(self):
@@ -675,14 +675,14 @@ class TestFilterTopics:
             self._topic("e2e-test-create"),
             self._topic("other-topic"),
         ]
-        result = filter_topics(topics, ["json", "test"])
+        result = filter_specs(topics, ["json", "test"])
         assert len(result) == 2
         names = {t.name for t in result}
         assert names == {"list-json-output", "e2e-test-create"}
 
     def test_invalid_regex_skipped(self):
         topics = [self._topic("list-json-output")]
-        result = filter_topics(topics, ["^[invalid"])
+        result = filter_specs(topics, ["^[invalid"])
         assert len(result) == 0
 
 

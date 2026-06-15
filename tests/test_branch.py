@@ -275,7 +275,7 @@ class TestCliPostAction:
 
 
 class TestCliSubmit:
-    @patch("merge._find_submittable_topics", return_value=[])
+    @patch("merge._find_submittable_specs", return_value=[])
     def test_no_topic_arg_exits(self, _mock, caplog):
         """Empty topic argument causes error exit."""
         import logging
@@ -320,7 +320,7 @@ class TestCliSubmit:
         assert "not related to current project" in caplog.text
         assert "/other/project" in caplog.text
 
-    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
+    @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
@@ -343,7 +343,7 @@ class TestCliSubmit:
         assert "archived" in out
         mock_merge.assert_called_once_with("main", "spex/done", cwd=None)
 
-    @patch("archive.archive_single_topic", return_value=Path("/fake/archive"))
+    @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
@@ -363,7 +363,7 @@ class TestCliSubmit:
         assert out["archived"] is True
         mock_archive.assert_called_once()
 
-    @patch("archive.archive_single_topic")
+    @patch("archive.archive_single_spec")
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
@@ -383,7 +383,7 @@ class TestCliSubmit:
         assert out["archived"] is False
         mock_archive.assert_not_called()
 
-    @patch("archive.archive_single_topic")
+    @patch("archive.archive_single_spec")
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(

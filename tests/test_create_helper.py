@@ -14,7 +14,7 @@ from config import ProjectContext
 from create_helper import (
     cli_create_validate,
     cli_prepare_spec,
-    create_topic,
+    create_spec,
     validate_create_branch,
 )
 
@@ -63,7 +63,7 @@ class TestCreateTopic:
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        topic_name, topic_dir = create_spec(
             "2026-05-20-14-30-hello", specs_dir
         )
 
@@ -74,7 +74,7 @@ class TestCreateTopic:
     def test_creates_specs_dir_if_missing(self, tmp_path):
         specs_dir = tmp_path / "specs"
 
-        topic_name, topic_dir = create_topic(
+        topic_name, topic_dir = create_spec(
             "2026-05-20-14-30-new-topic", specs_dir
         )
 
@@ -83,33 +83,33 @@ class TestCreateTopic:
 
     def test_invalid_name_no_date(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("no-date-prefix", tmp_path, auto_prefix=False)
+            create_spec("no-date-prefix", tmp_path, auto_prefix=False)
 
     def test_invalid_name_uppercase(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-14-30-UpperCase", tmp_path)
+            create_spec("2026-05-20-14-30-UpperCase", tmp_path)
 
     def test_invalid_name_spaces(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("2026-05-20-14-30-has space", tmp_path)
+            create_spec("2026-05-20-14-30-has space", tmp_path)
 
     def test_exceeds_max_bytes(self, tmp_path):
         long_name = "2026-05-20-14-30-" + "a" * 54
         with pytest.raises(ValueError, match="exceeds 64 bytes"):
-            create_topic(long_name, tmp_path)
+            create_spec(long_name, tmp_path)
 
     def test_already_exists(self, tmp_path):
         specs_dir = tmp_path / "specs"
         (specs_dir / "2026-05-20-14-30-existing").mkdir(parents=True)
 
         with pytest.raises(FileExistsError, match="already exists"):
-            create_topic("2026-05-20-14-30-existing", specs_dir)
+            create_spec("2026-05-20-14-30-existing", specs_dir)
 
     def test_valid_name_with_numbers(self, tmp_path):
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        topic_name, topic_dir = create_spec(
             "2026-01-01-09-15-add-v2-api", specs_dir
         )
 
@@ -123,7 +123,7 @@ class TestCreateTopic:
             create_helper, "datetime"
         ) as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-05-24-20-00"
-            topic_name, topic_dir = create_topic("my-topic", specs_dir)
+            topic_name, topic_dir = create_spec("my-topic", specs_dir)
 
         assert topic_name == "2026-05-24-20-00-my-topic"
         assert topic_dir == specs_dir / "2026-05-24-20-00-my-topic"
@@ -133,7 +133,7 @@ class TestCreateTopic:
         specs_dir = tmp_path / "specs"
         specs_dir.mkdir()
 
-        topic_name, topic_dir = create_topic(
+        topic_name, topic_dir = create_spec(
             "2026-05-20-14-30-hello", specs_dir
         )
 
@@ -142,7 +142,7 @@ class TestCreateTopic:
 
     def test_auto_prefix_false_no_prefix_fails(self, tmp_path):
         with pytest.raises(ValueError, match="invalid topic name"):
-            create_topic("my-topic", tmp_path, auto_prefix=False)
+            create_spec("my-topic", tmp_path, auto_prefix=False)
 
 
 class TestWriteMeta:

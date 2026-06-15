@@ -135,7 +135,7 @@ class TestAutoSelect:
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_post_action"), \
-             patch("archive.archive_single_topic", return_value=None), \
+             patch("archive.archive_single_spec", return_value=None), \
              caplog.at_level(logging.ERROR):
             spex_merge.cli_submit([])
 

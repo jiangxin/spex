@@ -27,7 +27,7 @@ from common import (
 from config import get_project_context
 
 
-def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
+def move_spec_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
     """Move source_dir into dest_dir, appending suffix on conflict.
 
     Returns the final destination path.
@@ -46,16 +46,16 @@ def move_topic_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
         counter += 1
 
 
-def move_topic(topic_dir: Path, archives_dir: Path) -> Path:
+def move_spec(topic_dir: Path, archives_dir: Path) -> Path:
     """Move topic_dir into archives_dir, appending suffix on conflict.
 
-    Thin wrapper around move_topic_with_conflict for backward compatibility.
+    Thin wrapper around move_spec_with_conflict for backward compatibility.
     Returns the final destination path.
     """
-    return move_topic_with_conflict(topic_dir, archives_dir)
+    return move_spec_with_conflict(topic_dir, archives_dir)
 
 
-def archive_single_topic(
+def archive_single_spec(
     topic_name: str,
     specs_dir: Path,
     archives_dir: Path,
@@ -84,12 +84,12 @@ def archive_single_topic(
         logger.info("Would archive: %s", topic_dir.name)
         return archives_dir / topic_dir.name
     archives_dir.mkdir(parents=True, exist_ok=True)
-    dest = move_topic(topic_dir, archives_dir)
+    dest = move_spec(topic_dir, archives_dir)
     logger.info("Archived: %s -> %s", topic_dir.name, dest)
     return dest
 
 
-def restore_single_topic(
+def restore_single_spec(
     topic_name: str,
     specs_dir: Path,
     archives_dir: Path,
@@ -126,7 +126,7 @@ def restore_single_topic(
         logger.info("Would restore: %s", matches[0].name)
         return specs_dir / matches[0].name
     specs_dir.mkdir(parents=True, exist_ok=True)
-    dest = move_topic_with_conflict(matches[0], specs_dir)
+    dest = move_spec_with_conflict(matches[0], specs_dir)
     logger.info("Restored: %s -> %s", matches[0].name, dest)
     return dest
 
@@ -158,12 +158,12 @@ def main(argv=None):
                 "Error: --restore requires --topic to specify what to restore."
             )
             sys.exit(1)
-        restore_single_topic(args.topic, specs_dir, archives_dir,
+        restore_single_spec(args.topic, specs_dir, archives_dir,
                              dry_run=args.dry_run)
         return
 
     if args.topic:
-        archive_single_topic(args.topic, specs_dir, archives_dir, args.force,
+        archive_single_spec(args.topic, specs_dir, archives_dir, args.force,
                              dry_run=args.dry_run)
         return
 
@@ -205,7 +205,7 @@ def main(argv=None):
 
     archives_dir.mkdir(parents=True, exist_ok=True)
     for topic_dir in completed:
-        dest = move_topic(topic_dir, archives_dir)
+        dest = move_spec(topic_dir, archives_dir)
         logger.info("Archived: %s -> %s", topic_dir.name, dest)
 
 

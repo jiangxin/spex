@@ -37,7 +37,7 @@ def _build_submit_parser() -> ArgumentParser:
     return parser
 
 
-def _find_submittable_topics(ctx):
+def _find_submittable_specs(ctx):
     """Find topics ready to submit: all tasks done + has spex_branch."""
     import common
     from common import Spec, find_completed_specs
@@ -69,7 +69,7 @@ def cli_submit(argv=None) -> None:
     conf = ctx.config
 
     if not topic_name:
-        candidates = _find_submittable_topics(ctx)
+        candidates = _find_submittable_specs(ctx)
         if not candidates:
             logger.error("No submittable topics found.")
             sys.exit(1)
@@ -154,7 +154,7 @@ def cli_submit(argv=None) -> None:
             import archive as archive_mod
 
             with contextlib.redirect_stdout(io.StringIO()):
-                result = archive_mod.archive_single_topic(
+                result = archive_mod.archive_single_spec(
                     topic_name,
                     common.get_specs_dir(),
                     common.get_archives_dir(),

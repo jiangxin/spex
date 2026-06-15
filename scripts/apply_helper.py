@@ -15,7 +15,7 @@ from common import (
 )
 
 
-def _extract_topic_name_for_branch(topic_dir: Path, meta) -> str:
+def _extract_spec_name_for_branch(topic_dir: Path, meta) -> str:
     """Get the topic name to use for branch naming."""
     return meta.topic or topic_dir.name
 
@@ -76,7 +76,7 @@ def validate_apply_branch(
             logger.info(f"Switched to branch '{spex_branch}'.")
         return
 
-    topic_name = _extract_topic_name_for_branch(topic_dir, meta)
+    topic_name = _extract_spec_name_for_branch(topic_dir, meta)
     short_name = strip_date_prefix(topic_name)
 
     candidates = [
