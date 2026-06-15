@@ -16,7 +16,7 @@ Follow these steps in order. Do not skip or reorder.
 
 If `$spec_name` is `--all`:
 
-- Run `$spex_skill_dir/scripts/spex list --json --all-projects --must-undone`
+- Run `$spex_skill_dir/scripts/spex list --json --must-undone`
   to get all specs with undone tasks.
 - Parse the output as a JSON array of objects, each containing
   `spec_name` and `spec_path`.
