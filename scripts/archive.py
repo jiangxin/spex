@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Archive completed spec topics.
+"""Archive completed specs.
 
-Moves topic directories whose todo.json items are all completed
+Moves spec directories whose todo.json items are all completed
 into the archives directory.
 """
 
@@ -62,14 +62,14 @@ def archive_single_spec(
     force: bool = False,
     dry_run: bool = False,
 ) -> Path | None:
-    """Archive a single topic by name. Supports partial topic name matching.
+    """Archive a single spec by name. Supports partial name matching.
 
     Returns the destination path, or None if skipped due to active branch.
     """
     spec_dir = resolve_spec_dir(spec_name, specs_dir)
     if not force and not is_spec_completed(spec_dir):
         logger.info(
-            "Skipping: topic is not completed (use --force to archive)"
+            "Skipping: spec is not completed (use --force to archive)"
         )
         return None
     if not force and has_active_branch(spec_dir):
@@ -95,7 +95,7 @@ def restore_single_spec(
     archives_dir: Path,
     dry_run: bool = False,
 ) -> Path | None:
-    """Restore a single topic from archives back to specs.
+    """Restore a single spec from archives back to specs.
 
     Uses fuzzy substring matching against archives_dir. Exits with error
     if no match or multiple matches.
@@ -111,13 +111,13 @@ def restore_single_spec(
     matches = find_matching_specs(spec_name, archives_dir)
     if not matches:
         logger.error(
-            "Error: no topic matching '%s' found in archives.", spec_name
+            "Error: no spec matching '%s' found in archives.", spec_name
         )
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
         logger.error(
-            "Error: multiple topics match '%s' in archives:\n  %s",
+            "Error: multiple specs match '%s' in archives:\n  %s",
             spec_name, names
         )
         sys.exit(1)
@@ -134,19 +134,19 @@ def restore_single_spec(
 def main(argv=None):
     parser = ArgumentParser(
         prog="spex archive",
-        description="Archive completed spec topics.",
+        description="Archive completed specs.",
     )
-    parser.add_argument("--topic", help="Archive a single topic by name")
+    parser.add_argument("--topic", help="Archive a single spec by name")
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
                         help="Bypass spex_branch existence check")
     parser.add_argument("--restore", action="store_true",
-                        help="Restore a topic from archives back to specs")
+                        help="Restore a spec from archives back to specs")
     parser.add_argument("--not", action="store_true", dest="restore",
                         help=argparse.SUPPRESS)
     parser.add_argument("--all-projects", action="store_true",
-                        help="Archive topics from all projects")
+                        help="Archive specs from all projects")
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
@@ -172,7 +172,7 @@ def main(argv=None):
     if not ctx.in_git_workdir() and not args.all_projects:
         logger.info(
             "Not in a git workdir. Use --all-projects to archive"
-            " topics from all projects."
+            " specs from all projects."
         )
         return
 
@@ -181,21 +181,21 @@ def main(argv=None):
     )
 
     if not completed:
-        logger.info("No completed topics to archive.")
+        logger.info("No completed specs to archive.")
         return
 
     if args.dry_run:
-        # Show topics that would be skipped due to active branches
+        # Show specs that would be skipped due to active branches
         skipped = [
             d for d in sorted(specs_dir.iterdir())
             if d.is_dir() and is_spec_completed(d) and has_active_branch(d)
         ]
-        logger.info("Would archive %d topic(s):", len(completed))
+        logger.info("Would archive %d spec(s):", len(completed))
         for spec_dir in completed:
             logger.info("  %s", spec_dir.name)
         if skipped:
             logger.info(
-                "Would skip %d topic(s) (active spex_branch):", len(skipped)
+                "Would skip %d spec(s) (active spex_branch):", len(skipped)
             )
             for spec_dir in skipped:
                 meta = load_meta(spec_dir)

@@ -123,7 +123,7 @@ class TestValidateApplyBranch:
         validate_apply_branch({"branch_management": False}, tmp_path)
 
     @patch("common.is_spec_completed", return_value=True)
-    def test_completed_topic_exits(self, _mock, tmp_path, capsys):
+    def test_completed_spec_exits(self, _mock, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(json.dumps({}), encoding="utf-8")
         try:
@@ -276,8 +276,8 @@ class TestCliPostAction:
 
 class TestCliSubmit:
     @patch("merge._find_submittable_specs", return_value=[])
-    def test_no_topic_arg_exits(self, _mock, caplog):
-        """Empty topic argument causes error exit."""
+    def test_no_spec_arg_exits(self, _mock, caplog):
+        """Empty spec argument causes error exit."""
         import logging
         with caplog.at_level(logging.ERROR):
             try:
@@ -285,14 +285,14 @@ class TestCliSubmit:
                 assert False, "Should have called sys.exit(1)"
             except SystemExit as e:
                 assert e.code == 1
-        assert "topic" in caplog.text.lower()
+        assert "spec" in caplog.text.lower()
 
     @patch("config.get_project_context")
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
-    def test_unrelated_topic_exits(self, mock_resolve, _specs, mock_ctx,
+    def test_unrelated_spec_exits(self, mock_resolve, _specs, mock_ctx,
                                    tmp_path, caplog):
-        """Topic not related to current project causes error exit."""
+        """Spec not related to current project causes error exit."""
         import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -456,8 +456,8 @@ class TestCliRouting:
         assert result.returncode in (1, 2)
         assert "usage:" in result.stderr
 
-    def test_submit_no_topic_exits(self, tmp_path):
+    def test_submit_no_spec_exits(self, tmp_path):
         result = self._run_spex("submit", cwd=tmp_path)
         assert result.returncode in (1, 2)
         err = result.stderr.lower()
-        assert "topic" in err or "auto-selected" in err
+        assert "spec" in err or "auto-selected" in err

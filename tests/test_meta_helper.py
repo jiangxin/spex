@@ -12,7 +12,7 @@ SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta_helper.p
 
 
 def _make_topic(tmp_path, spec_name, data):
-    """Create a topic directory with meta.json and return the meta path."""
+    """Create a spec directory with meta.json and return the meta path."""
     specs_dir = tmp_path / "specs"
     spec_dir = specs_dir / spec_name
     spec_dir.mkdir(parents=True)
@@ -200,17 +200,17 @@ class TestReadValueFromStdin:
 
 
 class TestErrorOnMissingTopic:
-    """Verify error when topic does not exist."""
+    """Verify error when spec does not exist."""
 
-    def test_missing_topic_exits_1(self, tmp_path):
+    def test_missing_spec_exits_1(self, tmp_path):
         (tmp_path / "specs").mkdir(parents=True)
 
         result = _run_script(tmp_path, "nonexistent", "key", "value")
 
         assert result.returncode == 1
-        assert "no topic matching" in result.stderr
+        assert "no spec matching" in result.stderr
 
-    def test_missing_topic_via_main(self, monkeypatch, tmp_path):
+    def test_missing_spec_via_main(self, monkeypatch, tmp_path):
         from config import ProjectContext
         (tmp_path / "specs").mkdir(parents=True)
         ctx = ProjectContext(

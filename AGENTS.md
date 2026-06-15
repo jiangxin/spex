@@ -6,8 +6,8 @@
 |----------|-------------|
 | `spex_skill_dir` | The skill installation directory (where `SKILL.md` lives). The global `spex` CLI is a symlink to `<spex_skill_dir>/scripts/spex`. |
 | `spex_root` | Root directory for spec storage. Default: `.spex/` in the git worktree. Override via `.spex.toml` config file. |
-| `specs_dir` | `<spex_root>/specs/` — active spec topics. |
-| `archives_dir` | `<spex_root>/archives/` — archived spec topics. |
+| `specs_dir` | `<spex_root>/specs/` — active specs. |
+| `archives_dir` | `<spex_root>/archives/` — archived specs. |
 
 ## About This Project
 
@@ -76,28 +76,28 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `get_specs_dir(workdir)` | Return `<spex_root>/specs/`. |
 | `get_archives_dir(workdir)` | Return `<spex_root>/archives/`. |
 | `same_path(a, b)` | True if two path strings resolve to the same location (symlink-safe). |
-| `load_meta(topic_dir)` | Load and parse `meta.json`; returns dict or `None`. |
-| `get_spec_workdir(topic_dir)` | Read `workdir` from a topic's `meta.json`. |
-| `load_todo(topic_dir)` | Load and parse `todo.json`; returns list or `None`. |
-| `is_spec_completed(topic_dir)` | True if all tasks in `todo.json` have `completed_at`. |
-| `has_undone_tasks(topic_dir)` | True if `todo.json` has incomplete items. |
-| `get_todo_progress(topic_dir)` | Return `(completed_count, total_count)`. |
-| `has_active_branch(topic_dir)` | True if `meta.json` has `spex_branch` and that git branch exists. |
-| `find_completed_specs(specs_dir, ctx, force, all_projects)` | Return sorted list of completed topic paths, filtered by project context. |
+| `load_meta(spec_dir)` | Load and parse `meta.json`; returns dict or `None`. |
+| `get_spec_workdir(spec_dir)` | Read `workdir` from a spec's `meta.json`. |
+| `load_todo(spec_dir)` | Load and parse `todo.json`; returns list or `None`. |
+| `is_spec_completed(spec_dir)` | True if all tasks in `todo.json` have `completed_at`. |
+| `has_undone_tasks(spec_dir)` | True if `todo.json` has incomplete items. |
+| `get_todo_progress(spec_dir)` | Return `(completed_count, total_count)`. |
+| `has_active_branch(spec_dir)` | True if `meta.json` has `spex_branch` and that git branch exists. |
+| `find_completed_specs(specs_dir, ctx, force, all_projects)` | Return sorted list of completed spec paths, filtered by project context. |
 | `atomic_write_json(path, data)` | Atomically write JSON via tempfile + `os.replace`. |
 | `local_iso_timestamp()` | Current local time as ISO 8601 string. |
-| `strip_date_prefix(topic_name)` | Remove `YYYY-MM-DD-HH-MM-` prefix from a topic name. |
+| `strip_date_prefix(spec_name)` | Remove `YYYY-MM-DD-HH-MM-` prefix from a spec name. |
 | `strip_front_matter(content)` | Remove YAML front-matter block from template content. |
 | `parse_front_matter_description(content)` | Extract `description` from YAML front-matter. |
-| `get_spec_description(topic_dir)` | Return topic description from `meta.json` or `spec.md` front-matter. |
+| `get_spec_description(spec_dir)` | Return spec description from `meta.json` or `spec.md` front-matter. |
 | `get_template(name, workdir)` | Return template content (front-matter stripped). |
-| `resolve_spec_dir(topic_name, specs_dir)` | Resolve topic name to directory path (exact + fuzzy match). |
-| `format_spec(topic_dir, verbose)` | Format a topic with progress icon, counts, and optional details. |
+| `resolve_spec_dir(spec_name, specs_dir)` | Resolve spec name to directory path (exact + fuzzy match). |
+| `format_spec(spec_dir, verbose)` | Format a spec with progress icon, counts, and optional details. |
 | `escape_xml_text(text)` | Escape &, <, > unconditionally in text content. |
 | `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |
 | `validate_unique_ids(data)` | Check unique non-empty 'id' fields, exit on duplicates. |
-| `find_matching_specs(name, dirs)` | Find topic directories matching a name (exact + fuzzy). |
+| `find_matching_specs(name, dirs)` | Find spec directories matching a name (exact + fuzzy). |
 
 ## Logging Convention
 

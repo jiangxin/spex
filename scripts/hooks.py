@@ -94,7 +94,7 @@ def run_post_action(event_type: str, payload: dict, workdir=None,
         event_type: The spex command that triggered this hook.
         payload: Command-specific audit information.
         workdir: Working directory for hook execution.
-        spec_name: Optional topic name added to the payload.
+        spec_name: Optional spec name added to the payload.
     """
     if spec_name:
         payload = {**payload, "topic_name": spec_name}

@@ -153,7 +153,7 @@ def create_sample_topic(
     done: bool = False,
     cwd: Path | None = None,
 ) -> dict:
-    """Create a topic via spex CLI and optionally mark all tasks done.
+    """Create a spec via spex CLI and optionally mark all tasks done.
 
     Returns the parsed JSON output from create-topic (spec_name, spec_path).
     """

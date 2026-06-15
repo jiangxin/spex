@@ -37,7 +37,7 @@ def _make_task(task_id, name="Task", details="Details here", completed=False):
 
 
 def _setup_topic(tmp_path, spec_name, tasks):
-    """Set up a git repo with spex root, topic dir, and todo.json."""
+    """Set up a git repo with spex root, spec dir, and todo.json."""
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_git_repo(repo)
@@ -471,7 +471,7 @@ class TestBuildTaskContext:
     """Test _build_task_context helper function."""
 
     def test_build_task_context(self, tmp_path):
-        """Verifies correct return with sample topic data."""
+        """Verifies correct return with sample spec data."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Second step", details="Do second thing"),
@@ -717,10 +717,10 @@ class TestTrimSpecContent:
 
 @pytest.mark.slow
 class TestApplyCommitWithTopic:
-    """Test apply-commit loads spec and task context from topic."""
+    """Test apply-commit loads spec and task context from a spec."""
 
-    def test_topic_provides_spec_and_current_task(self, tmp_path, monkeypatch):
-        """apply-commit with --topic loads spec, completed, current, future tasks."""
+    def test_spec_provides_content_and_current_task(self, tmp_path, monkeypatch):
+        """apply-commit with --topic loads spec content, completed, current, future tasks."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task(
@@ -744,7 +744,7 @@ class TestApplyCommitWithTopic:
         assert "Implement /login endpoint" in rendered
         assert "**step-3**: Add tests" in rendered
 
-    def test_topic_all_done_empty_next_task(self, tmp_path, monkeypatch):
+    def test_spec_all_done_empty_next_task(self, tmp_path, monkeypatch):
         """apply-commit with --topic but all tasks done returns None."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
@@ -758,8 +758,8 @@ class TestApplyCommitWithTopic:
         result = render_prompt("apply-commit", "test-topic")
         assert not result
 
-    def test_no_topic_fails_validation(self, tmp_path, monkeypatch):
-        """apply-commit without --topic returns None (no topic to render)."""
+    def test_no_spec_fails_validation(self, tmp_path, monkeypatch):
+        """apply-commit without --topic returns None (no spec to render)."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _init_git_repo(repo)

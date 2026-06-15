@@ -1,4 +1,4 @@
-"""Tests for create_helper.py — topic creation and branch validation."""
+"""Tests for create_helper.py — spec creation and branch validation."""
 
 import io
 import json
@@ -82,15 +82,15 @@ class TestCreateTopic:
         assert spec_dir.is_dir()
 
     def test_invalid_name_no_date(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
+        with pytest.raises(ValueError, match="invalid spec name"):
             create_spec("no-date-prefix", tmp_path, auto_prefix=False)
 
     def test_invalid_name_uppercase(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
+        with pytest.raises(ValueError, match="invalid spec name"):
             create_spec("2026-05-20-14-30-UpperCase", tmp_path)
 
     def test_invalid_name_spaces(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
+        with pytest.raises(ValueError, match="invalid spec name"):
             create_spec("2026-05-20-14-30-has space", tmp_path)
 
     def test_exceeds_max_bytes(self, tmp_path):
@@ -141,7 +141,7 @@ class TestCreateTopic:
         assert spec_dir.is_dir()
 
     def test_auto_prefix_false_no_prefix_fails(self, tmp_path):
-        with pytest.raises(ValueError, match="invalid topic name"):
+        with pytest.raises(ValueError, match="invalid spec name"):
             create_spec("my-topic", tmp_path, auto_prefix=False)
 
 

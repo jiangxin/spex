@@ -38,7 +38,7 @@ class TestMain:
     """Tests for the main() CLI entry point."""
 
     def test_has_topic_specs_found(self, tmp_path):
-        """When topic arg is given and found in specs, opens the directory."""
+        """When spec name arg is given and found in specs, opens the directory."""
         spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
         spec_dir.mkdir(parents=True)
 
@@ -53,13 +53,13 @@ class TestMain:
         mock_open.assert_called_once_with(str(spec_dir))
 
     def test_has_topic_not_found_suggests_archives(self, capsys):
-        """When topic arg is given but not found, resolve_spec exits with hint."""
+        """When spec name arg is given but not found, resolve_spec exits with hint."""
         # resolve_spec itself prints error and exits; verify the integration
         def fake_resolve(name, include_archives=False):
-            print(f"Error: no topic matching '{name}' found.", file=sys.stderr)
+            print(f"Error: no spec matching '{name}' found.", file=sys.stderr)
             if not include_archives:
                 print(
-                    "Hint: try --archives to search archived topics.",
+                    "Hint: try --archives to search archived specs.",
                     file=sys.stderr,
                 )
             sys.exit(1)
@@ -72,11 +72,11 @@ class TestMain:
             main()
 
         err = capsys.readouterr().err
-        assert "no topic matching 'nonexistent'" in err
+        assert "no spec matching 'nonexistent'" in err
         assert "--archives" in err
 
     def test_no_topic_has_topics_interactive(self, tmp_path):
-        """When no topic arg and topics exist, interactive selection opens topic."""
+        """When no spec name arg and specs exist, interactive selection opens spec."""
         selected_dir = tmp_path / "specs" / "2026-05-20-14-30-feature"
         selected_dir.mkdir(parents=True)
 
@@ -93,7 +93,7 @@ class TestMain:
         mock_open.assert_called_once_with(str(selected_dir))
 
     def test_no_topic_no_topics_opens_spex_root(self, tmp_path):
-        """When no topic arg and no topics found, opens spex_root."""
+        """When no spec name arg and no specs found, opens spex_root."""
         spex_root = str(tmp_path / "root")
 
         with patch.object(sys, "argv", ["open.py"]), patch.object(
@@ -108,7 +108,7 @@ class TestMain:
         mock_open.assert_called_once_with(spex_root)
 
     def test_no_topic_user_empty_input_opens_spex_root(self, tmp_path):
-        """When no topic arg and user enters empty input, opens spex_root."""
+        """When no spec name arg and user enters empty input, opens spex_root."""
         spex_root = str(tmp_path / "root")
 
         # select_spec_interactive returns None when allow_empty=True and
@@ -186,7 +186,7 @@ class TestRunOption:
     """Tests for the --run option in main()."""
 
     def test_no_run_with_topic_calls_open_directory(self, tmp_path):
-        """No --run + has topic calls open_directory (existing behavior)."""
+        """No --run + has spec name calls open_directory (existing behavior)."""
         spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
         spec_dir.mkdir(parents=True)
 
@@ -198,7 +198,7 @@ class TestRunOption:
         mock_open.assert_called_once_with(str(spec_dir))
 
     def test_run_without_value_calls_open_directory(self, tmp_path):
-        """--run without value + has topic calls open_directory."""
+        """--run without value + has spec name calls open_directory."""
         spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
         spec_dir.mkdir(parents=True)
 
@@ -212,7 +212,7 @@ class TestRunOption:
         mock_open.assert_called_once_with(str(spec_dir))
 
     def test_run_with_command_calls_subprocess(self, tmp_path):
-        """--run "ls" + has topic calls subprocess.run in topic dir."""
+        """--run "ls" + has spec name calls subprocess.run in spec dir."""
         spec_dir = tmp_path / "specs" / "2026-05-20-14-30-my-topic"
         spec_dir.mkdir(parents=True)
 
@@ -229,7 +229,7 @@ class TestRunOption:
         assert exc_info.value.code == 0
 
     def test_run_no_topic_no_topics_runs_in_spex_root(self, tmp_path):
-        """--run "ls" + no topic + no topics runs in spex_root."""
+        """--run "ls" + no spec name + no specs runs in spex_root."""
         spex_root = str(tmp_path / "root")
 
         mock_result = MagicMock(returncode=0)

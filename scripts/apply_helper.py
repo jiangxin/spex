@@ -16,25 +16,25 @@ from common import (
 
 
 def _extract_spec_name_for_branch(spec_dir: Path, meta) -> str:
-    """Get the topic name to use for branch naming."""
+    """Get the spec name to use for branch naming."""
     return meta.topic or spec_dir.name
 
 
 def validate_apply_branch(
     config: dict, spec_dir: Path, cwd: str | Path | None = None,
 ) -> None:
-    """Perform branch setup for applying a topic spec.
+    """Perform branch setup for applying a spec.
 
     Steps:
-    1. If all topic tasks are completed, error and exit.
+    1. If all spec tasks are completed, error and exit.
     2. If branch_management is False in config, return immediately.
     3. If meta.json has spex_branch, ensure current branch matches it;
        switch if not (exit on failure).
     4. If meta.json has no spex_branch, try creating a branch using
-       spex/<topic-name-without-date-prefix>, then spex/<topic-name-with-date-prefix>.
+       spex/<spec-name-without-date-prefix>, then spex/<spec-name-with-date-prefix>.
        Exit on failure if both fail.
     5. On success, switch to the branch, set git branch description from
-       the topic's spec description, and persist spex_branch to meta.json.
+       the spec's description, and persist spex_branch to meta.json.
     """
     import common
     from branch import (
@@ -47,7 +47,7 @@ def validate_apply_branch(
 
     if common.is_spec_completed(spec_dir):
         status = common.format_spec(spec_dir, verbose=2)
-        logger.error(f"Error: topic is already completed.\n{status}")
+        logger.error(f"Error: spec is already completed.\n{status}")
         sys.exit(1)
 
     if not bool(config["branch_management"]):
@@ -126,7 +126,7 @@ def validate_apply_branch(
 
 
 def _do_precheck(args):
-    """Perform branch setup for applying a topic."""
+    """Perform branch setup for applying a spec."""
     import common
     import config as cfg
 
@@ -136,7 +136,7 @@ def _do_precheck(args):
 
 
 def cli_precheck(argv=None):
-    """CLI: perform branch setup for applying a topic."""
+    """CLI: perform branch setup for applying a spec."""
 
     args = _build_parser().parse(["precheck"] + (argv or []))
     _do_precheck(args)
@@ -172,7 +172,7 @@ def _do_post_action(args):
 
     if hooks.find_hook("post-action", workdir) is None:
         logger.info(
-            f"Development completed on topic branch {spex_branch}.\n"
+            f"Development completed on spec branch {spex_branch}.\n"
             f"After local code review, run /spex merge to merge into\n"
             f"branch {target}, or create a pull request."
         )
@@ -196,9 +196,9 @@ def _build_parser():
     p_precheck = subs.add_parser(
         "precheck",
         description=(
-            "Validate branch setup for applying a topic."
+            "Validate branch setup for applying a spec."
         ),
-        help="Validate branch setup for applying a topic",
+        help="Validate branch setup for applying a spec",
     )
     p_precheck.add_argument(
         "--topic", required=True, help="Topic name",

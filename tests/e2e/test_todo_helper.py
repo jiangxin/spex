@@ -48,7 +48,7 @@ def _make_todo_json(done: bool = False) -> list[dict]:
 
 
 def _create_topic(sandbox, name, *, done=False):
-    """Create a topic directory with meta.json, spec.md, todo.json.
+    """Create a spec directory with meta.json, spec.md, todo.json.
 
     Returns dict with spec_name and spec_path keys.
     """
@@ -88,7 +88,7 @@ def _create_topic(sandbox, name, *, done=False):
 @pytest.mark.e2e
 class TestTodoHelperValidate:
     def test_validate_json_via_topic(self, sandbox):
-        """Validate a topic's todo.json via --topic."""
+        """Validate a spec's todo.json via --topic."""
         data = _create_topic(sandbox, "val-json")
         spec_name = data["topic_name"]
 
@@ -183,7 +183,7 @@ class TestTodoHelperConversion:
         assert items[0]["id"] == "step-1"
 
     def test_json2xml_via_cli(self, sandbox):
-        """json2xml converts a topic's todo.json to XML."""
+        """json2xml converts a spec's todo.json to XML."""
         data = _create_topic(sandbox, "j2x-test")
         spec_name = data["topic_name"]
         spec_path = Path(data["topic_path"])

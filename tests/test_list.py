@@ -170,7 +170,7 @@ class TestFormatOutput:
         assert "newer" in lines[0]
         assert "older" in lines[1]
 
-    def test_topic_truncation(self):
+    def test_spec_name_truncation(self):
         p = Path("/tmp")
         long_name = "a" * 40
         topics = [
@@ -699,11 +699,11 @@ class TestMainJsonFlag:
         project_workdir = str(tmp_path / "project-a")
         other_workdir = str(tmp_path / "project-b")
 
-        # Related topics (same workdir as project context)
+        # Related specs (same workdir as project context)
         _setup_topic(specs / "related-spec", project_workdir)
         _setup_topic(archives / "related-archive", project_workdir)
 
-        # Unrelated topics (different workdir)
+        # Unrelated specs (different workdir)
         _setup_topic(specs / "other-spec", other_workdir)
         _setup_topic(archives / "other-archive", other_workdir)
 
@@ -768,7 +768,7 @@ class TestWrapText:
 
 
 def _setup_topic(spec_dir, workdir, main_worktree=None):
-    """Create a topic directory with meta.json and todo.json."""
+    """Create a spec directory with meta.json and todo.json."""
     spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "created_at": "2026-05-20T10:00:00+08:00",
@@ -883,11 +883,11 @@ class TestMainFlags:
         project_workdir = str(tmp_path / "project-a")
         other_workdir = str(tmp_path / "project-b")
 
-        # Related topics (same workdir as project context)
+        # Related specs (same workdir as project context)
         _setup_topic(specs / "related-spec", project_workdir)
         _setup_topic(archives / "related-archive", project_workdir)
 
-        # Unrelated topics (different workdir)
+        # Unrelated specs (different workdir)
         _setup_topic(specs / "other-spec", other_workdir)
         _setup_topic(archives / "other-archive", other_workdir)
 

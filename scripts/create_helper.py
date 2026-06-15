@@ -25,10 +25,10 @@ MAX_TOPIC_BYTES = 64
 
 
 def create_spec(spec, specs_dir, auto_prefix=True):
-    """Create a topic directory under specs_dir.
+    """Create a spec directory under specs_dir.
 
     Returns (spec_name, spec_dir) tuple.
-    Raises ValueError on invalid input, FileExistsError if topic exists.
+    Raises ValueError on invalid input, FileExistsError if spec exists.
     """
     specs_dir = Path(specs_dir)
 
@@ -38,12 +38,12 @@ def create_spec(spec, specs_dir, auto_prefix=True):
 
     if not TOPIC_PATTERN.match(spec):
         raise ValueError(
-            f"invalid topic name '{spec}'. "
+            f"invalid spec name '{spec}'. "
             "Must match YYYY-MM-DD-HH-MM-<name> with [a-z0-9-]."
         )
 
     if len(spec.encode("utf-8")) > MAX_TOPIC_BYTES:
-        raise ValueError(f"topic name '{spec}' exceeds {MAX_TOPIC_BYTES} bytes.")
+        raise ValueError(f"spec name '{spec}' exceeds {MAX_TOPIC_BYTES} bytes.")
 
     spec_dir = specs_dir / spec
     if spec_dir.exists():
@@ -140,7 +140,7 @@ def cli_create_validate() -> None:
 
 
 def _do_prepare_spec(args):
-    """Create topic directory and return JSON with metadata."""
+    """Create spec directory and return JSON with metadata."""
     import json
 
     import config as cfg
@@ -170,7 +170,7 @@ def _do_prepare_spec(args):
 
 
 def cli_prepare_spec(argv=None):
-    """CLI: create topic directory and return JSON with metadata."""
+    """CLI: create spec directory and return JSON with metadata."""
 
     args = _build_parser().parse(["prepare-spec"] + (argv or []))
     _do_prepare_spec(args)
@@ -267,9 +267,9 @@ def _build_parser():
     p_prepare = subs.add_parser(
         "prepare-spec",
         description=(
-            "Create topic directory and return JSON metadata."
+            "Create spec directory and return JSON metadata."
         ),
-        help="Create topic directory and return JSON metadata",
+        help="Create spec directory and return JSON metadata",
     )
     p_prepare.add_argument(
         "--topic", required=True, help="Topic name",

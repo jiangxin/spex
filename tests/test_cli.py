@@ -233,7 +233,7 @@ class TestGetTopicCommand:
     """Tests for the get-topic subcommand."""
 
     def test_no_matching_topics_exit_1(self, tmp_path):
-        """spex get-topic (no matching topics) exits 1."""
+        """spex get-topic (no matching specs) exits 1."""
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / ".spex.toml").write_text(
             '[spex]\nspex_root = ".spex"\n', encoding="utf-8"

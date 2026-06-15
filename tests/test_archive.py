@@ -33,7 +33,7 @@ def _mock_project_context(top_workdir=None):
 
 
 def _write_todo(spec_dir, tasks):
-    """Write a todo.json file into topic_dir."""
+    """Write a todo.json file into spec_dir."""
     spec_dir.mkdir(parents=True, exist_ok=True)
     todo_path = spec_dir / "todo.json"
     todo_path.write_text(json.dumps(tasks), encoding="utf-8")
@@ -90,9 +90,9 @@ class TestFindCompletedSpecs:
 
     def test_returns_only_completed(self, tmp_path):
         specs = tmp_path / "specs"
-        # Completed topic
+        # Completed spec
         _write_todo(specs / "done-topic", [_make_task("1")])
-        # Incomplete topic
+        # Incomplete spec
         _write_todo(
             specs / "wip-topic",
             [_make_task("1"), _make_task("2", completed=False)],
@@ -124,19 +124,19 @@ class TestFindCompletedSpecs:
 
     def test_filters_by_current_workdir(self, tmp_path):
         specs = tmp_path / "specs"
-        # Topic matching current workdir
+        # Spec matching current workdir
         topic_a = specs / "topic-a"
         _write_todo(topic_a, [_make_task("1")])
         (topic_a / "meta.json").write_text(
             json.dumps({"workdir": "/repo/a"}), encoding="utf-8"
         )
-        # Topic for a different workdir
+        # Spec for a different workdir
         topic_b = specs / "topic-b"
         _write_todo(topic_b, [_make_task("1")])
         (topic_b / "meta.json").write_text(
             json.dumps({"workdir": "/repo/b"}), encoding="utf-8"
         )
-        # Topic without workdir (should be included)
+        # Spec without workdir (should be included)
         topic_c = specs / "topic-c"
         _write_todo(topic_c, [_make_task("1")])
 
@@ -270,7 +270,7 @@ class TestMoveTopicWithConflict:
 class TestMain:
     """Tests for the main() CLI entry point."""
 
-    def test_no_completed_topics(self, tmp_path, caplog):
+    def test_no_completed_specs(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -280,9 +280,9 @@ class TestMain:
             spex_archive, "get_archives_dir", return_value=archives
         ), caplog.at_level(logging.INFO):
             spex_archive.main([])
-        assert "No completed topics" in caplog.text
+        assert "No completed specs" in caplog.text
 
-    def test_archives_completed_topics(self, tmp_path, caplog):
+    def test_archives_completed_specs(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _write_todo(specs / "done-topic", [_make_task("1")])
         _write_todo(
@@ -312,7 +312,7 @@ class TestMain:
             spex_archive, "get_archives_dir", return_value=archives
         ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        assert "Would archive 1 topic(s)" in caplog.text
+        assert "Would archive 1 spec(s)" in caplog.text
         assert "done-topic" in caplog.text
         assert (specs / "done-topic").is_dir()
         assert not archives.exists()
@@ -348,7 +348,7 @@ class TestMain:
         assert "target-topic" in caplog.text
         assert (archives / "target-topic").is_dir()
         assert not (specs / "target-topic").exists()
-        # other-topic should remain untouched
+        # other-spec should remain untouched
         assert (specs / "other-topic").is_dir()
 
     def test_topic_flag_dry_run_does_not_move(self, tmp_path, caplog, monkeypatch):
@@ -389,7 +389,7 @@ class TestMain:
 class TestArchiveSingleTopic:
     """Tests for archive_single_spec."""
 
-    def test_archive_single_existing_topic(self, tmp_path, caplog):
+    def test_archive_single_existing_spec(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         _write_todo(specs / "my-topic", [_make_task("1")])
         archives = tmp_path / "archives"
@@ -402,7 +402,7 @@ class TestArchiveSingleTopic:
         assert not (specs / "my-topic").exists()
         assert "my-topic" in caplog.text
 
-    def test_archive_single_nonexistent_topic(self, tmp_path, caplog):
+    def test_archive_single_nonexistent_spec(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -411,7 +411,7 @@ class TestArchiveSingleTopic:
             archive_single_spec("no-such-topic", specs, archives)
         assert exc_info.value.code == 1
         assert "no-such-topic" in caplog.text
-        assert "no topic matching" in caplog.text
+        assert "no spec matching" in caplog.text
 
     def test_archive_single_spec_conflict(self, tmp_path):
         specs = tmp_path / "specs"
@@ -466,13 +466,13 @@ class TestFindCompletedSpecsWithBranchGuard:
 
     def test_excludes_active_branch_when_force_false(self, tmp_path):
         specs = tmp_path / "specs"
-        # Topic with active branch
+        # Spec with active branch
         topic_a = specs / "active-topic"
         _write_todo(topic_a, [_make_task("1")])
         (topic_a / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
         )
-        # Topic without spex_branch
+        # Spec without spex_branch
         topic_b = specs / "no-branch-topic"
         _write_todo(topic_b, [_make_task("1")])
 
@@ -567,7 +567,7 @@ class TestArchiveSingleWithBranchGuard:
         assert (archives / "active-topic").is_dir()
         assert not (specs / "active-topic").exists()
 
-    def test_partial_match_archives_topic(self, tmp_path):
+    def test_partial_match_archives_spec(self, tmp_path):
         specs = tmp_path / "specs"
         topic = specs / "2026-05-27-14-11-archive-branch-guard"
         _write_todo(topic, [_make_task("1")])
@@ -589,7 +589,7 @@ class TestArchiveSingleWithBranchGuard:
         with pytest.raises(SystemExit) as exc_info:
             archive_single_spec("topic", specs, archives)
         assert exc_info.value.code == 1
-        assert "multiple topics match" in caplog.text
+        assert "multiple specs match" in caplog.text
         assert "topic-a" in caplog.text
         assert "topic-b" in caplog.text
 
@@ -644,14 +644,14 @@ class TestMainWithBranchGuard:
 
     def test_dry_run_shows_skipped(self, tmp_path, caplog, monkeypatch):
         specs = tmp_path / "specs"
-        # Topic with active branch
+        # Spec with active branch
         topic_active = specs / "active-topic"
         _write_todo(topic_active, [_make_task("1")])
         (topic_active / "meta.json").write_text(
             json.dumps({"spex_branch": "spex/active"}),
             encoding="utf-8",
         )
-        # Topic without branch
+        # Spec without branch
         topic_merged = specs / "merged-topic"
         _write_todo(topic_merged, [_make_task("1")])
         archives = tmp_path / "archives"
@@ -667,9 +667,9 @@ class TestMainWithBranchGuard:
             side_effect=lambda name: name == "spex/active",
         ), caplog.at_level(logging.INFO):
             spex_archive.main()
-        assert "Would archive 1 topic(s)" in caplog.text
+        assert "Would archive 1 spec(s)" in caplog.text
         assert "merged-topic" in caplog.text
-        assert "Would skip 1 topic(s)" in caplog.text
+        assert "Would skip 1 spec(s)" in caplog.text
         assert "active-topic" in caplog.text
         assert "spex/active" in caplog.text
         # Nothing actually moved
@@ -753,7 +753,7 @@ class TestRestoreSingleTopic:
              pytest.raises(SystemExit) as exc_info:
             restore_single_spec("nonexistent", specs, archives)
         assert exc_info.value.code == 1
-        assert "no topic matching" in caplog.text
+        assert "no spec matching" in caplog.text
 
     def test_restore_multiple_matches(self, tmp_path, caplog):
         """Multiple matches → exit 1 listing candidates."""
@@ -767,12 +767,12 @@ class TestRestoreSingleTopic:
              pytest.raises(SystemExit) as exc_info:
             restore_single_spec("topic", specs, archives)
         assert exc_info.value.code == 1
-        assert "multiple topics match" in caplog.text
+        assert "multiple specs match" in caplog.text
         assert "topic-a" in caplog.text
         assert "topic-b" in caplog.text
 
     def test_restore_name_conflict(self, tmp_path):
-        """Conflict in specs → topic moved as <name>-2."""
+        """Conflict in specs → spec moved as <name>-2."""
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         specs = tmp_path / "specs"
@@ -785,7 +785,7 @@ class TestRestoreSingleTopic:
         assert not (archives / "my-topic").exists()
 
     def test_restore_partial_match(self, tmp_path):
-        """Partial match finds unique topic."""
+        """Partial match finds unique spec."""
         archives = tmp_path / "archives"
         _write_todo(
             archives / "2026-05-27-14-11-archive-branch-guard",
@@ -826,7 +826,7 @@ class TestRestoreFlagCLI:
         assert "--topic" in caplog.text
 
     def test_restore_restores_from_archives(self, tmp_path, caplog, monkeypatch):
-        """--restore --topic restores topic from archives to specs."""
+        """--restore --topic restores spec from archives to specs."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -865,7 +865,7 @@ class TestRestoreFlagCLI:
         assert not (specs / "my-topic").exists()  # not restored
 
     def test_restore_partial_match_restores(self, tmp_path, caplog, monkeypatch):
-        """--restore with partial topic name restores unique match."""
+        """--restore with partial spec name restores unique match."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
@@ -913,9 +913,9 @@ class TestAllProjectsFlag:
     """Tests for --all-projects flag."""
 
     def test_all_projects_includes_cross_project(self, tmp_path, caplog, monkeypatch):
-        """With --all-projects, topics from other projects are archived."""
+        """With --all-projects, specs from other projects are archived."""
         specs = tmp_path / "specs"
-        # Topic from a different project
+        # Spec from a different project
         topic = specs / "other-topic"
         _write_todo(topic, [_make_task("1")])
         (topic / "meta.json").write_text(
@@ -936,15 +936,15 @@ class TestAllProjectsFlag:
         assert (archives / "other-topic").is_dir()
 
     def test_without_all_projects_filters_by_project(self, tmp_path, caplog, monkeypatch):
-        """Without --all-projects, only current project topics are archived."""
+        """Without --all-projects, only current project specs are archived."""
         specs = tmp_path / "specs"
-        # Topic from current project
+        # Spec from current project
         topic_mine = specs / "my-topic"
         _write_todo(topic_mine, [_make_task("1")])
         (topic_mine / "meta.json").write_text(
             json.dumps({"workdir": "/my/repo"}), encoding="utf-8"
         )
-        # Topic from another project
+        # Spec from another project
         topic_other = specs / "other-topic"
         _write_todo(topic_other, [_make_task("1")])
         (topic_other / "meta.json").write_text(

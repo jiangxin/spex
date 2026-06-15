@@ -348,7 +348,7 @@ class TestLinkedWorktreeResolution:
 
     @pytest.fixture()
     def linked_repo(self, tmp_path):
-        """Create a git repo with a linked worktree and a topic in .spex/specs/."""
+        """Create a git repo with a linked worktree and a spec in .spex/specs/."""
         main = tmp_path / "main"
         main.mkdir()
         subprocess.run(

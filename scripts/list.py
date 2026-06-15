@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List spec topics with progress and prompt summary."""
+"""List specs with progress and prompt summary."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def parse_prompt_log(log_path: Path) -> tuple:
 
 
 def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
-    """Collect topic info from given directories."""
+    """Collect spec info from given directories."""
     archive_dirs = set(archive_dirs or [])
     specs: list[Spec] = []
     for d in dirs:
@@ -67,7 +67,7 @@ MAX_REPO_WIDTH = 11
 def format_output(
     specs: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
 ) -> str:
-    """Format topics into aligned columns."""
+    """Format specs into aligned columns."""
     if not specs:
         return ""
 
@@ -135,12 +135,12 @@ def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
 def format_verbose_output(
     specs: list, verbosity: int = 1, show_repo: bool = False
 ) -> str:
-    """Format topics with expanded detail based on verbosity level."""
+    """Format specs with expanded detail based on verbosity level."""
     if not specs:
         return ""
 
     if verbosity >= 3:
-        return "Use 'spex show <topic>' for detailed view."
+        return "Use 'spex show <spec>' for detailed view."
 
     specs.sort(key=lambda t: t.created_at, reverse=True)
 
@@ -153,7 +153,7 @@ def format_verbose_output(
 
 
 def format_json_output(specs: list) -> str:
-    """Format topics as a JSON array."""
+    """Format specs as a JSON array."""
     specs.sort(key=lambda t: t.created_at, reverse=True)
     return json.dumps(
         [{"topic_name": t.name, "topic_path": str(t.path)} for t in specs],
@@ -163,7 +163,7 @@ def format_json_output(specs: list) -> str:
 
 
 def filter_specs(specs: list, patterns: list) -> list:
-    """Filter topics by name patterns (substring, glob, or regex)."""
+    """Filter specs by name patterns (substring, glob, or regex)."""
     if not patterns:
         return specs
 
@@ -184,17 +184,17 @@ def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex list``."""
     parser = ArgumentParser(
         prog="spex list",
-        description="List spec topics with progress.",
+        description="List specs with progress.",
     )
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics",
+        help="Include archived specs",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     parser.add_argument(
         "--json",
@@ -212,19 +212,19 @@ def _build_parser() -> ArgumentParser:
     group.add_argument(
         "--must-done",
         action="store_true",
-        help="Only show completed topics",
+        help="Only show completed specs",
     )
     group.add_argument(
         "--must-undone",
         action="store_true",
-        help="Only show topics with undone steps",
+        help="Only show specs with undone steps",
     )
     parser.add_argument(
         "patterns",
         nargs="*",
         default=[],
         metavar="pattern",
-        help="Filter topics by name pattern",
+        help="Filter specs by name pattern",
     )
     return parser
 

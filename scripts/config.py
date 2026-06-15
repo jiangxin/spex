@@ -50,7 +50,7 @@ class ProjectContext:
         """Check if this project context is related to the given spec.
 
         Accepts a SpecMeta instance, a Spec instance (with .meta attribute),
-        a dict (like load_meta().to_dict()), or a Path (topic directory).
+        a dict (like load_meta().to_dict()), or a Path (spec directory).
         """
         from common import load_meta, same_path
 

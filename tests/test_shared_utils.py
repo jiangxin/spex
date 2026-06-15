@@ -143,7 +143,7 @@ class TestSafeUpdateToml:
 
 
 class TestArchiveSingleTopicIncomplete:
-    """Test that archive_single_spec refuses incomplete topics."""
+    """Test that archive_single_spec refuses incomplete specs."""
 
     def test_refuses_incomplete_without_force(self, tmp_path, caplog):
         from archive import archive_single_spec

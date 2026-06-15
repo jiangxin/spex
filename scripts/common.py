@@ -53,7 +53,7 @@ _SPEC_META_FIELD_ORDER = [
 
 @dataclass
 class SpecMeta:
-    """Typed representation of a topic's meta.json."""
+    """Typed representation of a spec's meta.json."""
 
     topic: str = ""
     workdir: str = ""
@@ -103,7 +103,7 @@ def normalize_prompt_entry(entry):
 
 @dataclass
 class Spec:
-    """In-memory representation of a topic for display."""
+    """In-memory representation of a spec for display."""
 
     name: str
     path: Path
@@ -114,7 +114,7 @@ class Spec:
 
     @classmethod
     def from_dir(cls, spec_dir: Path, *, archived: bool = False) -> Spec | None:
-        """Create a Spec from a topic directory.
+        """Create a Spec from a spec directory.
 
         Returns None if meta.json is missing or invalid.
         """
@@ -382,7 +382,7 @@ def same_path(a: str, b: str) -> bool:
 
 
 def load_meta(spec_dir: Path) -> SpecMeta | None:
-    """Load meta.json from a topic directory.
+    """Load meta.json from a spec directory.
 
     Returns a SpecMeta instance, or None if missing/invalid.
     """
@@ -399,7 +399,7 @@ def load_meta(spec_dir: Path) -> SpecMeta | None:
 
 
 def get_spec_workdir(spec_dir: Path) -> str:
-    """Read workdir from meta.json in a topic directory.
+    """Read workdir from meta.json in a spec directory.
 
     Returns the workdir string, or empty string if not found.
     """
@@ -410,7 +410,7 @@ def get_spec_workdir(spec_dir: Path) -> str:
 
 
 def load_todo(spec_dir: Path):
-    """Load todo.json from a topic directory.
+    """Load todo.json from a spec directory.
 
     Returns the parsed list, or None if missing/invalid/empty.
     """
@@ -503,7 +503,7 @@ def is_spec_completed(spec_dir: Path) -> bool:
 
 
 def has_undone_tasks(spec_dir: Path) -> bool:
-    """Return True if the topic's todo.json has incomplete items."""
+    """Return True if the spec's todo.json has incomplete items."""
     data = load_todo(spec_dir)
     if data is None:
         return False
@@ -543,12 +543,12 @@ def find_completed_specs(
     specs_dir: Path, ctx, force: bool = False,
     all_projects: bool = False,
 ) -> list:
-    """Return sorted list of topic paths where all tasks are completed.
+    """Return sorted list of spec paths where all tasks are completed.
 
-    Topics are filtered by ctx.is_related_to() to only include topics
-    matching the current workspace (or all topics when not in a git repo).
+    Specs are filtered by ctx.is_related_to() to only include specs
+    matching the current workspace (or all specs when not in a git repo).
 
-    If force is False, topics with an active spex_branch are excluded.
+    If force is False, specs with an active spex_branch are excluded.
     """
     if not specs_dir.is_dir():
         return []
@@ -596,7 +596,7 @@ def local_iso_timestamp() -> str:
 
 
 def strip_date_prefix(spec_name: str) -> str:
-    """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a topic name."""
+    """Remove the YYYY-MM-DD-HH-MM- datetime prefix from a spec name."""
     return re.sub(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-", "", spec_name)
 
 
@@ -676,7 +676,7 @@ def wrap_text(text: str, width: int = 68) -> str:
 
 
 def get_spec_description(spec_dir: Path) -> str:
-    """Return the topic's description.
+    """Return the spec's description.
 
     Reads from meta.json first (authoritative source). Falls back to
     spec.md front-matter description for backwards compatibility.
@@ -792,18 +792,18 @@ def get_template(template_name: str, workdir=None) -> str:
 
 
 def find_matching_specs(spec_name, specs_dir):
-    """Find topic directories matching a name or substring.
+    """Find spec directories matching a name or substring.
 
     Tries exact match first; if found, returns a single-element list.
     Otherwise returns all directories whose name contains spec_name
     as a substring, sorted alphabetically.
 
     Args:
-        spec_name: Topic name or substring to match.
+        spec_name: Spec name or substring to match.
         specs_dir: Path to the specs directory.
 
     Returns:
-        List of Path objects for matching topic directories.
+        List of Path objects for matching spec directories.
     """
     specs_dir = Path(specs_dir)
     if not specs_dir.is_dir():
@@ -819,7 +819,7 @@ def find_matching_specs(spec_name, specs_dir):
 
 
 def resolve_spec_dir(spec_name, specs_dir=None):
-    """Resolve a topic name to its directory path.
+    """Resolve a spec name to its directory path.
 
     Tries exact match first, then fuzzy substring match against directory
     names in specs_dir. Exits with an error if no match or multiple matches.
@@ -830,12 +830,12 @@ def resolve_spec_dir(spec_name, specs_dir=None):
     on the resolved directory themselves.
 
     Args:
-        spec_name: Topic name or substring to match.
+        spec_name: Spec name or substring to match.
         specs_dir: Path to the specs directory. If None, computed via
             get_specs_dir().
 
     Returns:
-        Path to the resolved topic directory.
+        Path to the resolved spec directory.
     """
     if specs_dir is None:
         specs_dir = get_specs_dir()
@@ -848,12 +848,12 @@ def resolve_spec_dir(spec_name, specs_dir=None):
 
     matches = find_matching_specs(spec_name, specs_dir)
     if not matches:
-        logger.error("Error: no topic matching '%s' found.", spec_name)
+        logger.error("Error: no spec matching '%s' found.", spec_name)
         sys.exit(1)
     if len(matches) > 1:
         names = "\n  ".join(m.name for m in matches)
         logger.error(
-            "Error: multiple topics match '%s':\n  %s",
+            "Error: multiple specs match '%s':\n  %s",
             spec_name, names,
         )
         sys.exit(1)
@@ -900,17 +900,17 @@ def repo_label(workdir: str) -> str:
 
 
 def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
-    """Format a single topic with progress, description, and optional todo steps.
+    """Format a single spec with progress, description, and optional todo steps.
 
     Args:
-        spec: A Spec instance or a Path to a topic directory.
+        spec: A Spec instance or a Path to a spec directory.
         verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
-        show_repo: If True, prepend a ``[repo]`` label from the topic's workdir.
+        show_repo: If True, prepend a ``[repo]`` label from the spec's workdir.
     """
     if isinstance(spec, Path):
         t = Spec.from_dir(spec)
         if t is None:
-            return f"(unable to load topic: {spec.name})"
+            return f"(unable to load spec: {spec.name})"
     else:
         t = spec
 
@@ -944,9 +944,9 @@ def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
 def gather_specs(
     include_archives: bool = False, all_projects: bool = False,
 ) -> tuple[list, bool]:
-    """Collect and filter topics from specs/archives directories.
+    """Collect and filter specs from specs/archives directories.
 
-    Returns (topics, show_repo) where show_repo indicates whether the
+    Returns (specs, show_repo) where show_repo indicates whether the
     caller should display repository labels.
     """
     specs_dir = get_specs_dir()
@@ -981,7 +981,7 @@ def gather_specs(
 
 
 def prompt_selection(specs, show_repo=False, allow_empty=False):
-    """Show a numbered list of topics and prompt user to choose one.
+    """Show a numbered list of specs and prompt user to choose one.
 
     Args:
         specs: List of Spec objects or Path objects (must be non-empty).
@@ -1022,7 +1022,7 @@ def prompt_selection(specs, show_repo=False, allow_empty=False):
 
 
 def resolve_spec(name, include_archives=False):
-    """Resolve a topic name to its directory, with optional archive search.
+    """Resolve a spec name to its directory, with optional archive search.
 
     Searches specs_dir first. When include_archives is True, also
     searches archives_dir and merges results (deduplicated).  When
@@ -1030,11 +1030,11 @@ def resolve_spec(name, include_archives=False):
     with --archives.
 
     Args:
-        name: Topic name or substring to match.
+        name: Spec name or substring to match.
         include_archives: If True, search both specs and archives.
 
     Returns:
-        Path to the resolved topic directory.
+        Path to the resolved spec directory.
     """
     specs_dir = get_specs_dir()
 
@@ -1050,9 +1050,9 @@ def resolve_spec(name, include_archives=False):
                 seen.add(m.resolve())
 
     if not matches:
-        logger.error("Error: no topic matching '%s' found.", name)
+        logger.error("Error: no spec matching '%s' found.", name)
         if not include_archives:
-            logger.info("Hint: try --archives to search archived topics.")
+            logger.info("Hint: try --archives to search archived specs.")
         sys.exit(1)
 
     if len(matches) == 1:
@@ -1063,7 +1063,7 @@ def resolve_spec(name, include_archives=False):
         key=lambda t: t.name, reverse=True,
     )
     if not specs:
-        logger.error("Error: no loadable topic matching '%s'.", name)
+        logger.error("Error: no loadable spec matching '%s'.", name)
         sys.exit(1)
 
     selected = prompt_selection(specs)
@@ -1073,12 +1073,12 @@ def resolve_spec(name, include_archives=False):
 def select_spec_interactive(
     include_archives=False, all_projects=False, allow_empty=False,
 ):
-    """List topics and prompt user to select one.
+    """List specs and prompt user to select one.
 
     Args:
-        include_archives: If True, include archived topics.
+        include_archives: If True, include archived specs.
         all_projects: If True, skip is_related_to filtering.
-        allow_empty: If True, return None when no topics found or user
+        allow_empty: If True, return None when no specs found or user
             enters empty input, instead of exiting.
     """
     specs, show_repo = gather_specs(
@@ -1091,7 +1091,7 @@ def select_spec_interactive(
     if not specs:
         if allow_empty:
             return None
-        logger.error("Error: no topics found.")
+        logger.error("Error: no specs found.")
         sys.exit(1)
     if len(specs) == 1:
         return specs[0].path

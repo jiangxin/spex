@@ -25,7 +25,7 @@ def _mock_project_context(top_workdir=None):
 
 def _setup_topic(tmp_path, spec_name="my-topic", spex_branch="spex/test",
                  branch="main", completed=True):
-    """Create a topic directory with meta.json and todo.json."""
+    """Create a spec directory with meta.json and todo.json."""
     specs = tmp_path / "specs"
     spec_dir = specs / spec_name
     spec_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +121,7 @@ class TestDryRun:
 
 
 class TestAutoSelect:
-    """Tests for auto-topic selection when no topic is provided."""
+    """Tests for auto-selection when no spec name is provided."""
 
     def test_auto_select_single_topic(self, tmp_path, caplog):
         specs, spec_dir = _setup_topic(
@@ -156,7 +156,7 @@ class TestAutoSelect:
             spex_merge.cli_submit([])
 
         assert exc_info.value.code == 1
-        assert "No submittable topics found" in caplog.text
+        assert "No submittable specs found" in caplog.text
 
     def test_auto_select_multiple_topics_non_interactive(
         self, tmp_path, caplog,

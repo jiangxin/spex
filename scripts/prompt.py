@@ -151,12 +151,12 @@ def _trim_spec_content(spec_content):
 
 
 def _build_task_context(spec_dir, verbose_items=20):
-    """Extract task context from a topic directory.
+    """Extract task context from a spec directory.
 
     Reads spec.md and todo.json, computes completed/current/future task info.
 
     Args:
-        spec_dir: Path to the topic directory.
+        spec_dir: Path to the spec directory.
         verbose_items: Max number of items to show with full details.
             Items beyond this limit are shown in brief format.
 
@@ -283,7 +283,7 @@ def _build_metadata(template_name, spec_name=None):
                 and metadata.get("user_email") == ctx.user_email):
             metadata["user_name"] = ""
             metadata["user_email"] = ""
-    # All topic-based templates except spec-template need task context:
+    # All spec-based templates except spec-template need task context:
     # apply-commit, apply-one-task, modify-spec, modify-todo
     if template_name != "spec-template" and spec_name:
         metadata.update(_build_task_context(spec_dir))
@@ -296,7 +296,7 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
 
     Args:
         name: Template name without .md extension (e.g. "spec-template").
-        spec_name: Optional topic name for topic-specific metadata.
+        spec_name: Optional spec name for spec-specific metadata.
         extra_vars: Optional dict of additional variables to merge into metadata.
         metadata: Optional pre-built metadata dict. Skips _build_metadata when provided.
 
@@ -343,7 +343,7 @@ def _build_parser():
     # apply-one-task
     p = subs.add_parser(
         "apply-one-task",
-        description="Render apply-one-task template with topic metadata.",
+        description="Render apply-one-task template with spec metadata.",
         help="Render prompt for the next undone task",
     )
     p.add_argument(
@@ -360,7 +360,7 @@ def _build_parser():
     # apply-commit
     p = subs.add_parser(
         "apply-commit",
-        description="Render apply-commit template with topic metadata.",
+        description="Render apply-commit template with spec metadata.",
         help="Render commit instructions for the current task",
     )
     p.add_argument("--topic", help="Topic name")
@@ -375,7 +375,7 @@ def _build_parser():
     # modify-spec
     p = subs.add_parser(
         "modify-spec",
-        description="Render modify-spec template with topic metadata.",
+        description="Render modify-spec template with spec metadata.",
         help="Render prompt for modifying a spec",
     )
     p.add_argument(
@@ -400,7 +400,7 @@ def _build_parser():
     # modify-todo
     p = subs.add_parser(
         "modify-todo",
-        description="Render modify-todo template with topic metadata.",
+        description="Render modify-todo template with spec metadata.",
         help="Render prompt for modifying a todo list",
     )
     p.add_argument(
@@ -622,7 +622,7 @@ def cli_render(argv):
         description="Render a Jinja2 template with metadata.",
     )
     parser.add_argument("name", help="Template name (without .md extension)")
-    parser.add_argument("--topic", help="Topic name for topic-specific metadata")
+    parser.add_argument("--topic", help="Spec name for spec-specific metadata")
     parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
     parser.add_argument("-o", "--output",

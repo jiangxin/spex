@@ -1068,13 +1068,13 @@ class TestIsRelatedTo:
         )
 
     def test_top_workdir_matches(self, tmp_path):
-        """top_workdir matches topic's workdir -> True."""
+        """top_workdir matches spec's workdir -> True."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
         topic_dict = {"workdir": str(tmp_path), "main_worktree": ""}
         assert ctx.is_related_to(topic_dict) is True
 
     def test_main_worktree_matches(self, tmp_path):
-        """main_worktree matches topic's main_worktree -> True."""
+        """main_worktree matches spec's main_worktree -> True."""
         other = tmp_path / "other"
         other.mkdir()
         ctx = self._make_ctx(top_workdir=other, main_worktree=tmp_path)
@@ -1099,7 +1099,7 @@ class TestIsRelatedTo:
         assert ctx.is_related_to(topic_dict) is True
 
     def test_topic_workdir_empty(self, tmp_path):
-        """Topic's workdir is empty string -> True."""
+        """Spec's workdir is empty string -> True."""
         ctx = self._make_ctx(top_workdir=tmp_path, main_worktree=tmp_path)
         topic_dict = {"workdir": "", "main_worktree": ""}
         assert ctx.is_related_to(topic_dict) is True

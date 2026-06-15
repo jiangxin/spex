@@ -10,7 +10,7 @@ from config import ProjectContext
 
 def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
                 subdir="specs", workdir="", main_worktree=""):
-    """Create a topic directory with optional spec and todo."""
+    """Create a spec directory with optional spec and todo."""
     spec_dir = tmp_path / subdir / name
     spec_dir.mkdir(parents=True, exist_ok=True)
     meta = {
@@ -111,7 +111,7 @@ class TestFormatVerbose:
         spec_dir = tmp_path / "specs" / "bad-topic"
         spec_dir.mkdir(parents=True)
         output = spex_show._format_verbose(spec_dir)
-        assert "(unable to load topic: bad-topic)" in output
+        assert "(unable to load spec: bad-topic)" in output
 
 
 class TestMain:
@@ -264,7 +264,7 @@ class TestSelectSpecInteractive:
     def test_archives_includes_archived(self, tmp_path, monkeypatch):
         specs, archives = self._setup(tmp_path, monkeypatch)
 
-        # Two related topics (spec + archive) -> prompt selection
+        # Two related specs (spec + archive) -> prompt selection
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
 
         result = spex_common.select_spec_interactive(include_archives=True)

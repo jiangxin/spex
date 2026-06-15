@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Show detailed information about a single spec topic."""
+"""Show detailed information about a single spec."""
 
 from __future__ import annotations
 
@@ -31,15 +31,15 @@ def _paged_output(text):
 
 
 def _format_default(spec_dir):
-    """Format topic in list -vv style, reused from common."""
+    """Format spec in list -vv style, reused from common."""
     return format_spec(spec_dir, verbose=2)
 
 
 def _format_verbose(spec_dir):
-    """Format topic with full spec and structured todo."""
+    """Format spec with full content and structured todo."""
     t = Spec.from_dir(spec_dir)
     if t is None:
-        return f"(unable to load topic: {spec_dir.name})"
+        return f"(unable to load spec: {spec_dir.name})"
 
     parts = []
 
@@ -80,7 +80,7 @@ def _format_verbose(spec_dir):
 def main(argv=None):
     parser = ArgumentParser(
         prog="spex show",
-        description="Show detailed information about a spec topic.",
+        description="Show detailed information about a spec.",
     )
     parser.add_argument("topic", nargs="?", help="Topic name or substring")
     parser.add_argument("-l", "--list", action="store_true",
@@ -89,12 +89,12 @@ def main(argv=None):
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics in search",
+        help="Include archived specs in search",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     args = parser.parse(argv)
 

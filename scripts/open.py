@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Open a topic directory in the system file browser.
+"""Open a spec directory in the system file browser.
 
-If no topic is given, lists topics for interactive selection.
-If a topic is given, searches specs (and optionally archives) for a match.
-When no selection is made or no topics exist, opens the spex root directory.
+If no spec name is given, lists specs for interactive selection.
+If a spec name is given, searches specs (and optionally archives) for a match.
+When no selection is made or no specs exist, opens the spex root directory.
 """
 
 from __future__ import annotations
@@ -59,23 +59,23 @@ def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex open``."""
     parser = ArgumentParser(
         prog="spex open",
-        description="Open a topic directory in the system file browser.",
+        description="Open a spec directory in the system file browser.",
     )
     parser.add_argument(
         "topic",
         nargs="?",
         default="",
-        help="Topic name or substring to open (interactive selection if omitted)",
+        help="Spec name or substring to open (interactive selection if omitted)",
     )
     parser.add_argument(
         "--archives",
         action="store_true",
-        help="Include archived topics in search",
+        help="Include archived specs in search",
     )
     parser.add_argument(
         "--all-projects",
         action="store_true",
-        help="Show topics from all projects (disables project filter)",
+        help="Show specs from all projects (disables project filter)",
     )
     parser.add_argument(
         "--run",
@@ -83,7 +83,7 @@ def _build_parser() -> ArgumentParser:
         const="",
         default=None,
         metavar="COMMAND",
-        help="Run a command in the topic directory instead of opening it",
+        help="Run a command in the spec directory instead of opening it",
     )
     return parser
 

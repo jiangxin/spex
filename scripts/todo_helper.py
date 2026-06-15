@@ -389,7 +389,7 @@ def _resolve_todo_path(args):
             is_xml = True
         return (todo_path, is_xml)
 
-    # --topic mode
+    # --topic mode: resolve spec dir for todo file
     spec_dir = resolve_spec_dir(args.topic)
     filename = "todo.xml" if is_xml else "todo.json"
     return (spec_dir / filename, is_xml)
@@ -406,7 +406,7 @@ def _build_parser():
     )
     locator = parser.add_mutually_exclusive_group()
     locator.add_argument(
-        "--topic", help="Resolve topic dir for todo file",
+        "--topic", help="Resolve spec dir for todo file",
     )
     locator.add_argument(
         "--todo-file", help="Direct path to todo file",

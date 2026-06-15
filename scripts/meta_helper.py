@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Get or set key/value in a topic's meta.json.
+"""Get or set key/value in a spec's meta.json.
 
 Usage: spex meta-helper <topic_name> [key] [value] [--stdin]
 
@@ -108,7 +108,7 @@ def _build_parser() -> ArgumentParser:
     """Build the argument parser for ``spex meta-helper``."""
     parser = ArgumentParser(
         prog="spex meta-helper",
-        description="Get or set key/value in a topic's meta.json.",
+        description="Get or set key/value in a spec's meta.json.",
     )
     parser.add_argument(
         "topic_name",

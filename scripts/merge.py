@@ -38,7 +38,7 @@ def _build_submit_parser() -> ArgumentParser:
 
 
 def _find_submittable_specs(ctx):
-    """Find topics ready to submit: all tasks done + has spex_branch."""
+    """Find specs ready to submit: all tasks done + has spex_branch."""
     import common
     from common import Spec, find_completed_specs
 
@@ -71,7 +71,7 @@ def cli_submit(argv=None) -> None:
     if not spec_name:
         candidates = _find_submittable_specs(ctx)
         if not candidates:
-            logger.error("No submittable topics found.")
+            logger.error("No submittable specs found.")
             sys.exit(1)
         elif len(candidates) == 1:
             spec_dir = candidates[0].path
@@ -90,7 +90,7 @@ def cli_submit(argv=None) -> None:
         meta = common.load_meta(spec_dir)
         workdir = meta.workdir if meta else "(unknown)"
         logger.error(
-            "Error: topic '%s' is not related to current project, "
+            "Error: spec '%s' is not related to current project, "
             "it is associated with %s", spec_name, workdir
         )
         sys.exit(1)
@@ -101,7 +101,7 @@ def cli_submit(argv=None) -> None:
     errors: list[str] = []
 
     if not source:
-        errors.append("No spex_branch in topic meta.json")
+        errors.append("No spex_branch in spec meta.json")
         print(json.dumps({"action": method, "source": "", "target": target,
                           "errors": errors}))
         sys.exit(1)
@@ -147,7 +147,7 @@ def cli_submit(argv=None) -> None:
         short_name,
     )
 
-    # Auto-archive the topic unless --no-archive is set
+    # Auto-archive the spec unless --no-archive is set
     archived = False
     if not parsed.no_archive:
         try:
