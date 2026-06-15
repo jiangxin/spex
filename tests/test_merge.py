@@ -133,6 +133,7 @@ class TestAutoSelect:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.branch_exists", return_value=True), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_post_action"), \
              patch("archive.archive_single_spec", return_value=None), \

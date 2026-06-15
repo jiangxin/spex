@@ -335,13 +335,15 @@ class TestCliSubmit:
         assert "not related to current project" in caplog.text
         assert "/other/project" in caplog.text
 
+
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
+    @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
-    def test_merge_success(self, mock_resolve, _specs, _ctx, mock_merge,
+    def test_merge_success(self, mock_resolve, _specs, _ctx, _exists, mock_merge,
                            mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -360,12 +362,13 @@ class TestCliSubmit:
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
     @patch("branch.merge_branch")
+    @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
-                                    mock_merge, mock_archive, tmp_path,
+                                    _exists, mock_merge, mock_archive, tmp_path,
                                     capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -379,13 +382,14 @@ class TestCliSubmit:
         mock_archive.assert_called_once()
 
     @patch("archive.archive_single_spec")
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
         config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
-                                           mock_merge, mock_archive,
+                                           _exists, mock_merge, mock_archive,
                                            tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -399,6 +403,7 @@ class TestCliSubmit:
         mock_archive.assert_not_called()
 
     @patch("archive.archive_single_spec")
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
@@ -406,7 +411,7 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
-                                      _merge, mock_archive, tmp_path,
+                                      _exists, _merge, mock_archive, tmp_path,
                                       capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -423,6 +428,7 @@ class TestCliSubmit:
         assert "Merge failed" in out["errors"][0]
         mock_archive.assert_not_called()
 
+    @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
@@ -430,7 +436,7 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
-                                         _merge, tmp_path, capsys):
+                                         _exists, _merge, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
