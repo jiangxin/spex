@@ -414,9 +414,11 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
         remote_url = _git_field(
             ["git", "remote", "get-url", "origin"], cwd=workdir,
         )
-        branch = _git_field(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=workdir,
-        )
+        try:
+            from branch import get_current_branch
+            branch = get_current_branch(cwd=workdir)
+        except RuntimeError:
+            branch = ""
     else:
         remote_url = ""
         branch = ""
