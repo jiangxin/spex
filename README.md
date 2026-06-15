@@ -120,15 +120,15 @@ Lists all specs with status icons and progress ratios:
   `3/5`).
 - `spex list -v` — adds the spec description.
 - `spex list -vv` — adds individual step listing with completion status.
-- `spex list --all` — includes specs from all repositories, not just
-  the current one.
+- `spex list --all-projects` — includes specs from all repositories,
+  not just the current one.
 
 #### `spex show <name>`
 
-- `spex show <name>` — displays spec summary (status, dates,
-  branch, progress).
-- `spex show -v <name>` — shows the full spec content and structured
+- `spex show <name>` — shows the full spec content and structured
   todo with step-level details.
+- `spex show -l <name>` — brief list format (status, dates,
+  branch, progress).
 
 ## Configuration
 

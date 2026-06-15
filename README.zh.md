@@ -106,12 +106,12 @@ Spex 是一个为项目引入规格驱动开发的技能（skill）。它可以�
 - `spex list` — 紧凑视图：规格名称、状态和进度（如 `3/5`）。
 - `spex list -v` — 增加规格描述。
 - `spex list -vv` — 增加各步骤的完成状态列表。
-- `spex list --all` — 包含所有仓库的规格，不限于当前仓库。
+- `spex list --all-projects` — 包含所有仓库的规格，不限于当前仓库。
 
 #### `spex show <name>`
 
-- `spex show <name>` — 显示规格概要（状态、日期、分支、进度）。
-- `spex show -v <name>` — 显示完整的规格内容和结构化的待办详情。
+- `spex show <name>` — 显示完整的规格内容和结构化的待办详情。
+- `spex show -l <name>` — 简要列表格式（状态、日期、分支、进度）。
 
 ## 配置
 
