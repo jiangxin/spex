@@ -1,5 +1,98 @@
 # Changelog
 
+## 0.3.0
+
+### Features
+
+- **`todo-helper` subcommand** — full JSON CRUD (`prepare`, `show`,
+  `edit`, `mark-done`/`edit`, `remove-undone`); XML format support with
+  `xml2json`/`json2xml` converters; `--completed_at now` expansion.
+- **`create-helper` subcommands** — `prepare-spec` replaces
+  `create-topic`; auto-switch to main branch on mismatch; hint for
+  `spex-prefix` error; `add-images` subcommand for multimodal support;
+  post-action hook with JSON validation.
+- **`modify` overhaul** — `todo-helper` replaces `xml2json` workflow;
+  split todo prompt and step generation into separate phases;
+  `--remove-undone` flag; concise task formatting.
+- **`list` filters** — `--must-done`/`--must-undone` status filters;
+  `--json` output; `--archives` and `--all-projects` replace `--all`;
+  pattern matching filter.
+- **`show` improvements** — optional topic argument with interactive
+  selection; default verbose output with pager; `--archives` and
+  `--all-projects` flags with archive fallback.
+- **`merge` (submit)** — auto-select topic when none provided;
+  `-n/--dry-run` flag; auto-archive after successful merge.
+- **`init` dry-run** — `-n/--dry-run` flag to preview operations;
+  template sync results always shown; spex_root creation in verbose output.
+- **`archive` restore** — `--not` flag to restore topics from archives;
+  `--all-projects` for cross-project archival.
+- **`open --run`** — execute commands in topic directory.
+- **`get-topic` archives** — `--with-archives` flag to search archives;
+  default to no status filtering.
+- **ProjectContext** — new `ProjectContext` dataclass with
+  `is_related_to()`, `in_git_workdir()`, unified config resolution.
+- **Topic dataclass** — display-oriented `Topic` and `TopicMeta`
+  dataclasses with `from_dir()` factory.
+- **Logging migration** — all scripts migrate to `logger.info/warning/error`;
+  stdout reserved for programmatic data; `-d/--debug` replaces `-v/--verbose`.
+- **Argparse migration** — all subcommands use `ArgumentParser` with
+  `add_subparsers`; unified `-h/--help` across all commands.
+- **Sub-agent boundaries** — removed in `create`, `modify`, `apply-one-step`;
+  consolidated into single phase in `apply`.
+- **User identity in commits** — conditional author/committer in apply-commit.
+- **Prompt improvements** — `_trim_spec_content` for concise spec extraction;
+  HTML section markers in spec template; verbose formatting for task context.
+- **`meta` CLI** — `get` mode to display `meta.json`; fuzzy matching via
+  `resolve_topic_dir`.
+- **Concise spec content** — `_trim_spec_content` with dual
+  include/exclude strategy; marker preservation.
+
+### Bug Fixes
+
+- Fix `apply --all` listing cross-project specs instead of project specs.
+- Fix variable name `$name` from parsed JSON in `create` command.
+- Fix `todo-helper --name` conflict with `spec --name` by renaming to
+  `--step-name`.
+- Fix literal backslash-n handling in `wrap_text`.
+- Fix `create` to require single-line description.
+- Fix image detection for pasted images in `create` and `modify`.
+- Fix `show` auto-fallback to archives without `--archives` flag.
+- Fix subcommand help flags (`-h/--help`) before topic resolution.
+- Fix `todo-helper` showing subcommand-specific help.
+- Fix description formatting in `meta.json` at 68 chars.
+- Fix redundant git author in apply-commit template.
+- Fix `init` template sync: duplicate calls, dry-run output, spex_root resolution.
+- Exit code 1 when no topics found.
+- Print "No specs found." to stderr instead of stdout.
+- Isolate `TestCliRouting` tests from real working directory.
+- Prevent `GIT_CONFIG_PARAMETERS` leak in test_hooks.
+- Allow `user_name`/`user_email` from global git config.
+
+### Refactoring
+
+- **topic → spec rename** — comprehensive rename of all topic-related
+  variables, functions, CLI flags (`--topic` → `--name`), JSON fields,
+  and documentation to use "spec" terminology.
+- **Script renaming** — single-word scripts renamed to match subcommands.
+- **`cli.py`** — normalize subcommand names to accept hyphens/underscores;
+  `spex` main entry to argparse with grouped help; `submit` renamed to `merge`.
+- **Remove deprecated code** — `spex todo` command, `remove-undone`
+  subcommand, `SpexContext`/`get_context`/`get_git_info`;
+  `check_help_flag` from `common.py`.
+- **Consolidate shared utilities** — `find_completed_specs`,
+  `has_active_branch`, `same_path`, topic selection functions from `show.py`.
+- **`config.py` defaults** — `branch_management` default changed to `true`;
+  comment-out TOML values matching defaults.
+- **`prompt.py`** — router pattern with extracted handlers for
+  `modify-spec`, `apply-commit`, `apply-one-task`, `create-helper`.
+- **`archive.py`** — generalized `move_topic` for bidirectional use;
+  `--not` flag renamed to `--restore`; `--all` renamed to `--all-topics`.
+- **`branch.py`** — extract `submit/merge` CLI logic to `merge.py`;
+  replace `--topic` with positional argument.
+- **`open` rewrite** — use shared topic selection functions.
+- **`create` SOP** — use `todo-helper` CLI for `todo.json` generation;
+  direct JSON output instead of XML conversion.
+
 ## 0.2.1
 
 ### Bug Fixes
