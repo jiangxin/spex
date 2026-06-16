@@ -1269,3 +1269,150 @@ class TestLoadMetaSpecMeta:
         assert result.description == ""
         assert result.spex_branch == ""
         assert result.prompts == ["initial"]
+
+
+class TestSpecPropertiesDirect:
+    """Test Spec property delegation (lines 149, 153, 157, 161, 165, 169)."""
+
+    def test_main_worktree_property(self, tmp_path):
+        """Spec.main_worktree delegates to meta.main_worktree."""
+        from common import Spec, SpecMeta
+        spec_dir = tmp_path / "specs" / "prop-test"
+        spec_dir.mkdir(parents=True)
+        meta = SpecMeta.from_dict({
+            "name": "prop-test",
+            "workdir": str(tmp_path),
+            "main_worktree": "/main/wt",
+        })
+        (spec_dir / "meta.json").write_text(
+            json.dumps(meta.to_dict()), encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.main_worktree == "/main/wt"
+
+    def test_remote_url_property(self, tmp_path):
+        """Spec.remote_url delegates to meta.remote_url."""
+        from common import Spec
+        spec_dir = tmp_path / "specs" / "url-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "url-test", "remote_url": "git@x.com:r.git"}),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.remote_url == "git@x.com:r.git"
+
+    def test_branch_property(self, tmp_path):
+        """Spec.branch delegates to meta.branch."""
+        from common import Spec
+        spec_dir = tmp_path / "specs" / "branch-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "branch-test", "branch": "feature"}),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.branch == "feature"
+
+    def test_user_name_property(self, tmp_path):
+        """Spec.user_name delegates to meta.user_name."""
+        from common import Spec
+        spec_dir = tmp_path / "specs" / "user-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "user-test", "user_name": "Dev"}),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.user_name == "Dev"
+
+    def test_user_email_property(self, tmp_path):
+        """Spec.user_email delegates to meta.user_email."""
+        from common import Spec
+        spec_dir = tmp_path / "specs" / "email-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "email-test", "user_email": "d@x.com"}),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.user_email == "d@x.com"
+
+    def test_spex_branch_property(self, tmp_path):
+        """Spec.spex_branch delegates to meta.spex_branch."""
+        from common import Spec
+        spec_dir = tmp_path / "specs" / "spex-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "spex-test", "spex_branch": "spex/test"}),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert spec.spex_branch == "spex/test"
+
+
+class TestLoadMetaEdgeCases:
+    """Test load_meta edge cases (lines 405, 414-417)."""
+
+    def test_load_meta_non_dict_json(self, tmp_path):
+        """load_meta returns None when JSON is not a dict."""
+        from common import load_meta
+        spec_dir = tmp_path / "specs" / "non-dict"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text('["a", "b"]', encoding="utf-8")
+        assert load_meta(spec_dir) is None
+
+
+class TestGetSpecWorkdir:
+    """Test get_spec_workdir (lines 414-417)."""
+
+    def test_returns_workdir(self, tmp_path):
+        """get_spec_workdir returns workdir from meta.json."""
+        from common import get_spec_workdir
+        spec_dir = tmp_path / "specs" / "wt-test"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "wt-test", "workdir": "/my/work"}),
+            encoding="utf-8",
+        )
+        assert get_spec_workdir(spec_dir) == "/my/work"
+
+    def test_returns_empty_when_no_meta(self, tmp_path):
+        """get_spec_workdir returns '' when no meta.json."""
+        from common import get_spec_workdir
+        spec_dir = tmp_path / "specs" / "no-meta"
+        spec_dir.mkdir(parents=True)
+        assert get_spec_workdir(spec_dir) == ""
+
+
+class TestHasUndoneTasks:
+    """Test has_undone_tasks (lines 515-518)."""
+
+    def test_returns_true_when_incomplete(self, tmp_path):
+        """has_undone_tasks returns True when there are incomplete tasks."""
+        from common import has_undone_tasks
+        spec_dir = tmp_path / "specs" / "undone"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(
+            json.dumps([{"id": "s1", "completed_at": ""}]),
+            encoding="utf-8",
+        )
+        assert has_undone_tasks(spec_dir) is True
+
+    def test_returns_false_when_all_done(self, tmp_path):
+        """has_undone_tasks returns False when all tasks completed."""
+        from common import has_undone_tasks
+        spec_dir = tmp_path / "specs" / "done"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(
+            json.dumps([{"id": "s1", "completed_at": "2026-01-01"}]),
+            encoding="utf-8",
+        )
+        assert has_undone_tasks(spec_dir) is False
+
+    def test_returns_false_when_no_todo(self, tmp_path):
+        """has_undone_tasks returns False when no todo.json."""
+        from common import has_undone_tasks
+        spec_dir = tmp_path / "specs" / "no-todo"
+        spec_dir.mkdir(parents=True)
+        assert has_undone_tasks(spec_dir) is False
