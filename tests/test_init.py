@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -884,3 +885,97 @@ class TestDryRun:
         mock_run.assert_called_once_with(
             target_dir=None, verbose=False, dry_run=True,
         )
+
+
+class TestInstallDeps:
+    """Test _install_deps function (lines 41-61)."""
+
+    def test_dry_run_returns_true(self, caplog):
+        """_install_deps(dry_run=True) returns True without installing."""
+        with caplog.at_level(logging.INFO):
+            from init import _install_deps
+            assert _install_deps(dry_run=True) is True
+        assert "Would install dependencies" in caplog.text
+
+    def test_verbose_shows_message(self, caplog):
+        """_install_deps(verbose=True) shows installing message."""
+        with caplog.at_level(logging.INFO):
+            from init import _install_deps
+            _install_deps(verbose=True)
+        assert "Installing dependencies from" in caplog.text
+
+
+class TestInstallCli:
+    """Test _install_cli function (lines 64-92)."""
+
+    def test_dry_run_returns_early(self, caplog):
+        """_install_cli(dry_run=True) shows 'Would install' and returns."""
+        with caplog.at_level(logging.INFO):
+            from init import _install_cli
+            _install_cli(dry_run=True)
+        assert "Would install CLI:" in caplog.text
+
+
+class TestCreateTomlConfigDryRun:
+    """Test _create_toml_config dry-run paths (lines 138-140, 153-155)."""
+
+    def test_dry_run_reinitializes(self, tmp_path, caplog):
+        """_create_toml_config(dry_run=True) with existing tomls shows 'Would reinitialize'."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text('[spex]\nspex_root = "custom"\n')
+        ctx = _make_context(spex_tomls=[toml_file])
+        with (
+            patch("init.get_project_context", return_value=ctx),
+            patch("init.clear_config_cache"),
+        ):
+            with caplog.at_level(logging.INFO):
+                from init import _create_toml_config
+                _create_toml_config(dry_run=True)
+        assert "Would reinitialize:" in caplog.text
+
+    def test_dry_run_creates_home_toml(self, tmp_path, caplog):
+        """_create_toml_config(dry_run=True) with no tomls shows 'Would create'."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        ctx = _make_context(spex_tomls=[])
+        with (
+            patch("init.get_project_context", return_value=ctx),
+            patch("init.Path.home", return_value=fake_home),
+            patch("common.Path.home", return_value=fake_home),
+        ):
+            with caplog.at_level(logging.INFO):
+                from init import _create_toml_config
+                _create_toml_config(dry_run=True)
+        assert "Would create:" in caplog.text
+        # Verify nothing was actually created
+        assert not (fake_home / ".spex.toml").exists()
+
+    def test_dry_run_up_to_date(self, tmp_path, caplog):
+        """_create_toml_config(dry_run=True) with up-to-date toml shows 'Config up-to-date'."""
+        toml_file = tmp_path / ".spex.toml"
+        from config import generate_default_toml
+        toml_file.write_text(generate_default_toml())
+        ctx = _make_context(spex_tomls=[toml_file])
+        with (
+            patch("init.get_project_context", return_value=ctx),
+            patch("init.clear_config_cache"),
+        ):
+            with caplog.at_level(logging.INFO):
+                from init import _create_toml_config
+                _create_toml_config(dry_run=True)
+        assert "Config up-to-date:" in caplog.text
+
+
+class TestInitModuleDirectExecution:
+    """Test if __name__ == '__main__' path (lines 239-241)."""
+
+    def test_direct_script_check_flag(self):
+        """Running init.py directly with --check works."""
+        result = subprocess.run(
+            [sys.executable, str(
+                Path(__file__).resolve().parent.parent / "scripts" / "init.py"
+            ), "--check"],
+            capture_output=True, text=True,
+        )
+        # Should exit 0 (initialized) or 1 (not initialized)
+        assert result.returncode in (0, 1)

@@ -495,3 +495,70 @@ class TestCliRouting:
         assert result.returncode in (1, 2)
         err = result.stderr.lower()
         assert "spec" in err or "auto-selected" in err
+
+
+class TestStripRefsPrefix:
+    """Test _strip_refs_prefix (line 12)."""
+
+    def test_strips_refs_heads_prefix(self):
+        """_strip_refs_prefix strips refs/heads/ prefix."""
+        from branch import _strip_refs_prefix
+        assert _strip_refs_prefix("refs/heads/feature-x") == "feature-x"
+
+    def test_returns_short_name_unchanged(self):
+        """_strip_refs_prefix returns short names unchanged."""
+        from branch import _strip_refs_prefix
+        assert _strip_refs_prefix("main") == "main"
+
+
+class TestSwitchAndSetBranch:
+    """Test switch_branch and set_branch_description (lines 68-69, 82-83)."""
+
+    def test_switch_branch(self, tmp_path):
+        """switch_branch switches to an existing branch."""
+        from branch import switch_branch
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=str(tmp_path), capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=str(tmp_path), capture_output=True,
+        )
+        # Create initial commit on main
+        (tmp_path / "a").write_text("a")
+        subprocess.run(["git", "add", "."], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(tmp_path), capture_output=True)
+        # Create target branch
+        subprocess.run(
+            ["git", "branch", "feature"], cwd=str(tmp_path), capture_output=True,
+        )
+        switch_branch("feature", cwd=str(tmp_path))
+        result = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=str(tmp_path),
+            capture_output=True, text=True,
+        )
+        assert result.stdout.strip() == "feature"
+
+    def test_set_branch_description(self, tmp_path):
+        """set_branch_description sets git config for branch."""
+        from branch import set_branch_description
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=str(tmp_path), capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=str(tmp_path), capture_output=True,
+        )
+        (tmp_path / "a").write_text("a")
+        subprocess.run(["git", "add", "."], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(tmp_path), capture_output=True)
+        set_branch_description("master", "my desc", cwd=str(tmp_path))
+        result = subprocess.run(
+            ["git", "config", "branch.master.description"],
+            cwd=str(tmp_path), capture_output=True, text=True,
+        )
+        assert result.stdout.strip() == "my desc"
