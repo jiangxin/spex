@@ -392,3 +392,505 @@ class TestOldGetCommandRemoved:
 
         assert result.returncode == 1
         assert "Unknown command: get" in result.stderr
+
+
+class TestSubcommandRouting:
+    """Test subcommand handler routing functions."""
+
+    def test_run_list(self, capsys, monkeypatch):
+        """_run_list imports list module and calls main."""
+        called = {"argv": None}
+
+        def fake_main(argv=None):
+            called["argv"] = argv
+
+        # Remove cached module to force reimport
+        if "list" in sys.modules:
+            del sys.modules["list"]
+        fake_mod = type(sys)("list")
+        fake_mod.main = fake_main
+        sys.modules["list"] = fake_mod
+        try:
+            _spex_mod._run_list(["--json"])
+            assert called["argv"] == ["--json"]
+        finally:
+            del sys.modules["list"]
+
+    def test_run_archive(self, monkeypatch):
+        """_run_archive imports archive module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("archive")
+        fake_mod.main = fake_main
+        sys.modules["archive"] = fake_mod
+        try:
+            _spex_mod._run_archive(["-n"])
+            assert called["argv"] == ["-n"]
+        finally:
+            del sys.modules["archive"]
+
+    def test_run_show(self, monkeypatch):
+        """_run_show imports show module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("show")
+        fake_mod.main = fake_main
+        sys.modules["show"] = fake_mod
+        try:
+            _spex_mod._run_show(["-l"])
+            assert called["argv"] == ["-l"]
+        finally:
+            del sys.modules["show"]
+
+    def test_run_open(self, monkeypatch):
+        """_run_open imports open module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("open")
+        fake_mod.main = fake_main
+        sys.modules["open"] = fake_mod
+        try:
+            _spex_mod._run_open([])
+            assert called["argv"] == []
+        finally:
+            del sys.modules["open"]
+
+    def test_run_prompt(self, monkeypatch):
+        """_run_prompt imports prompt module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("prompt")
+        fake_mod.main = fake_main
+        sys.modules["prompt"] = fake_mod
+        try:
+            _spex_mod._run_prompt(["apply-commit", "--name", "test"])
+            assert called["argv"] == ["apply-commit", "--name", "test"]
+        finally:
+            del sys.modules["prompt"]
+
+    def test_run_meta_helper(self, monkeypatch):
+        """_run_meta_helper imports meta_helper module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("meta_helper")
+        fake_mod.main = fake_main
+        sys.modules["meta_helper"] = fake_mod
+        try:
+            _spex_mod._run_meta_helper(["test-spec", "branch"])
+            assert called["argv"] == ["test-spec", "branch"]
+        finally:
+            del sys.modules["meta_helper"]
+
+    def test_run_create_helper(self, monkeypatch):
+        """_run_create_helper imports create_helper module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("create_helper")
+        fake_mod.main = fake_main
+        sys.modules["create_helper"] = fake_mod
+        try:
+            _spex_mod._run_create_helper(["precheck"])
+            assert called["argv"] == ["precheck"]
+        finally:
+            del sys.modules["create_helper"]
+
+    def test_run_apply_helper(self, monkeypatch):
+        """_run_apply_helper imports apply_helper module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("apply_helper")
+        fake_mod.main = fake_main
+        sys.modules["apply_helper"] = fake_mod
+        try:
+            _spex_mod._run_apply_helper(["post-action", "--name", "test"])
+            assert called["argv"] == ["post-action", "--name", "test"]
+        finally:
+            del sys.modules["apply_helper"]
+
+    def test_run_todo_helper(self, monkeypatch):
+        """_run_todo_helper imports todo_helper module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("todo_helper")
+        fake_mod.main = fake_main
+        sys.modules["todo_helper"] = fake_mod
+        try:
+            _spex_mod._run_todo_helper(["validate"])
+            assert called["argv"] == ["validate"]
+        finally:
+            del sys.modules["todo_helper"]
+
+    def test_run_init(self, monkeypatch):
+        """_run_init imports init module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("init")
+        fake_mod.main = fake_main
+        sys.modules["init"] = fake_mod
+        try:
+            _spex_mod._run_init([])
+            assert called["argv"] == []
+        finally:
+            del sys.modules["init"]
+
+
+class TestGetVersion:
+    """Test _get_version function (lines 347-360)."""
+
+    def test_returns_version_from_skill_md(self):
+        """_get_version returns version from SKILL.md front-matter."""
+        ver = _spex_mod._get_version()
+        assert ver is not None
+        assert ver != "unknown"
+
+    def test_returns_unknown_when_missing(self, monkeypatch, tmp_path):
+        """_get_version returns 'unknown' when SKILL.md doesn't exist."""
+        monkeypatch.setattr(_spex_mod, "_skill_dir", tmp_path)
+        assert _spex_mod._get_version() == "unknown"
+
+    def test_returns_unknown_no_front_matter(self, monkeypatch, tmp_path):
+        """_get_version returns 'unknown' when no front-matter."""
+        (tmp_path / "SKILL.md").write_text("# No front matter\n")
+        monkeypatch.setattr(_spex_mod, "_skill_dir", tmp_path)
+        assert _spex_mod._get_version() == "unknown"
+
+    def test_returns_unknown_no_version_field(self, monkeypatch, tmp_path):
+        """_get_version returns 'unknown' when no version field."""
+        (tmp_path / "SKILL.md").write_text("---\ntitle: Test\n---\n")
+        monkeypatch.setattr(_spex_mod, "_skill_dir", tmp_path)
+        assert _spex_mod._get_version() == "unknown"
+
+    def test_strips_quotes(self, monkeypatch, tmp_path):
+        """_get_version strips quotes from version value."""
+        (tmp_path / "SKILL.md").write_text('---\nversion: "1.0.0"\n---\n')
+        monkeypatch.setattr(_spex_mod, "_skill_dir", tmp_path)
+        assert _spex_mod._get_version() == "1.0.0"
+
+
+class TestRunVersion:
+    """Test _run_version function (lines 412-419)."""
+
+    def test_no_argv_prints_version(self, capsys, monkeypatch):
+        """_run_version with no argv prints 'spex <version>'."""
+        monkeypatch.setattr(_spex_mod, "_get_version", lambda: "0.3.0")
+        _spex_mod._run_version([])
+        assert capsys.readouterr().out.strip() == "spex 0.3.0"
+
+    def test_with_argv_delegates_to_version_main(self, capsys, monkeypatch):
+        """_run_version with argv delegates to version.main."""
+        _spex_mod._run_version([])
+        out = capsys.readouterr().out
+        # Empty argv takes the else branch: prints "spex <version>"
+        assert "0.3.0" in out
+
+
+class TestLlmErrorHandlers:
+    """Test LLM-only command error handlers (lines 422-431)."""
+
+    def test_apply_error_message(self, capsys):
+        """_make_llm_error_handler('apply') prints correct message."""
+        handler = _spex_mod._make_llm_error_handler("apply")
+        with pytest.raises(SystemExit) as exc_info:
+            handler()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "'spex apply' requires an AI coding agent" in err
+
+    def test_create_error_message(self, capsys):
+        """_make_llm_error_handler('create') prints correct message."""
+        handler = _spex_mod._make_llm_error_handler("create")
+        with pytest.raises(SystemExit) as exc_info:
+            handler()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "'spex create' requires an AI coding agent" in err
+
+    def test_modify_error_message(self, capsys):
+        """_make_llm_error_handler('modify') prints correct message."""
+        handler = _spex_mod._make_llm_error_handler("modify")
+        with pytest.raises(SystemExit) as exc_info:
+            handler()
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "'spex modify' requires an AI coding agent" in err
+
+
+class TestMainEntrypoint:
+    """Test main() entry point (lines 513-542)."""
+
+    def test_no_args_prints_help(self, capsys):
+        """main() with no args prints help to stderr and exits 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            _spex_mod.main([])
+        assert exc_info.value.code == 0
+        err = capsys.readouterr().err
+        assert "spex <command>" in err
+
+    def test_unknown_command_exits_1(self, capsys):
+        """main() with unknown command exits 1."""
+        with pytest.raises(SystemExit) as exc_info:
+            _spex_mod.main(["unknown-cmd"])
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "Unknown command: unknown-cmd" in err
+
+    def test_underscore_to_hyphen_normalization(self, monkeypatch):
+        """main() normalizes underscores to hyphens in subcommand."""
+        called = {"called": False}
+        def fake_main(argv=None):
+            called["called"] = True
+        fake_mod = type(sys)("list")
+        fake_mod.main = fake_main
+        sys.modules["list"] = fake_mod
+        try:
+            _spex_mod.main(["list"])  # 'list' not 'todo_helper'
+            assert called["called"]
+        finally:
+            del sys.modules["list"]
+
+    def test_debug_flag(self, monkeypatch, caplog):
+        """main() with --debug enables verbose logging."""
+        logged = []
+        def fake_setup(verbose=False):
+            logged.append(verbose)
+        monkeypatch.setattr("common.setup_logging", fake_setup)
+        _spex_mod.main(["--debug", "version"])
+        assert logged == [True]
+
+    def test_short_debug_flag(self, monkeypatch):
+        """main() with -d enables verbose logging."""
+        called = {"v": False}
+        def fake_setup(verbose=False):
+            called["v"] = verbose
+        monkeypatch.setattr("common.setup_logging", fake_setup)
+        _spex_mod.main(["-d", "version"])
+        assert called["v"] is True
+
+
+class TestConfigColorPaths:
+    """Test color formatting in _print_config_sections (lines 210, 217, 232, 242)."""
+
+    def test_kv_color_when_tty(self, capsys, monkeypatch):
+        """KV entries use cyan color when stdout is a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        sections = [("Git", "kv", [("branch", "main")])]
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "\033[2;36m" in out
+        assert "\033[0m" in out
+
+    def test_list_header_color_when_tty(self, capsys, monkeypatch):
+        """List section headers use bold when stdout is a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        sections = [("Config Files", "list", ["/a/.spex.toml"])]
+        _print_config_sections(sections)
+        out = capsys.readouterr().out
+        assert "\033[1m" in out
+        assert "\033[0m" in out
+
+    def test_requested_kv_color_when_tty(self, capsys, monkeypatch):
+        """Requested KV entries use color when stdout is a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        sections = [("Git", "kv", [("branch", "main")])]
+        _print_config_sections(sections, ["branch"])
+        out = capsys.readouterr().out
+        assert "\033[2;36m" in out
+
+    def test_requested_list_color_when_tty(self, capsys, monkeypatch):
+        """Requested list section headers use color when stdout is a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        sections = [("Config Files", "list", ["/a/.spex.toml"])]
+        _print_config_sections(sections, ["spex_tomls"])
+        out = capsys.readouterr().out
+        assert "\033[1m" in out
+
+
+class TestRunConfigWithNoneArgv:
+    """Test _run_config with argv=None (line 255)."""
+
+    def test_none_argv_defaults_to_empty_list(self, capsys, monkeypatch):
+        """_run_config with None argv defaults to empty list (shows all)."""
+        ctx = _make_context()
+        with patch("config.get_project_context", return_value=ctx):
+            _run_config(None)
+        out = capsys.readouterr().out
+        assert "── Git " in out
+
+
+class TestDirectScriptExecution:
+    """Test if __name__ == '__main__' path (line 546)."""
+
+    def test_direct_script_no_args(self):
+        """Running spex directly with no args exits 0."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+
+    def test_direct_script_version_flag(self):
+        """Running spex directly with --version shows version."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "--version"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "spex" in result.stdout
+
+    def test_direct_script_unknown_command(self):
+        """Running spex directly with unknown cmd exits 1."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "nonexistent"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        assert "Unknown command: nonexistent" in result.stderr
+
+    def test_direct_script_version_command(self):
+        """Running spex directly with 'version' shows version."""
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "version"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "0.3.0" in result.stdout
+
+
+class TestRunHook:
+    """Test _run_hook function (lines 385-409)."""
+
+    def test_hook_missing_event_type(self, capsys, caplog):
+        """_run_hook exits 1 when --event-type is missing."""
+        with caplog.at_level(0):
+            with pytest.raises(SystemExit) as exc_info:
+                _spex_mod._run_hook(["my-hook"])
+        assert exc_info.value.code == 1
+        assert "--event-type is required" in caplog.text
+
+    def test_hook_builds_event_data(self, monkeypatch, caplog):
+        """_run_hook calls run_hook with event data."""
+        built = {}
+        run_called = {}
+        def fake_build(event_type, payload, workdir):
+            built["data"] = {"type": event_type, "payload": payload}
+            return built["data"]
+        def fake_run(hook_name, event_data, workdir):
+            run_called["name"] = hook_name
+            run_called["data"] = event_data
+        monkeypatch.setattr("hooks._build_event_data", fake_build)
+        monkeypatch.setattr("hooks.run_hook", fake_run)
+        _spex_mod._run_hook([
+            "my-hook", "--event-type", "spec.created",
+            "--name", "test-spec",
+            "--json-payload", '{"key": "val"}',
+        ])
+        assert run_called["name"] == "my-hook"
+        assert run_called["data"]["type"] == "spec.created"
+        assert run_called["data"]["payload"]["spec_name"] == "test-spec"
+        assert run_called["data"]["payload"]["key"] == "val"
+
+    def test_hook_without_name_in_payload(self, monkeypatch):
+        """_run_hook works without --name (no spec_name added)."""
+        def fake_build(event_type, payload, workdir):
+            return {"type": event_type, "payload": payload}
+        run_called = {}
+        def fake_run(hook_name, event_data, workdir):
+            run_called["data"] = event_data
+        monkeypatch.setattr("hooks._build_event_data", fake_build)
+        monkeypatch.setattr("hooks.run_hook", fake_run)
+        _spex_mod._run_hook([
+            "my-hook", "--event-type", "test",
+            "--json-payload", '{"x": 1}',
+        ])
+        assert "spec_name" not in run_called["data"]["payload"]
+
+
+class TestMergeRouting:
+    """Test _run_merge function (lines 320-337)."""
+
+    def test_merge_with_name(self, monkeypatch):
+        """_run_merge passes name to merge.cli_submit."""
+        called = {}
+        fake_mod = type(sys)("merge")
+        def fake_cli_submit(args):
+            called["args"] = args
+        fake_mod.cli_submit = fake_cli_submit
+        sys.modules["merge"] = fake_mod
+        try:
+            _spex_mod._run_merge(["test-spec"])
+            assert "test-spec" in called["args"]
+        finally:
+            del sys.modules["merge"]
+
+    def test_merge_with_dry_run(self, monkeypatch):
+        """_run_merge passes --dry-run to merge.cli_submit."""
+        called = {}
+        fake_mod = type(sys)("merge")
+        def fake_cli_submit(args):
+            called["args"] = args
+        fake_mod.cli_submit = fake_cli_submit
+        sys.modules["merge"] = fake_mod
+        try:
+            _spex_mod._run_merge(["test-spec", "--dry-run"])
+            assert "--dry-run" in called["args"]
+        finally:
+            del sys.modules["merge"]
+
+    def test_merge_with_no_archive(self, monkeypatch):
+        """_run_merge passes --no-archive to merge.cli_submit."""
+        called = {}
+        fake_mod = type(sys)("merge")
+        def fake_cli_submit(args):
+            called["args"] = args
+        fake_mod.cli_submit = fake_cli_submit
+        sys.modules["merge"] = fake_mod
+        try:
+            _spex_mod._run_merge(["test-spec", "--no-archive"])
+            assert "--no-archive" in called["args"]
+        finally:
+            del sys.modules["merge"]
+
+    def test_merge_with_no_args(self, monkeypatch):
+        """_run_merge with no name passes empty args."""
+        called = {}
+        fake_mod = type(sys)("merge")
+        def fake_cli_submit(args):
+            called["args"] = args
+        fake_mod.cli_submit = fake_cli_submit
+        sys.modules["merge"] = fake_mod
+        try:
+            _spex_mod._run_merge([])
+            assert called["args"] == []
+        finally:
+            del sys.modules["merge"]
+
+
+class TestAllCommandsRegistered:
+    """Verify all commands are registered and routable."""
+
+    def test_llm_commands_use_error_handler(self, capsys):
+        """LLM commands route to error handler, not real implementation."""
+        for cmd in ["apply", "create", "modify", "new"]:
+            with pytest.raises(SystemExit) as exc_info:
+                _spex_mod.main([cmd])
+            assert exc_info.value.code == 1
+            err = capsys.readouterr().err
+            assert f"'spex {cmd}' requires an AI coding agent" in err
+
+    def test_internal_commands_exist(self):
+        """Internal commands are registered in _INTERNAL_COMMANDS."""
+        names = {n for n, _ in _spex_mod._INTERNAL_COMMANDS}
+        assert "version" in names
+        assert "prompt" in names
+        assert "meta-helper" in names
+        assert "todo-helper" in names
+        assert "run-hook" in names
