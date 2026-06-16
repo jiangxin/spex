@@ -53,6 +53,16 @@ def _run_script(tmp_path, spec_name, key=None, value=None, stdin_flag=False,
     )
 
 
+def _make_meta(tmp_path, spec_name, data):
+    """Create a spec directory with meta.json, return (spec_dir, meta_path)."""
+    specs_dir = tmp_path / "specs"
+    spec_dir = specs_dir / spec_name
+    spec_dir.mkdir(parents=True)
+    meta_path = spec_dir / "meta.json"
+    meta_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return spec_dir, meta_path
+
+
 class TestAppendToPrompts:
     """Verify that key='prompts' appends {text, timestamp} structs."""
 
@@ -506,3 +516,676 @@ class TestAddImages:
         entry = data["prompts"][0]
         assert entry["text"] == "stdin prompt"
         assert entry["images"] == ["screenshot.png"]
+
+
+class TestFormatValue:
+    """Test _format_value for list formatting paths (lines 31-43)."""
+
+    def test_list_with_simple_items(self, tmp_path):
+        """List of strings formats as bullet items."""
+        _make_topic(tmp_path, "my-topic", {"tags": ["alpha", "beta"]})
+
+        result = _run_script(tmp_path, "my-topic")
+
+        assert result.returncode == 0
+        assert "tags:" in result.stdout
+        assert "- alpha" in result.stdout
+        assert "- beta" in result.stdout
+
+    def test_list_with_dict_items(self, tmp_path):
+        """List of dicts formats each key-value pair (lines 34-39)."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {"text": "hello", "timestamp": "2026-01-01T00:00:00"},
+            ],
+        })
+
+        result = _run_script(tmp_path, "my-topic")
+
+        assert result.returncode == 0
+        assert "prompts:" in result.stdout
+        assert "- text: hello" in result.stdout
+        assert "  timestamp: 2026-01-01T00:00:00" in result.stdout
+
+    def test_list_with_mixed_dict_and_string_items(self, tmp_path):
+        """Mixed list renders both formats correctly."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                "plain-string-prompt",
+                {"text": "structured", "timestamp": "2026-02-02"},
+            ],
+        })
+
+        result = _run_script(tmp_path, "my-topic")
+
+        assert result.returncode == 0
+        assert "- plain-string-prompt" in result.stdout
+        assert "- text: structured" in result.stdout
+        assert "  timestamp: 2026-02-02" in result.stdout
+
+
+class TestDisplayKeyEdgeCases:
+    """Test _display_key edge cases (lines 54-61)."""
+
+    def test_get_dict_value_as_json(self, tmp_path):
+        """Dict values are displayed as pretty JSON."""
+        _make_topic(tmp_path, "my-topic", {
+            "settings": {"auto_save": True, "theme": "dark"},
+        })
+
+        result = _run_script(tmp_path, "my-topic", "settings")
+
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert output == {"auto_save": True, "theme": "dark"}
+
+    def test_get_nested_list_value(self, tmp_path):
+        """Nested list values displayed as JSON (covers isinstance list path)."""
+        _make_topic(tmp_path, "my-topic", {
+            "steps": [["build", "test"], ["deploy"]],
+        })
+
+        result = _run_script(tmp_path, "my-topic", "steps")
+
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert output == [["build", "test"], ["deploy"]]
+
+
+class TestAddImagesEdgeCases:
+    """Test _add_images_only edge cases (lines 66-81)."""
+
+    def test_add_images_to_entry_without_images_key(self, tmp_path):
+        """Adds images to last prompt that has no images field (line 72)."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {"text": "prompt without images", "timestamp": "2026-01-01"},
+            ],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["photo.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["prompts"][0]["images"] == ["photo.png"]
+
+    def test_add_images_with_multiple_existing(self, tmp_path):
+        """Adds multiple images when several already exist."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {
+                    "text": "prompt",
+                    "timestamp": "2026-01-01",
+                    "images": ["a.png", "b.png"],
+                },
+            ],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["b.png", "c.png", "d.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        # b.png is deduplicated, c.png and d.png are new
+        assert data["prompts"][0]["images"] == ["a.png", "b.png", "c.png", "d.png"]
+
+    def test_add_images_only_preserves_text(self, tmp_path):
+        """Only adding images preserves existing text and timestamp."""
+        _make_topic(tmp_path, "my-topic", {
+            "prompts": [
+                {"text": "keep this", "timestamp": "2026-01-01T00:00:00+00:00"},
+            ],
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            add_images=["only-image.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        entry = data["prompts"][0]
+        assert entry["text"] == "keep this"
+        assert entry["timestamp"] == "2026-01-01T00:00:00+00:00"
+        assert entry["images"] == ["only-image.png"]
+
+
+class TestSetKeyWithImages:
+    """Test _set_key with images parameter (lines 86-104)."""
+
+    def test_set_prompts_with_images_via_stdin(self, tmp_path):
+        """stdin + prompts key + add_images creates entry with both."""
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            stdin_flag=True,
+            input_data="multi-line\nstdin\nprompt",
+            add_images=["img.png"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        entry = data["prompts"][0]
+        assert "multi-line" in entry["text"]
+        assert entry["images"] == ["img.png"]
+
+    def test_set_extras_field_via_unknown_key(self, tmp_path):
+        """Unknown key goes into extras (covers meta.extras path in _set_key)."""
+        _make_topic(tmp_path, "my-topic", {"name": "my-topic"})
+
+        result = _run_script(
+            tmp_path, "my-topic", "my_custom_field", "custom-value",
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["my_custom_field"] == "custom-value"
+
+    def test_set_known_field_description(self, tmp_path):
+        """Setting description updates via setattr on known field."""
+        _make_topic(tmp_path, "my-topic", {
+            "name": "my-topic",
+            "description": "old desc",
+        })
+
+        result = _run_script(
+            tmp_path, "my-topic", "description", "new desc",
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["description"] == "new desc"
+
+
+class TestMainErrorPaths:
+    """Test main() error handling (lines 156-186)."""
+
+    def test_invalid_json_in_meta_exits_1(self, tmp_path):
+        """meta.json with invalid JSON exits with error."""
+        specs_dir = tmp_path / "specs"
+        spec_dir = specs_dir / "bad-json"
+        spec_dir.mkdir(parents=True)
+        meta_path = spec_dir / "meta.json"
+        meta_path.write_text("{not valid json}", encoding="utf-8")
+        _setup_spex_toml(tmp_path)
+
+        result = _run_script(tmp_path, "bad-json")
+
+        assert result.returncode == 1
+        assert "invalid JSON" in result.stderr
+
+    def test_missing_meta_file_exits_1(self, tmp_path):
+        """Spec directory without meta.json exits with error."""
+        specs_dir = tmp_path / "specs"
+        spec_dir = specs_dir / "no-meta"
+        spec_dir.mkdir(parents=True)
+        _setup_spex_toml(tmp_path)
+
+        result = _run_script(tmp_path, "no-meta")
+
+        assert result.returncode == 1
+        assert "file not found" in result.stderr
+
+    def test_main_via_direct_call_no_args_exits_2(self, monkeypatch):
+        """main() with no arguments exits 2 (covers arg parsing error)."""
+        monkeypatch.setattr(sys, "argv", ["prog"])
+        with pytest.raises(SystemExit) as exc_info:
+            meta_helper.main()
+        assert exc_info.value.code == 2
+
+
+class TestMainStdinWithPathSet:
+    """Test main() stdin routing (lines 177-182)."""
+
+    def test_stdin_set_non_prompts_key(self, tmp_path):
+        """stdin with a non-prompts key uses _set_key directly."""
+        _make_topic(tmp_path, "my-topic", {"description": "old"})
+
+        result = _run_script(
+            tmp_path, "my-topic", "description",
+            stdin_flag=True,
+            input_data="new description from stdin",
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert data["description"] == "new description from stdin"
+
+    def test_stdin_prompts_key_with_images(self, tmp_path):
+        """stdin + prompts + add_images routes to _set_key with images."""
+        _make_topic(tmp_path, "my-topic", {"prompts": []})
+
+        result = _run_script(
+            tmp_path, "my-topic", "prompts",
+            stdin_flag=True,
+            input_data="stdin text with images",
+            add_images=["photo.jpg"],
+        )
+
+        assert result.returncode == 0
+        meta_path = tmp_path / "specs" / "my-topic" / "meta.json"
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        entry = data["prompts"][0]
+        assert entry["text"] == "stdin text with images"
+        assert entry["images"] == ["photo.jpg"]
+
+
+class TestModuleMain:
+    """Test if __name__ == '__main__' path (lines 190-192)."""
+
+    def test_direct_script_execution_help(self, tmp_path):
+        """Running meta_helper.py directly shows usage on no args."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 2
+        assert "meta-helper" in result.stderr
+
+
+class TestDirectImportInternal:
+    """Direct-import tests for internal functions to achieve coverage."""
+
+    def test_format_value_list_with_dict_items(self, tmp_path):
+        """_format_value formats list of dicts (covers lines 34-39)."""
+        _make_meta(tmp_path, "t1", {"prompts": []})
+
+        result = meta_helper._format_value(
+            "prompts",
+            [{"text": "hello", "timestamp": "2026-01-01"}],
+        )
+        assert "- text: hello" in result
+        assert "  timestamp: 2026-01-01" in result
+
+    def test_format_value_list_with_simple_items(self, tmp_path):
+        """_format_value formats list of strings (covers line 41)."""
+        result = meta_helper._format_value("tags", ["a", "b"])
+        assert "- a" in result
+        assert "- b" in result
+
+    def test_format_value_scalar(self, tmp_path):
+        """_format_value formats simple value (covers line 43)."""
+        result = meta_helper._format_value("name", "my-topic")
+        assert result == "name: my-topic"
+
+    def test_display_all(self, capsys, tmp_path):
+        """_display_all iterates all keys (covers lines 48-49)."""
+        data = {"name": "test", "branch": "main"}
+        meta_helper._display_all(data)
+        out = capsys.readouterr().out
+        assert "name: test" in out
+        assert "branch: main" in out
+
+    def test_display_key_simple(self, capsys, tmp_path):
+        """_display_key prints scalar value (covers line 61)."""
+        data = {"branch": "feature-x"}
+        meta_helper._display_key(data, "branch")
+        assert capsys.readouterr().out.strip() == "feature-x"
+
+    def test_display_key_dict(self, capsys, tmp_path):
+        """_display_key dumps dict as JSON (covers line 59)."""
+        data = {"settings": {"key": "val"}}
+        meta_helper._display_key(data, "settings")
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert parsed == {"key": "val"}
+
+    def test_display_key_list(self, capsys, tmp_path):
+        """_display_key dumps list as JSON (covers isinstance list at line 58)."""
+        data = {"prompts": ["a", "b"]}
+        meta_helper._display_key(data, "prompts")
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert parsed == ["a", "b"]
+
+    def test_display_key_missing_exits(self, monkeypatch, caplog):
+        """_display_key exits when key not found (covers line 55-56)."""
+        with caplog.at_level(0):
+            with pytest.raises(SystemExit) as exc_info:
+                meta_helper._display_key({}, "missing")
+        assert exc_info.value.code == 1
+
+    def test_add_images_only(self, tmp_path, capsys):
+        """_add_images_only adds images to last prompt (covers lines 66-81)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t1", {
+            "prompts": [
+                {"text": "prompt", "timestamp": "2026-01-01"},
+            ],
+        })
+
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._add_images_only(meta, ["img1.png", "img2.png"], meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["images"] == ["img1.png", "img2.png"]
+        # File should also be updated
+        file_data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert file_data["prompts"][0]["images"] == ["img1.png", "img2.png"]
+
+    def test_add_images_only_no_prompts_exits(self, monkeypatch, tmp_path):
+        """_add_images_only exits when no prompts exist (covers lines 66-68)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t2", {"prompts": []})
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+
+        with pytest.raises(SystemExit) as exc_info:
+            meta_helper._add_images_only(meta, ["img.png"], meta_path)
+        assert exc_info.value.code == 1
+
+    def test_set_key_prompts_with_images(self, tmp_path, capsys):
+        """_set_key creates prompt entry with images (covers lines 86-104)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t3", {"prompts": []})
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._set_key(meta, "prompts", "hello world", meta_path,
+                             images=["photo.jpg"])
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "hello world"
+        assert data["prompts"][0]["images"] == ["photo.jpg"]
+        assert "timestamp" in data["prompts"][0]
+
+    def test_set_key_prompts_without_images(self, tmp_path, capsys):
+        """_set_key creates prompt entry without images (covers line 90-93)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t4", {"prompts": []})
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._set_key(meta, "prompts", "text only", meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["text"] == "text only"
+        assert "images" not in data["prompts"][0]
+
+    def test_set_key_known_field(self, tmp_path, capsys):
+        """_set_key uses setattr for known fields (covers lines 95-97)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t5", {
+            "name": "t5", "branch": "old",
+        })
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._set_key(meta, "branch", "new", meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["branch"] == "new"
+
+    def test_set_key_unknown_field(self, tmp_path, capsys):
+        """_set_key stores unknown fields in extras (covers lines 98-99)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t6", {"name": "t6"})
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._set_key(meta, "custom", "value", meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["custom"] == "value"
+
+    def test_set_key_prompts_initializes_list(self, tmp_path, capsys):
+        """_set_key initializes prompts list when meta.prompts is None."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t7", {"name": "t7"})
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        # meta.prompts will be None or not a list
+        meta_helper._set_key(meta, "prompts", "first", meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "first"
+
+    def test_main_display_all(self, monkeypatch, capsys, tmp_path):
+        """main() with no key routes to _display_all (covers line 170-171)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t8", {
+            "name": "t8", "branch": "main",
+        })
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        meta_helper.main(["t8"])
+        out = capsys.readouterr().out
+        assert "name: t8" in out
+        assert "branch: main" in out
+
+    def test_main_display_key(self, monkeypatch, capsys, tmp_path):
+        """main() with key only routes to _display_key (covers line 186)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t9", {
+            "name": "t9", "branch": "feature-y",
+        })
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        meta_helper.main(["t9", "branch"])
+        assert capsys.readouterr().out.strip() == "feature-y"
+
+    def test_main_set_value(self, monkeypatch, capsys, tmp_path):
+        """main() with key+value routes to _set_key (covers line 176)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t10", {
+            "name": "t10", "branch": "old",
+        })
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        meta_helper.main(["t10", "branch", "new"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["branch"] == "new"
+
+    def test_main_add_images_only(self, monkeypatch, capsys, tmp_path):
+        """main() prompts+add_images (no value) routes to _add_images_only (lines 183-184)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t11", {
+            "prompts": [
+                {"text": "existing", "timestamp": "2026-01-01"},
+            ],
+        })
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        meta_helper.main(["t11", "prompts", "--add-images", "img.png"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["images"] == ["img.png"]
+
+    def test_main_invalid_json(self, monkeypatch, caplog, tmp_path):
+        """main() with invalid JSON exits 1 (covers lines 163-166)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t12", {})
+        meta_path.write_text("{bad json}", encoding="utf-8")
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        with caplog.at_level(0):
+            with pytest.raises(SystemExit) as exc_info:
+                meta_helper.main(["t12"])
+        assert exc_info.value.code == 1
+        assert "invalid JSON" in caplog.text
+
+    def test_main_missing_meta(self, monkeypatch, caplog, tmp_path):
+        """main() with missing meta.json exits 1 (covers lines 158-160)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir = tmp_path / "specs" / "t13"
+        spec_dir.mkdir(parents=True)
+        # No meta.json
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        with caplog.at_level(0):
+            with pytest.raises(SystemExit) as exc_info:
+                meta_helper.main(["t13"])
+        assert exc_info.value.code == 1
+        assert "file not found" in caplog.text
+
+    def test_main_set_prompts_via_stdin(self, monkeypatch, capsys, tmp_path):
+        """main() stdin with prompts key routes to _set_key (covers lines 177-182)."""
+        import io
+
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t14", {"prompts": []})
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("sys.stdin", io.StringIO("stdin prompt text"))
+
+        meta_helper.main(["t14", "prompts", "--stdin"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["text"] == "stdin prompt text"
+
+    def test_main_set_non_prompts_via_stdin(self, monkeypatch, capsys, tmp_path):
+        """main() stdin with non-prompts key routes to _set_key directly (line 182)."""
+        import io
+
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t15", {
+            "name": "t15", "description": "old",
+        })
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("sys.stdin", io.StringIO("new desc"))
+
+        meta_helper.main(["t15", "description", "--stdin"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["description"] == "new desc"
+
+    def test_main_prompts_with_images_via_stdin(self, monkeypatch, capsys, tmp_path):
+        """main() stdin+prompts+add_images routes to _set_key with images (line 179-180)."""
+        import io
+
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t16", {"prompts": []})
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("sys.stdin", io.StringIO("stdin with images"))
+
+        meta_helper.main([
+            "t16", "prompts", "--stdin",
+            "--add-images", "photo.png",
+        ])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["text"] == "stdin with images"
+        assert data["prompts"][0]["images"] == ["photo.png"]
+
+    def test_main_prompts_with_value_and_images(self, monkeypatch, capsys, tmp_path):
+        """main() prompts+value+add_images routes to _set_key with images (line 173-174)."""
+        from common import clear_spex_root_cache
+        from config import ProjectContext
+        spec_dir, meta_path = _make_meta(tmp_path, "t17", {"prompts": []})
+        ctx = ProjectContext(
+            cwd=tmp_path, top_workdir=None, main_worktree=None,
+            remote_url="", branch="", user_name="", user_email="",
+            spex_tomls=[], config={}, spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        clear_spex_root_cache()
+        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+
+        meta_helper.main([
+            "t17", "prompts", "prompt text",
+            "--add-images", "photo.png",
+        ])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["prompts"][0]["text"] == "prompt text"
+        assert data["prompts"][0]["images"] == ["photo.png"]
+
+    def test_set_key_replaces_non_list_prompts(self, tmp_path, capsys):
+        """_set_key initializes prompts list when meta.prompts is not a list (line 89)."""
+        spec_dir, meta_path = _make_meta(tmp_path, "t18", {
+            "name": "t18",
+            "prompts": "not a list",
+        })
+        from common import SpecMeta
+        meta = SpecMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+        meta_helper._set_key(meta, "prompts", "new prompt", meta_path)
+
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert len(data["prompts"]) == 1
+        assert data["prompts"][0]["text"] == "new prompt"
