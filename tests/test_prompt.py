@@ -1388,3 +1388,401 @@ class TestMainRouting:
 
         captured = capsys.readouterr()
         assert "usage:" in captured.err
+
+
+class TestValidateRequiredMeta:
+    """Test validate_required_meta (lines 29-53)."""
+
+    def test_no_front_matter_returns_early(self, capsys):
+        """No front-matter -> validate_required_meta returns without error."""
+        from prompt import validate_required_meta
+        validate_required_meta("no front matter here", {"key": "val"})
+        # Should not exit or print error
+
+    def test_no_required_key_returns_early(self, capsys):
+        """Front-matter without required key -> no validation."""
+        from prompt import validate_required_meta
+        content = "---\nversion: 1.0\n---\n\nbody"
+        validate_required_meta(content, {})
+
+    def test_missing_required_exits_1(self, caplog):
+        """Missing required metadata key -> exit 1 with error."""
+        from prompt import validate_required_meta
+        content = "---\nrequired:\n  - spec_content\n  - current_task\n---\n\nbody"
+        with caplog.at_level(0):
+            with pytest.raises(SystemExit) as exc_info:
+                validate_required_meta(content, {"spec_content": "ok"})
+        assert exc_info.value.code == 1
+        assert "missing required metadata" in caplog.text
+
+    def test_all_required_present_no_exit(self, caplog):
+        """All required metadata present -> no exit."""
+        from prompt import validate_required_meta
+        content = "---\nrequired:\n  - name\n  - version\n---\n\nbody"
+        with caplog.at_level(0):
+            validate_required_meta(content, {"name": "test", "version": "1"})
+        assert "missing" not in caplog.text
+
+
+class TestFormatItemBrief:
+    """Test _format_item_brief (line 70)."""
+
+    def test_brief_format(self):
+        """_format_item_brief returns concise one-liner."""
+        from prompt import _format_item_brief
+        result = _format_item_brief({
+            "id": "step-1", "name": "Do something",
+        })
+        assert result == "- step-1: Do something *(details omitted)*"
+
+    def test_brief_missing_fields(self):
+        """_format_item_brief handles missing id/name."""
+        from prompt import _format_item_brief
+        result = _format_item_brief({})
+        assert result == "- :  *(details omitted)*"
+
+
+class TestBuildTaskContextNoSpec:
+    """Test _build_task_context when spec.md is missing (line 171)."""
+
+    def test_no_spec_md_returns_empty_content(self, tmp_path):
+        """When spec.md doesn't exist, spec_content is empty string."""
+        from prompt import _build_task_context
+        spec_dir = tmp_path / "specs" / "no-spec"
+        spec_dir.mkdir(parents=True)
+        # No spec.md
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "no-spec"}), encoding="utf-8",
+        )
+        result = _build_task_context(spec_dir)
+        assert result["spec_content"] == ""
+        assert result["spec_content_concise"] == ""
+
+
+class TestBuildTaskContextNoTodo:
+    """Test _build_task_context when no todo.json (lines 226-231)."""
+
+    def test_no_todo_returns_empty_tasks(self, tmp_path):
+        """When todo.json doesn't exist, all task fields are empty."""
+        from prompt import _build_task_context
+        spec_dir = tmp_path / "specs" / "no-todo"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "no-todo"}), encoding="utf-8",
+        )
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        result = _build_task_context(spec_dir)
+        assert result["completed_tasks"] == ""
+        assert result["completed_tasks_concise"] == ""
+        assert result["current_task_id"] == ""
+        assert result["current_task_description"] == ""
+        assert result["future_tasks"] == ""
+        assert result["future_tasks_concise"] == ""
+
+
+class TestBuildTaskContextVerboseOverflow:
+    """Test _build_task_context when tasks exceed verbose_items (lines 182-186, 205-213)."""
+
+    def test_completed_tasks_brief_overflow(self, tmp_path):
+        """Completed tasks beyond verbose_items use brief format."""
+        from prompt import _build_task_context
+        spec_dir = tmp_path / "specs" / "overflow"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "overflow"}), encoding="utf-8",
+        )
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        tasks = [
+            {"id": f"s{i}", "name": f"Task {i}", "details": "details",
+             "completed_at": "2026-01-01"}
+            for i in range(25)
+        ]
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        result = _build_task_context(spec_dir, verbose_items=20)
+        # Should contain brief items for overflow
+        assert "*(details omitted)*" in result["completed_tasks"]
+
+    def test_future_tasks_brief_overflow(self, tmp_path):
+        """Future tasks beyond verbose_items use brief format."""
+        from prompt import _build_task_context
+        spec_dir = tmp_path / "specs" / "future-overflow"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "future-overflow"}), encoding="utf-8",
+        )
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        tasks = [{"id": "s0", "name": "Done", "completed_at": "2026-01-01"}]
+        tasks.extend([
+            {"id": f"s{i}", "name": f"Future {i}", "details": "details",
+             "completed_at": ""}
+            for i in range(1, 25)
+        ])
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        result = _build_task_context(spec_dir, verbose_items=20)
+        # Should contain brief items for overflow future tasks
+        assert "*(details omitted)*" in result["future_tasks"]
+
+
+class TestOutputRendered:
+    """Test _output_rendered (lines 327-332)."""
+
+    def test_output_to_file_creates_parent_dirs(self, tmp_path, capsys):
+        """_output_rendered creates parent directories for output path."""
+        from prompt import _output_rendered
+        out_path = tmp_path / "deep" / "nested" / "dir" / "output.md"
+        _output_rendered("content", str(out_path))
+        assert out_path.read_text(encoding="utf-8") == "content"
+
+    def test_output_to_stdout(self, capsys):
+        """_output_rendered prints to stdout when no output_path."""
+        from prompt import _output_rendered
+        _output_rendered("hello stdout", None)
+        assert capsys.readouterr().out.strip() == "hello stdout"
+
+
+class TestNormalizeSubcmd:
+    """Test _normalize_subcmd (line 652)."""
+
+    def test_underscores_to_hyphens(self):
+        """_normalize_subcmd converts underscores to hyphens."""
+        from prompt import _normalize_subcmd
+        assert _normalize_subcmd("apply_one_task") == "apply-one-task"
+
+    def test_hyphens_unchanged(self):
+        """_normalize_subcmd leaves hyphens unchanged."""
+        from prompt import _normalize_subcmd
+        assert _normalize_subcmd("apply-one-task") == "apply-one-task"
+
+class TestMainRoutingDirect:
+    """Test main() routing for all subcommands (lines 657-692)."""
+
+    def test_routes_to_apply_commit(self, tmp_path, monkeypatch, capsys):
+        """main() routes apply-commit to _do_apply_commit."""
+        repo, spec_dir = _setup_topic(tmp_path, "routing-test", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+        main(["apply-commit", "--name", "routing-test"])
+
+        out = capsys.readouterr().out
+        assert "<current-task>" in out
+
+    def test_routes_to_modify_spec(self, tmp_path, monkeypatch, capsys):
+        """main() routes modify-spec to _do_modify_spec."""
+        repo, spec_dir = _setup_topic(tmp_path, "modify-test", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("modify this"))
+
+        from prompt import main
+        main(["modify-spec", "--name", "modify-test", "--stdin"])
+
+        out = capsys.readouterr().out
+        assert "<user-request>" in out
+
+    def test_routes_to_modify_todo(self, tmp_path, monkeypatch, capsys):
+        """main() routes modify-todo to _do_modify_todo."""
+        repo, spec_dir = _setup_topic(tmp_path, "mod-todo-test", [
+            _make_task("s1", completed=True),
+            _make_task("s2", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+        main(["modify-todo", "--name", "mod-todo-test"])
+
+        out = capsys.readouterr().out
+        assert "todo" in out.lower() or "step" in out.lower()
+
+    def test_fallback_to_cli_render(self, tmp_path, monkeypatch, caplog):
+        """main() falls back to cli_render for unknown subcommand."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["nonexistent-template"])
+        assert exc_info.value.code == 1
+
+    def test_no_args_exits_2(self, capsys):
+        """main() with no args prints help and exits 2."""
+        from prompt import main
+        with pytest.raises(SystemExit) as exc_info:
+            main([])
+        assert exc_info.value.code == 2
+        assert "usage:" in capsys.readouterr().err.lower()
+
+    def test_underscore_subcmd_normalized(self, tmp_path, monkeypatch, capsys):
+        """main() accepts underscore subcmd and normalizes to hyphen."""
+        repo, spec_dir = _setup_topic(tmp_path, "us-test", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+        main(["apply_commit", "--name", "us-test"])
+
+        out = capsys.readouterr().out
+        assert "<current-task>" in out
+
+
+class TestCliApplyOneTaskDirect:
+    """Test cli_apply_one_task directly (lines 471-472)."""
+
+    def test_cli_apply_one_task_json(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task --json outputs JSON."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-aot", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        from prompt import cli_apply_one_task
+        cli_apply_one_task(["--name", "cli-aot", "--json"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["task_id"] == "s1"
+
+    def test_cli_apply_one_task_all_done_json(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_one_task --json all-done outputs all_done=true."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-aot-done", [
+            _make_task("s1", completed=True),
+        ])
+        monkeypatch.chdir(repo)
+        from prompt import cli_apply_one_task
+        with pytest.raises(SystemExit) as exc_info:
+            cli_apply_one_task(["--name", "cli-aot-done", "--json"])
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["all_done"] is True
+
+
+class TestCliApplyCommitDirect:
+    """Test cli_apply_commit directly (lines 521-522)."""
+
+    def test_cli_apply_commit(self, tmp_path, monkeypatch, capsys):
+        """cli_apply_commit renders commit prompt."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-ac", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+        from prompt import cli_apply_commit
+        cli_apply_commit(["--name", "cli-ac"])
+        out = capsys.readouterr().out
+        assert "<current-task>" in out
+
+
+class TestCliModifySpecDirect:
+    """Test cli_modify_spec directly (lines 567-568)."""
+
+    def test_cli_modify_spec_json(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec --json outputs JSON prompt."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-ms", [
+            _make_task("s1", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("change req"))
+        from prompt import cli_modify_spec
+        cli_modify_spec(["--name", "cli-ms", "--stdin", "--json"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "prompt" in data
+
+    def test_cli_modify_spec_remove_undone(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_spec --remove-undone filters todo.json."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-ms-ru", [
+            _make_task("s1", completed=True),
+            _make_task("s2", completed=False),
+            _make_task("s3", completed=False),
+        ])
+        todo_path = spec_dir / "todo.json"
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", io.StringIO("update"))
+        from prompt import cli_modify_spec
+        cli_modify_spec(["--name", "cli-ms-ru", "--stdin", "--remove-undone"])
+        data = json.loads(todo_path.read_text(encoding="utf-8"))
+        assert len(data) == 1
+        assert data[0]["id"] == "s1"
+
+
+class TestCliModifyTodoDirect:
+    """Test cli_modify_todo directly (lines 612-613)."""
+
+    def test_cli_modify_todo_json(self, tmp_path, monkeypatch, capsys):
+        """cli_modify_todo --json outputs JSON prompt."""
+        repo, spec_dir = _setup_topic(tmp_path, "cli-mt", [
+            _make_task("s1", completed=True),
+            _make_task("s2", completed=False),
+        ])
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+        from prompt import cli_modify_todo
+        cli_modify_todo(["--name", "cli-mt", "--json"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "prompt" in data
+
+
+class TestCliRender:
+    """Test cli_render (lines 618-647)."""
+
+    def test_cli_render_template_not_found(self, tmp_path, monkeypatch, caplog):
+        """cli_render with missing template exits 1."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+        from prompt import cli_render
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_render(["nonexistent", "--name", "x"])
+        assert exc_info.value.code == 1
+
+
+class TestReadStdinExtraVars:
+    """Test _read_stdin_extra_vars (lines 477-490)."""
+
+    def test_stdin_flag_returns_prompt_context(self, monkeypatch):
+        """With --stdin flag, returns {'prompt_context': text}."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO("user input"))
+        from prompt import _read_stdin_extra_vars
+        result = _read_stdin_extra_vars(stdin_flag=True)
+        assert result == {"prompt_context": "user input"}
+
+    def test_no_flag_returns_parsed_json(self, monkeypatch):
+        """Without --stdin flag, parses stdin as JSON."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"key": "val"}'))
+        from prompt import _read_stdin_extra_vars
+        result = _read_stdin_extra_vars(stdin_flag=False)
+        assert result == {"key": "val"}
+
+    def test_invalid_json_exits_1(self, monkeypatch, caplog):
+        """Invalid JSON without --stdin flag exits 1."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO("{bad json}"))
+        from prompt import _read_stdin_extra_vars
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                _read_stdin_extra_vars(stdin_flag=False)
+        assert exc_info.value.code == 1
+        assert "stdin must be valid JSON" in caplog.text
+
+    def test_empty_stdin_returns_none(self, monkeypatch):
+        """Empty stdin returns None."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        from prompt import _read_stdin_extra_vars
+        result = _read_stdin_extra_vars(stdin_flag=False)
+        assert result is None
