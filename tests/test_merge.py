@@ -1,8 +1,10 @@
 import json
 import logging
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import common as spex_common
 import merge as spex_merge
 import pytest
 from config import ProjectContext
@@ -181,3 +183,75 @@ class TestAutoSelect:
         assert "[2]" in caplog.text
         assert "topic-a" in caplog.text
         assert "topic-b" in caplog.text
+
+
+class TestNoSpexBranch:
+    """Test no spex_branch error path (lines 105-108)."""
+
+    def test_no_spex_branch_exits_with_json(self, monkeypatch, caplog,
+                                            capsys, tmp_path):
+        """cli_submit exits 1 with JSON error when spec has no spex_branch."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
+        (repo / ".spex.toml").write_text(
+            f'[spex]\nspex_root = "{tmp_path}/spex"\n', encoding="utf-8"
+        )
+        specs = tmp_path / "spex" / "specs" / "no-branch-spec"
+        specs.mkdir(parents=True)
+        (specs / "meta.json").write_text(
+            json.dumps({
+                "name": "no-branch-spec",
+                "workdir": str(repo),
+                "branch": "main",
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(repo)
+        spex_common.clear_spex_root_cache()
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                spex_merge.cli_submit(["no-branch-spec"])
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "No spex_branch" in data["errors"][0]
+
+
+class TestNonMergeSubmitMethod:
+    """Test non-merge submit method error (lines 145-148)."""
+
+    def test_submit_method_not_implemented(self, monkeypatch, caplog,
+                                           capsys, tmp_path):
+        """cli_submit exits 1 when submit_method is not 'merge'."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
+        (repo / ".spex.toml").write_text(
+            f'[spex]\nspex_root = "{tmp_path}/spex"\nsubmit_method = "pr"\n',
+            encoding="utf-8",
+        )
+        specs = tmp_path / "spex" / "specs" / "pr-spec"
+        specs.mkdir(parents=True)
+        (specs / "meta.json").write_text(
+            json.dumps({
+                "name": "pr-spec",
+                "workdir": str(repo),
+                "branch": "main",
+                "spex_branch": "spex/pr-spec",
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(repo)
+        spex_common.clear_spex_root_cache()
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                spex_merge.cli_submit(["pr-spec"])
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "not implemented" in data["errors"][0]

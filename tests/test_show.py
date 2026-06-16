@@ -1,6 +1,8 @@
 import io
 import json
+import subprocess
 import sys
+from pathlib import Path
 
 import common as spex_common
 import pytest
@@ -407,3 +409,77 @@ class TestSelectSpecInteractiveAllowEmpty:
 
         result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None
+
+
+class TestPagedOutput:
+    """Test _paged_output (lines 22-30)."""
+
+    def test_pipes_directly_when_not_tty(self, capsys, monkeypatch):
+        """_paged_output prints directly when stdout is not a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        from show import _paged_output
+        _paged_output("hello world")
+        assert capsys.readouterr().out.strip() == "hello world"
+
+    def test_pager_invoked_on_tty(self, capfd, monkeypatch, tmp_path):
+        """_paged_output uses PAGER when stdout is a TTY."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.setenv("PAGER", "cat")
+        from show import _paged_output
+        _paged_output("paged content")
+        out = capfd.readouterr().out
+        assert "paged content" in out
+
+
+class TestMainBriefAndVerbose:
+    """Test main() brief vs verbose routing (lines 109-112)."""
+
+    def test_brief_mode(self, monkeypatch, capsys, tmp_path):
+        """main() with -l uses brief output."""
+        spec_dir = tmp_path / "specs" / "test-spec"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "test-spec"}), encoding="utf-8"
+        )
+        ctx = _make_ctx(tmp_path)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr(
+            "common.get_specs_dir", lambda _w=None: tmp_path / "specs",
+        )
+        from show import main
+        main(["-l", "test-spec"])
+        out = capsys.readouterr().out
+        assert "test-spec" in out
+
+    def test_verbose_mode(self, monkeypatch, capsys, tmp_path):
+        """main() without -l uses verbose output."""
+        spec_dir = tmp_path / "specs" / "test-spec"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "test-spec"}), encoding="utf-8"
+        )
+        (spec_dir / "spec.md").write_text("# Test\n\nSome content.", encoding="utf-8")
+        ctx = _make_ctx(tmp_path)
+        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr(
+            "common.get_specs_dir", lambda _w=None: tmp_path / "specs",
+        )
+        from show import main
+        main(["test-spec"])
+        out = capsys.readouterr().out
+        assert "Test" in out
+
+
+class TestShowScriptDirect:
+    """Test if __name__ == '__main__' path (line 116)."""
+
+    def test_direct_script_auto_selects_spec(self):
+        """Running show.py directly auto-selects single spec (exit 0)."""
+        result = subprocess.run(
+            [sys.executable, str(
+                Path(__file__).resolve().parent.parent / "scripts" / "show.py"
+            )],
+            capture_output=True, text=True,
+        )
+        # When a single spec exists, it's auto-selected and shown
+        assert result.returncode == 0
