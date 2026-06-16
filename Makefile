@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-md format test test-all check check-all coverage version version-check bump
+.PHONY: setup lint lint-md format test test-all check check-all coverage coverage-all version version-check bump
 
 setup:
 	@echo "==> Installing Python dev dependencies..."
@@ -48,3 +48,7 @@ check-all: version-check lint lint-md test-all
 coverage:
 	@echo "==> Running tests with coverage..."
 	pytest --cov=scripts --cov-report=term-missing
+
+coverage-all:
+	@echo "==> Running all tests with coverage..."
+	pytest -m "" --cov=scripts --cov-report=term-missing
