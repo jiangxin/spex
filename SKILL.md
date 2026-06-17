@@ -1,12 +1,12 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), submit (merge), archive, init."
+description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
 version: 0.3.0
 arguments:
   - name: command
     required: false
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), submit (alias: merge), archive, init. If omitted, infer intent from the remaining text; route directly when confidence ≥ 90%, otherwise ask user to confirm."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text; route directly when confidence ≥ 90%, otherwise ask user to confirm."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -39,7 +39,7 @@ analysis and design to incremental implementation, and submission.
 | `modify`        |                    | Modify a spec's requirements         |
 | `apply`         | `run`, `do`, `go`  | Apply a spec to generate code        |
 | `apply-one-step`| `step`             | Apply one step from a spec's todo list |
-| `submit`        | `merge`            | Submit completed work (merge or PR)  |
+| `merge`         | `submit`           | Submit completed work (merge or PR)  |
 | `archive`       |                    | Archive a completed spec             |
 | `init`          |                    | Initialize spex environment          |
 
@@ -54,7 +54,7 @@ SKILL.md resides.
 | `modify`                           | `commands/modify.md`          |
 | `apply` / `run` / `do` / `go`     | `commands/apply.md`           |
 | `apply-one-step` / `step`          | `commands/apply-one-step.md`  |
-| `submit` / `merge`                 | `commands/submit.md`          |
+| `merge` / `submit`                 | `commands/merge.md`           |
 | `archive`                          | `commands/archive.md`         |
 | `init`                             | `commands/init.md`            |
 
@@ -82,7 +82,7 @@ these heuristics:
 | Changing requirements for an existing spec           | `modify`          |
 | Starting implementation of a spec                    | `apply`           |
 | Working through a spec one step at a time            | `apply-one-step`  |
-| Finishing, merging, or submitting completed work     | `submit`          |
+| Finishing, merging, or submitting completed work     | `merge`           |
 | Cleaning up completed specs                          | `archive`         |
 | Setting up spex for the first time                   | `init`            |
 
