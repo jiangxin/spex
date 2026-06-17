@@ -144,6 +144,7 @@ def _do_prepare_spec(args):
     import json
 
     import config as cfg
+    import hooks
     from common import get_specs_dir, local_iso_timestamp
 
     specs_dir = get_specs_dir()
@@ -158,6 +159,13 @@ def _do_prepare_spec(args):
     ctx = cfg.get_project_context()
     timestamp = local_iso_timestamp()
     _write_meta(spec_dir, ctx, prompt, timestamp, args.description)
+
+    hooks.run_pre_action(
+        "create",
+        {"spec_name": spec_name},
+        workdir=ctx.top_workdir,
+        spec_name=spec_name,
+    )
 
     import prompt as prompt_mod
 
