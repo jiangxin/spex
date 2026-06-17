@@ -97,7 +97,7 @@ _CONFIG_SECTIONS = [
         "spex_root", "branch_management", "main_branch_name", "submit_method",
     ]),
     ("Config Files", "list", "spex_tomls"),
-    ("Spec Roots", "list", "spex_roots"),
+    ("Spex Roots", "list", "spex_roots"),
 ]
 
 
