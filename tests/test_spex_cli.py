@@ -815,19 +815,21 @@ class TestRunHook:
 
 
 class TestMergeRouting:
-    """Test _run_merge function (lines 320-337)."""
+    """Test _run_merge and _run_submit functions."""
 
     def test_merge_with_name(self, monkeypatch):
-        """_run_merge passes name to merge.cli_submit."""
+        """_run_merge passes name and command to merge.cli_submit."""
         called = {}
         fake_mod = type(sys)("merge")
-        def fake_cli_submit(args):
+        def fake_cli_submit(args, **kwargs):
             called["args"] = args
+            called["kwargs"] = kwargs
         fake_mod.cli_submit = fake_cli_submit
         sys.modules["merge"] = fake_mod
         try:
             _spex_mod._run_merge(["test-spec"])
             assert "test-spec" in called["args"]
+            assert called["kwargs"].get("command") == "merge"
         finally:
             del sys.modules["merge"]
 
@@ -835,8 +837,9 @@ class TestMergeRouting:
         """_run_merge passes --dry-run to merge.cli_submit."""
         called = {}
         fake_mod = type(sys)("merge")
-        def fake_cli_submit(args):
+        def fake_cli_submit(args, **kwargs):
             called["args"] = args
+            called["kwargs"] = kwargs
         fake_mod.cli_submit = fake_cli_submit
         sys.modules["merge"] = fake_mod
         try:
@@ -849,8 +852,9 @@ class TestMergeRouting:
         """_run_merge passes --no-archive to merge.cli_submit."""
         called = {}
         fake_mod = type(sys)("merge")
-        def fake_cli_submit(args):
+        def fake_cli_submit(args, **kwargs):
             called["args"] = args
+            called["kwargs"] = kwargs
         fake_mod.cli_submit = fake_cli_submit
         sys.modules["merge"] = fake_mod
         try:
@@ -863,13 +867,29 @@ class TestMergeRouting:
         """_run_merge with no name passes empty args."""
         called = {}
         fake_mod = type(sys)("merge")
-        def fake_cli_submit(args):
+        def fake_cli_submit(args, **kwargs):
             called["args"] = args
         fake_mod.cli_submit = fake_cli_submit
         sys.modules["merge"] = fake_mod
         try:
             _spex_mod._run_merge([])
             assert called["args"] == []
+        finally:
+            del sys.modules["merge"]
+
+    def test_submit_uses_submit_command(self, monkeypatch):
+        """_run_submit passes command='submit' to merge.cli_submit."""
+        called = {}
+        fake_mod = type(sys)("merge")
+        def fake_cli_submit(args, **kwargs):
+            called["args"] = args
+            called["kwargs"] = kwargs
+        fake_mod.cli_submit = fake_cli_submit
+        sys.modules["merge"] = fake_mod
+        try:
+            _spex_mod._run_submit(["test-spec"])
+            assert "test-spec" in called["args"]
+            assert called["kwargs"].get("command") == "submit"
         finally:
             del sys.modules["merge"]
 

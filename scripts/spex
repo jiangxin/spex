@@ -334,7 +334,27 @@ def _run_merge(argv=None):
         submit_args.append("--no-archive")
     if args.dry_run:
         submit_args.append("--dry-run")
-    merge.cli_submit(submit_args)
+    merge.cli_submit(submit_args, command="merge")
+
+
+def _run_submit(argv=None):
+    """Route submit subcommand (alias of merge with different hook event)."""
+    import merge
+
+    parser = ArgumentParser(prog="spex submit", usage=_MERGE_USAGE)
+    parser.add_argument("name", nargs="?", default="")
+    parser.add_argument("--no-archive", action="store_true")
+    parser.add_argument("-n", "--dry-run", action="store_true")
+    args = parser.parse(argv)
+
+    submit_args = []
+    if args.name:
+        submit_args.append(args.name)
+    if args.no_archive:
+        submit_args.append("--no-archive")
+    if args.dry_run:
+        submit_args.append("--dry-run")
+    merge.cli_submit(submit_args, command="submit")
 
 
 def _run_todo_helper(argv=None):
@@ -439,7 +459,7 @@ _CLI_COMMANDS = [
     ("init", _run_init),
     ("list", _run_list),
     ("merge", _run_merge),
-    ("submit", _run_merge),
+    ("submit", _run_submit),
     ("open", _run_open),
     ("show", _run_show),
 ]
