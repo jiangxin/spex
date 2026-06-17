@@ -1,11 +1,11 @@
-# spex submit
+# spex merge
 
 Submit completed work by merging the feature branch or creating a PR.
 
 ## Usage
 
 ```text
-/spex submit [spec_name] [--dry-run | -n] [--no-archive]
+/spex merge [spec_name] [--dry-run | -n] [--no-archive]
 ```
 
 When `spec_name` is omitted, the CLI automatically searches for
@@ -47,7 +47,7 @@ Read `$spec_path/meta.json` and check:
 Run:
 
 ```bash
-$spex_skill_dir/scripts/spex submit $spec_name
+$spex_skill_dir/scripts/spex merge $spec_name
 ```
 
 Parse the JSON output:

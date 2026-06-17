@@ -52,7 +52,7 @@ Spex 是一个为项目引入规格驱动开发的技能（skill）。它可以�
 | `modify`        |                    | 修改规格的需求                 |
 | `apply`         | `run`, `do`, `go`  | 应用规格生成代码                |
 | `apply-one-step`| `step`             | 执行规格待办列表中的一个步骤      |
-| `submit`        | `merge`            | 提交已完成的工作（合并或创建 PR） |
+| `merge`         | `submit`           | 提交已完成的工作（合并或创建 PR） |
 | `archive`       |                    | 归档已完成的规格                |
 | `init`          |                    | 初始化 spex 环境               |
 
@@ -73,7 +73,7 @@ Spex 是一个为项目引入规格驱动开发的技能（skill）。它可以�
 
 执行规格待办列表中的单个步骤后停止。
 
-#### `/spex submit <spec-name>`
+#### `/spex merge <spec-name>`
 
 提交已完成的工作，根据 `submit_method` 配置选项合并分支或创建 pull request。
 
