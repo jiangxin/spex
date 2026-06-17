@@ -129,9 +129,13 @@ def _do_precheck(args):
     spec_dir = common.resolve_spec_dir(args.name)
     validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
 
+    meta = common.load_meta(spec_dir) or SpecMeta()
     hooks.run_pre_action(
         "apply",
-        {"spec_name": spec_dir.name},
+        {
+            "source_branch": meta.spex_branch or "",
+            "target_branch": meta.branch or "main",
+        },
         workdir=ctx.top_workdir,
         spec_name=spec_dir.name,
     )
