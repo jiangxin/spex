@@ -407,3 +407,275 @@ class TestRunPostAction:
             )
 
         assert output_file.read_text() == "topic=my-topic"
+
+
+# ===================== run_hook return value =====================
+
+
+class TestRunHookReturnValue:
+    def test_returns_none_when_no_hook(self, monkeypatch, tmp_path):
+        """run_hook returns None when no hook is found."""
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "pre-action",
+                {"event_type": "create", "payload": {}},
+            )
+
+        assert result is None
+
+    def test_returns_completed_process_on_success(self, monkeypatch, tmp_path):
+        """run_hook returns CompletedProcess when hook succeeds."""
+        import subprocess
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text("#!/bin/bash\nexit 0\n")
+        os.chmod(hook_file, 0o755)
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "pre-action",
+                {"event_type": "create", "payload": {}},
+                str(tmp_path),
+            )
+
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+
+    def test_returns_completed_process_on_failure(self, monkeypatch, tmp_path):
+        """run_hook returns CompletedProcess even when hook fails."""
+        import subprocess
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text("#!/bin/bash\nexit 2\n")
+        os.chmod(hook_file, 0o755)
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "pre-action",
+                {"event_type": "create", "payload": {}},
+                str(tmp_path),
+            )
+
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 2
+
+
+# ===================== run_pre_action =====================
+
+
+class TestRunPreAction:
+    def test_delegates_to_run_hook(self, monkeypatch, tmp_path):
+        """run_pre_action calls run_hook with 'pre-action' name."""
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        monkeypatch.setattr(
+            "hooks._build_event_data",
+            lambda *a, **k: {
+                "user": "Test",
+                "email": "test@test.com",
+                "workdir": "/tmp",
+                "event_type": "create",
+                "payload": {"topic": "feat", "spec_name": "my-spec"},
+            },
+        )
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        output_file = tmp_path / "hook_output.txt"
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys, json\n"
+            "data = json.loads(sys.stdin.read())\n"
+            f"open('{output_file}', 'w').write(f'spec={{data[\"payload\"][\"spec_name\"]}}')\n"
+        )
+        os.chmod(hook_file, 0o755)
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            hooks.run_pre_action(
+                "create", {"topic": "feat"}, str(tmp_path),
+                spec_name="my-spec",
+            )
+
+        assert output_file.read_text() == "spec=my-spec"
+
+    def test_exits_on_hook_failure(self, monkeypatch, tmp_path):
+        """run_pre_action calls sys.exit(1) when hook exits non-zero."""
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        monkeypatch.setattr(
+            "hooks._build_event_data",
+            lambda *a, **k: {
+                "user": "Test",
+                "email": "test@test.com",
+                "workdir": "/tmp",
+                "event_type": "apply",
+                "payload": {},
+            },
+        )
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text(
+            "#!/bin/bash\necho 'denied by policy' >&2; exit 1\n"
+        )
+        os.chmod(hook_file, 0o755)
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            with pytest.raises(SystemExit) as exc_info:
+                hooks.run_pre_action(
+                    "apply", {}, str(tmp_path),
+                )
+
+        assert exc_info.value.code == 1
+
+    def test_no_exit_on_hook_success(self, monkeypatch, tmp_path):
+        """run_pre_action does not exit when hook succeeds."""
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        monkeypatch.setattr(
+            "hooks._build_event_data",
+            lambda *a, **k: {
+                "user": "Test",
+                "email": "test@test.com",
+                "workdir": "/tmp",
+                "event_type": "create",
+                "payload": {},
+            },
+        )
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text("#!/bin/bash\nexit 0\n")
+        os.chmod(hook_file, 0o755)
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            # Should not raise SystemExit
+            hooks.run_pre_action(
+                "create", {}, str(tmp_path),
+            )
+
+    def test_no_exit_when_no_hook(self, monkeypatch, tmp_path):
+        """run_pre_action does not exit when no hook is found."""
+        from unittest.mock import patch
+
+        from config import ProjectContext
+
+        ctx = ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="",
+            user_name="",
+            user_email="",
+            spex_tomls=[],
+            config={},
+            spex_root=str(tmp_path),
+            spex_roots=[str(tmp_path)],
+        )
+        with patch("common.get_project_context", return_value=ctx):
+            # Should not raise SystemExit
+            hooks.run_pre_action(
+                "create", {}, str(tmp_path),
+            )
