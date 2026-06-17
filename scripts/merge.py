@@ -107,6 +107,20 @@ def cli_submit(argv=None, command="submit") -> None:
                           "errors": errors}))
         sys.exit(1)
 
+    # Run pre-action hook before merge
+    done, total = common.get_todo_progress(spec_dir)
+    hooks.run_pre_action(
+        command,
+        {
+            "source_branch": source,
+            "target_branch": target,
+            "done": done,
+            "undone": total - done,
+        },
+        workdir=ctx.top_workdir,
+        spec_name=spec_dir.name,
+    )
+
     if parsed.dry_run:
         logger.info("Would merge: %s -> %s", source, target)
         if not parsed.no_archive:
