@@ -60,7 +60,7 @@ Use the `/spex` slash command in two ways:
 | `modify`        |                    | Modify a spec's requirements             |
 | `apply`         | `run`, `do`, `go`  | Apply a spec to generate code            |
 | `apply-one-step`| `step`             | Apply one step from a spec's todo list   |
-| `submit`        | `merge`            | Submit completed work (merge or PR)      |
+| `merge`         | `submit`           | Submit completed work (merge or PR)      |
 | `archive`       |                    | Archive a completed spec                 |
 | `init`          |                    | Initialize spex environment              |
 
@@ -82,7 +82,7 @@ design into code changes.
 
 Applies a single step from the spec's todo list, then stops.
 
-#### `/spex submit <spec-name>`
+#### `/spex merge <spec-name>`
 
 Submits completed work by merging the branch or creating a pull request,
 depending on the `submit_method` config option.
