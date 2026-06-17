@@ -54,7 +54,7 @@ def _find_submittable_specs(ctx):
     return results
 
 
-def cli_submit(argv=None) -> None:
+def cli_submit(argv=None, command="submit") -> None:
     """CLI: submit (merge) a spex branch back to target. Output JSON."""
     import common
     import config as cfg
@@ -151,7 +151,7 @@ def cli_submit(argv=None) -> None:
     done, total = common.get_todo_progress(spec_dir)
     workdir = ctx.top_workdir
     hooks.run_post_action(
-        "submit",
+        command,
         {
             "source_branch": source,
             "target_branch": target,
