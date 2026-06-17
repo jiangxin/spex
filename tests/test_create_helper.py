@@ -347,6 +347,7 @@ class TestCliPrepareSpec:
             patch.object(
                 prompt_mod, "render_prompt",
                 return_value="# Rendered Template"),
+            patch("hooks.run_pre_action"),
         ):
             cli_prepare_spec(
                 ["--name", "2026-05-20-14-30-new-topic",

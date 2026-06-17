@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -56,20 +57,25 @@ def _build_event_data(event_type: str, payload: dict, workdir=None) -> dict:
     }
 
 
-def run_hook(hook_name: str, event_data: dict, workdir=None) -> None:
+def run_hook(
+    hook_name: str, event_data: dict, workdir=None,
+) -> subprocess.CompletedProcess | None:
     """Find and execute a hook, piping JSON event data to stdin.
 
-    If no hook is found, returns silently.
+    If no hook is found, returns None.
     If the hook fails (non-zero exit), logs error to stderr.
 
     Args:
         hook_name: Hook filename to search for.
         event_data: JSON-serializable event envelope.
         workdir: Working directory for hook execution.
+
+    Returns:
+        CompletedProcess when a hook was executed, None when no hook found.
     """
     hook_path = find_hook(hook_name, workdir)
     if hook_path is None:
-        return
+        return None
 
     payload = json.dumps(event_data)
     result = subprocess.run(
@@ -84,6 +90,7 @@ def run_hook(hook_name: str, event_data: dict, workdir=None) -> None:
             "Hook '%s' exited with code %d:\nstderr: %s",
             hook_name, result.returncode, result.stderr.strip(),
         )
+    return result
 
 
 def run_post_action(event_type: str, payload: dict, workdir=None,
@@ -100,3 +107,24 @@ def run_post_action(event_type: str, payload: dict, workdir=None,
         payload = {**payload, "spec_name": spec_name}
     data = _build_event_data(event_type, payload, workdir)
     run_hook("post-action", data, workdir)
+
+
+def run_pre_action(event_type: str, payload: dict, workdir=None,
+                   spec_name: str | None = None) -> None:
+    """Convenience wrapper to run the pre-action hook.
+
+    If the hook exits with a non-zero return code, terminates the process
+    via ``sys.exit(1)``.
+
+    Args:
+        event_type: The spex command that triggered this hook.
+        payload: Command-specific audit information.
+        workdir: Working directory for hook execution.
+        spec_name: Optional spec name added to the payload.
+    """
+    if spec_name:
+        payload = {**payload, "spec_name": spec_name}
+    data = _build_event_data(event_type, payload, workdir)
+    result = run_hook("pre-action", data, workdir)
+    if result is not None and result.returncode != 0:
+        sys.exit(1)

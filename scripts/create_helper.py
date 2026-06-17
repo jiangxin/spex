@@ -144,6 +144,7 @@ def _do_prepare_spec(args):
     import json
 
     import config as cfg
+    import hooks
     from common import get_specs_dir, local_iso_timestamp
 
     specs_dir = get_specs_dir()
@@ -158,6 +159,14 @@ def _do_prepare_spec(args):
     ctx = cfg.get_project_context()
     timestamp = local_iso_timestamp()
     _write_meta(spec_dir, ctx, prompt, timestamp, args.description)
+
+    spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
+    hooks.run_pre_action(
+        "create",
+        {"spex_branch": spex_branch},
+        workdir=ctx.top_workdir,
+        spec_name=spec_name,
+    )
 
     import prompt as prompt_mod
 
@@ -233,9 +242,10 @@ def _do_post_action(args):
         if isinstance(item, dict) and item.get("completed_at")
     )
     undone = len(data) - done
+    spex_branch = meta.spex_branch if meta else ""
     hooks.run_post_action(
         args.event_type,
-        {"done": done, "undone": undone},
+        {"spex_branch": spex_branch, "done": done, "undone": undone},
         workdir or None,
         spec_name,
     )
