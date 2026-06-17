@@ -106,7 +106,7 @@ class TestBuildConfigSections:
         assert len(sections) == 5
         names = [name for name, _, _ in sections]
         assert names == [
-            "Git", "Paths", "Config", "Config Files", "Spec Roots",
+            "Git", "Paths", "Config", "Config Files", "Spex Roots",
         ]
 
     def test_git_section_keys(self):
@@ -169,7 +169,7 @@ class TestBuildConfigSections:
         assert entries == [Path("/test/repo/.spex.toml")]
         # Spec Roots
         name, kind, entries = sections[4]
-        assert name == "Spec Roots"
+        assert name == "Spex Roots"
         assert kind == "list"
         assert entries == ["/test/repo/.spex"]
 
@@ -193,7 +193,7 @@ class TestPrintConfigSections:
         assert "── Paths " in out
         assert "── Config " in out
         assert "── Config Files " in out
-        assert "── Spec Roots " in out
+        assert "── Spex Roots " in out
 
     def test_kv_format_uses_equals(self, capsys):
         ctx = _make_context()
@@ -295,7 +295,7 @@ class TestRunConfig:
             _run_config([])
         out = capsys.readouterr().out
         for header in ("── Git ", "── Paths ", "── Config ",
-                        "── Config Files ", "── Spec Roots "):
+                        "── Config Files ", "── Spex Roots "):
             assert header in out, f"{header} not found in output"
 
     def test_default_output_shows_all_keys(self, capsys):

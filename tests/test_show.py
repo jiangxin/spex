@@ -473,13 +473,24 @@ class TestMainBriefAndVerbose:
 class TestShowScriptDirect:
     """Test if __name__ == '__main__' path (line 116)."""
 
-    def test_direct_script_auto_selects_spec(self):
+    def test_direct_script_auto_selects_spec(self, tmp_path, monkeypatch):
         """Running show.py directly auto-selects single spec (exit 0)."""
+        # Set up isolated spex_root with single spec
+        spex_root = tmp_path / ".spex"
+        spec_dir = spex_root / "specs" / "single-spec"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "single-spec"}), encoding="utf-8",
+        )
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / ".spex.toml").write_text(
+            f'[spex]\nspex_root = "{spex_root}"\n', encoding="utf-8",
+        )
         result = subprocess.run(
             [sys.executable, str(
                 Path(__file__).resolve().parent.parent / "scripts" / "show.py"
             )],
             capture_output=True, text=True,
+            cwd=str(tmp_path),
         )
-        # When a single spec exists, it's auto-selected and shown
         assert result.returncode == 0
