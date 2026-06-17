@@ -123,10 +123,18 @@ def _do_precheck(args):
     """Perform branch setup for applying a spec."""
     import common
     import config as cfg
+    import hooks
 
     ctx = cfg.get_project_context()
     spec_dir = common.resolve_spec_dir(args.name)
     validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
+
+    hooks.run_pre_action(
+        "apply",
+        {"spec_name": spec_dir.name},
+        workdir=ctx.top_workdir,
+        spec_name=spec_dir.name,
+    )
 
 
 def cli_precheck(argv=None):
