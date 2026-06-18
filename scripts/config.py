@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import os
 import subprocess
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 
 class SpexConfig(TypedDict, total=False):
