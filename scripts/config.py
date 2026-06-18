@@ -393,6 +393,17 @@ def _git_field(cmd: list[str], cwd: str | Path | None = None) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def _get_remote_url(cwd: str | Path | None = None) -> str:
+    """Get remote URL: prefer 'origin', fall back to first available remote."""
+    url = _git_field(["git", "remote", "get-url", "origin"], cwd=cwd)
+    if url:
+        return url
+    first_remote = _git_field(["git", "remote"], cwd=cwd).split("\n")[0]
+    if first_remote:
+        return _git_field(["git", "remote", "get-url", first_remote], cwd=cwd)
+    return ""
+
+
 def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     """Return a fully resolved ProjectContext, cached by resolved workdir.
 
@@ -411,9 +422,7 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
 
     if top_workdir is not None:
-        remote_url = _git_field(
-            ["git", "remote", "get-url", "origin"], cwd=workdir,
-        )
+        remote_url = _get_remote_url(cwd=workdir)
         try:
             from branch import get_current_branch
             branch = get_current_branch(cwd=workdir)
