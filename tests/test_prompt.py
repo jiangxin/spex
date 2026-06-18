@@ -1553,6 +1553,7 @@ class TestNormalizeSubcmd:
         from prompt import _normalize_subcmd
         assert _normalize_subcmd("apply-one-task") == "apply-one-task"
 
+@pytest.mark.slow
 class TestMainRoutingDirect:
     """Test main() routing for all subcommands (lines 657-692)."""
 
@@ -1636,6 +1637,7 @@ class TestMainRoutingDirect:
         assert "<current-task>" in out
 
 
+@pytest.mark.slow
 class TestCliApplyOneTaskDirect:
     """Test cli_apply_one_task directly (lines 471-472)."""
 
@@ -1665,6 +1667,7 @@ class TestCliApplyOneTaskDirect:
         assert data["all_done"] is True
 
 
+@pytest.mark.slow
 class TestCliApplyCommitDirect:
     """Test cli_apply_commit directly (lines 521-522)."""
 
@@ -1681,6 +1684,7 @@ class TestCliApplyCommitDirect:
         assert "<current-task>" in out
 
 
+@pytest.mark.slow
 class TestCliModifySpecDirect:
     """Test cli_modify_spec directly (lines 567-568)."""
 
@@ -1714,6 +1718,7 @@ class TestCliModifySpecDirect:
         assert data[0]["id"] == "s1"
 
 
+@pytest.mark.slow
 class TestCliModifyTodoDirect:
     """Test cli_modify_todo directly (lines 612-613)."""
 
@@ -1732,6 +1737,7 @@ class TestCliModifyTodoDirect:
         assert "prompt" in data
 
 
+@pytest.mark.slow
 class TestCliRender:
     """Test cli_render (lines 618-647)."""
 
@@ -1749,6 +1755,7 @@ class TestCliRender:
         assert exc_info.value.code == 1
 
 
+@pytest.mark.slow
 class TestReadStdinExtraVars:
     """Test _read_stdin_extra_vars (lines 477-490)."""
 
