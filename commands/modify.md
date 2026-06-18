@@ -84,7 +84,8 @@ becomes the modification request.
 Record the modification request in `meta.json`:
 
 ```bash
-$spex_skill_dir/scripts/spex meta-helper $spec_name prompts --stdin <<'EOF'
+$spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
+  --stdin --pre-action modify <<'EOF'
 $request
 EOF
 ```

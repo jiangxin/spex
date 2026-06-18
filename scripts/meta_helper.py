@@ -139,6 +139,12 @@ def _build_parser() -> ArgumentParser:
         metavar="IMAGE",
         help="Add image paths to the prompt entry",
     )
+    parser.add_argument(
+        "--pre-action",
+        default=None,
+        metavar="EVENT_TYPE",
+        help="Run pre-action hook with this event type before writing",
+    )
     return parser
 
 
@@ -151,6 +157,7 @@ def main(argv=None):
     value = args.value
     stdin_flag = args.stdin_flag
     add_images = args.add_images
+    pre_action = args.pre_action
 
     spec_dir = resolve_spec_dir(spec_name)
     meta_path = spec_dir / "meta.json"
@@ -166,6 +173,21 @@ def main(argv=None):
         sys.exit(1)
 
     meta = SpecMeta.from_dict(data)
+
+    if pre_action:
+        import hooks
+        from config import get_project_context
+
+        ctx = get_project_context()
+        workdir = meta.workdir or (
+            str(ctx.top_workdir) if ctx.in_git_workdir() else None
+        )
+        hooks.run_pre_action(
+            pre_action,
+            {"spex_branch": meta.spex_branch or ""},
+            workdir=workdir,
+            spec_name=spec_dir.name,
+        )
 
     if key is None:
         _display_all(meta.to_dict())
