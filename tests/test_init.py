@@ -361,6 +361,7 @@ class TestCreateTomlConfig:
         mock_clear.assert_not_called()
 
 
+@pytest.mark.slow
 class TestRunInit:
     def test_always_calls_create_toml_config(self, tmp_path):
         """run_init() always calls _create_toml_config."""
@@ -757,6 +758,7 @@ class TestInitTargetToml:
         assert toml_path.read_text() == '[spex]\nspex_root = "custom"\n'
 
 
+@pytest.mark.slow
 class TestRunInitWithTargetDir:
     def test_creates_toml_in_target_dir(self, tmp_path, mock_workdir):
         """spex init <dir> creates .spex.toml in the target directory."""
@@ -797,6 +799,7 @@ class TestRunInitWithTargetDir:
         assert "branch_management = false" in content
 
 
+@pytest.mark.slow
 class TestDryRun:
     def test_dry_run_does_not_create_dirs(self, tmp_path):
         """dry_run=True does not create any files or directories."""
@@ -887,6 +890,7 @@ class TestDryRun:
         )
 
 
+@pytest.mark.slow
 class TestInstallDeps:
     """Test _install_deps function (lines 41-61)."""
 
@@ -966,6 +970,7 @@ class TestCreateTomlConfigDryRun:
         assert "Config up-to-date:" in caplog.text
 
 
+@pytest.mark.slow
 class TestInitModuleDirectExecution:
     """Test if __name__ == '__main__' path (lines 239-241)."""
 

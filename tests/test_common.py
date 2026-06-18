@@ -39,6 +39,7 @@ def _clear_cache():
     yield
 
 
+@pytest.mark.slow
 def test_default_uses_cwd(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -50,6 +51,7 @@ def test_default_uses_cwd(monkeypatch, tmp_path):
     assert result == str(repo / ".spex")
 
 
+@pytest.mark.slow
 def test_custom_workdir(tmp_path):
     repo = tmp_path / "project-x"
     repo.mkdir()
@@ -60,6 +62,7 @@ def test_custom_workdir(tmp_path):
     assert result == str(repo / ".spex")
 
 
+@pytest.mark.slow
 def test_subdirectory_resolves_to_repo_root(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -93,6 +96,7 @@ def test_require_git_raises_outside_repo(monkeypatch, tmp_path):
         get_spex_root(str(workdir), require_git=True)
 
 
+@pytest.mark.slow
 def test_require_git_ok_inside_repo(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -106,6 +110,7 @@ def test_require_git_ok_inside_repo(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
+@pytest.mark.slow
 def test_naming_convention(tmp_path):
     repo = tmp_path / "hello-world"
     repo.mkdir()
@@ -119,6 +124,7 @@ def test_naming_convention(tmp_path):
     assert spec_path.name == ".spex"
 
 
+@pytest.mark.slow
 def test_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -129,6 +135,7 @@ def test_specs_dir(tmp_path):
     assert result == repo / ".spex" / "specs"
 
 
+@pytest.mark.slow
 def test_archives_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -145,6 +152,7 @@ def test_local_iso_timestamp_format():
     assert re.match(pattern, ts), f"Unexpected format: {ts}"
 
 
+@pytest.mark.slow
 def test_toml_relative_path_in_repo(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -157,6 +165,7 @@ def test_toml_relative_path_in_repo(tmp_path):
     assert result == str(repo / "shared" / "specs")
 
 
+@pytest.mark.slow
 def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -176,6 +185,7 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
+@pytest.mark.slow
 def test_default_fallback_when_no_config(monkeypatch, tmp_path):
     fakehome = tmp_path / "fakehome"
     fakehome.mkdir()
@@ -190,6 +200,7 @@ def test_default_fallback_when_no_config(monkeypatch, tmp_path):
     assert (fakehome / ".spex.toml").exists()
 
 
+@pytest.mark.slow
 def test_default_creates_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -203,6 +214,7 @@ def test_default_creates_specs_dir(tmp_path):
     assert specs_dir.is_dir()
 
 
+@pytest.mark.slow
 def test_default_creates_internal_gitignore(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -219,6 +231,7 @@ def test_default_creates_internal_gitignore(tmp_path):
     assert "/archives/" in content
 
 
+@pytest.mark.slow
 def test_xdg_config_fallback(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -234,6 +247,7 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
+@pytest.mark.slow
 def test_home_toml_fallback(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -249,6 +263,7 @@ def test_home_toml_fallback(monkeypatch, tmp_path):
     assert result == str(custom_path.resolve())
 
 
+@pytest.mark.slow
 def test_toml_auto_initializes(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
@@ -264,6 +279,7 @@ def test_toml_auto_initializes(tmp_path):
     assert (custom_path / "archives").is_dir()
 
 
+@pytest.mark.slow
 def test_toml_missing_key_skipped(monkeypatch, tmp_path):
     monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
     repo = tmp_path / "my-app"
@@ -277,6 +293,7 @@ def test_toml_missing_key_skipped(monkeypatch, tmp_path):
     assert result == str((tmp_path / "fakehome" / ".spex").resolve())
 
 
+@pytest.mark.slow
 def test_auto_init_creates_home_toml(monkeypatch, tmp_path):
     """get_spex_root creates ~/.spex.toml when no config exists."""
     fakehome = tmp_path / "fakehome"
@@ -296,6 +313,7 @@ def test_auto_init_creates_home_toml(monkeypatch, tmp_path):
     assert "spex_root" in toml_path.read_text()
 
 
+@pytest.mark.slow
 def test_auto_init_skips_toml_when_exists(monkeypatch, tmp_path):
     """get_spex_root does not overwrite existing .spex.toml."""
     repo = tmp_path / "my-app"
@@ -788,6 +806,7 @@ class TestDisplayWidth:
         assert result == "你好      "
 
 
+@pytest.mark.slow
 class TestGetSpexRoots:
     def test_returns_list(self, monkeypatch, tmp_path):
         """get_spex_roots returns a list of strings."""
@@ -842,6 +861,7 @@ class TestGetSpexRoots:
         assert home_default in result
 
 
+@pytest.mark.slow
 class TestGetSpexTomls:
     def test_returns_list_of_strings(self, monkeypatch, tmp_path):
         """get_spex_tomls returns a list of string paths."""

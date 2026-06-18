@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from apply_helper import (
     cli_post_action,
     cli_precheck,
@@ -98,6 +99,7 @@ class TestBranchExists:
         assert branch_exists("spex/nonexistent") is False
 
 
+@pytest.mark.slow
 class TestCreateBranch:
     def test_create_branch_on_unborn_branch(self, tmp_path):
         """create_and_switch_branch should work on an unborn branch (no commits)."""
@@ -260,6 +262,7 @@ class TestValidateApplyBranch:
             assert e.code == 1
 
 
+@pytest.mark.slow
 class TestCliPrecheck:
     @patch("common.resolve_spec_dir")
     @patch("config.get_project_context", return_value=_fake_context(
@@ -465,6 +468,7 @@ class TestCliSubmit:
         assert "Merge failed" in out["errors"][0]
 
 
+@pytest.mark.slow
 class TestCliRouting:
     """Test that the spex CLI routes to branch handlers."""
 
@@ -511,6 +515,7 @@ class TestStripRefsPrefix:
         assert _strip_refs_prefix("main") == "main"
 
 
+@pytest.mark.slow
 class TestSwitchAndSetBranch:
     """Test switch_branch and set_branch_description (lines 68-69, 82-83)."""
 

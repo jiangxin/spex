@@ -213,6 +213,7 @@ class TestFindHook:
 # ===================== _build_event_data =====================
 
 
+@pytest.mark.slow
 class TestBuildEventData:
     def test_builds_envelope(self, monkeypatch, tmp_path):
         """_build_event_data builds correct structure."""
@@ -246,6 +247,7 @@ class TestBuildEventData:
 # ===================== run_hook =====================
 
 
+@pytest.mark.slow
 class TestRunHook:
     def test_executes_and_passes_json(self, monkeypatch, tmp_path):
         """run_hook executes hook and passes JSON to stdin."""
@@ -358,6 +360,7 @@ class TestRunHook:
 # ===================== run_post_action =====================
 
 
+@pytest.mark.slow
 class TestRunPostAction:
     def test_delegates_to_run_hook(self, monkeypatch, tmp_path):
         """run_post_action calls run_hook with 'post-action' name."""
@@ -412,6 +415,7 @@ class TestRunPostAction:
 # ===================== run_hook return value =====================
 
 
+@pytest.mark.slow
 class TestRunHookReturnValue:
     def test_returns_none_when_no_hook(self, monkeypatch, tmp_path):
         """run_hook returns None when no hook is found."""
@@ -516,6 +520,7 @@ class TestRunHookReturnValue:
 # ===================== run_pre_action =====================
 
 
+@pytest.mark.slow
 class TestRunPreAction:
     def test_delegates_to_run_hook(self, monkeypatch, tmp_path):
         """run_pre_action calls run_hook with 'pre-action' name."""

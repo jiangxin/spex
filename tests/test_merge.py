@@ -53,6 +53,7 @@ def _setup_topic(tmp_path, spec_name="my-topic", spex_branch="spex/test",
     return specs, spec_dir
 
 
+@pytest.mark.slow
 class TestDryRun:
     """Tests for --dry-run flag in cli_submit."""
 
@@ -122,6 +123,7 @@ class TestDryRun:
         assert "Would merge" in caplog.text
 
 
+@pytest.mark.slow
 class TestAutoSelect:
     """Tests for auto-selection when no spec name is provided."""
 
@@ -185,6 +187,7 @@ class TestAutoSelect:
         assert "topic-b" in caplog.text
 
 
+@pytest.mark.slow
 class TestNoSpexBranch:
     """Test no spex_branch error path (lines 105-108)."""
 
@@ -220,6 +223,7 @@ class TestNoSpexBranch:
         assert "No spex_branch" in data["errors"][0]
 
 
+@pytest.mark.slow
 class TestNonMergeSubmitMethod:
     """Test non-merge submit method error (lines 145-148)."""
 
