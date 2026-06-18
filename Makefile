@@ -25,11 +25,11 @@ format:
 
 test:
 	@echo "==> Running fast tests..."
-	pytest
+	pytest -n auto
 
 test-all:
 	@echo "==> Running all tests (including slow)..."
-	pytest -m ""
+	pytest -m "" -n auto
 
 version:
 	@python3 scripts/version.py
@@ -47,8 +47,8 @@ check-all: version-check lint lint-md test-all
 
 coverage:
 	@echo "==> Running tests with coverage..."
-	pytest --cov=scripts --cov-report=term-missing
+	pytest -n auto --cov=scripts --cov-report=term-missing
 
 coverage-all:
 	@echo "==> Running all tests with coverage..."
-	pytest -m "" --cov=scripts --cov-report=term-missing
+	pytest -m "" -n auto --cov=scripts --cov-report=term-missing

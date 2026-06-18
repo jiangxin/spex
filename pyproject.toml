@@ -19,6 +19,7 @@ dev = [
     "ruff",
     "pytest",
     "pytest-cov",
+    "pytest-xdist",
 ]
 
 [tool.ruff]
