@@ -26,7 +26,7 @@ Specification documented in `references/SKILLS-SPEC.md`.
 
 - `SKILL.md` — Skill entry point (front-matter + instructions).
 - `commands/` — Sub-command definitions (Markdown).
-- `scripts/` — Executable helper scripts, written in Python (3.11+).
+- `scripts/` — Executable helper scripts, written in Python (3.9+).
 - `scripts/common.py` — Shared library (see API below).
 - `references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.

@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import os
 import subprocess
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        tomllib = None
 
 
 class SpexConfig(TypedDict, total=False):
@@ -216,6 +223,14 @@ def _find_spex_tomls(
 def _load_toml_config(path: Path) -> dict | None:
     """Read a single TOML file. Return None if missing or unparseable."""
     if not path.is_file():
+        return None
+    if tomllib is None:
+        import sys
+        print(
+            "error: TOML parser not available. "
+            "Run 'spex init' or 'pip install tomli' to install dependencies.",
+            file=sys.stderr,
+        )
         return None
     try:
         with open(path, "rb") as f:

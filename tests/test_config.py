@@ -62,6 +62,15 @@ class TestLoadTomlConfig:
         result = _load_toml_config(p)
         assert result == {}
 
+    def test_returns_none_without_tomllib(self, tmp_path, monkeypatch, capsys):
+        """When tomllib is None, returns None and prints install hint."""
+        p = tmp_path / "sample.toml"
+        p.write_text('spex_root = "/my/spex"\n', encoding="utf-8")
+        monkeypatch.setattr("config.tomllib", None)
+
+        assert _load_toml_config(p) is None
+        assert "spex init" in capsys.readouterr().err
+
 
 # ===================== _deep_merge =====================
 

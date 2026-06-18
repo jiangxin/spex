@@ -127,7 +127,7 @@ disable-model-invocation: true
 
 After installing the skill, run `/spex init` in your coding agent to set up the configuration, install Python dependencies, and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
 
-**Note**: The spex CLI requires Python 3.11+. Ensure it is installed on your system.
+**Note**: The spex CLI requires Python 3.9+. Ensure it is installed on your system.
 
 ### spex init
 
@@ -389,7 +389,7 @@ Each hook receives JSON-formatted event data via stdin. Hook scripts are placed 
 
 ### Python Version Requirement
 
-The Spex CLI requires Python 3.11+. Check with `python3 --version`. macOS users can install via `brew install python@3.11`.
+The Spex CLI requires Python 3.9+. Check with `python3 --version`. macOS users can install via `brew install python`.
 
 ### spex command not found
 
@@ -432,5 +432,5 @@ If `/spex apply` reports a branch name conflict, it means a branch with that nam
 - **Repository**: [https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
-- Scripts are in `scripts/`, written in Python 3.11+.
+- Scripts are in `scripts/`, written in Python 3.9+.
 - Run tests: `make test` (fast), `make test-all` (full, including slow tests).

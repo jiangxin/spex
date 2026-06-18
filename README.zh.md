@@ -127,7 +127,7 @@ disable-model-invocation: true
 
 Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置、安装 Python 依赖，以及将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
 
-**注意**：spex 命令行工具依赖 Python 3.11+，请确保系统中已安装。
+**注意**：spex 命令行工具依赖 Python 3.9+，请确保系统中已安装。
 
 ### spex init
 
@@ -389,7 +389,7 @@ Spex 支持 pre-action 和 post-action 两种 hook：
 
 ### Python 版本要求
 
-Spex 的命令行工具依赖 Python 3.11+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python@3.11` 安装。
+Spex 的命令行工具依赖 Python 3.9+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python` 安装。
 
 ### spex 命令找不到
 
@@ -432,5 +432,5 @@ export PATH="$HOME/.local/bin:$PATH"
 - **仓库地址**：[https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
-- 脚本在 `scripts/` 目录下，使用 Python 3.11+ 编写。
+- 脚本在 `scripts/` 目录下，使用 Python 3.9+ 编写。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。
