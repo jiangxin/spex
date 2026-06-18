@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SPEX_SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "spex")
 
 
@@ -106,6 +108,7 @@ class TestHelpFlag:
         assert result.returncode == 0
 
 
+@pytest.mark.slow
 class TestDirectCommands:
     def test_list_exits_zero(self, tmp_path):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
