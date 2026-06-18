@@ -1049,6 +1049,96 @@ class TestGetProjectContext:
 
         assert first is not second
 
+    @pytest.mark.slow
+    def test_remote_url_fallback_no_origin(self, tmp_path):
+        """Without origin, remote_url falls back to the first remote."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "upstream",
+             "https://github.com/upstream/repo.git"],
+            capture_output=True, check=True,
+        )
+
+        ctx = get_project_context(str(repo))
+
+        assert ctx.remote_url == "https://github.com/upstream/repo.git"
+
+    @pytest.mark.slow
+    def test_remote_url_prefers_origin(self, tmp_path):
+        """When origin exists alongside other remotes, origin wins."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin",
+             "https://github.com/origin/repo.git"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "upstream",
+             "https://github.com/upstream/repo.git"],
+            capture_output=True, check=True,
+        )
+
+        ctx = get_project_context(str(repo))
+
+        assert ctx.remote_url == "https://github.com/origin/repo.git"
+
+    @pytest.mark.slow
+    def test_remote_url_no_remotes(self, tmp_path):
+        """With no remotes configured, remote_url is empty."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init", str(repo)], capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.name", "Test User"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
+            capture_output=True, check=True,
+        )
+
+        ctx = get_project_context(str(repo))
+
+        assert ctx.remote_url == ""
+
 
 # ===================== is_related_to =====================
 
