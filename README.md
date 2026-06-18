@@ -1,279 +1,436 @@
-# Spex — Spec-Driven Development Skill
+# Spex — A Skill & CLI for Spec-Driven Development
 
-Spex is a skill that brings
-spec-driven development to your projects. It can save specification documents
-with progress tracking while keeping specs outside the repository — avoiding
-two sources of truth (code and specs). Users can customize the storage directory
-and prompt templates to match their team's conventions.
+## What is Spex?
 
-## Highlights
+Spex, pronounced /speks/, is a coding agent skill and command-line tool that helps developers manage the full software development lifecycle using SDD (Spec-Driven Development).
 
-- **Full spec lifecycle** — create, modify, apply, submit, and archive specs
-  with a single `/spex` command.
-- **Harness for long-running tasks** — implementation is planned as JSON
-  steps; each step commits on completion and stamps a timestamp in
-  `todo.json`, enabling pause/resume and progress visibility.
-- **Small batches** — each step is scoped to ~200 lines of change and
-  must be committed before the next step begins, preventing oversized
-  commits and keeping reviews manageable.
-- **Customizable templates** — Jinja2 templates for spec documents, task
-  prompts, and commit messages; override per-project or globally.
-- **Flexible storage & hierarchical config** — specs live outside the repo
-  by default (`~/.spex/`); `.spex.toml` config loads at project, user, and
-  system levels with nearest-wins merging, and `SPEX_CONFIG_FILE` overrides
-  all discovery. Each level can set its own `spex_root` to control where
-  specs are stored.
-- **Branch management** — optionally create and switch `spex/<name>` branches
-  per spec, with auto-merge or PR submission.
-- **Worktree & submodule aware** — specs are anchored to the main worktree,
-  so all worktrees share a single spec store; submodules are also supported.
-- **Fuzzy name matching** — all commands accept partial spec names with
-  interactive disambiguation.
-- **Hooks** — extensible `post-action` hooks receive JSON events on stdin
-  for create, modify, apply, and submit actions — useful for telemetry,
-  notifications, or automating pull request creation.
-- **CLI + skill** — use `/spex` inside your coding agent or the standalone
-  `spex` CLI for listing, showing, and managing specs.
+Its core goal is to drive development through specs — first define what to build (create), then implement step by step (apply), and finally merge the result (merge).
 
-## Usage
+### Key Terms
 
-This skill is invoked manually — it does **not** auto-trigger via LLM detection.
-Use the `/spex` slash command in two ways:
+- **SDD (Spec-Driven Development)**: A methodology centered on "think first, then code" — capture requirements, design decisions, and implementation steps in a spec document before writing any code.
+- **Spec**: The complete design artifact for a feature or requirement, including its description, technical approach, and development steps.
+- **Coding Agent**: An AI programming assistant (such as Claude Code) that can generate code from natural language descriptions.
 
-- **Free-form prompt** — let the LLM determine intent:
-
-  ```
-  /spex <natural language prompt>
-  ```
-
-- **Explicit subcommand** — directly load a specific skill template:
-
-  ```
-  /spex <command> [arguments...]
-  ```
-
-### Commands
-
-| Command         | Aliases            | Description                              |
-|-----------------|--------------------|------------------------------------------|
-| `create`        | `new`              | Create a new spec document (no code changes) |
-| `modify`        |                    | Modify a spec's requirements             |
-| `apply`         | `run`, `do`, `go`  | Apply a spec to generate code            |
-| `apply-one-step`| `step`             | Apply one step from a spec's todo list   |
-| `merge`         | `submit`           | Submit completed work (merge or PR)      |
-| `archive`       |                    | Archive a completed spec                 |
-| `init`          |                    | Initialize spex environment              |
-
-#### `/spex create <spec-name> [description]`
-
-Creates a new spec file according to the configured template and standard
-sections (Overview, Requirements, Design, Implementation Notes).
-
-#### `/spex modify <spec-name>`
-
-Modifies the requirements of an existing spec.
-
-#### `/spex apply <spec-name>`
-
-Applies a spec to drive implementation — translating requirements and
-design into code changes.
-
-#### `/spex apply-one-step <spec-name>`
-
-Applies a single step from the spec's todo list, then stops.
-
-#### `/spex merge <spec-name>`
-
-Submits completed work by merging the branch or creating a pull request,
-depending on the `submit_method` config option.
-
-#### `/spex archive <spec-name>`
-
-Marks a spec as `archived`, stamps the archive date, and moves it into an
-`archived/` subdirectory.
-
-#### `/spex init`
-
-Initializes the spex environment — creates the config file, spec storage
-directory, and default templates.
-
-### CLI commands
-
-Running `/spex init` inside your coding agent installs the standalone `spex`
-CLI to `~/.local/bin`. The CLI provides commands that run without an
-AI agent:
-
-| Command          | Description                                      |
-|------------------|--------------------------------------------------|
-| `spex list`      | List specs with status and progress               |
-| `spex show`      | Show summary info for a spec                      |
-| `spex open`      | Open a spec directory in the system file browser  |
-| `spex config`    | Display resolved configuration                   |
-| `spex archive`   | Archive completed specs                           |
-| `spex init`      | Initialize spex environment                       |
-
-#### `spex list`
-
-Lists all specs with status icons and progress ratios:
-
-- `spex list` — compact view: spec name, status, and progress (e.g.,
-  `3/5`).
-- `spex list -v` — adds the spec description.
-- `spex list -vv` — adds individual step listing with completion status.
-- `spex list --all-projects` — includes specs from all repositories,
-  not just the current one.
-
-#### `spex show <name>`
-
-- `spex show <name>` — shows the full spec content and structured
-  todo with step-level details.
-- `spex show -l <name>` — brief list format (status, dates,
-  branch, progress).
-
-## Configuration
-
-Spex uses `.spex.toml` files for configuration. On first run, a default
-config and spec directory are created in the user's home directory:
-
-- `~/.spex.toml` — global config
-- `~/.spex/` — default spec storage (with `specs/`, `archives/`,
-  `templates/` subdirectories)
-
-### Config file discovery
-
-Spex searches for `.spex.toml` from the git repository root **upward**
-to the filesystem root, then falls back to `~/.spex.toml`. When
-multiple files are found, they are merged with the nearest file taking
-highest priority. Use `spex config` to inspect the resolved config
-files, settings, and spec storage directories:
+### Three-Step Workflow
 
 ```bash
-spex config
+/spex create [requirement]  →  Create a spec (spec.md + todo.json)
+/spex apply [spec]          →  Implement step by step
+/spex merge [spec]          →  Merge the dev branch (auto-archive)
 ```
 
-To override all discovery, set the `SPEX_CONFIG_FILE` environment
-variable to an explicit path:
+---
+
+## 5-Minute Quick Start
+
+Suppose you want to add a "user login" feature to your project. Here's how to build it with Spex.
+
+### Step 1: Create a Spec
+
+In your coding agent, type:
 
 ```bash
-export SPEX_CONFIG_FILE=/path/to/custom.toml
+/spex create Add user login with email and password, return a JWT token on success
 ```
 
-### Config options
+Spex generates three files:
 
-All options live under the `[spex]` section:
+- `spec.md` — The spec document, including requirements analysis, technical design, and file change plan.
+- `todo.json` — A list of development steps, each with a step ID, name, and detailed description.
+- `meta.json` — Spec metadata (original prompt, spec name, branches, author identity, etc.). Author name and email are used for commit attribution.
 
-```toml
-[spex]
-# Root directory for spec storage
-# spex_root = ".spex"
+Use `spex show` to review the generated spec.
 
-# Create and manage branches for specs
-# branch_management = true
+### Step 2: Develop
 
-# Restrict spec creation to this branch
-# main_branch_name = ""
+In your coding agent, type:
 
-# How to submit completed work: merge or pr
-# submit_method = "merge"
+```bash
+/spex apply
 ```
 
-| Key                 | Type   | Default    | Description                                                                |
-|---------------------|--------|------------|----------------------------------------------------------------------------|
-| `spex_root`         | string | `".spex"`  | Spec storage directory (relative to the `.spex.toml` location, or absolute)|
-| `branch_management` | bool   | `true`     | Automatically create/switch branches per spec                              |
-| `main_branch_name`  | string | `""`       | Only allow spec creation on this branch (empty = any)                      |
-| `submit_method`     | string | `"merge"`  | How to submit completed work: `merge` or `pr`                              |
+Spex will:
 
-### Scoping with `spex_root`
+1. Automatically create a `spex/add-user-login` development branch.
+2. Execute steps from `todo.json` one by one.
+3. Automatically create a git commit after each step.
+4. If interrupted (network loss, token throttling, task switch), the next `/spex apply` run automatically resumes from where it left off.
 
-When a `.spex.toml` sets `spex_root`, it governs the directory where
-that file lives **and all child directories**. This lets you use
-different spec roots at different levels:
+### Step 3: Merge
 
-```
-/home/alice/
-├── .spex.toml              ← spex_root = ".spex" (global default)
-├── .spex/                  ← global specs
-└── projects/
-    └── my-app/             ← git repo
-        ├── .spex.toml      ← spex_root = "specifications" (project-level)
-        └── specifications/ ← project-local specs
+In your coding agent, type:
+
+```bash
+/spex merge
 ```
 
-**Common setups:**
+Spex merges the completed development branch into the main branch and archives the spec.
 
-- **Global only** (default): specs stored in `~/.spex/`, shared across
-  all projects.
-- **Per-project**: can create `.spex/` in the repo root to keep specs
-  alongside the project, and optionally add `.spex.toml` to override
-  defaults.
-- **CI/build override**: set `SPEX_CONFIG_FILE` to point at a
-  build-specific config, bypassing all `.spex.toml` discovery.
+That's the core workflow: **create → apply → merge**.
+
+---
 
 ## Installation
 
-Install via [skills.sh](https://www.skills.sh/) (for Claude Code):
+### Install via skills.sh
+
+[skills.sh](https://www.skills.sh/) provides one-click skill installation. Install Spex using the `skills` CLI:
 
 ```bash
-npm install -g skills@latest
-npx skills add jiangxin/spex
+npx skills add https://github.com/jiangxin/spex
 ```
 
-Or clone the repository manually:
+Once Spex reaches enough installations, it will be indexed on [skills.sh](https://www.skills.sh/) for direct search and installation.
+
+### Post-Installation Setup
+
+Open your coding agent tool and type `/spex init`. This will:
+
+1. Install Python dependencies.
+2. Create the `~/.spex.toml` configuration file.
+3. Initialize the spec storage directory under `~/.spex/`.
+4. Sync template files.
+5. Install (symlink) the spex CLI to `~/.local/bin/`.
+
+---
+
+## Using the /spex Skill
+
+In your coding agent, invoke the spex skill by typing commands that start with `/spex`.
+
+The YAML front-matter in the skill file specifies that spex can only be triggered explicitly by the user — the model will never invoke it on its own, ensuring zero impact on the coding agent. For example:
+
+```yaml
+---
+name: spex
+disable-model-invocation: true
+...
+---
+```
+
+### Main Commands
+
+- **`/spex create [requirement]`** — Convert your requirement into a spec document. Spex analyzes the requirement and generates `spec.md` (spec document) and `todo.json` (development step list). Use `spex show` to review after creation.
+
+- **`/spex modify [spec-name] [changes]`** — Modify an existing spec. Updates the `todo.json` development steps, preserving completed steps while regenerating unfinished tasks.
+
+- **`/spex apply [spec-name]`** — Begin step-by-step implementation. Creates a local branch with the `spex/` prefix by default. Use `spex list` to monitor progress during development.
+
+- **`/spex apply-one-step [spec-name]`** — Same as `/spex apply`, but executes only one step at a time. Useful when you want fine-grained control over each step.
+
+- **`/spex merge [spec-name]`** — Merge the completed spec into the main branch and auto-archive.
+
+---
+
+## Using the spex CLI
+
+After installing the skill, run `/spex init` in your coding agent to set up the configuration, install Python dependencies, and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
+
+**Note**: The spex CLI requires Python 3.11+. Ensure it is installed on your system.
+
+### spex init
+
+In addition to performing the same setup as the `/spex init` skill command, it also accepts a path argument to create `.spex.toml` and a local `.spex/` directory at the root of the specified repository.
+
+### spex config
+
+Display spex configuration, including Git info, paths, config file list, and spex roots.
+
+```
+── Git ───────────────────────────────────────────
+  branch     = master
+  remote_url =
+  user_name  = Jiang Xin
+  user_email = zhiyou.jx@alibaba-inc.com
+
+── Paths ─────────────────────────────────────────
+  cwd           = /Users/jiangxin/work/ai-native/spex
+  top_workdir   = /Users/jiangxin/work/ai-native/spex
+  main_worktree = /Users/jiangxin/work/ai-native/spex
+  spex_root     = /Users/jiangxin/work/.spex
+
+── Config ────────────────────────────────────────
+  spex_root         = .spex
+  branch_management = true
+  main_branch_name  =
+  submit_method     = merge
+
+── Config Files ──────────────────────────────────
+  /Users/jiangxin/work/ai-native/spex/.spex.toml
+  /Users/jiangxin/.spex.toml
+
+── Spex Roots ────────────────────────────────────
+  /Users/jiangxin/work/.spex
+  /Users/jiangxin/.spex
+```
+
+There can be multiple config files and spex root directories, listed in order from highest to lowest priority. Higher-priority configs override lower-priority values, and templates and hooks in higher-priority directories override same-named files in lower-priority directories.
+
+### spex list
+
+Show in-progress specs. When run inside a repository, it shows specs for that repository; when run outside or with `--all-projects`, it shows specs from all projects.
 
 ```bash
-git clone https://github.com/jiangxin/spex ~/.agents/skills/spex
-
-# For Claude Code
-ln -s ~/.agents/skills/spex ~/.claude/skills/spex
+spex list                    # Specs for the current repository
+spex list -v                 # Include spec descriptions
+spex list -vv                # Include step completion details
+spex list --archives         # Archived specs
+spex list --all-projects     # Specs from all projects
+spex list --json             # JSON format output
 ```
+
+### spex show
+
+Display the detailed requirements, design, and development step plan for a given spec.
+
+```bash
+spex show [spec-name]
+```
+
+### spex open
+
+Open a specific spec directory, or the spex_root directory if no spec is specified.
+
+### spex archive
+
+Archive a completed spec.
+
+### spex merge
+
+Merge a spec into the main branch and archive it. Same functionality as the `/spex merge` skill command.
+
+---
+
+## Why Spex?
+
+The community already had several spec-driven development tools before Spex, such as OpenSpec and spec-kit. So why build another one? Because in practice, adopting the SDD paradigm exposes pain points that existing tools don't address.
+
+### 1. Resumable Long-Running Tasks
+
+A complex requirement may need dozens of development steps. Interruptions happen frequently: network loss, token throttling, agent context overflow, etc. You need the ability to stop at any time and resume from where you left off.
+
+Spex itself is developed using the SDD pattern. The output below from `spex list --archives` shows archived specs. Some requirements had 10 or more development steps:
+
+```
+📦   (8/8) 2026-06-16-17-16-improve-test-coverage  Improve test coverage by a...
+📦 (10/10) 2026-06-15-11-47-rename-topic-to-spec   Normalize terminology: ren...
+📦   (4/4) 2026-06-15-17-45-support-unborn-branch  Support unborn branch stat...
+```
+
+Here `(10/10)` means 10 steps total, all completed. Spex records each step's progress in `todo.json`, so you can pause and resume at any time.
+
+As Anthropic's blog post ([Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)) points out, models are less likely to inappropriately change or overwrite JSON files compared to Markdown, making JSON a better format for tracking development steps. However, a problem emerged: when models directly modify `todo.json`, they tend to collapse step descriptions into terse single-line summaries instead of the rich multi-line Markdown needed for context, leading to a lack of detail and inconsistent code generation.
+
+During development, other intermediate file formats were explored, such as XML. While XML can contain multi-line Markdown text for step descriptions, XML character escaping adds complexity. The final solution was the `spex todo-helper` utility, which uses heredoc input to provide detailed multi-line descriptions when adding new steps to `todo.json`. For example, the model invokes the following command to add a step:
+
+```bash
+$ spex todo-helper --name $spec_name append \
+  --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
+Markdown-formatted description of what this step does,
+including file changes, logic, and acceptance criteria.
+
+- Create `src/auth.py` with login endpoint
+- Add input validation for email and password
+- Write unit tests in `tests/test_auth.py`
+
+**Acceptance criteria**: all tests pass, endpoint returns JWT
+DETAILS
+```
+
+### 2. Atomic Commits: Small Steps, Fast Progress
+
+Small batches (breaking a feature into multiple small development steps) are a cornerstone of high-quality development. This isn't just formalism — it's a well-established finding backed by both open-source practice and DevOps research:
+
+- The author has contributed to the [Git project](https://github.com/git/git) for over 10 years, guided by the community's rigorous code review standards. The consensus: each commit should change one thing and stay under 100 lines.
+- The [DORA 2025 Report](https://dora.dev/research/2025/) found that after introducing coding agents, developers tend to let AI generate large changes all at once, abandoning the small-batch practice. The result: coding speed increased, but overall software delivery efficiency actually declined.
+
+Comparing two development processes (same 1500 lines of changes):
+
+| | Good Process | Poor Process |
+|---|---|---|
+| Commit count | 20 commits, each under 100 lines | 1 commit, 1500 lines |
+| Commit message examples | refactor: extract password validator<br>refactor: decouple user auth from session<br>feat: add email login endpoint<br>... | Complete user login feature |
+| Review time | Refactoring commits reviewed in 2 min, logic commits reviewed individually | Reviewer spent 30 min and still couldn't follow the logic |
+
+When using coding agents, models rarely follow the "one commit per step" practice on their own. Even when explicitly instructed to do so, they still tend to produce a single massive commit with hundreds or thousands of lines of changes.
+
+Spex's solution: each development step in `todo.json` has two required fields — `completed_at` (completion timestamp) and `commit_title` (commit message title). The commit title can only be filled in after a git commit is created, marking the step as complete. Example `todo.json` content:
+
+```json
+[
+  {
+    "id": "step-1",
+    "name": "Update SKILL.md command routing and tables",
+    "details": "Update SKILL.md to make `merge` the primary command...",
+    "completed_at": "2026-06-17T12:08:42+08:00",
+    "commit_title": "fae3c7c: docs: make merge the primary command..."
+  }
+]
+```
+
+### 3. Continuous Modification
+
+Requirements change, and models may drift during requirements analysis, requiring human correction. For specs that have already been generated or are partially completed, Spex supports iterative modification via `/spex modify`. Each modification updates the `spec.md` design document while preserving completed steps in `todo.json`, regenerating only the unfinished portion.
+
+### 4. Template Customization
+
+Every team has its own standards: spec document format, commit message style, code review checklist, etc. Spex supports customizable templates — Markdown files rendered with the Jinja2 template engine. For example, the following snippet from `templates/apply-commit.md` shows how the `user_name` and `user_email` variables control the git commit command: when provided, the `-c` flag sets the commit author to match the spec's specified identity.
+
+```markdown
+{% if user_name and user_email -%}
+- Use HereDoc to pass the commit message, and set the author identity
+  to `{{ user_name }} <{{ user_email }}>`:
+
+      git -c user.name="{{ user_name }}" \
+          -c user.email="{{ user_email }}" \
+          commit -F- <<'EOF'
+      <commit message>
+      EOF
+{% else -%}
+- Use HereDoc to pass the commit message:
+
+      git commit -F- <<'EOF'
+      <commit message>
+      EOF
+{% endif -%}
+```
+
+Templates are located in the `templates/` directory:
+
+| Template File | Purpose |
+|---|---|
+| `spec-template.md` | Spec document template |
+| `modify-spec.md` | Prompt template for modifying existing specs |
+| `modify-todo.md` | Prompt template for modifying `todo.json` |
+| `apply-one-task.md` | Prompt template aggregating spec and current task |
+| `apply-commit.md` | Prompt template for generating commits |
+
+You can create replacement templates in `~/.spex/templates/` to override the built-in templates.
+
+### 5. Multi-Project Support
+
+If you use Spex across multiple projects, you can store specs from different projects in the same `spex_root` directory. Each spec's `meta.json` records which project it belongs to. A shared spec pool across projects enables a powerful workflow: a single coding agent can autonomously pick a spec from the pool, enter the corresponding workspace, and develop asynchronously. Multiple coding agents can even process specs from different projects in parallel.
+
+### 6. Branch Management
+
+Managing branches while developing multiple features simultaneously can be challenging. Spex handles this automatically by default: each spec gets its own development branch with a `spex/` prefix, and merging automatically archives the spec. Branch descriptions are also set (via `git config branch.<name>.description`), so the merge commit message includes a summary of the requirement.
+
+Spex itself is developed using the spex skill. The following `git log --merges` output shows how branch descriptions appear in merge commits:
+
+```
+59c5929 Merge branch 'spex/merge-as-primary-command'
+  * spex/merge-as-primary-command:
+  : Make merge the primary command with submit as its alias, updating
+  : CLI routing, help text, and documentation
+  docs: update READMEs to make merge the primary command
+  docs: rename commands/submit.md to commands/merge.md
+  docs: make merge the primary command with submit as alias in SKILL.md
+```
+
+Lines starting with `:` are branch descriptions, pulled from the spec's requirement summary.
+
+---
+
+## More Use Cases
+
+### Storing Specs in the Repository
+
+By default, Spex stores specs outside the repository (`~/.spex/`). This is because specs become outdated as development completes — **code is the single source of truth**.
+Traditional engineering practice calls for good commit messages that describe why changes were made (the requirements) and the design approach, capturing the rationale behind each code snapshot.
+Models can use `git blame` to trace any line back to its originating commit and understand the reasoning behind each change.
+
+However, if you still want to keep specs in the repository, Spex supports that. Create a `.spex.toml` file at the repository root and set `spex_root`:
+
+```toml
+[spex]
+spex_root = ".spex"
+```
+
+Then run `spex init .` (`.` refers to the current path) to create a `.spex` directory in the repository for storing generated spec documents.
+
+**Note**: The created `.spex` directory contains a `.gitignore` file that ignores spec files by default, saving only templates and similar files to the repository.
+
+### Platform Integration: Managing Specs Across Repositories
+
+When integrating Spex into a development platform, you typically need centralized control over spec generation and execution across multiple repositories, rather than letting each repository configure itself. Spex supports the `SPEX_CONFIG_FILE` environment variable to specify a config file, bypassing any `.spex.toml` in the repo:
+
+```bash
+export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
+```
+
+This lets the platform control the `spex_root` location, templates, and hooks centrally, ensuring specs from all repositories are stored and managed in one place.
+
+### Customizing spex Templates
+
+Run `spex config` to see the `spex_roots` path list, pick a template directory (e.g., `~/.spex/templates/`), and create replacement template files. You can copy templates from `templates/examples/` as a starting point.
+
+### Customizing Hooks
+
+Spex supports pre-action and post-action hooks:
+
+- **pre-action** — Triggered before an operation. A non-zero exit code aborts the operation. Use for permission checks, environment validation, etc.
+- **post-action** — Triggered after an operation. Failures do not affect already-completed operations. Useful for notifications, telemetry, syncing with third-party platforms, etc.
+
+The following operations trigger hooks:
+
+| Operation | Event Type | pre-action | post-action |
+|---|---|---|---|
+| `/spex create` | create | After creating spec dir, before writing design content | After creation completes |
+| `/spex modify` | modify | Before modifying spec content | After modification completes |
+| `/spex apply` | apply | Before executing development steps | After all steps complete |
+| `/spex merge` | merge | Before merge execution | After merge completes |
+
+Each hook receives JSON-formatted event data via stdin. Hook scripts are placed in the `hooks/` directory under `spex_root`, with the filename matching the hook type. They must have execute permissions.
+
+---
+
+## FAQ
+
+### Python Version Requirement
+
+The Spex CLI requires Python 3.11+. Check with `python3 --version`. macOS users can install via `brew install python@3.11`.
+
+### spex command not found
+
+Check if `~/.local/bin/` is in your PATH:
+
+```bash
+echo $PATH
+```
+
+If not, add to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload: `source ~/.zshrc`.
+
+### Spec creation fails
+
+Run `spex config` to verify your configuration. Make sure the `spex_root` path exists and is writable.
+
+### Branch conflicts
+
+If `/spex apply` reports a branch name conflict, it means a branch with that name already exists. You can:
+
+1. Use `spex show` to check the spec's current status.
+2. Use `/spex apply` to continue development.
+3. If the old branch is no longer needed, delete it with `git branch -D <branch-name>`.
+
+### How to interrupt and resume development
+
+- **Interrupt**: Simply stop `/spex apply`. Progress is saved in `todo.json`.
+- **Resume**: Run `/spex apply` again. Spex automatically finds the first incomplete step and continues.
+- **Check progress**: `spex list [spec-name]` to see how many steps are done.
+
+---
 
 ## Development
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js (for markdownlint and husky)
-
-### Setup
-
-```bash
-make setup
-```
-
-This installs Python dev dependencies (ruff, pytest, pytest-cov) in
-editable mode, creates the `package.json` symlink, and runs `npm install`
-to set up [husky](https://typicode.github.io/husky/) git hooks. The npm
-config file is named `package.dev.json` (symlinked to `package.json`) to
-avoid conflicts with the Alibaba internal skill publishing platform.
-These tools are used for quality assurance — linting, testing, and
-pre-commit checks.
-
-### Available Make Targets
-
-| Command          | Description                                  |
-|------------------|----------------------------------------------|
-| `make setup`     | Create package.json symlink and npm install   |
-| `make lint`      | Run ruff linter on Python files               |
-| `make lint-md`   | Run markdownlint on Markdown files            |
-| `make format`    | Auto-format Python files with ruff            |
-| `make test`      | Run pytest unit tests (fast tier)             |
-| `make test-all`  | Run all tests including slow tests            |
-| `make check`     | Run all checks (lint + lint-md + test)        |
-| `make check-all` | Run all checks including slow tests           |
-| `make coverage`  | Run tests with coverage report                |
-
-### Pre-commit Hooks
-
-This project uses husky to enforce quality checks before each commit:
-
-- **pre-commit**: Runs `make check` (ruff lint, markdownlint, pytest)
-  — commits are blocked if any check fails.
-- **commit-msg**: Injects a co-developed-by trailer for AI-assisted
-  commits.
-
-These hooks are installed automatically via `make setup`.
-
-## License
-
-MIT
+- **Repository**: [https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
+- `SKILL.md` is a routing file; logic is split across `commands/*.md`.
+- Templates are in `templates/*.md`.
+- Scripts are in `scripts/`, written in Python 3.11+.
+- Run tests: `make test` (fast), `make test-all` (full, including slow tests).
