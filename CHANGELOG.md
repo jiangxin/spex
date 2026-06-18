@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.4.0
+
+### Features
+
+- **Remote URL fallback** — `get_project_context()` now falls back to
+  the first available git remote when `origin` does not exist, fixing
+  empty `remote_url` in `meta.json` for repos with non-standard remote
+  names.
+- **Pre-action hooks** — add `run_pre_action` convenience wrapper and
+  call pre-action hooks in `create`, `apply`, `merge`, and `modify`
+  commands. Unify pre-action and post-action hook parameters. Add error
+  handling to abort operations when pre-action hooks return non-zero.
+- **`modify` pre-action** — add `--pre-action` flag to `meta-helper` so
+  the modify command triggers a pre-action hook before writing changes.
+- **Distinguish hook event types** — `merge` and `submit` now emit
+  distinct event types in hook payloads.
+- **Unborn branch support** — use `symbolic-ref` to detect unborn
+  branches; create target branch if missing before merging.
+
+### Bug Fixes
+
+- Fix "Spec Roots" label in `spex config` output (was "Spec Roots",
+  now "Spex Roots").
+- Fix `create_branch` renamed to `create_and_switch_branch` using
+  `git switch -c` for correctness.
+
+### Documentation
+
+- Rewrite `README.md` (English) and `README.zh.md` (Chinese) as a
+  technical blog post covering the motivation and design of Spex.
+- Make `merge` the primary command with `submit` as its alias in
+  SKILL.md, CLI routing, and documentation.
+
+### Testing
+
+- **Speed up test suite** — mark subprocess-based tests as
+  `@pytest.mark.slow` across test\_prompt, test\_common, test\_init,
+  test\_branch, test\_hooks, test\_merge, and test\_cli. Add
+  `pytest-xdist` for parallel execution (`-n auto`). Fast suite
+  (`make check`) drops from ~51s to ~12s; full suite (`make check-all`)
+  from ~115s to ~71s.
+- Improve test coverage across the board: CLI (54% → 99%),
+  meta\_helper (27% → 97%), version (31% → 96%), prompt (31% → 60%),
+  init (71% → 87%), show/branch/merge (90–95%).
+- Add `coverage-all` Makefile rule for full coverage reporting.
+
+### Refactoring
+
+- Delegate branch detection to `get_current_branch` in config module.
+
 ## 0.3.0
 
 ### Features

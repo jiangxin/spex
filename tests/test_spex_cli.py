@@ -581,16 +581,16 @@ class TestRunVersion:
 
     def test_no_argv_prints_version(self, capsys, monkeypatch):
         """_run_version with no argv prints 'spex <version>'."""
-        monkeypatch.setattr(_spex_mod, "_get_version", lambda: "0.3.0")
+        monkeypatch.setattr(_spex_mod, "_get_version", lambda: "0.4.0")
         _spex_mod._run_version([])
-        assert capsys.readouterr().out.strip() == "spex 0.3.0"
+        assert capsys.readouterr().out.strip() == "spex 0.4.0"
 
     def test_with_argv_delegates_to_version_main(self, capsys, monkeypatch):
         """_run_version with argv delegates to version.main."""
         _spex_mod._run_version([])
         out = capsys.readouterr().out
         # Empty argv takes the else branch: prints "spex <version>"
-        assert "0.3.0" in out
+        assert "0.4.0" in out
 
 
 class TestLlmErrorHandlers:
@@ -762,7 +762,7 @@ class TestDirectScriptExecution:
             capture_output=True, text=True,
         )
         assert result.returncode == 0
-        assert "0.3.0" in result.stdout
+        assert "0.4.0" in result.stdout
 
 
 class TestRunHook:
