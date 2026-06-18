@@ -17,7 +17,7 @@ class TestGetPyprojectVersion:
         """Normal pyproject.toml with version = "x.y.z"."""
         ver = version.get_pyproject_version()
         assert ver is not None
-        assert ver == "0.4.0"
+        assert ver == version.get_skill_version()
 
     def test_missing_file_returns_none(self, monkeypatch, tmp_path):
         """pyproject.toml doesn't exist -> returns None."""
@@ -260,7 +260,8 @@ class TestScriptDirect:
             capture_output=True, text=True,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == "0.4.0"
+        import re
+        assert re.match(r"\d+\.\d+\.\d+", result.stdout.strip())
 
     def test_direct_script_check(self):
         """Running version.py --check succeeds."""

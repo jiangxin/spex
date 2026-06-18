@@ -1,13 +1,34 @@
 # Changelog
 
-## 0.4.0
+## 0.4.1
 
 ### Features
+
+- **Python 3.9 compatibility** — lower `requires-python` from 3.11 to
+  3.9. Use `tomli` backport as a conditional dependency for Python < 3.11,
+  with graceful fallback when neither `tomllib` nor `tomli` is installed
+  (prints a hint to run `spex init`).
+
+### Testing
+
+- **Speed up test suite** — mark subprocess-based tests as
+  `@pytest.mark.slow` across test\_prompt, test\_common, test\_init,
+  test\_branch, test\_hooks, test\_merge, and test\_cli. Add
+  `pytest-xdist` for parallel execution (`-n auto`). Fast suite
+  (`make check`) drops from ~51s to ~12s; full suite (`make check-all`)
+  from ~115s to ~71s.
+
+### Bug Fixes
 
 - **Remote URL fallback** — `get_project_context()` now falls back to
   the first available git remote when `origin` does not exist, fixing
   empty `remote_url` in `meta.json` for repos with non-standard remote
   names.
+
+## 0.4.0
+
+### Features
+
 - **Pre-action hooks** — add `run_pre_action` convenience wrapper and
   call pre-action hooks in `create`, `apply`, `merge`, and `modify`
   commands. Unify pre-action and post-action hook parameters. Add error
@@ -35,12 +56,6 @@
 
 ### Testing
 
-- **Speed up test suite** — mark subprocess-based tests as
-  `@pytest.mark.slow` across test\_prompt, test\_common, test\_init,
-  test\_branch, test\_hooks, test\_merge, and test\_cli. Add
-  `pytest-xdist` for parallel execution (`-n auto`). Fast suite
-  (`make check`) drops from ~51s to ~12s; full suite (`make check-all`)
-  from ~115s to ~71s.
 - Improve test coverage across the board: CLI (54% → 99%),
   meta\_helper (27% → 97%), version (31% → 96%), prompt (31% → 60%),
   init (71% → 87%), show/branch/merge (90–95%).
