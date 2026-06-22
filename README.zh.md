@@ -10,7 +10,7 @@ Spex，发音 /speks/，是一个 Coding Agent 的 skill 和命令行程序，�
 
 - **SDD（Spec-Driven Development）**：规格驱动开发，核心理念是"先想清楚再做" —— 在 spec 文档中记录需求、设计决策和实施步骤，再动手写代码。
 - **Spec（规格）**：一个功能或需求的完整设计产物，包含需求描述、技术方案和开发步骤。
-- **Coding Agent**：AI 编程助手（如 Claude Code），可以用自然语言描述需求并自动生成代码。
+- **Coding Agent**：AI 编程助手，可以用自然语言描述需求并自动生成代码。例如 Claude Code、Cursor、Windsurf、Cline 等。
 
 ### 全流程三步走
 

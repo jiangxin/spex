@@ -10,7 +10,7 @@ Its core goal is to drive development through specs — first define what to bui
 
 - **SDD (Spec-Driven Development)**: A methodology centered on "think first, then code" — capture requirements, design decisions, and implementation steps in a spec document before writing any code.
 - **Spec**: The complete design artifact for a feature or requirement, including its description, technical approach, and development steps.
-- **Coding Agent**: An AI programming assistant (such as Claude Code) that can generate code from natural language descriptions.
+- **Coding Agent**: An AI programming assistant that can generate code from natural language descriptions. Examples include Claude Code, Cursor, Windsurf, Cline, etc.
 
 ### Three-Step Workflow
 
