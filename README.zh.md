@@ -432,5 +432,5 @@ export PATH="$HOME/.local/bin:$PATH"
 - **仓库地址**：[https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
-- 脚本在 `scripts/` 目录下，使用 Python 3.9+ 编写。
+- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。

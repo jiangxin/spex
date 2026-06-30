@@ -432,5 +432,5 @@ If `/spex apply` reports a branch name conflict, it means a branch with that nam
 - **Repository**: [https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
-- Scripts are in `scripts/`, written in Python 3.9+.
+- Scripts are in `skills/spex/scripts/`, written in Python 3.9+.
 - Run tests: `make test` (fast), `make test-all` (full, including slow tests).

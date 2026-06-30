@@ -24,18 +24,18 @@ Specification documented in `references/SKILLS-SPEC.md`.
 
 ## Project Structure
 
-- `SKILL.md` — Skill entry point (front-matter + instructions).
-- `commands/` — Sub-command definitions (Markdown).
-- `scripts/` — Executable helper scripts, written in Python (3.9+).
-- `scripts/common.py` — Shared library (see API below).
-- `references/` — Reference documentation loaded into context as needed.
+- `skills/spex/SKILL.md` — Skill entry point (front-matter + instructions).
+- `skills/spex/commands/` — Sub-command definitions (Markdown).
+- `skills/spex/scripts/` — Executable helper scripts, written in Python (3.9+).
+- `skills/spex/scripts/common.py` — Shared library (see API below).
+- `skills/spex/references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
 
 ## Naming Conventions
 
 ### Script Files
 
-Script filenames in `scripts/` MUST use **underscores** (`_`) as the word
+Script filenames in `skills/spex/scripts/` MUST use **underscores** (`_`) as the word
 separator. Do NOT use hyphens in filenames. This follows the Python module
 naming convention.
 
@@ -62,7 +62,7 @@ For example, `spex todo-helper` and `spex todo_helper` are equivalent.
 Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 `hooks.py`, `version.py`, `init.py`) are not subject to these naming rules.
 
-## Shared Library (`scripts/common.py`)
+## Shared Library (`skills/spex/scripts/common.py`)
 
 | Function | Description |
 |----------|-------------|
@@ -105,7 +105,7 @@ Scripts use Python's `logging` module for all informational output
 (status, progress, errors). stdout is reserved for programmatic data
 (JSON, rendered content, paths).
 
-- `setup_logging()` is called once in `scripts/spex` main(); subcommand
+- `setup_logging()` is called once in `skills/spex/scripts/spex` main(); subcommand
   scripts only need `from common import logger`.
 - Scripts with `if __name__ == "__main__"` call `setup_logging()` there
   as a fallback for direct execution (e.g., in tests).
@@ -118,7 +118,7 @@ Scripts use Python's `logging` module for all informational output
 | Errors | `logger.error("...")` |
 | Data output (stdout) | `print(json.dumps(...))` / `print(rendered)` |
 
-## Project Context (`scripts/config.py`)
+## Project Context (`skills/spex/scripts/config.py`)
 
 | Symbol | Description |
 |--------|-------------|
@@ -140,7 +140,7 @@ following Makefile targets:
 When releasing a new version:
 
 1. **Bump version**: Run `make bump VERSION=x.y.z`. This updates
-   `pyproject.toml` and `SKILL.md` via `scripts/version.py`.
+   `pyproject.toml` and `SKILL.md` via `skills/spex/scripts/version.py`.
 2. **Update changelog**: Add a new `## x.y.z` section to `CHANGELOG.md`
    above the previous version. Group changes by heading: `### Features`,
    `### Bug Fixes`, `### Refactoring`.
@@ -157,8 +157,8 @@ pass all tests.
 
 Before committing, `make check` runs automatically via a husky pre-commit hook. It executes:
 
-1. `python3 scripts/version.py --check` — version consistency
-2. `ruff check scripts/ tests/` — Python lint
+1. `python3 skills/spex/scripts/version.py --check` — version consistency
+2. `ruff check skills/spex/scripts/ tests/` — Python lint
 3. `npx markdownlint-cli2` — Markdown lint
 4. `pytest` — unit tests
 

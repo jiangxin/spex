@@ -13,7 +13,7 @@ setup:
 
 lint:
 	@echo "==> Linting Python files..."
-	ruff check scripts/ tests/
+	ruff check skills/spex/scripts/ tests/
 
 lint-md:
 	@echo "==> Linting Markdown files..."
@@ -21,7 +21,7 @@ lint-md:
 
 format:
 	@echo "==> Formatting Python files..."
-	ruff format scripts/ tests/
+	ruff format skills/spex/scripts/ tests/
 
 test:
 	@echo "==> Running fast tests..."
@@ -32,14 +32,14 @@ test-all:
 	pytest -m "" -n auto
 
 version:
-	@python3 scripts/version.py
+	@python3 skills/spex/scripts/version.py
 
 version-check:
 	@echo "==> Checking version consistency..."
-	@python3 scripts/version.py --check
+	@python3 skills/spex/scripts/version.py --check
 
 bump:
-	@python3 scripts/version.py --bump $(VERSION)
+	@python3 skills/spex/scripts/version.py --bump $(VERSION)
 
 check: version-check lint lint-md test
 
@@ -47,8 +47,8 @@ check-all: version-check lint lint-md test-all
 
 coverage:
 	@echo "==> Running tests with coverage..."
-	pytest -n auto --cov=scripts --cov-report=term-missing
+	pytest -n auto --cov=skills/spex/scripts --cov-report=term-missing
 
 coverage-all:
 	@echo "==> Running all tests with coverage..."
-	pytest -m "" -n auto --cov=scripts --cov-report=term-missing
+	pytest -m "" -n auto --cov=skills/spex/scripts --cov-report=term-missing
