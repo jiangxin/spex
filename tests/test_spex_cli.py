@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+_scripts_dir = Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts"
 sys.path.insert(0, str(_scripts_dir))
 
 SPEX_SCRIPT = str(_scripts_dir / "spex")

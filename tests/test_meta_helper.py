@@ -8,7 +8,10 @@ from pathlib import Path
 import meta_helper
 import pytest
 
-SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "meta_helper.py")
+SCRIPT = str(
+    Path(__file__).resolve().parent.parent
+    / "skills" / "spex" / "scripts" / "meta_helper.py"
+)
 
 
 def _make_topic(tmp_path, spec_name, data):

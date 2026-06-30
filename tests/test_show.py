@@ -488,7 +488,7 @@ class TestShowScriptDirect:
         )
         result = subprocess.run(
             [sys.executable, str(
-                Path(__file__).resolve().parent.parent / "scripts" / "show.py"
+                Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "show.py"
             )],
             capture_output=True, text=True,
             cwd=str(tmp_path),

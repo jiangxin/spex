@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-SPEX_SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "spex")
+SPEX_SCRIPT = str(Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "spex")
 
 
 def _run_spex(*args):

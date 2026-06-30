@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import site
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -11,7 +12,10 @@ from pathlib import Path
 
 import pytest
 
-SPEX_SCRIPT = str(Path(__file__).resolve().parent.parent.parent / "scripts" / "spex")
+SPEX_SCRIPT = str(
+    Path(__file__).resolve().parent.parent.parent
+    / "skills" / "spex" / "scripts" / "spex"
+)
 
 SPEX_TOML_NO_BRANCH_MGMT = """\
 [spex]
@@ -84,6 +88,7 @@ def _make_sandbox(tmp_path: Path, toml_content: str) -> Sandbox:
         "HOME": str(home),
         "GIT_CONFIG_NOSYSTEM": "1",
         "SPEX_CONFIG_FILE": config_file,
+        "PYTHONUSERBASE": site.getuserbase(),
     }
 
     return Sandbox(
