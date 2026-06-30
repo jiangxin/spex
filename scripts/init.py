@@ -3,8 +3,15 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import shutil
+import site
 import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 from cli import ArgumentParser
@@ -39,7 +46,13 @@ def is_initialized(workdir=None):
 
 
 def _install_deps(verbose=False, dry_run=False):
-    """Install Python dependencies from the skill's pyproject.toml."""
+    """Install Python dependencies from the skill's pyproject.toml.
+
+    Tries multiple installation methods in order:
+    1. pip install (standard)
+    2. uv pip install (fast, if available)
+    3. Manual wheel download + extract (fallback when pip is broken)
+    """
     from common import _get_skill_path
 
     skill_dir = _get_skill_path()
@@ -48,17 +61,162 @@ def _install_deps(verbose=False, dry_run=False):
         return True
     if verbose:
         logger.info("Installing dependencies from %s ...", skill_dir)
+
+    # Method 1: pip install
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", str(skill_dir), "--quiet"],
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
-        logger.warning("Warning: pip install failed: %s",
-                       result.stderr.strip())
+    if result.returncode == 0:
+        logger.info("Installed Python dependencies (via pip).")
+        return True
+
+    logger.warning("pip install failed, trying fallbacks...")
+
+    # Method 2: uv pip install (if available)
+    uv = shutil.which("uv")
+    if uv:
+        if verbose:
+            logger.info("Trying uv pip install ...")
+        result = subprocess.run(
+            [uv, "pip", "install", str(skill_dir), "--quiet",
+             "--system", "--python", sys.executable],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            logger.info("Installed Python dependencies (via uv).")
+            return True
+        logger.warning("uv install failed, trying wheel download...")
+
+    # Method 3: Direct wheel download + extract
+    if verbose:
+        logger.info("Trying direct wheel installation ...")
+    if _install_wheels_direct(skill_dir, verbose=verbose):
+        logger.info("Installed Python dependencies (via wheel download).")
+        return True
+
+    logger.error(
+        "Warning: failed to install Python dependencies.\n"
+        "  Install them manually with: %s -m pip install %s\n"
+        "  Or install 'uv' (https://docs.astral.sh/uv/) and re-run 'spex init'.",
+        sys.executable, skill_dir,
+    )
+    return False
+
+
+def _install_wheels_direct(skill_dir, verbose=False):
+    """Install dependencies by downloading and extracting wheels directly.
+
+    Parses pyproject.toml to find dependencies, resolves them via PyPI,
+    downloads wheels, and extracts them to site-packages.
+    """
+    site_packages = site.getsitepackages()[0]
+
+    # Parse pyproject.toml for dependencies
+    pyproject = skill_dir / "pyproject.toml"
+    if not pyproject.is_file():
         return False
-    logger.info("Installed Python dependencies.")
+
+    deps = _parse_pyproject_deps(pyproject)
+    if not deps:
+        return True  # No deps to install
+
+    for dep in deps:
+        if verbose:
+            logger.info("  Installing %s via wheel download ...", dep)
+        if not _install_single_wheel(dep, site_packages, verbose=verbose):
+            return False
     return True
+
+
+def _parse_pyproject_deps(pyproject_path):
+    """Extract runtime dependencies from pyproject.toml.
+
+    Skips conditional deps (python_version constraints) since those
+    are handled by the environment check separately.
+    """
+    content = pyproject_path.read_text(encoding="utf-8")
+    # Find the [project] dependencies block
+    match = re.search(
+        r'dependencies\s*=\s*\[(.*?)\]', content, re.DOTALL
+    )
+    if not match:
+        return []
+
+    deps = []
+    for line in match.group(1).splitlines():
+        line = line.strip().strip(",")
+        if not line or line.startswith("#"):
+            continue
+        # Skip conditional dependencies (e.g. tomli for python < 3.11)
+        if "python_version" in line:
+            continue
+        # Extract package name (before any version specifier)
+        pkg = re.split(r"[><=!~;\[]", line)[0].strip().strip("\"'")
+        if pkg:
+            deps.append(pkg)
+    return deps
+
+
+def _install_single_wheel(pkg, site_packages, verbose=False):
+    """Download and install a single package via wheel from PyPI."""
+    pypi_url = f"https://pypi.org/pypi/{pkg}/json"
+    try:
+        result = subprocess.run(
+            ["curl", "-sL", pypi_url],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            return False
+        pypi_data = json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        return False
+
+    # Find a compatible wheel
+    py_version = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    platform = "macosx" if sys.platform == "darwin" else ""
+    arch = "arm64" if platform else ""
+
+    files = pypi_data.get("urls", [])
+    wheel_url = None
+    for f in files:
+        fn = f["filename"]
+        if not fn.endswith(".whl"):
+            continue
+        # Prefer platform-specific wheel for current Python version
+        if py_version in fn:
+            if not platform or (platform in fn and arch in fn):
+                wheel_url = f["url"]
+                break
+        # Fallback: pure Python wheel
+        if "py3-none-any" in fn and wheel_url is None:
+            wheel_url = f["url"]
+
+    if wheel_url is None:
+        return False
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".whl", delete=False) as tmp:
+            result = subprocess.run(
+                ["curl", "-sL", wheel_url, "-o", tmp.name],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode != 0:
+                return False
+
+            z = zipfile.ZipFile(tmp.name)
+            for name in z.namelist():
+                if name.endswith("/"):
+                    continue  # skip directory entries
+                dest = os.path.join(site_packages, name)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f:
+                    f.write(z.read(name))
+            return True
+    except (subprocess.TimeoutExpired, OSError, zipfile.BadZipFile):
+        return False
 
 
 def _install_cli(verbose=False, dry_run=False):
