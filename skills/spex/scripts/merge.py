@@ -59,7 +59,7 @@ def cli_submit(argv=None, command="submit") -> None:
     import common
     import config as cfg
     import hooks
-    from branch import branch_exists, create_and_switch_branch, merge_branch
+    from branch import branch_exists, create_and_switch_branch, merge_branch, resolve_default_branch
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
@@ -97,7 +97,9 @@ def cli_submit(argv=None, command="submit") -> None:
         sys.exit(1)
     meta = common.load_meta(spec_dir)
     source = meta.spex_branch if meta else ""
-    target = (meta.branch or "main") if meta else "main"
+    target = meta.branch if (meta and meta.branch) else None
+    if target is None:
+        target = resolve_default_branch(cwd=ctx.main_worktree)
     method = conf["submit_method"]
     errors: list[str] = []
 
