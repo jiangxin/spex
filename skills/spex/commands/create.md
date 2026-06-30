@@ -123,10 +123,11 @@ Example JSON output:
 Check for images from either of the following sources (supported
 extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
 
-- **Pasted images (primary)**: Scan the conversation context for
-  `[Image: source: <path>]` markers. These are images the user pasted
-  into the chat, cached at `.claude/image-cache/<uuid>/<n>.png`.
-  Extract the absolute file path from each marker.
+- **Pasted images (primary)**: Scan the conversation context for image
+  markers (e.g., `[Image: source: <path>]`) or inline image content.
+  These are images the user pasted into the chat, typically cached by
+  the coding agent in a local directory. Extract the absolute file path
+  from each image reference.
 - **Explicit file paths (secondary)**: Check if `$requirement` text
   contains local image file paths with a supported extension.
 
