@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0
+
+### Refactoring
+
+- **Skill layout restructure** — move all skill files to `skills/spex/`
+  directory for npx distribution. Update all path references across
+  scripts, tests, and configuration to match the new layout.
+
+### Features
+
+- **Target branch auto-detection** — add `resolve_default_branch()` for
+  probing the repository's default branch instead of hardcoding `main`.
+  The merge command now auto-detects the target branch.
+
+### Bug Fixes
+
+- **Dependency installation** — add multi-fallback strategy for `spex
+  init` dependency installation when primary methods fail.
+- **Makefile path fixes** — use `$(PYTHON) -m module` for pip and pytest
+  to avoid path resolution issues.
+
+### Documentation
+
+- Update `README.md` and `README.zh.md` with `skills/spex/` structure
+  and install guide.
+
+### Testing
+
+- Update test paths to reflect `skills/spex/` script location.
+
 ## 0.4.1
 
 ### Features

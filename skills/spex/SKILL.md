@@ -2,7 +2,7 @@
 name: spex
 disable-model-invocation: true
 description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
-version: 0.4.1
+version: 0.5.0
 arguments:
   - name: command
     required: false
