@@ -122,7 +122,8 @@ class TestSyncBuiltinTemplate:
         examples_dir.mkdir(parents=True)
 
         # Copy the file first, then set its mtime to match source
-        src = Path(__file__).resolve().parent.parent / "templates" / "spec-template.md"
+        base = Path(__file__).resolve().parent.parent
+        src = base / "skills" / "spex" / "templates" / "spec-template.md"
         target = examples_dir / "spec-template.md"
         import shutil
         shutil.copy2(src, target)
@@ -155,7 +156,8 @@ class TestSyncBuiltinTemplate:
         examples_dir.mkdir(parents=True)
 
         target = examples_dir / "spec-template.md"
-        src = Path(__file__).resolve().parent.parent / "templates" / "spec-template.md"
+        base = Path(__file__).resolve().parent.parent
+        src = base / "skills" / "spex" / "templates" / "spec-template.md"
 
         # Copy with same content but different mtime
         target.write_text(src.read_text())
@@ -978,7 +980,7 @@ class TestInitModuleDirectExecution:
         """Running init.py directly with --check works."""
         result = subprocess.run(
             [sys.executable, str(
-                Path(__file__).resolve().parent.parent / "scripts" / "init.py"
+                Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "init.py"
             ), "--check"],
             capture_output=True, text=True,
         )

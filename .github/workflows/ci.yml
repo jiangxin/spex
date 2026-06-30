@@ -20,12 +20,12 @@ jobs:
         with:
           node-version: "22"
 
-      - run: pip install .[dev]
+      - run: python -m pip install .[dev]
 
       - run: cp package.dev.json package.json && npm install
 
-      - run: ruff check scripts/ tests/
+      - run: ruff check skills/spex/scripts/ tests/
 
       - run: npx markdownlint-cli2
 
-      - run: pytest
+      - run: python -m pytest

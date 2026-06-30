@@ -12,9 +12,9 @@ from pathlib import Path
 
 from common import logger
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _PYPROJECT = _PROJECT_ROOT / "pyproject.toml"
-_SKILL_MD = _PROJECT_ROOT / "SKILL.md"
+_SKILL_MD = _PROJECT_ROOT / "skills" / "spex" / "SKILL.md"
 
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$")
 

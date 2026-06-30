@@ -78,10 +78,36 @@ Spex 会将已经完成的开发分支合并到主干，并归档该规格。
 [skills.sh](https://www.skills.sh/) 提供 skill 的一键安装。使用 `skills` 命令行工具即可安装：
 
 ```bash
+npx skills add jiangxin/spex
+```
+
+或者通过完整的仓库 URL：
+
+```bash
 npx skills add https://github.com/jiangxin/spex
 ```
 
 当安装量达到一定数量后，spex 会被收录到 [skills.sh](https://www.skills.sh/)，届时可以直接搜索安装。
+
+### 项目结构
+
+安装完成后，skill 文件组织在 `skills/spex/` 目录下：
+
+```
+spex/
+├── skills/
+│   └── spex/
+│       ├── SKILL.md          ← skill 入口文件
+│       ├── commands/         ← 子命令
+│       ├── scripts/          ← 可执行脚本
+│       ├── templates/        ← 模板文件
+│       └── references/       ← 参考文档
+├── README.md
+├── README.zh.md
+├── pyproject.toml
+├── tests/
+└── ...
+```
 
 ### 安装后初始化
 
@@ -432,5 +458,5 @@ export PATH="$HOME/.local/bin:$PATH"
 - **仓库地址**：[https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
-- 脚本在 `scripts/` 目录下，使用 Python 3.9+ 编写。
+- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。

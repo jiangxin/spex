@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import version
 
-SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "version.py")
+SCRIPT = str(Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "version.py")
 
 
 class TestGetPyprojectVersion:

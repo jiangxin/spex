@@ -473,7 +473,7 @@ class TestCliRouting:
     """Test that the spex CLI routes to branch handlers."""
 
     SPEX_SCRIPT = str(
-        Path(__file__).resolve().parent.parent / "scripts" / "spex"
+        Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "spex"
     )
 
     def _run_spex(self, *args, cwd=None):
