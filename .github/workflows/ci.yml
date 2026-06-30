@@ -22,7 +22,7 @@ jobs:
 
       - run: python -m pip install .[dev]
 
-      - run: cp package.dev.json package.json && npm install
+      - run: npm install
 
       - run: ruff check skills/spex/scripts/ tests/
 

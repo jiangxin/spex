@@ -2,7 +2,6 @@
 .claude
 .cursor
 .spex/
-package.json
 package-lock.json
 node_modules/
 
