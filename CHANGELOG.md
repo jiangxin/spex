@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0
+
+### Refactoring
+
+- **pyproject.toml relocation** — move `pyproject.toml` from project root
+  to `skills/spex/` for skill self-containment and npx distribution.
+
+### Documentation
+
+- **Agent-agnostic image handling** — update `spex create` and `spex
+  modify` commands to use agent-agnostic image handling references.
+- Update `README.md` and `README.zh.md` examples to list multiple coding
+  agents supported by Spex.
+
 ## 0.5.0
 
 ### Refactoring
@@ -240,7 +254,8 @@
 - Add `[spex]` section header to config schema.
 - Rename `package.json` to `package.dev.json` (symlinked via
   `make setup`) to avoid conflicts with Alibaba internal skill
-  publishing platform.
+  publishing platform. (Later reverted: skill moved to `skills/spex/`,
+  no longer conflicts with root `package.json`.)
 - Rewrite `README.md` with highlights, full command reference (skill
   and CLI), installation via skills.sh, and improved configuration
   docs.
