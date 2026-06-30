@@ -1,8 +1,10 @@
 .PHONY: setup lint lint-md format test test-all check check-all coverage coverage-all version version-check bump
 
+PYTHON = python3
+
 setup:
 	@echo "==> Installing Python dev dependencies..."
-	pip install -e '.[dev]'
+	$(PYTHON) -m pip install -e '.[dev]'
 	@if [ ! -f package.json ]; then \
 		ln -s package.dev.json package.json && \
 		echo "Created symlink: package.json -> package.dev.json"; \
@@ -25,21 +27,21 @@ format:
 
 test:
 	@echo "==> Running fast tests..."
-	pytest -n auto
+	$(PYTHON) -m pytest -n auto
 
 test-all:
 	@echo "==> Running all tests (including slow)..."
-	pytest -m "" -n auto
+	$(PYTHON) -m pytest -m "" -n auto
 
 version:
-	@python3 skills/spex/scripts/version.py
+	@$(PYTHON) skills/spex/scripts/version.py
 
 version-check:
 	@echo "==> Checking version consistency..."
-	@python3 skills/spex/scripts/version.py --check
+	@$(PYTHON) skills/spex/scripts/version.py --check
 
 bump:
-	@python3 skills/spex/scripts/version.py --bump $(VERSION)
+	@$(PYTHON) skills/spex/scripts/version.py --bump $(VERSION)
 
 check: version-check lint lint-md test
 
@@ -47,8 +49,8 @@ check-all: version-check lint lint-md test-all
 
 coverage:
 	@echo "==> Running tests with coverage..."
-	pytest -n auto --cov=skills/spex/scripts --cov-report=term-missing
+	$(PYTHON) -m pytest -n auto --cov=skills/spex/scripts --cov-report=term-missing
 
 coverage-all:
 	@echo "==> Running all tests with coverage..."
-	pytest -m "" -n auto --cov=skills/spex/scripts --cov-report=term-missing
+	$(PYTHON) -m pytest -m "" -n auto --cov=skills/spex/scripts --cov-report=term-missing
