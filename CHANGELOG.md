@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+### Refactoring
+
+- **pyproject.toml relocation** — move `pyproject.toml` from project root
+  to `skills/spex/` for skill self-containment and npx distribution.
+
+### Documentation
+
+- **Agent-agnostic image handling** — update `spex create` and `spex
+  modify` commands to use agent-agnostic image handling references.
+- Update `README.md` and `README.zh.md` examples to list multiple coding
+  agents supported by Spex.
+
 ## 0.5.0
 
 ### Refactoring
