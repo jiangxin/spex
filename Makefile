@@ -4,7 +4,7 @@ PYTHON = python3
 
 setup:
 	@echo "==> Installing Python dev dependencies..."
-	$(PYTHON) -m pip install -e '.[dev]'
+	$(PYTHON) -m pip install -e 'skills/spex/[dev]'
 	@if [ ! -f package.json ]; then \
 		ln -s package.dev.json package.json && \
 		echo "Created symlink: package.json -> package.dev.json"; \
