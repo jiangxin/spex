@@ -78,10 +78,36 @@ That's the core workflow: **create → apply → merge**.
 [skills.sh](https://www.skills.sh/) provides one-click skill installation. Install Spex using the `skills` CLI:
 
 ```bash
+npx skills add jiangxin/spex
+```
+
+Or via full repository URL:
+
+```bash
 npx skills add https://github.com/jiangxin/spex
 ```
 
 Once Spex reaches enough installations, it will be indexed on [skills.sh](https://www.skills.sh/) for direct search and installation.
+
+### Project Structure
+
+After installation, the skill files are organized under `skills/spex/`:
+
+```
+spex/
+├── skills/
+│   └── spex/
+│       ├── SKILL.md          ← skill entry point
+│       ├── commands/         ← sub-commands
+│       ├── scripts/          ← executable scripts
+│       ├── templates/        ← template files
+│       └── references/       ← reference docs
+├── README.md
+├── README.zh.md
+├── pyproject.toml
+├── tests/
+└── ...
+```
 
 ### Post-Installation Setup
 
