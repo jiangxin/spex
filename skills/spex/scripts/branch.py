@@ -45,6 +45,24 @@ def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
     return result.returncode == 0
 
 
+def resolve_default_branch(
+    candidates: list[str] | None = None,
+    fallback: str = "main",
+    cwd: str | Path | None = None,
+) -> str:
+    """Resolve the default branch by probing candidates in order.
+
+    Returns the first candidate that exists, or ``fallback`` if none
+    exist.
+    """
+    if candidates is None:
+        candidates = ["main", "master"]
+    for name in candidates:
+        if branch_exists(name, cwd=cwd):
+            return name
+    return fallback
+
+
 def create_and_switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
     """Create a new local branch and switch to it.
 
