@@ -15,6 +15,7 @@ from branch import (
     create_and_switch_branch,
     get_current_branch,
     merge_branch,
+    resolve_default_branch,
 )
 from common import SpecMeta, strip_date_prefix
 from config import ProjectContext
@@ -513,6 +514,68 @@ class TestStripRefsPrefix:
         """_strip_refs_prefix returns short names unchanged."""
         from branch import _strip_refs_prefix
         assert _strip_refs_prefix("main") == "main"
+
+
+class TestResolveDefaultBranch:
+    """Test resolve_default_branch probe behavior."""
+
+    @patch("branch.branch_exists", return_value=True)
+    def test_main_exists(self, mock_exists):
+        """Returns 'main' when only main exists."""
+        result = resolve_default_branch()
+        assert result == "main"
+        # Should have checked main first
+        mock_exists.assert_any_call("main", cwd=None)
+
+    @patch("branch.branch_exists", side_effect=[False, True])
+    def test_master_exists(self, mock_exists):
+        """Returns 'master' when only master exists."""
+        result = resolve_default_branch()
+        assert result == "master"
+        assert mock_exists.call_count == 2
+
+    @patch("branch.branch_exists", return_value=True)
+    def test_both_exist_returns_first(self, mock_exists):
+        """Returns 'main' when both exist (first in probe order)."""
+        result = resolve_default_branch()
+        assert result == "main"
+        # Should only check main since it exists
+        assert mock_exists.call_count == 1
+
+    @patch("branch.branch_exists", return_value=False)
+    def test_neither_exists_returns_fallback(self, mock_exists):
+        """Returns 'main' fallback when neither exists."""
+        result = resolve_default_branch()
+        assert result == "main"
+        assert mock_exists.call_count == 2
+
+    @patch("branch.branch_exists", side_effect=[False, True])
+    def test_custom_candidates(self, mock_exists):
+        """Returns first existing from custom candidates."""
+        result = resolve_default_branch(candidates=["develop", "trunk"])
+        assert result == "trunk"
+        mock_exists.assert_any_call("develop", cwd=None)
+        mock_exists.assert_any_call("trunk", cwd=None)
+
+    @patch("branch.branch_exists", return_value=False)
+    def test_custom_fallback(self, mock_exists):
+        """Returns custom fallback when no candidates exist."""
+        result = resolve_default_branch(fallback="develop")
+        assert result == "develop"
+
+    @patch("branch.branch_exists", side_effect=[True])
+    def test_custom_candidates_first_exists(self, mock_exists):
+        """Returns first candidate when it exists."""
+        result = resolve_default_branch(candidates=["develop", "trunk"])
+        assert result == "develop"
+        assert mock_exists.call_count == 1
+
+    @patch("branch.branch_exists")
+    def test_cwd_forwarded(self, mock_exists):
+        """cwd parameter is forwarded to branch_exists."""
+        mock_exists.return_value = True
+        resolve_default_branch(cwd="/some/path")
+        mock_exists.assert_called_with("main", cwd="/some/path")
 
 
 @pytest.mark.slow
