@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 import version
 
+_SKILL_PYPROJECT = "_SKILL_PYPROJECT"
+_SKILL_MD = "_SKILL_MD"
+
 SCRIPT = str(Path(__file__).resolve().parent.parent / "skills" / "spex" / "scripts" / "version.py")
 
 
@@ -22,14 +25,14 @@ class TestGetPyprojectVersion:
     def test_missing_file_returns_none(self, monkeypatch, tmp_path):
         """pyproject.toml doesn't exist -> returns None."""
         fake = tmp_path / "pyproject.toml"
-        monkeypatch.setattr(version, "_PYPROJECT", fake)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, fake)
         assert version.get_pyproject_version() is None
 
     def test_no_version_line_returns_none(self, monkeypatch, tmp_path):
         """pyproject.toml exists but has no version line."""
         p = tmp_path / "pyproject.toml"
         p.write_text('[project]\nname = "test"\n', encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", p)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, p)
         assert version.get_pyproject_version() is None
 
 
@@ -84,8 +87,8 @@ class TestCheckVersions:
         pp.write_text('version = "1.0.0"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("version: 2.0.0\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
-        monkeypatch.setattr(version, "_SKILL_MD", sk)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
+        monkeypatch.setattr(version, _SKILL_MD, sk)
         assert version.check_versions() is False
 
     def test_missing_pyproject_returns_false(self, monkeypatch, tmp_path):
@@ -93,8 +96,8 @@ class TestCheckVersions:
         fake = tmp_path / "pyproject.toml"
         sk = tmp_path / "SKILL.md"
         sk.write_text("version: 1.0.0\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", fake)
-        monkeypatch.setattr(version, "_SKILL_MD", sk)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, fake)
+        monkeypatch.setattr(version, _SKILL_MD, sk)
         assert version.check_versions() is False
 
     def test_missing_skill_md_returns_false(self, monkeypatch, tmp_path):
@@ -102,8 +105,8 @@ class TestCheckVersions:
         pp = tmp_path / "pyproject.toml"
         pp.write_text('version = "1.0.0"\n', encoding="utf-8")
         fake = tmp_path / "SKILL.md"
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
-        monkeypatch.setattr(version, "_SKILL_MD", fake)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
+        monkeypatch.setattr(version, _SKILL_MD, fake)
         assert version.check_versions() is False
 
 
@@ -116,8 +119,8 @@ class TestBumpVersion:
         pp.write_text('version = "0.1.0"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("---\nversion: 0.1.0\n---\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
-        monkeypatch.setattr(version, "_SKILL_MD", sk)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
+        monkeypatch.setattr(version, _SKILL_MD, sk)
 
         result = version.bump_version("0.2.0")
 
@@ -138,7 +141,7 @@ class TestBumpVersion:
         pp.write_text('name = "test"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("version: 1.0.0\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
         monkeypatch.setattr(version, "_SKILL_MD", sk)
 
         result = version.bump_version("2.0.0")
@@ -150,7 +153,7 @@ class TestBumpVersion:
         pp.write_text('version = "1.0.0"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("# No version\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
         monkeypatch.setattr(version, "_SKILL_MD", sk)
 
         result = version.bump_version("2.0.0")
@@ -168,7 +171,7 @@ class TestBumpVersion:
             "---\nversion: 0.1.0\ntitle: Spex\n---\n\n# Content\n",
             encoding="utf-8",
         )
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
         monkeypatch.setattr(version, "_SKILL_MD", sk)
 
         version.bump_version("1.0.0")
@@ -186,7 +189,7 @@ class TestBumpVersion:
         pp.write_text('version = "0.1.0"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("version: 0.1.0\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
         monkeypatch.setattr(version, "_SKILL_MD", sk)
 
         result = version.bump_version("1.0.0-alpha")
@@ -234,7 +237,7 @@ class TestMainCli:
         pp.write_text('version = "0.1.0"\n', encoding="utf-8")
         sk = tmp_path / "SKILL.md"
         sk.write_text("version: 0.1.0\n", encoding="utf-8")
-        monkeypatch.setattr(version, "_PYPROJECT", pp)
+        monkeypatch.setattr(version, _SKILL_PYPROJECT, pp)
         monkeypatch.setattr(version, "_SKILL_MD", sk)
 
         version.main(["--bump", "0.2.0"])

@@ -128,23 +128,26 @@ Scripts use Python's `logging` module for all informational output
 
 ## Version Management
 
-The version is stored in `pyproject.toml` and `SKILL.md`. Use the
-following Makefile targets:
+The version is stored in `skills/spex/pyproject.toml` and `SKILL.md`.
+A dev-only `pyproject.toml` at the project root holds tooling config
+(ruff, pytest, coverage) and mirrors the version field for sync checking.
+Use the following Makefile targets:
 
 - `make version` — print current version
-- `make version-check` — verify both files are in sync (runs in `make check`)
-- `make bump VERSION=x.y.z` — update version in both files
+- `make version-check` — verify sources are in sync (runs in `make check`)
+- `make bump VERSION=x.y.z` — update version in all files
 
 ### Release SOP
 
 When releasing a new version:
 
 1. **Bump version**: Run `make bump VERSION=x.y.z`. This updates
-   `pyproject.toml` and `SKILL.md` via `skills/spex/scripts/version.py`.
+   `skills/spex/pyproject.toml`, `pyproject.toml` (root), and `SKILL.md`
+   via `skills/spex/scripts/version.py`.
 2. **Update changelog**: Add a new `## x.y.z` section to `CHANGELOG.md`
    above the previous version. Group changes by heading: `### Features`,
    `### Bug Fixes`, `### Refactoring`.
-3. **Commit**: Commit both changes with message
+3. **Commit**: Commit all changes with message
    `chore: bump version to x.y.z and update changelog`.
 4. **Tag**: Create a tag `git tag vx.y.z` at the commit.
 5. **Push**: Ask the user to manually push the commit and tag
