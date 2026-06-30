@@ -36,7 +36,7 @@ def _read_pyproject_version(path: Path) -> str | None:
 
 
 def _write_pyproject_version(path: Path, new_version: str) -> bool:
-    """Update version= in a pyproject.toml file. Returns True if changed."""
+    """Update version= in a pyproject.toml file. Returns True if changed or already matches."""
     if not path.is_file():
         return False
     content = path.read_text(encoding="utf-8")
@@ -48,7 +48,10 @@ def _write_pyproject_version(path: Path, new_version: str) -> bool:
         flags=re.MULTILINE,
     )
     if new_content == content:
-        return False
+        # Either no version field found, or already at the target version.
+        # Check if the current version already matches the target.
+        current = _read_pyproject_version(path)
+        return current == new_version
     path.write_text(new_content, encoding="utf-8")
     return True
 
@@ -129,6 +132,11 @@ def bump_version(new_version: str) -> bool:
         flags=re.MULTILINE,
     )
     if new_content == content:
+        # Version field already matches target.
+        current = get_skill_version()
+        if current == new_version:
+            print(f"{new_version}")
+            return True
         logger.error("Error: could not find version in SKILL.md")
         return False
     _SKILL_MD.write_text(new_content, encoding="utf-8")
