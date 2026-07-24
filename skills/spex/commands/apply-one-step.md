@@ -97,8 +97,8 @@ Run:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
-  --id "$current_task_id" --completed_at now \
-  --commit_title "$commit_title"
+  --id "$current_task_id" --completed-at now \
+  --commit-title "$commit_title"
 ```
 
 If the command fails, report the error and stop.

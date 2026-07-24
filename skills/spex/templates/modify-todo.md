@@ -73,7 +73,7 @@ multi-line Markdown details:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
-  --id step-N --name "Short name" --details-from-stdin <<'DETAILS'
+  --id step-N --step-name "Short name" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -93,7 +93,7 @@ $spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} show \
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} edit \
-  --id step-N --name "Updated name" --details-from-stdin <<'DETAILS'
+  --id step-N --step-name "Updated name" --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
 - Revised implementation approach
