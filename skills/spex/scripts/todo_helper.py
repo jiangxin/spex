@@ -447,11 +447,11 @@ def _build_parser():
         help="Read details from stdin",
     )
     p_append.add_argument(
-        "--completed_at", default="",
+        "--completed-at", default="",
         help="Completion timestamp (or 'now')",
     )
     p_append.add_argument(
-        "--commit_title", default="",
+        "--commit-title", default="",
         help="Commit title for the task",
     )
 
@@ -475,11 +475,11 @@ def _build_parser():
         help="Read details from stdin",
     )
     p_edit.add_argument(
-        "--completed_at", default=None,
+        "--completed-at", default=None,
         help="Completion timestamp (or 'now')",
     )
     p_edit.add_argument(
-        "--commit_title", default=None,
+        "--commit-title", default=None,
         help="Commit title for the task",
     )
 
