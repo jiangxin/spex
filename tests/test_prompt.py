@@ -25,14 +25,22 @@ def _init_git_repo(path):
     )
 
 
-def _make_task(task_id, name="Task", details="Details here", completed=False):
+def _make_task(
+    task_id,
+    name="Task",
+    details="Details here",
+    completed=False,
+    commit_title=None,
+):
     """Create a single todo item dict."""
+    if commit_title is None:
+        commit_title = f"commit for {task_id}" if completed else ""
     return {
         "id": task_id,
         "name": name,
         "details": details,
         "completed_at": "2026-01-01T00:00:00Z" if completed else "",
-        "commit_title": f"commit for {task_id}" if completed else "",
+        "commit_title": commit_title,
     }
 
 
@@ -379,6 +387,36 @@ class TestJsonMode:
         assert data["task_id"] == "step-2"
         assert "step-2" in data["prompt"]
         assert "all_done" not in data
+        assert data["resume_phase"] == "implement"
+        assert data["commit_title"] == ""
+
+    def test_prompt_json_resume_review(self, tmp_path, monkeypatch, capsys):
+        """--json with commit_title set emits resume_phase=review."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="First step",
+                completed=False,
+                commit_title="deadbeef: feat: first",
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prompt", "apply-one-task", "--name", "test-topic", "--json"],
+        )
+        monkeypatch.setattr("sys.stdin", open("/dev/null"))
+
+        from prompt import main
+
+        main()
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["task_id"] == "step-1"
+        assert data["resume_phase"] == "review"
+        assert data["commit_title"] == "deadbeef: feat: first"
 
     def test_prompt_json_all_done(self, tmp_path, monkeypatch, capsys):
         """--json all-done outputs JSON with all_done=true and exits 0."""
@@ -406,6 +444,8 @@ class TestJsonMode:
         assert data["task_id"] == ""
         assert data["prompt"] == ""
         assert data["all_done"] is True
+        assert data["resume_phase"] == ""
+        assert data["commit_title"] == ""
         # stderr must NOT contain error message in JSON mode
         assert "all tasks are completed" not in captured.err
 
@@ -577,6 +617,53 @@ class TestBuildTaskContext:
         assert result["current_task_id"] == ""
         assert result["current_task_description"] == ""
         assert result["future_tasks"] == ""
+        assert result["resume_phase"] == "implement"
+        assert result["current_commit_title"] == ""
+
+    def test_resume_phase_implement_without_commit_title(self, tmp_path):
+        """Undone task with empty commit_title → resume at implement."""
+        tasks = [
+            _make_task("step-1", name="First", completed=False),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        spec_dir = repo / ".spex" / "specs" / "test-topic"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["current_task_id"] == "step-1"
+        assert result["resume_phase"] == "implement"
+        assert result["current_commit_title"] == ""
+
+    def test_resume_phase_review_with_commit_title(self, tmp_path):
+        """commit_title set but completed_at empty → resume at review."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="First",
+                completed=False,
+                commit_title="abc1234: feat: something",
+            ),
+        ]
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_git_repo(repo)
+        spec_dir = repo / ".spex" / "specs" / "test-topic"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["current_task_id"] == "step-1"
+        assert result["resume_phase"] == "review"
+        assert result["current_commit_title"] == "abc1234: feat: something"
 
 
 class TestTrimSpecContent:

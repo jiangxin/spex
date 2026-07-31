@@ -40,7 +40,7 @@ $spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
 If the script exits with an error (non-zero), the error message is already
 printed to stderr. Stop execution. On success, continue to the next phase.
 
-### Phase 3: Build Prompt
+### Phase 3: Build Prompt / Resume Gate
 
 Run:
 
@@ -54,8 +54,22 @@ Parse the JSON output from stdout:
   completed — report completion to the user and stop.
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
-- Otherwise, save `$prompt` from the `"prompt"` field and
-  `$current_task_id` from the `"task_id"` field.
+- Otherwise, save:
+  - `$prompt` ← `"prompt"`
+  - `$current_task_id` ← `"task_id"`
+  - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
+  - `$commit_title` ← `"commit_title"` (may be empty)
+
+A step is incomplete until `completed_at` is set. If
+`commit_title` is already set and `completed_at` is empty,
+`resume_phase` is `review` (skip implement/commit).
+
+**Route:**
+
+- If `$resume_phase` is `review`: set
+  `$commit_sha=$(git rev-parse --short HEAD)`, skip Phases 4–5,
+  continue with Phase 6.
+- If `$resume_phase` is `implement`: continue with Phase 4.
 
 ### Phase 4: Execute Task
 
@@ -67,7 +81,7 @@ description, and implementation guidelines.
 Deliver production code and its tests together. If the implementation
 produces no file changes, report the issue and stop.
 
-### Phase 5: Commit
+### Phase 5: Commit (record commit_title only)
 
 Run:
 
@@ -97,6 +111,14 @@ git rev-parse --short HEAD
 
 Save to `$commit_sha`.
 
+**Persist commit_title now — do NOT set `completed_at` yet**
+(review/fix may still be pending; this enables interrupt resume):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+  --id "$current_task_id" --commit-title "$commit_title"
+```
+
 ### Phase 6: Review Loop
 
 The main agent orchestrates this phase. Launch a fresh **review
@@ -112,6 +134,20 @@ round. Maximum **3** review rounds.
 - Shell variables such as `$commit_sha` are not Python names — never
   reference them inside `python3 -c` unless you expand them in the
   shell string first.
+
+#### 6-entry. Resume / continue gate
+
+Ensure `$commit_sha` is set (`git rev-parse --short HEAD` if
+needed). Then:
+
+```bash
+$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  status --step "$current_task_id" --json
+```
+
+- If `"needs_fix": true`: open findings remain — go to **6c**
+  (fix loop). Do not start a new review first.
+- Otherwise: go to **6a** (start or continue review).
 
 #### 6a. Review sub-agent
 
@@ -134,7 +170,7 @@ helpers. The review sub-agent must only record findings via
 `review-helper append` (with `--commit`) — it must not modify
 source code, and must not call `init`.
 
-#### 6b. Check status
+#### 6b. Check status (after a review pass)
 
 Run:
 
@@ -145,10 +181,10 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
 
 Parse the JSON. Decision table (do not skip steps):
 
-1. If `"exists": false` or `"needs_fix": false` (no open findings,
-   including when no review file was created): refresh
-   `$commit_title` with `git log -1 --pretty="%h: %s"` and proceed
-   to Phase 7.
+1. If `"needs_fix": false` (no open findings — including when no
+   review file was created because the review found nothing):
+   refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
+   proceed to Phase 7.
 2. If `"open_major"` > 0 and `"round"` >= 3: stop the loop, report
    remaining open major findings, and stop (do not mark the task
    complete).
@@ -237,7 +273,9 @@ commit).
 
 ### Phase 7: Mark Task Complete
 
-Run:
+Only after the review/fix loop finishes successfully. Refresh
+`$commit_title` if needed, then set **`completed_at`** (the step
+is not done until this runs):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \

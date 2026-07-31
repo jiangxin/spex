@@ -194,6 +194,11 @@ def _build_task_context(spec_dir, verbose_items=20):
             task_id = current.get("id", "")
             current_task_id = task_id
             current_task_description = _format_item_verbose(current)
+            current_commit_title = current.get("commit_title") or ""
+            # commit_title set but completed_at empty → resume at review
+            resume_phase = (
+                "review" if current_commit_title.strip() else "implement"
+            )
 
             future = undone[1:]
             if future:
@@ -220,6 +225,8 @@ def _build_task_context(spec_dir, verbose_items=20):
         else:
             current_task_id = ""
             current_task_description = ""
+            current_commit_title = ""
+            resume_phase = "implement"
             future_tasks = ""
             future_tasks_concise = ""
     else:
@@ -227,6 +234,8 @@ def _build_task_context(spec_dir, verbose_items=20):
         completed_tasks_concise = ""
         current_task_id = ""
         current_task_description = ""
+        current_commit_title = ""
+        resume_phase = "implement"
         future_tasks = ""
         future_tasks_concise = ""
 
@@ -237,6 +246,8 @@ def _build_task_context(spec_dir, verbose_items=20):
         "completed_tasks_concise": completed_tasks_concise,
         "current_task_id": current_task_id,
         "current_task_description": current_task_description,
+        "current_commit_title": current_commit_title,
+        "resume_phase": resume_phase,
         "future_tasks": future_tasks,
         "future_tasks_concise": future_tasks_concise,
     }
@@ -546,7 +557,13 @@ def _do_apply_one_task(args):
 
         # Handle all-done in JSON mode
         if args.json_mode and not metadata.get("current_task_description"):
-            print(json.dumps({"task_id": "", "prompt": "", "all_done": True}))
+            print(json.dumps({
+                "task_id": "",
+                "prompt": "",
+                "all_done": True,
+                "resume_phase": "",
+                "commit_title": "",
+            }))
             sys.exit(0)
 
         # Handle all-done in non-JSON mode: exit(0) with empty stdout
@@ -568,8 +585,12 @@ def _do_apply_one_task(args):
         sys.exit(1)
 
     if args.json_mode:
-        task_id = metadata.get("current_task_id", "")
-        print(json.dumps({"task_id": task_id, "prompt": rendered}))
+        print(json.dumps({
+            "task_id": metadata.get("current_task_id", ""),
+            "prompt": rendered,
+            "resume_phase": metadata.get("resume_phase", "implement"),
+            "commit_title": metadata.get("current_commit_title", ""),
+        }))
     else:
         _output_rendered(rendered, args.output)
 
