@@ -1,5 +1,5 @@
 ---
-version: "0.1.3"
+version: "0.1.5"
 required:
   - spec_content_concise
   - current_task_description
@@ -47,16 +47,7 @@ Do NOT call `bump-round`. After this one fix, amend immediately.
   edit --step {{ step_id }} --id {{ finding_id }} --completed-at now
 ```
 
-4. Verify that `{{ finding_id }}` now has a non-empty `completed_at`
-   and that you did **not** mark any other finding complete in this
-   pass:
-
-```bash
-{{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
-  show --step {{ step_id }} --json
-```
-
-5. **Amend now** (this pass only — fold this finding's changes into
+4. **Amend now** (this pass only — fold this finding's changes into
    the step commit). Constraints:
 
    - `HEAD` must still be `{{ commit_sha }}` (or the current step
@@ -83,33 +74,41 @@ EOF
 ```
 {% endif %}
 
-6. Stop after amend succeeds. Leave other open findings for later
+5. Stop after amend succeeds. Leave other open findings for later
    fix passes. Do not batch-mark multiple findings.
 
-## Requirement Context
+## Reference (context only)
+
+Fix the "open_findings" from the review (see above). The material
+below is only to understand the background of the commit under
+review (`{{ commit_sha }}`) — do not expand scope beyond the
+finding.
 
 <requirement>
 {{ spec_content_concise }}
 </requirement>
+{% if completed_tasks_concise %}
 
-{% if completed_tasks_concise -%}
-## Completed Steps
+Previously committed tasks:
 
 <completed-steps>
 {{ completed_tasks_concise }}
 </completed-steps>
+{% endif %}
 
-{% endif -%}
-## Current Task
+
+Step description for the commit under review / being fixed:
 
 <current-task>
 {{ current_task_description }}
 </current-task>
 {% if future_tasks_concise %}
 
-## Future Steps
+Brief notes on future commit steps to be executed one by one:
 
+<future-steps>
 {{ future_tasks_concise }}
+</future-steps>
 {% endif %}
 {% if spex_root %}
 

@@ -1,5 +1,5 @@
 ---
-version: "0.1.2"
+version: "0.1.3"
 required:
   - spec_content_concise
   - current_task_description
@@ -93,32 +93,36 @@ If there are no **new** findings for this round, do **nothing** —
 do not call `init` or `append`. Leave any prior findings unchanged;
 if no review file exists yet, that is correct.
 
-## Requirement Context
+## Reference (context only)
+
+Review the commit under review (`{{ commit_sha }}`). The material
+below is only to understand the background of that commit — stay
+focused on this step's changes.
 
 <requirement>
 {{ spec_content_concise }}
 </requirement>
+{% if completed_tasks_concise %}
 
-{% if completed_tasks_concise -%}
-## Completed Steps
+Previously committed tasks:
 
 <completed-steps>
 {{ completed_tasks_concise }}
 </completed-steps>
+{% endif %}
 
-{% endif -%}
-## Current Task
-
-The commit under review implements this task:
+Step description for the commit under review:
 
 <current-task>
 {{ current_task_description }}
 </current-task>
 {% if future_tasks_concise %}
 
-## Future Steps
+Brief notes on future commit steps to be executed one by one:
 
+<future-steps>
 {{ future_tasks_concise }}
+</future-steps>
 {% endif %}
 {% if spex_root %}
 
