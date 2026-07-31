@@ -1,5 +1,5 @@
 ---
-version: "0.1.3"
+version: "0.1.4"
 required:
   - spec_content_concise
   - current_task_description
@@ -18,9 +18,10 @@ optional:
 Act as a senior code reviewer. Your task is to review the git commit
 at `{{ commit_sha }}` for the current implementation step. Do NOT
 modify any production or test source files. Only record findings via
-`review-helper append`. Do NOT call `review-helper init`. The review
-file is created lazily on the first append — if you find nothing,
-do not create any review file.
+`review-helper append`. Do NOT call `review-helper init` or
+`bump-round`. The review file is created lazily on the first append —
+if you find nothing, do not create any review file. At most 3 review
+rounds are allowed for a step; do not attempt to advance the round.
 
 ## Review Round
 

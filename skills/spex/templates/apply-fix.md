@@ -1,5 +1,5 @@
 ---
-version: "0.1.5"
+version: "0.1.6"
 required:
   - spec_content_concise
   - current_task_description
@@ -21,7 +21,8 @@ optional:
 
 Act as a senior software engineer fixing **exactly one** review
 finding. Do NOT fix other findings. Do NOT start a new review.
-Do NOT call `bump-round`. After this one fix, amend immediately.
+Do NOT call `bump-round` (round is capped at 3 by the orchestrator).
+After this one fix, amend immediately.
 
 ## Target Finding (only this one)
 

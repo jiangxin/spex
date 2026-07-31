@@ -1,5 +1,5 @@
 ---
-version: "0.1.1"
+version: "0.1.2"
 required:
   - spec_content
   - current_task_description
@@ -63,8 +63,8 @@ files to change, and the acceptance criteria.
   behavior plus relevant edge cases. Missing required tests means
   the step is incomplete. Run lint and tests after implementation
   and proceed only when they pass.
-- **Commits**: Create a commit after the task is complete, following
-  Conventional Commits format.
+- **Commits**: Do **not** create a git commit. The orchestration
+  layer commits separately after this implementation pass.
 {% if future_tasks_concise %}
 
 ## Future Steps

@@ -81,6 +81,8 @@ description, and implementation guidelines.
 Deliver production code and its tests together. If the implementation
 produces no file changes, report the issue and stop.
 
+Do **not** create a git commit here — Phase 5 handles the commit.
+
 ### Phase 5: Commit (record commit_title only)
 
 Run:
@@ -95,7 +97,7 @@ guide, stage the relevant file changes and create a git commit:
 - Do NOT stage any files under `$spex_root/`.
 - Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
 - If the commit fails (e.g., pre-commit hook), fix the issues and
-  retry.
+  retry **once**; if it still fails, stop and report.
 
 After the commit succeeds, run:
 
@@ -121,155 +123,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ### Phase 6: Review Loop
 
-The main agent orchestrates this phase. Launch a fresh **review
-sub-agent** and (when needed) a fresh **fix sub-agent** each
-round. Maximum **3** review rounds.
-
-**Orchestration rules (required):**
-
-- Run each `review-helper` / `prompt` command as its **own** shell
-  invocation. Do not chain init + prompt + python one-liners.
-- Parse JSON from **stdout** yourself (tool output). Status/info
-  lines on stderr (e.g. template sync) must be ignored.
-- Shell variables such as `$commit_sha` are not Python names — never
-  reference them inside `python3 -c` unless you expand them in the
-  shell string first.
-
-#### 6-entry. Resume / continue gate
-
-Ensure `$commit_sha` is set (`git rev-parse --short HEAD` if
-needed). Then:
-
-```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  status --step "$current_task_id" --json
-```
-
-- If `"needs_fix": true`: open findings remain — go to **6c**
-  (fix loop). Do not start a new review first.
-- Otherwise: go to **6a** (start or continue review).
-
-#### 6a. Review sub-agent
-
-Do **not** run `review-helper init`. The review file is created
-lazily on the first `append`. If the review finds nothing, do not
-create any `review-step-*.json` file.
-
-Run (alone — do not pipe through ad-hoc scripts):
-
-```bash
-$spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name $spec_name --commit "$commit_sha"
-```
-
-Parse the JSON object from stdout. Save `$review_prompt` from the
-`"prompt"` field (and optionally `"review_round"` /
-`"review_file"`). Pass `$review_prompt` directly to a **review
-sub-agent** as its instructions — do not rewrite it via shell
-helpers. The review sub-agent must only record findings via
-`review-helper append` (with `--commit`) — it must not modify
-source code, and must not call `init`.
-
-#### 6b. Check status (after a review pass)
-
-Run:
-
-```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  status --step "$current_task_id" --json
-```
-
-Parse the JSON. Decision table (do not skip steps):
-
-1. If `"needs_fix": false` (no open findings — including when no
-   review file was created because the review found nothing):
-   refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
-   proceed to Phase 7.
-2. If `"open_major"` > 0 and `"round"` >= 3: stop the loop, report
-   remaining open major findings, and stop (do not mark the task
-   complete).
-3. If `"open_major"` == 0 and `"round"` >= 3: refresh
-   `$commit_title` and proceed to Phase 7 (remaining open minors
-   may stay unfinished).
-4. **Otherwise** (`needs_fix` is true and round < 3): you **MUST**
-   continue to 6c and launch the fix loop. Never proceed to
-   Phase 7 while open findings remain in rounds 1–2 — this includes
-   minor-only reviews. A review file always exists when
-   `needs_fix` is true.
-
-#### 6c. Fix loop — one finding at a time
-
-Only enter this phase when 6b reported `needs_fix: true` (a
-review file already exists). Fix findings **serially**. Never
-batch-fix or batch-mark multiple findings in one sub-agent pass
-(that produces identical `completed_at` timestamps). **Amend after
-every single finding.**
-
-**6c-i. Pick next open finding**
-
-```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  next --step "$current_task_id"
-```
-
-Parse JSON from stdout:
-
-- If `"id"` is `null` / empty: all findings for this round are
-  marked complete — go to **6c-iii** (bump-round → re-review).
-- Otherwise set `$finding_id` from `"id"` and continue to 6c-ii.
-
-**6c-ii. Fix + amend one finding**
-
-```bash
-$spex_skill_dir/scripts/spex prompt apply-fix --json \
-  --name $spec_name --commit "$commit_sha" \
-  --finding-id "$finding_id"
-```
-
-Parse `"prompt"` into `$fix_prompt`. Launch a **fresh fix
-sub-agent** with `$fix_prompt`. That sub-agent must:
-
-- Fix **only** `$finding_id`
-- Call `review-helper edit --id $finding_id --completed-at now`
-  after that single fix (not before, not for other ids)
-- **Amend immediately** after marking that finding complete
-- **Not** mark other findings complete
-
-Amend constraints:
-
-- `HEAD` must still be `$commit_sha` / the step commit under review.
-- The commit must not have been pushed to a remote.
-- Do not amend someone else's commit.
-- Do NOT stage any files under `$spex_root/`.
-
-After the fix sub-agent returns:
-
-1. Verify `$finding_id` has a non-empty `completed_at`. If not,
-   relaunch once; if it still fails, stop and report.
-2. Refresh the SHA after this amend:
-
-```bash
-git rev-parse --short HEAD
-```
-
-   Save to `$commit_sha` (required — the next finding amends this
-   new HEAD).
-
-3. Go back to **6c-i** for the next open finding.
-
-**6c-iii. Bump round and re-review**
-
-When `next` reports no open findings, bump round and sync
-`commit_sha` (findings preserved):
-
-```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  bump-round --step "$current_task_id" --commit "$commit_sha"
-```
-
-Confirm stdout JSON shows the new `round` and `commit_sha`. Then
-go back to **6a** (fresh review sub-agent on the latest amended
-commit).
+Load and follow `references/apply-review-loop.md` exactly.
 
 ### Phase 7: Mark Task Complete
 
@@ -285,18 +139,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 If the command fails, report the error and stop.
 
-### Phase 8: Output
-
-Display a summary to the user:
-
-- The completed step name and `$commit_title`
-- The number of remaining undone tasks in `todo.json`
-
-**This command implements exactly one step. Stop here.**
-Do NOT loop back to Phase 3 or implement additional steps.
-The user must invoke `/spex apply-one-step` again to continue.
-
-### Phase 9: Post Action
+### Phase 8: Post Action and Summary
 
 Run:
 
@@ -305,3 +148,12 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
 Display the output to the user.
+
+Then display a summary:
+
+- The completed step name and `$commit_title`
+- The number of remaining undone tasks in `todo.json`
+
+**This command implements exactly one step. STOP here.**
+Do NOT loop back to Phase 3 or implement additional steps.
+The user must invoke `/spex apply-one-step` again to continue.

@@ -32,6 +32,7 @@ VALID_CATEGORIES = (
     "security",
     "other",
 )
+MAX_REVIEW_ROUND = 3
 
 _STEP_NUM_RE = re.compile(r"(\d+)$")
 
@@ -269,7 +270,16 @@ def cmd_edit(path: Path, args) -> None:
 def cmd_bump_round(path: Path, commit_sha: str) -> None:
     """Increment round and update commit_sha; preserve findings."""
     data = load_review(path)
-    data["round"] = int(data.get("round", 1)) + 1
+    current = int(data.get("round", 1))
+    if current >= MAX_REVIEW_ROUND:
+        logger.error(
+            "Error: cannot bump-round past max review round %d "
+            "(current round=%d).",
+            MAX_REVIEW_ROUND,
+            current,
+        )
+        sys.exit(1)
+    data["round"] = current + 1
     data["commit_sha"] = commit_sha
     save_review(path, data)
     logger.info(

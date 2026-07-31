@@ -306,6 +306,44 @@ class TestBumpRound:
                 "--step", "step-1",
             ])
 
+    def test_bump_from_round_2_to_3(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "bump-round",
+            "--step", "step-1", "--commit", "def",
+        ])
+        _last_json_line(capsys)
+        review_helper.main([
+            "--name", "my-topic", "bump-round",
+            "--step", "step-1", "--commit", "ghi",
+        ])
+        out = _last_json_line(capsys)
+        assert out["round"] == 3
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["round"] == 3
+        assert data["commit_sha"] == "ghi"
+
+    def test_rejects_bump_at_max_round(self, spec_dir):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        path = spec_dir / "review-step-1.json"
+        data = _read(path)
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "bump-round",
+                "--step", "step-1", "--commit", "zzz",
+            ])
+        assert exc.value.code == 1
+        assert _read(path)["round"] == review_helper.MAX_REVIEW_ROUND
+        assert _read(path)["commit_sha"] == "abc"
+
 
 class TestStatus:
     def test_needs_fix_when_only_minors(self, spec_dir, capsys):
