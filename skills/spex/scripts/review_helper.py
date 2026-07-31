@@ -11,6 +11,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 from cli import ArgumentParser
 from common import (
@@ -316,6 +317,20 @@ def cmd_show(path: Path, open_only: bool, as_json: bool) -> None:
                     print(f"    {line}")
 
 
+def _format_finding_markdown(item: dict) -> str:
+    """Format a single finding as markdown for prompt injection."""
+    block = [
+        f"### {item.get('id', '')}: {item.get('title', '')}",
+        f"- severity: {item.get('severity', '')}",
+        f"- category: {item.get('category', '')}",
+    ]
+    details = (item.get("details") or "").strip()
+    if details:
+        block.append("")
+        block.append(details)
+    return "\n".join(block)
+
+
 def _format_open_findings_markdown(findings: list) -> str:
     """Format open findings as markdown for prompt injection."""
     open_items = [
@@ -324,19 +339,50 @@ def _format_open_findings_markdown(findings: list) -> str:
     ]
     if not open_items:
         return "(no open findings)"
-    parts = []
-    for item in open_items:
-        block = [
-            f"### {item.get('id', '')}: {item.get('title', '')}",
-            f"- severity: {item.get('severity', '')}",
-            f"- category: {item.get('category', '')}",
-        ]
-        details = (item.get("details") or "").strip()
-        if details:
-            block.append("")
-            block.append(details)
-        parts.append("\n".join(block))
-    return "\n\n".join(parts)
+    return "\n\n".join(_format_finding_markdown(item) for item in open_items)
+
+
+def get_open_findings(data: dict) -> list:
+    """Return open (incomplete) findings from a review document."""
+    return [
+        f for f in data.get("findings", [])
+        if isinstance(f, dict) and not f.get("completed_at")
+    ]
+
+
+def get_finding_by_id(data: dict, finding_id: str) -> Optional[dict]:
+    """Return a finding dict by id, or None."""
+    for item in data.get("findings", []):
+        if isinstance(item, dict) and item.get("id") == finding_id:
+            return item
+    return None
+
+
+def cmd_next(path: Path) -> None:
+    """Print the first open finding as JSON (or id=null if none)."""
+    data = load_review(path)
+    open_items = get_open_findings(data)
+    if not open_items:
+        print(json.dumps({
+            "id": None,
+            "open_count": 0,
+            "step_id": data.get("step_id", ""),
+            "commit_sha": data.get("commit_sha", ""),
+            "round": data.get("round", 1),
+        }))
+        return
+    item = open_items[0]
+    print(json.dumps({
+        "id": item.get("id", ""),
+        "severity": item.get("severity", ""),
+        "category": item.get("category", ""),
+        "title": item.get("title", ""),
+        "details": item.get("details", ""),
+        "open_count": len(open_items),
+        "step_id": data.get("step_id", ""),
+        "commit_sha": data.get("commit_sha", ""),
+        "round": data.get("round", 1),
+    }))
 
 
 def load_open_findings_text(path: Path) -> str:
@@ -351,7 +397,7 @@ def _build_parser():
         prog="spex review-helper",
         description=(
             "Operate on per-step review finding files "
-            "(init, append, edit, bump-round, status, show)."
+            "(init, append, edit, bump-round, status, show, next)."
         ),
     )
     parser.add_argument(
@@ -459,6 +505,13 @@ def _build_parser():
         help="Output JSON",
     )
 
+    p_next = subs.add_parser(
+        "next",
+        description="Print the first open finding as JSON.",
+        help="First open finding (for one-at-a-time fix loop)",
+    )
+    p_next.add_argument("--step", required=True, help="Step id")
+
     return parser
 
 
@@ -486,6 +539,8 @@ def main(argv=None):
         cmd_status(path, args.json_mode)
     elif args.subcmd == "show":
         cmd_show(path, args.open_only, args.json_mode)
+    elif args.subcmd == "next":
+        cmd_next(path)
 
 
 if __name__ == "__main__":

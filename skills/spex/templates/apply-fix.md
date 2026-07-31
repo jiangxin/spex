@@ -1,5 +1,5 @@
 ---
-version: "0.1.1"
+version: "0.1.3"
 required:
   - spec_content_concise
   - current_task_description
@@ -9,6 +9,7 @@ required:
   - step_id
   - spex_skill_dir
   - open_findings
+  - finding_id
 optional:
   - spex_root
   - completed_tasks_concise
@@ -18,69 +19,72 @@ optional:
   - user_email
 ---
 
-Act as a senior software engineer fixing review findings for the
-current implementation step. Address **every open finding** listed
-below (both major and minor), mark each complete, then amend the
-original commit. Do NOT start a new review. Do NOT leave any listed
-finding with an empty `completed_at`.
+Act as a senior software engineer fixing **exactly one** review
+finding. Do NOT fix other findings. Do NOT start a new review.
+Do NOT call `bump-round`. After this one fix, amend immediately.
 
-## Open Findings
+## Target Finding (only this one)
 
-The following findings are still open in `{{ review_file }}`
-(round {{ review_round }}). Fix them one by one — skipping is not
-allowed.
+- Finding ID: `{{ finding_id }}`
+- Review file: `{{ review_file }}`
+- Round: {{ review_round }}
+- Commit to amend: `{{ commit_sha }}` (must be `HEAD`)
 
 <open-findings>
 {{ open_findings }}
 </open-findings>
 
-## Fix Procedure
+## Fix Procedure (strict order)
 
-1. For each open finding, implement the necessary code/test/message
-   fix. Prefer minimal, targeted changes.
-2. Immediately after fixing a finding, mark it complete (required):
-
-```bash
-{{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
-  edit --step {{ step_id }} --id <finding-id> --completed-at now
-```
-
-3. After all findings are marked complete, confirm with:
+1. Implement the code/test/message fix for **only** `{{ finding_id }}`.
+   Prefer a minimal, targeted change. Do not touch unrelated findings.
+2. Run lint and relevant tests for the change; proceed only when they
+   pass.
+3. Mark **this** finding complete (and only this one):
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
-  status --step {{ step_id }} --json
+  edit --step {{ step_id }} --id {{ finding_id }} --completed-at now
 ```
 
-   `"needs_fix"` must be `false` before you amend. If it is still
-   `true`, finish the remaining open findings first.
-4. Run lint and relevant tests; proceed only when they pass.
-5. **Amend** the original commit at `{{ commit_sha }}` (must still
-   be `HEAD`, not pushed). Stage only relevant source/test changes
-   (never files under spex_root), then:
+4. Verify that `{{ finding_id }}` now has a non-empty `completed_at`
+   and that you did **not** mark any other finding complete in this
+   pass:
+
+```bash
+{{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
+  show --step {{ step_id }} --json
+```
+
+5. **Amend now** (this pass only — fold this finding's changes into
+   the step commit). Constraints:
+
+   - `HEAD` must still be `{{ commit_sha }}` (or the current step
+     commit under review).
+   - The commit must not have been pushed to a remote.
+   - Do not amend someone else's commit.
+   - Stage only relevant source/test changes.
 
 {% if user_name and user_email -%}
 ```bash
 git -c user.name="{{ user_name }}" \
     -c user.email="{{ user_email }}" \
     commit --amend -F- <<'EOF'
-<updated commit message if message was a finding; otherwise keep
- the improved message that still explains WHY and the approach>
+<updated commit message if this finding was about the message;
+ otherwise keep a message that still explains WHY and the approach>
 EOF
 ```
 {% else -%}
 ```bash
 git commit --amend -F- <<'EOF'
-<updated commit message if message was a finding; otherwise keep
- the improved message that still explains WHY and the approach>
+<updated commit message if this finding was about the message;
+ otherwise keep a message that still explains WHY and the approach>
 EOF
 ```
 {% endif %}
 
-6. If the branch has already been pushed, or `HEAD` is not the
-   commit under review, stop and report the error — do not amend.
-7. Do NOT launch another review. Do NOT call `bump-round` (the
-   orchestrator does that). Stop after amend succeeds.
+6. Stop after amend succeeds. Leave other open findings for later
+   fix passes. Do not batch-mark multiple findings.
 
 ## Requirement Context
 

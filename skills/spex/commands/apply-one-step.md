@@ -166,52 +166,68 @@ Parse the JSON. Decision table (do not skip steps):
    Phase 7 while open findings remain in rounds 1–2 — this includes
    minor-only reviews.
 
-#### 6d. Fix sub-agent (amend)
+#### 6d. Fix loop — one finding at a time
 
-Run (alone — do not pipe through ad-hoc scripts):
+Fix findings **serially**. Never batch-fix or batch-mark multiple
+findings in one sub-agent pass (that produces identical
+`completed_at` timestamps). **Amend after every single finding.**
 
-```bash
-$spex_skill_dir/scripts/spex prompt apply-fix --json \
-  --name $spec_name --commit "$commit_sha"
-```
-
-Parse the JSON object from stdout. Save `$fix_prompt` from the
-`"prompt"` field. Pass it directly to a **fix sub-agent** as
-its instructions. The fix sub-agent must address **every open
-finding** (major and minor), mark each with
-`review-helper edit --completed-at now`, then amend.
-
-Amend constraints (the fix sub-agent must enforce these):
-
-- `HEAD` must still be the commit under review.
-- The commit must not have been pushed to a remote.
-- Do not amend someone else's commit.
-- Do NOT stage any files under `$spex_root/`.
-- Use `git commit --amend` to fold fixes into the original commit.
-- Mark each fixed finding complete with
-  `review-helper edit --completed-at now` **before** amend returns.
-
-If amend is unsafe (already pushed / wrong HEAD), report the error
-and stop.
-
-After the fix sub-agent returns, verify:
+**6d-i. Pick next open finding**
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  status --step "$current_task_id" --json
+  next --step "$current_task_id"
 ```
 
-If `"needs_fix"` is still true, relaunch the fix sub-agent once
-more. If it still fails, report the open findings and stop.
+Parse JSON from stdout:
 
-Then refresh the SHA after amend:
+- If `"id"` is `null` / empty: all findings for this round are
+  marked complete — go to **6d-iii** (bump-round → re-review).
+- Otherwise set `$finding_id` from `"id"` and continue to 6d-ii.
+
+**6d-ii. Fix + amend one finding**
+
+```bash
+$spex_skill_dir/scripts/spex prompt apply-fix --json \
+  --name $spec_name --commit "$commit_sha" \
+  --finding-id "$finding_id"
+```
+
+Parse `"prompt"` into `$fix_prompt`. Launch a **fresh fix
+sub-agent** with `$fix_prompt`. That sub-agent must:
+
+- Fix **only** `$finding_id`
+- Call `review-helper edit --id $finding_id --completed-at now`
+  after that single fix (not before, not for other ids)
+- **Amend immediately** after marking that finding complete
+- **Not** mark other findings complete
+
+Amend constraints:
+
+- `HEAD` must still be `$commit_sha` / the step commit under review.
+- The commit must not have been pushed to a remote.
+- Do not amend someone else's commit.
+- Do NOT stage any files under `$spex_root/`.
+
+After the fix sub-agent returns:
+
+1. Verify `$finding_id` has a non-empty `completed_at`. If not,
+   relaunch once; if it still fails, stop and report.
+2. Refresh the SHA after this amend:
 
 ```bash
 git rev-parse --short HEAD
 ```
 
-Save to `$commit_sha`. Bump round **and** update `commit_sha` in
-the review file (findings are preserved):
+   Save to `$commit_sha` (required — the next finding amends this
+   new HEAD).
+
+3. Go back to **6d-i** for the next open finding.
+
+**6d-iii. Bump round and re-review**
+
+When `next` reports no open findings, bump round and sync
+`commit_sha` (findings preserved):
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
@@ -219,7 +235,8 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
 ```
 
 Confirm stdout JSON shows the new `round` and `commit_sha`. Then
-go back to **6b** (fresh review sub-agent on the amended commit).
+go back to **6b** (fresh review sub-agent on the latest amended
+commit).
 
 ### Phase 7: Mark Task Complete
 

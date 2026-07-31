@@ -48,7 +48,7 @@ Internal commands (used by skill):
                 Execute a hook script with event data
   review-helper --name <name> <subcmd>
                 Operate on per-step review files (init, append, edit,
-                bump-round, status, show)
+                bump-round, status, show, next)
   todo-helper [--name <name> | --todo-file <path>] [--xml] <subcmd>
                 Operate on todo files (validate, append, edit, remove,
                 show, xml2json, json2xml)"""

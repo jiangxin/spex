@@ -429,3 +429,74 @@ class TestFormatOpenFindings:
         assert "### f1: Missing" in text
         assert "Add coverage" in text
         assert "f2" not in text
+
+
+class TestNext:
+    def test_returns_first_open(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other", "--title", "First",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f2", "--severity", "major",
+            "--category", "tests", "--title", "Second",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "next", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["id"] == "r1-f1"
+        assert payload["open_count"] == 2
+        assert payload["title"] == "First"
+
+    def test_skips_completed(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other", "--title", "First",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f2", "--severity", "major",
+            "--category", "tests", "--title", "Second",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "edit",
+            "--step", "step-1", "--id", "r1-f1",
+            "--completed-at", "now",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "next", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["id"] == "r1-f2"
+        assert payload["open_count"] == 1
+
+    def test_none_when_all_done(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "next", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["id"] is None
+        assert payload["open_count"] == 0

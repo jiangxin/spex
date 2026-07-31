@@ -1836,10 +1836,10 @@ class TestApplyReviewAndFix:
         assert data["task_id"] == "step-2"
         assert "review-helper" in data["prompt"]
 
-    def test_apply_fix_includes_open_findings(
+    def test_apply_fix_includes_single_finding(
         self, tmp_path, monkeypatch, capsys,
     ):
-        """apply-fix injects open findings into the prompt."""
+        """apply-fix injects only the requested finding."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature"),
@@ -1857,22 +1857,36 @@ class TestApplyReviewAndFix:
         review_helper.main([
             "--name", "test-topic", "append",
             "--step", "step-2",
-            "--id", "f1", "--severity", "major",
+            "--id", "r1-f1", "--severity", "major",
             "--category", "tests",
             "--title", "Missing unit tests",
             "--details", "Add tests for edge cases",
+        ])
+        review_helper.main([
+            "--name", "test-topic", "append",
+            "--step", "step-2",
+            "--id", "r1-f2", "--severity", "minor",
+            "--category", "other",
+            "--title", "Other nit",
+            "--details", "Should not appear",
         ])
         capsys.readouterr()  # drain helper stdout
 
         main([
             "apply-fix", "--name", "test-topic",
-            "--commit", "abc1234", "--json",
+            "--commit", "abc1234", "--finding-id", "r1-f1", "--json",
         ])
         data = _parse_json_stdout(capsys.readouterr().out)
         assert "Missing unit tests" in data["prompt"]
         assert "Add tests for edge cases" in data["prompt"]
+        assert "Other nit" not in data["prompt"]
+        assert "exactly one" in data["prompt"].lower()
         assert "commit --amend" in data["prompt"]
+        assert "Amend now" in data["prompt"] or "amend immediately" in (
+            data["prompt"].lower()
+        )
         assert data["task_id"] == "step-2"
+        assert data["finding_id"] == "r1-f1"
 
     def test_apply_review_requires_commit_without_file(
         self, tmp_path, monkeypatch, caplog,

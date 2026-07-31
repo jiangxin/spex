@@ -292,13 +292,16 @@ def _build_metadata(template_name, spec_name=None):
     return metadata
 
 
-def _enrich_review_metadata(metadata, spec_name, commit_sha=None):
+def _enrich_review_metadata(
+    metadata, spec_name, commit_sha=None, finding_id=None,
+):
     """Add review-loop fields from review-step-N.json and CLI args."""
     import review_helper
 
     metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
     step_id = metadata.get("current_task_id") or ""
     metadata["step_id"] = step_id
+    metadata["finding_id"] = finding_id or ""
 
     if not step_id or not spec_name:
         metadata.setdefault("commit_sha", commit_sha or "")
@@ -316,11 +319,30 @@ def _enrich_review_metadata(metadata, spec_name, commit_sha=None):
         metadata["commit_sha"] = (
             commit_sha or data.get("commit_sha") or ""
         )
-        metadata["open_findings"] = (
-            review_helper._format_open_findings_markdown(
-                data.get("findings", []),
+        if finding_id:
+            item = review_helper.get_finding_by_id(data, finding_id)
+            if item is None:
+                logger.error(
+                    "Error: finding id '%s' not found in %s",
+                    finding_id, path.name,
+                )
+                sys.exit(1)
+            if item.get("completed_at"):
+                logger.error(
+                    "Error: finding id '%s' is already completed",
+                    finding_id,
+                )
+                sys.exit(1)
+            metadata["open_findings"] = (
+                review_helper._format_finding_markdown(item)
             )
-        )
+            metadata["finding_id"] = finding_id
+        else:
+            metadata["open_findings"] = (
+                review_helper._format_open_findings_markdown(
+                    data.get("findings", []),
+                )
+            )
     else:
         metadata["review_round"] = 1
         metadata["commit_sha"] = commit_sha or ""
@@ -435,13 +457,19 @@ def _build_parser():
     # apply-fix
     p = subs.add_parser(
         "apply-fix",
-        description="Render apply-fix template with open findings.",
-        help="Render fix instructions for open review findings",
+        description=(
+            "Render apply-fix template for a single open finding."
+        ),
+        help="Render fix instructions for one review finding",
     )
     p.add_argument("--name", required=True, help="Spec name (required)")
     p.add_argument(
+        "--finding-id", required=True, dest="finding_id",
+        help="Single open finding id to fix (required)",
+    )
+    p.add_argument(
         "--commit", dest="commit_sha", default=None,
-        help="Commit SHA to amend (default: from review file)",
+        help="Commit SHA under fix (default: from review file)",
     )
     p.add_argument(
         "--json", action="store_true", dest="json_mode",
@@ -670,7 +698,9 @@ def _do_apply_fix(args):
             sys.exit(0)
 
         _enrich_review_metadata(
-            metadata, args.name, commit_sha=args.commit_sha,
+            metadata, args.name,
+            commit_sha=args.commit_sha,
+            finding_id=args.finding_id,
         )
         if not metadata.get("commit_sha"):
             logger.error(
@@ -692,6 +722,7 @@ def _do_apply_fix(args):
         print(json.dumps({
             "prompt": rendered,
             "task_id": metadata.get("step_id", ""),
+            "finding_id": metadata.get("finding_id", ""),
             "commit_sha": metadata.get("commit_sha", ""),
             "review_round": metadata.get("review_round", 1),
             "review_file": metadata.get("review_file", ""),
