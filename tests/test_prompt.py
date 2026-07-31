@@ -1835,6 +1835,8 @@ class TestApplyReviewAndFix:
         assert data["review_round"] == 1
         assert data["task_id"] == "step-2"
         assert "review-helper" in data["prompt"]
+        assert "--commit" in data["prompt"]
+        assert "Do NOT call `review-helper init`" in data["prompt"]
 
     def test_apply_fix_includes_single_finding(
         self, tmp_path, monkeypatch, capsys,

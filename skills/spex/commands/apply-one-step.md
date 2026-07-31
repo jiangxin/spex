@@ -113,19 +113,11 @@ round. Maximum **3** review rounds.
   reference them inside `python3 -c` unless you expand them in the
   shell string first.
 
-#### 6a. Initialize review file (first round only)
+#### 6a. Review sub-agent
 
-Before the first review of this step, run:
-
-```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  init --step "$current_task_id" --commit "$commit_sha"
-```
-
-Stdout is JSON (`review_file`, `step_id`, `commit_sha`, `round`).
-Confirm success (exit code 0), then continue.
-
-#### 6b. Review sub-agent
+Do **not** run `review-helper init`. The review file is created
+lazily on the first `append`. If the review finds nothing, do not
+create any `review-step-*.json` file.
 
 Run (alone — do not pipe through ad-hoc scripts):
 
@@ -139,9 +131,10 @@ Parse the JSON object from stdout. Save `$review_prompt` from the
 `"review_file"`). Pass `$review_prompt` directly to a **review
 sub-agent** as its instructions — do not rewrite it via shell
 helpers. The review sub-agent must only record findings via
-`review-helper` — it must not modify source code.
+`review-helper append` (with `--commit`) — it must not modify
+source code, and must not call `init`.
 
-#### 6c. Check status
+#### 6b. Check status
 
 Run:
 
@@ -152,7 +145,8 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
 
 Parse the JSON. Decision table (do not skip steps):
 
-1. If `"needs_fix": false` (no open findings at all): refresh
+1. If `"exists": false` or `"needs_fix": false` (no open findings,
+   including when no review file was created): refresh
    `$commit_title` with `git log -1 --pretty="%h: %s"` and proceed
    to Phase 7.
 2. If `"open_major"` > 0 and `"round"` >= 3: stop the loop, report
@@ -162,17 +156,20 @@ Parse the JSON. Decision table (do not skip steps):
    `$commit_title` and proceed to Phase 7 (remaining open minors
    may stay unfinished).
 4. **Otherwise** (`needs_fix` is true and round < 3): you **MUST**
-   continue to 6d and launch a fix sub-agent. Never proceed to
+   continue to 6c and launch the fix loop. Never proceed to
    Phase 7 while open findings remain in rounds 1–2 — this includes
-   minor-only reviews.
+   minor-only reviews. A review file always exists when
+   `needs_fix` is true.
 
-#### 6d. Fix loop — one finding at a time
+#### 6c. Fix loop — one finding at a time
 
-Fix findings **serially**. Never batch-fix or batch-mark multiple
-findings in one sub-agent pass (that produces identical
-`completed_at` timestamps). **Amend after every single finding.**
+Only enter this phase when 6b reported `needs_fix: true` (a
+review file already exists). Fix findings **serially**. Never
+batch-fix or batch-mark multiple findings in one sub-agent pass
+(that produces identical `completed_at` timestamps). **Amend after
+every single finding.**
 
-**6d-i. Pick next open finding**
+**6c-i. Pick next open finding**
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
@@ -182,10 +179,10 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
 Parse JSON from stdout:
 
 - If `"id"` is `null` / empty: all findings for this round are
-  marked complete — go to **6d-iii** (bump-round → re-review).
-- Otherwise set `$finding_id` from `"id"` and continue to 6d-ii.
+  marked complete — go to **6c-iii** (bump-round → re-review).
+- Otherwise set `$finding_id` from `"id"` and continue to 6c-ii.
 
-**6d-ii. Fix + amend one finding**
+**6c-ii. Fix + amend one finding**
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
@@ -222,9 +219,9 @@ git rev-parse --short HEAD
    Save to `$commit_sha` (required — the next finding amends this
    new HEAD).
 
-3. Go back to **6d-i** for the next open finding.
+3. Go back to **6c-i** for the next open finding.
 
-**6d-iii. Bump round and re-review**
+**6c-iii. Bump round and re-review**
 
 When `next` reports no open findings, bump round and sync
 `commit_sha` (findings preserved):
@@ -235,7 +232,7 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
 ```
 
 Confirm stdout JSON shows the new `round` and `commit_sha`. Then
-go back to **6b** (fresh review sub-agent on the latest amended
+go back to **6a** (fresh review sub-agent on the latest amended
 commit).
 
 ### Phase 7: Mark Task Complete

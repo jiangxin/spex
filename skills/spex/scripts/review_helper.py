@@ -137,8 +137,36 @@ def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
     }))
 
 
+def _ensure_review_for_append(
+    path: Path, step_id: str, commit_sha: Optional[str],
+) -> dict:
+    """Load review file, or create it when missing (lazy create).
+
+    ``--commit`` is required when the file does not exist yet.
+    """
+    if path.is_file():
+        return load_review(path)
+    if not commit_sha:
+        logger.error(
+            "Error: review file '%s' does not exist; "
+            "pass --commit to create it on first append.",
+            path.name,
+        )
+        sys.exit(1)
+    data = {
+        "step_id": step_id,
+        "commit_sha": commit_sha,
+        "round": 1,
+        "findings": [],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    save_review(path, data)
+    logger.info("Created '%s' on first append.", path.name)
+    return data
+
+
 def cmd_append(path: Path, args) -> None:
-    """Append a finding to the review file."""
+    """Append a finding to the review file (lazy-create if missing)."""
     if args.details_from_stdin:
         details = sys.stdin.read()
     elif args.details is not None:
@@ -160,7 +188,9 @@ def cmd_append(path: Path, args) -> None:
         )
         sys.exit(1)
 
-    data = load_review(path)
+    data = _ensure_review_for_append(
+        path, args.step, getattr(args, "commit_sha", None),
+    )
     round_num = int(data.get("round", 1))
     if round_num >= 2 and args.severity == "minor":
         logger.error(
@@ -253,26 +283,46 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
     }))
 
 
-def cmd_status(path: Path, as_json: bool) -> None:
-    """Print review status (open counts and fix/complete flags)."""
-    data = load_review(path)
-    open_major, open_minor = _count_open(data["findings"])
-    round_num = int(data.get("round", 1))
-    needs_fix = open_major > 0 or open_minor > 0
-    # ready_to_complete: no open majors (minors may remain after max rounds)
-    ready_to_complete = open_major == 0
-    payload = {
-        "step_id": data.get("step_id", ""),
-        "commit_sha": data.get("commit_sha", ""),
-        "round": round_num,
-        "open_major": open_major,
-        "open_minor": open_minor,
-        "needs_fix": needs_fix,
-        "ready_to_complete": ready_to_complete,
-        # done == ready_to_complete (compat); prefer needs_fix / ready_to_complete
-        "done": ready_to_complete and not needs_fix,
+def _clean_status_payload(path: Path, step_id: str = "") -> dict:
+    """Status when no review file exists (no findings recorded)."""
+    return {
+        "step_id": step_id,
+        "commit_sha": "",
+        "round": 1,
+        "open_major": 0,
+        "open_minor": 0,
+        "needs_fix": False,
+        "ready_to_complete": True,
+        "done": True,
+        "exists": False,
         "review_file": path.name,
     }
+
+
+def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
+    """Print review status (open counts and fix/complete flags)."""
+    if not path.is_file():
+        payload = _clean_status_payload(path, step_id)
+    else:
+        data = load_review(path)
+        open_major, open_minor = _count_open(data["findings"])
+        round_num = int(data.get("round", 1))
+        needs_fix = open_major > 0 or open_minor > 0
+        # ready_to_complete: no open majors (minors may remain after max rounds)
+        ready_to_complete = open_major == 0
+        payload = {
+            "step_id": data.get("step_id", "") or step_id,
+            "commit_sha": data.get("commit_sha", ""),
+            "round": round_num,
+            "open_major": open_major,
+            "open_minor": open_minor,
+            "needs_fix": needs_fix,
+            "ready_to_complete": ready_to_complete,
+            # done: no open findings; prefer needs_fix / ready_to_complete
+            "done": ready_to_complete and not needs_fix,
+            "exists": True,
+            "review_file": path.name,
+        }
     if as_json:
         print(json.dumps(payload))
     else:
@@ -282,7 +332,8 @@ def cmd_status(path: Path, as_json: bool) -> None:
             f"open_minor={payload['open_minor']} "
             f"needs_fix={str(payload['needs_fix']).lower()} "
             f"ready_to_complete={str(payload['ready_to_complete']).lower()} "
-            f"done={str(payload['done']).lower()}"
+            f"done={str(payload['done']).lower()} "
+            f"exists={str(payload['exists']).lower()}"
         )
 
 
@@ -358,17 +409,28 @@ def get_finding_by_id(data: dict, finding_id: str) -> Optional[dict]:
     return None
 
 
-def cmd_next(path: Path) -> None:
+def cmd_next(path: Path, step_id: str = "") -> None:
     """Print the first open finding as JSON (or id=null if none)."""
+    if not path.is_file():
+        print(json.dumps({
+            "id": None,
+            "open_count": 0,
+            "step_id": step_id,
+            "commit_sha": "",
+            "round": 1,
+            "exists": False,
+        }))
+        return
     data = load_review(path)
     open_items = get_open_findings(data)
     if not open_items:
         print(json.dumps({
             "id": None,
             "open_count": 0,
-            "step_id": data.get("step_id", ""),
+            "step_id": data.get("step_id", "") or step_id,
             "commit_sha": data.get("commit_sha", ""),
             "round": data.get("round", 1),
+            "exists": True,
         }))
         return
     item = open_items[0]
@@ -379,9 +441,10 @@ def cmd_next(path: Path) -> None:
         "title": item.get("title", ""),
         "details": item.get("details", ""),
         "open_count": len(open_items),
-        "step_id": data.get("step_id", ""),
+        "step_id": data.get("step_id", "") or step_id,
         "commit_sha": data.get("commit_sha", ""),
         "round": data.get("round", 1),
+        "exists": True,
     }))
 
 
@@ -419,8 +482,11 @@ def _build_parser():
 
     p_append = subs.add_parser(
         "append",
-        description="Append a finding to the review file.",
-        help="Append a finding",
+        description=(
+            "Append a finding to the review file. "
+            "Creates the file on first append when --commit is given."
+        ),
+        help="Append a finding (lazy-create with --commit)",
     )
     p_append.add_argument("--step", required=True, help="Step id")
     p_append.add_argument("--id", required=True, help="Finding ID")
@@ -437,6 +503,13 @@ def _build_parser():
     p_append.add_argument(
         "--details-from-stdin", action="store_true",
         help="Read details from stdin",
+    )
+    p_append.add_argument(
+        "--commit", default=None, dest="commit_sha",
+        help=(
+            "Commit SHA for lazy file create "
+            "(required when review file does not exist yet)"
+        ),
     )
 
     p_edit = subs.add_parser(
@@ -536,11 +609,11 @@ def main(argv=None):
     elif args.subcmd == "bump-round":
         cmd_bump_round(path, args.commit_sha)
     elif args.subcmd == "status":
-        cmd_status(path, args.json_mode)
+        cmd_status(path, args.json_mode, step_id=step_id)
     elif args.subcmd == "show":
         cmd_show(path, args.open_only, args.json_mode)
     elif args.subcmd == "next":
-        cmd_next(path)
+        cmd_next(path, step_id=step_id)
 
 
 if __name__ == "__main__":

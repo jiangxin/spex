@@ -105,6 +105,39 @@ class TestAppend:
         assert f["details"] == "Add unit tests"
         assert f["completed_at"] == ""
 
+    def test_lazy_create_with_commit(self, spec_dir):
+        """First append without init creates the review file."""
+        path = spec_dir / "review-step-1.json"
+        assert not path.exists()
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1", "--commit", "deadbeef",
+            "--id", "r1-f1", "--severity", "major",
+            "--category", "tests",
+            "--title", "First finding",
+        ])
+        assert path.is_file()
+        data = _read(path)
+        assert data["step_id"] == "step-1"
+        assert data["commit_sha"] == "deadbeef"
+        assert data["round"] == 1
+        assert len(data["findings"]) == 1
+        assert data["findings"][0]["id"] == "r1-f1"
+
+    def test_lazy_create_requires_commit(self, spec_dir, caplog):
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc:
+                review_helper.main([
+                    "--name", "my-topic", "append",
+                    "--step", "step-1",
+                    "--id", "r1-f1", "--severity", "major",
+                    "--category", "tests",
+                    "--title", "First finding",
+                ])
+        assert exc.value.code == 1
+        assert "pass --commit" in caplog.text
+        assert not (spec_dir / "review-step-1.json").exists()
+
     def test_append_minor_round1(self, spec_dir):
         review_helper.main([
             "--name", "my-topic", "init",
@@ -358,6 +391,21 @@ class TestStatus:
         payload = _last_json_line(capsys)
         assert payload["needs_fix"] is False
         assert payload["done"] is True
+        assert payload["exists"] is True
+
+    def test_missing_file_is_clean(self, spec_dir, capsys):
+        """No review file means no findings — not an error."""
+        review_helper.main([
+            "--name", "my-topic", "status",
+            "--step", "step-1", "--json",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["exists"] is False
+        assert payload["needs_fix"] is False
+        assert payload["done"] is True
+        assert payload["open_major"] == 0
+        assert payload["open_minor"] == 0
+        assert not (spec_dir / "review-step-1.json").exists()
 
 
 class TestShow:
@@ -500,3 +548,14 @@ class TestNext:
         payload = json.loads(capsys.readouterr().out)
         assert payload["id"] is None
         assert payload["open_count"] == 0
+        assert payload["exists"] is True
+
+    def test_missing_file_returns_null(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "next", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["id"] is None
+        assert payload["open_count"] == 0
+        assert payload["exists"] is False
+        assert not (spec_dir / "review-step-1.json").exists()

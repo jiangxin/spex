@@ -1,5 +1,5 @@
 ---
-version: "0.1.1"
+version: "0.1.2"
 required:
   - spec_content_concise
   - current_task_description
@@ -18,7 +18,9 @@ optional:
 Act as a senior code reviewer. Your task is to review the git commit
 at `{{ commit_sha }}` for the current implementation step. Do NOT
 modify any production or test source files. Only record findings via
-`review-helper`.
+`review-helper append`. Do NOT call `review-helper init`. The review
+file is created lazily on the first append — if you find nothing,
+do not create any review file.
 
 ## Review Round
 
@@ -75,17 +77,21 @@ do not collide (e.g. `r1-f1`, `r1-f2`, then `r2-f1`).
 Categories: `lint`, `tests`, `commit-message`, `code-quality`,
 `performance`, `concurrency`, `security`, `other`.
 
+Always pass `--commit` so the first append can create the review
+file when it does not exist yet:
+
 ```bash
 {{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
-  append --step {{ step_id }} \
+  append --step {{ step_id }} --commit {{ commit_sha }} \
   --id r{{ review_round }}-f1 --severity major --category tests \
   --title "Short title" --details-from-stdin <<'DETAILS'
 Markdown details: what is wrong, where, and why it matters.
 DETAILS
 ```
 
-If there are no **new** findings for this round, do nothing (leave
-prior findings unchanged).
+If there are no **new** findings for this round, do **nothing** —
+do not call `init` or `append`. Leave any prior findings unchanged;
+if no review file exists yet, that is correct.
 
 ## Requirement Context
 
