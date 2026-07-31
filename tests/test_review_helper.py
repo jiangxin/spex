@@ -237,23 +237,46 @@ class TestEdit:
 
 
 class TestBumpRound:
-    def test_increments(self, spec_dir, capsys):
+    def test_increments_and_updates_commit(self, spec_dir, capsys):
         review_helper.main([
             "--name", "my-topic", "init",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "--name", "my-topic", "append",
             "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other", "--title", "Keep me",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "bump-round",
+            "--step", "step-1", "--commit", "def456",
         ])
         out = _last_json_line(capsys)
         assert out["round"] == 2
+        assert out["commit_sha"] == "def456"
+        assert out["findings_count"] == 1
         data = _read(spec_dir / "review-step-1.json")
         assert data["round"] == 2
+        assert data["commit_sha"] == "def456"
+        assert len(data["findings"]) == 1
+        assert data["findings"][0]["id"] == "r1-f1"
+
+    def test_requires_commit(self, spec_dir):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "bump-round",
+                "--step", "step-1",
+            ])
 
 
 class TestStatus:
-    def test_done_when_no_open_major(self, spec_dir, capsys):
+    def test_needs_fix_when_only_minors(self, spec_dir, capsys):
+        """Minor-only findings must still trigger the fix loop."""
         review_helper.main([
             "--name", "my-topic", "init",
             "--step", "step-1", "--commit", "abc",
@@ -271,9 +294,11 @@ class TestStatus:
         payload = _last_json_line(capsys)
         assert payload["open_major"] == 0
         assert payload["open_minor"] == 1
-        assert payload["done"] is True
+        assert payload["needs_fix"] is True
+        assert payload["ready_to_complete"] is True
+        assert payload["done"] is False
 
-    def test_not_done_with_open_major(self, spec_dir, capsys):
+    def test_needs_fix_with_open_major(self, spec_dir, capsys):
         review_helper.main([
             "--name", "my-topic", "init",
             "--step", "step-1", "--commit", "abc",
@@ -290,9 +315,11 @@ class TestStatus:
         ])
         payload = _last_json_line(capsys)
         assert payload["open_major"] == 1
+        assert payload["needs_fix"] is True
+        assert payload["ready_to_complete"] is False
         assert payload["done"] is False
 
-    def test_completed_finding_not_counted(self, spec_dir, capsys):
+    def test_done_when_all_findings_complete(self, spec_dir, capsys):
         review_helper.main([
             "--name", "my-topic", "init",
             "--step", "step-1", "--commit", "abc",
@@ -314,6 +341,22 @@ class TestStatus:
         ])
         payload = _last_json_line(capsys)
         assert payload["open_major"] == 0
+        assert payload["open_minor"] == 0
+        assert payload["needs_fix"] is False
+        assert payload["ready_to_complete"] is True
+        assert payload["done"] is True
+
+    def test_no_findings_is_done(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "status",
+            "--step", "step-1", "--json",
+        ])
+        payload = _last_json_line(capsys)
+        assert payload["needs_fix"] is False
         assert payload["done"] is True
 
 

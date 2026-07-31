@@ -150,14 +150,21 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
   status --step "$current_task_id" --json
 ```
 
-Parse the JSON:
+Parse the JSON. Decision table (do not skip steps):
 
-- If `"done": true` (no open major findings), refresh `$commit_title`
-  with `git log -1 --pretty="%h: %s"` and proceed to Phase 7.
-- If `"open_major"` > 0 and `"round"` >= 3, stop the loop, report
-  the remaining open major findings to the user, and stop (do not
-  mark the task complete).
-- Otherwise continue to 6d.
+1. If `"needs_fix": false` (no open findings at all): refresh
+   `$commit_title` with `git log -1 --pretty="%h: %s"` and proceed
+   to Phase 7.
+2. If `"open_major"` > 0 and `"round"` >= 3: stop the loop, report
+   remaining open major findings, and stop (do not mark the task
+   complete).
+3. If `"open_major"` == 0 and `"round"` >= 3: refresh
+   `$commit_title` and proceed to Phase 7 (remaining open minors
+   may stay unfinished).
+4. **Otherwise** (`needs_fix` is true and round < 3): you **MUST**
+   continue to 6d and launch a fix sub-agent. Never proceed to
+   Phase 7 while open findings remain in rounds 1–2 — this includes
+   minor-only reviews.
 
 #### 6d. Fix sub-agent (amend)
 
@@ -170,7 +177,9 @@ $spex_skill_dir/scripts/spex prompt apply-fix --json \
 
 Parse the JSON object from stdout. Save `$fix_prompt` from the
 `"prompt"` field. Pass it directly to a **fix sub-agent** as
-its instructions.
+its instructions. The fix sub-agent must address **every open
+finding** (major and minor), mark each with
+`review-helper edit --completed-at now`, then amend.
 
 Amend constraints (the fix sub-agent must enforce these):
 
@@ -180,25 +189,37 @@ Amend constraints (the fix sub-agent must enforce these):
 - Do NOT stage any files under `$spex_root/`.
 - Use `git commit --amend` to fold fixes into the original commit.
 - Mark each fixed finding complete with
-  `review-helper edit --completed-at now`.
+  `review-helper edit --completed-at now` **before** amend returns.
 
 If amend is unsafe (already pushed / wrong HEAD), report the error
 and stop.
 
-After the fix sub-agent succeeds:
+After the fix sub-agent returns, verify:
+
+```bash
+$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  status --step "$current_task_id" --json
+```
+
+If `"needs_fix"` is still true, relaunch the fix sub-agent once
+more. If it still fails, report the open findings and stop.
+
+Then refresh the SHA after amend:
 
 ```bash
 git rev-parse --short HEAD
 ```
 
-Update `$commit_sha`. Then bump the review round:
+Save to `$commit_sha`. Bump round **and** update `commit_sha` in
+the review file (findings are preserved):
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
-  bump-round --step "$current_task_id"
+  bump-round --step "$current_task_id" --commit "$commit_sha"
 ```
 
-Go back to **6b** (fresh review sub-agent).
+Confirm stdout JSON shows the new `round` and `commit_sha`. Then
+go back to **6b** (fresh review sub-agent on the amended commit).
 
 ### Phase 7: Mark Task Complete
 

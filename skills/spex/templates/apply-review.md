@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content_concise
   - current_task_description
@@ -23,11 +23,14 @@ modify any production or test source files. Only record findings via
 ## Review Round
 
 - Current round: **{{ review_round }}**
+- Commit under review: `{{ commit_sha }}`
 - Review file: `{{ review_file }}`
 - Step ID: `{{ step_id }}`
 
 {% if review_round|int >= 2 -%}
-**Round {{ review_round }} policy**: only record **major** findings.
+**Round {{ review_round }} policy**: only record **new major**
+findings against this amended commit. Do NOT re-append findings
+that are already in the review file (completed or still open).
 Do NOT append minor issues.
 {% else -%}
 **Round 1 policy**: record every actionable improvement — both
@@ -36,7 +39,8 @@ Do NOT append minor issues.
 
 ## Review Checklist
 
-Perform all of the following against commit `{{ commit_sha }}`:
+Perform all of the following against commit `{{ commit_sha }}`
+(`git show {{ commit_sha }}` / `git log -1`):
 
 1. **Lint and tests**: Inspect the files changed in this commit.
    Run the project's lint and the relevant unit tests. Record any
@@ -45,7 +49,7 @@ Perform all of the following against commit `{{ commit_sha }}`:
    message must explain **why** the change was made and the chosen
    approach (not only a file list). Missing why / rationale →
    **major** (or **minor** if only stylistic).
-3. **Code review** of the diff (`git show {{ commit_sha }}`):
+3. **Code review** of the diff:
    - Reinventing existing project utilities or patterns?
    - Are tests included with the production change? Is coverage
      adequate for the new behavior and edge cases?
@@ -60,25 +64,28 @@ Severity guide:
   required tests, incorrect behavior, security holes, commit
   message with no why.
 - **minor**: worthwhile improvements that need not block this step
-  (style nits, optional refactors, non-critical coverage gaps).
+  after max rounds (style nits, optional refactors, non-critical
+  coverage gaps). In rounds 1–2 the fix loop will still address
+  them.
 
 ## How to Record Findings
 
-Use unique finding IDs within this review file (e.g. `f1`, `f2`).
+Use unique finding IDs that include the round prefix so later rounds
+do not collide (e.g. `r1-f1`, `r1-f2`, then `r2-f1`).
 Categories: `lint`, `tests`, `commit-message`, `code-quality`,
 `performance`, `concurrency`, `security`, `other`.
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
   append --step {{ step_id }} \
-  --id f1 --severity major --category tests \
+  --id r{{ review_round }}-f1 --severity major --category tests \
   --title "Short title" --details-from-stdin <<'DETAILS'
 Markdown details: what is wrong, where, and why it matters.
 DETAILS
 ```
 
-If there are no findings for this round, do nothing (leave the
-findings list unchanged for open items from prior rounds).
+If there are no **new** findings for this round, do nothing (leave
+prior findings unchanged).
 
 ## Requirement Context
 

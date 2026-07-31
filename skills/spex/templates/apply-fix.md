@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content_concise
   - current_task_description
@@ -19,13 +19,16 @@ optional:
 ---
 
 Act as a senior software engineer fixing review findings for the
-current implementation step. Address every **open** finding listed
-below, then amend the original commit. Do NOT start a new review.
+current implementation step. Address **every open finding** listed
+below (both major and minor), mark each complete, then amend the
+original commit. Do NOT start a new review. Do NOT leave any listed
+finding with an empty `completed_at`.
 
 ## Open Findings
 
 The following findings are still open in `{{ review_file }}`
-(round {{ review_round }}). Fix them one by one.
+(round {{ review_round }}). Fix them one by one — skipping is not
+allowed.
 
 <open-findings>
 {{ open_findings }}
@@ -35,15 +38,24 @@ The following findings are still open in `{{ review_file }}`
 
 1. For each open finding, implement the necessary code/test/message
    fix. Prefer minimal, targeted changes.
-2. After fixing a finding, mark it complete:
+2. Immediately after fixing a finding, mark it complete (required):
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
   edit --step {{ step_id }} --id <finding-id> --completed-at now
 ```
 
-3. Run lint and relevant tests; proceed only when they pass.
-4. **Amend** the original commit at `{{ commit_sha }}` (must still
+3. After all findings are marked complete, confirm with:
+
+```bash
+{{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
+  status --step {{ step_id }} --json
+```
+
+   `"needs_fix"` must be `false` before you amend. If it is still
+   `true`, finish the remaining open findings first.
+4. Run lint and relevant tests; proceed only when they pass.
+5. **Amend** the original commit at `{{ commit_sha }}` (must still
    be `HEAD`, not pushed). Stage only relevant source/test changes
    (never files under spex_root), then:
 
@@ -65,9 +77,10 @@ EOF
 ```
 {% endif %}
 
-5. If the branch has already been pushed, or `HEAD` is not the
+6. If the branch has already been pushed, or `HEAD` is not the
    commit under review, stop and report the error — do not amend.
-6. Do NOT launch another review. Stop after amend succeeds.
+7. Do NOT launch another review. Do NOT call `bump-round` (the
+   orchestrator does that). Stop after amend succeeds.
 
 ## Requirement Context
 

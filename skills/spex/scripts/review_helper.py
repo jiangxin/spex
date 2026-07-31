@@ -235,27 +235,41 @@ def cmd_edit(path: Path, args) -> None:
     logger.info("Updated finding '%s'.", args.id)
 
 
-def cmd_bump_round(path: Path) -> None:
-    """Increment the review round counter."""
+def cmd_bump_round(path: Path, commit_sha: str) -> None:
+    """Increment round and update commit_sha; preserve findings."""
     data = load_review(path)
     data["round"] = int(data.get("round", 1)) + 1
+    data["commit_sha"] = commit_sha
     save_review(path, data)
-    logger.info("Bumped round to %d.", data["round"])
-    print(json.dumps({"round": data["round"]}))
+    logger.info(
+        "Bumped round to %d (commit_sha=%s).",
+        data["round"], commit_sha,
+    )
+    print(json.dumps({
+        "round": data["round"],
+        "commit_sha": commit_sha,
+        "findings_count": len(data.get("findings", [])),
+    }))
 
 
 def cmd_status(path: Path, as_json: bool) -> None:
-    """Print review status (open counts and done flag)."""
+    """Print review status (open counts and fix/complete flags)."""
     data = load_review(path)
     open_major, open_minor = _count_open(data["findings"])
     round_num = int(data.get("round", 1))
+    needs_fix = open_major > 0 or open_minor > 0
+    # ready_to_complete: no open majors (minors may remain after max rounds)
+    ready_to_complete = open_major == 0
     payload = {
         "step_id": data.get("step_id", ""),
         "commit_sha": data.get("commit_sha", ""),
         "round": round_num,
         "open_major": open_major,
         "open_minor": open_minor,
-        "done": open_major == 0,
+        "needs_fix": needs_fix,
+        "ready_to_complete": ready_to_complete,
+        # done == ready_to_complete (compat); prefer needs_fix / ready_to_complete
+        "done": ready_to_complete and not needs_fix,
         "review_file": path.name,
     }
     if as_json:
@@ -265,6 +279,8 @@ def cmd_status(path: Path, as_json: bool) -> None:
             f"round={payload['round']} "
             f"open_major={payload['open_major']} "
             f"open_minor={payload['open_minor']} "
+            f"needs_fix={str(payload['needs_fix']).lower()} "
+            f"ready_to_complete={str(payload['ready_to_complete']).lower()} "
             f"done={str(payload['done']).lower()}"
         )
 
@@ -405,10 +421,17 @@ def _build_parser():
 
     p_bump = subs.add_parser(
         "bump-round",
-        description="Increment the review round counter.",
-        help="Increment review round",
+        description=(
+            "Increment the review round and update commit_sha "
+            "after a fix amend. Preserves existing findings."
+        ),
+        help="Increment round and update commit SHA",
     )
     p_bump.add_argument("--step", required=True, help="Step id")
+    p_bump.add_argument(
+        "--commit", required=True, dest="commit_sha",
+        help="New commit SHA after amend (required)",
+    )
 
     p_status = subs.add_parser(
         "status",
@@ -458,7 +481,7 @@ def main(argv=None):
     elif args.subcmd == "edit":
         cmd_edit(path, args)
     elif args.subcmd == "bump-round":
-        cmd_bump_round(path)
+        cmd_bump_round(path, args.commit_sha)
     elif args.subcmd == "status":
         cmd_status(path, args.json_mode)
     elif args.subcmd == "show":
