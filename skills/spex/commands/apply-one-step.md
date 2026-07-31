@@ -103,6 +103,16 @@ The main agent orchestrates this phase. Launch a fresh **review
 sub-agent** and (when needed) a fresh **fix sub-agent** each
 round. Maximum **3** review rounds.
 
+**Orchestration rules (required):**
+
+- Run each `review-helper` / `prompt` command as its **own** shell
+  invocation. Do not chain init + prompt + python one-liners.
+- Parse JSON from **stdout** yourself (tool output). Status/info
+  lines on stderr (e.g. template sync) must be ignored.
+- Shell variables such as `$commit_sha` are not Python names — never
+  reference them inside `python3 -c` unless you expand them in the
+  shell string first.
+
 #### 6a. Initialize review file (first round only)
 
 Before the first review of this step, run:
@@ -112,19 +122,24 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
   init --step "$current_task_id" --commit "$commit_sha"
 ```
 
+Stdout is JSON (`review_file`, `step_id`, `commit_sha`, `round`).
+Confirm success (exit code 0), then continue.
+
 #### 6b. Review sub-agent
 
-Run:
+Run (alone — do not pipe through ad-hoc scripts):
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
   --name $spec_name --commit "$commit_sha"
 ```
 
-Save `$review_prompt` from the `"prompt"` field. Launch a **review
-sub-agent** with `$review_prompt` as its instructions. The review
-sub-agent must only record findings via `review-helper` — it must
-not modify source code.
+Parse the JSON object from stdout. Save `$review_prompt` from the
+`"prompt"` field (and optionally `"review_round"` /
+`"review_file"`). Pass `$review_prompt` directly to a **review
+sub-agent** as its instructions — do not rewrite it via shell
+helpers. The review sub-agent must only record findings via
+`review-helper` — it must not modify source code.
 
 #### 6c. Check status
 
@@ -146,15 +161,16 @@ Parse the JSON:
 
 #### 6d. Fix sub-agent (amend)
 
-Run:
+Run (alone — do not pipe through ad-hoc scripts):
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
   --name $spec_name --commit "$commit_sha"
 ```
 
-Save `$fix_prompt` from the `"prompt"` field. Launch a **fix
-sub-agent** with `$fix_prompt` as its instructions.
+Parse the JSON object from stdout. Save `$fix_prompt` from the
+`"prompt"` field. Pass it directly to a **fix sub-agent** as
+its instructions.
 
 Amend constraints (the fix sub-agent must enforce these):
 

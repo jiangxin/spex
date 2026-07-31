@@ -127,7 +127,13 @@ def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
     logger.info("Initialized '%s'.", path.name)
-    print(str(path))
+    # Programmatic stdout: JSON only (path is in review_file).
+    print(json.dumps({
+        "review_file": str(path),
+        "step_id": step_id,
+        "commit_sha": commit_sha,
+        "round": 1,
+    }))
 
 
 def cmd_append(path: Path, args) -> None:

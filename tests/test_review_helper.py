@@ -56,7 +56,11 @@ class TestInit:
         assert data["commit_sha"] == "abc1234"
         assert data["round"] == 1
         assert data["findings"] == []
-        assert str(path) in capsys.readouterr().out
+        out = json.loads(capsys.readouterr().out)
+        assert out["review_file"] == str(path)
+        assert out["step_id"] == "step-1"
+        assert out["commit_sha"] == "abc1234"
+        assert out["round"] == 1
 
     def test_resets_existing(self, spec_dir):
         path = spec_dir / "review-step-1.json"
@@ -349,14 +353,12 @@ class TestShow:
             "--name", "my-topic", "init",
             "--step", "step-1", "--commit", "abc",
         ])
+        capsys.readouterr()  # drain init JSON
         review_helper.main([
             "--name", "my-topic", "show",
             "--step", "step-1", "--json",
         ])
-        # show --json may be multi-line; skip the init path line
-        out = capsys.readouterr().out
-        json_start = out.index("{")
-        data = json.loads(out[json_start:])
+        data = json.loads(capsys.readouterr().out)
         assert data["step_id"] == "step-1"
         assert data["findings"] == []
 
