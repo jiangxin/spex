@@ -51,7 +51,15 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 Parse the JSON output from stdout:
 
 - If the response contains `"all_done": true`, all tasks are
-  completed — report completion to the user and stop.
+  completed — report completion to the user, then run post-action
+  (covers the case where the last step finished but Phase 8 was
+  interrupted) and **STOP**:
+
+  ```bash
+  $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
+  ```
+
+  Display the output to the user. Do not implement further steps.
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
 - Otherwise, save:
@@ -66,9 +74,9 @@ A step is incomplete until `completed_at` is set. If
 
 **Route:**
 
-- If `$resume_phase` is `review`: set
-  `$commit_sha=$(git rev-parse --short HEAD)`, skip Phases 4–5,
-  continue with Phase 6.
+- If `$resume_phase` is `review`: skip Phases 4–5 and continue with
+  Phase 6. Do not set `$commit_sha` from `HEAD` here — Phase 6
+  **6-entry** resolves it (prefer the review file's `commit_sha`).
 - If `$resume_phase` is `implement`: continue with Phase 4.
 
 ### Phase 4: Execute Task
@@ -125,6 +133,11 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 Load and follow `references/apply-review-loop.md` exactly.
 
+If the review loop **STOP**s (e.g. open majors remain at round 3),
+end this invocation without Phase 7 or Phase 8. The step stays
+incomplete (`completed_at` unset) so a later `/spex apply-one-step`
+can resume via Phase 3 → Phase 6.
+
 ### Phase 7: Mark Task Complete
 
 Only after the review/fix loop finishes successfully. Refresh
@@ -139,20 +152,24 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 If the command fails, report the error and stop.
 
-### Phase 8: Post Action and Summary
+### Phase 8: Summary and Conditional Post Action
 
-Run:
+Count remaining undone tasks in `$spec_path/todo.json` (items
+with empty/`null` `completed_at`). Save as `$remaining`.
+
+Display a summary:
+
+- The completed step name and `$commit_title`
+- `$remaining` (number of undone tasks left)
+
+**Only if `$remaining` is 0**, run post-action (spec fully done):
 
 ```bash
 $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
-Display the output to the user.
-
-Then display a summary:
-
-- The completed step name and `$commit_title`
-- The number of remaining undone tasks in `todo.json`
+Display the output to the user. If `$remaining` > 0, skip
+`post-action` — unfinished work remains.
 
 **This command implements exactly one step. STOP here.**
 Do NOT loop back to Phase 3 or implement additional steps.

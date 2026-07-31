@@ -293,6 +293,22 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
     }))
 
 
+def cmd_set_commit(path: Path, commit_sha: str) -> None:
+    """Update commit_sha only; preserve round and findings."""
+    data = load_review(path)
+    data["commit_sha"] = commit_sha
+    save_review(path, data)
+    logger.info(
+        "Set commit_sha=%s (round=%s).",
+        commit_sha, data.get("round", 1),
+    )
+    print(json.dumps({
+        "commit_sha": commit_sha,
+        "round": int(data.get("round", 1)),
+        "findings_count": len(data.get("findings", [])),
+    }))
+
+
 def _clean_status_payload(path: Path, step_id: str = "") -> dict:
     """Status when no review file exists (no findings recorded)."""
     return {
@@ -318,8 +334,12 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
         open_major, open_minor = _count_open(data["findings"])
         round_num = int(data.get("round", 1))
         needs_fix = open_major > 0 or open_minor > 0
-        # ready_to_complete: no open majors (minors may remain after max rounds)
-        ready_to_complete = open_major == 0
+        # ready_to_complete: no open majors, and either no open findings
+        # or max round reached (open minors may remain after max rounds).
+        ready_to_complete = (
+            open_major == 0
+            and (not needs_fix or round_num >= MAX_REVIEW_ROUND)
+        )
         payload = {
             "step_id": data.get("step_id", "") or step_id,
             "commit_sha": data.get("commit_sha", ""),
@@ -328,8 +348,8 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             "open_minor": open_minor,
             "needs_fix": needs_fix,
             "ready_to_complete": ready_to_complete,
-            # done: no open findings; prefer needs_fix / ready_to_complete
-            "done": ready_to_complete and not needs_fix,
+            # done: no open findings
+            "done": not needs_fix,
             "exists": True,
             "review_file": path.name,
         }
@@ -470,7 +490,8 @@ def _build_parser():
         prog="spex review-helper",
         description=(
             "Operate on per-step review finding files "
-            "(init, append, edit, bump-round, status, show, next)."
+            "(init, append, edit, bump-round, set-commit, "
+            "status, show, next)."
         ),
     )
     parser.add_argument(
@@ -562,6 +583,20 @@ def _build_parser():
         help="New commit SHA after amend (required)",
     )
 
+    p_set_commit = subs.add_parser(
+        "set-commit",
+        description=(
+            "Update commit_sha after a fix amend without changing "
+            "the review round. Preserves existing findings."
+        ),
+        help="Update commit SHA only (no round bump)",
+    )
+    p_set_commit.add_argument("--step", required=True, help="Step id")
+    p_set_commit.add_argument(
+        "--commit", required=True, dest="commit_sha",
+        help="Commit SHA after amend (required)",
+    )
+
     p_status = subs.add_parser(
         "status",
         description="Show open finding counts and done flag.",
@@ -618,6 +653,8 @@ def main(argv=None):
         cmd_edit(path, args)
     elif args.subcmd == "bump-round":
         cmd_bump_round(path, args.commit_sha)
+    elif args.subcmd == "set-commit":
+        cmd_set_commit(path, args.commit_sha)
     elif args.subcmd == "status":
         cmd_status(path, args.json_mode, step_id=step_id)
     elif args.subcmd == "show":

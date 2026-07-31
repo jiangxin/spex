@@ -18,12 +18,14 @@ If `$spec_name` is `--all`:
 
 - Run `$spex_skill_dir/scripts/spex list --json --must-undone`
   to get all specs with undone tasks.
-- Parse the output as a JSON array of objects, each containing
-  `spec_name` and `spec_path`.
-- For each entry, set `$spec_name` and `$spec_path` and execute
-  Phases 2 through 9 (Phase 9 runs per spec when that spec's
-  tasks are all done).
-- After every spec has finished, **STOP**.
+- Parse the output as a JSON array `$specs` of objects, each
+  containing `spec_name` and `spec_path`.
+- For each entry in `$specs` (outer loop): set `$spec_name` and
+  `$spec_path`, then execute Phases 2 through 9 for that spec
+  (Phase 9 runs when that spec's tasks are all done).
+- After Phase 9 for one spec, continue the outer loop with the
+  next entry (start that entry at Phase 2). When no entries
+  remain, **STOP**.
 
 Otherwise, run:
 
@@ -64,7 +66,8 @@ Parse the JSON output from stdout:
 - If the response contains `"all_done": true`, all tasks for this
   spec are completed — proceed directly to **Phase 9** (do not
   go through Phase 8). In `--all` mode, after Phase 9 continue
-  with the next spec from Phase 2.
+  Phase 1's outer loop with the next `$specs` entry (start at
+  Phase 2), or **STOP** if none remain.
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
 - Otherwise, save:
@@ -79,9 +82,10 @@ A step is incomplete until `completed_at` is set. If
 
 **Route:**
 
-- If `$resume_phase` is `review`: set
-  `$commit_sha=$(git rev-parse --short HEAD)`, skip Phases 4–5,
-  continue with Phase 6 in the main context.
+- If `$resume_phase` is `review`: skip Phases 4–5 and continue with
+  Phase 6 in the main context. Do not set `$commit_sha` from
+  `HEAD` here — Phase 6 **6-entry** resolves it (prefer the
+  review file's `commit_sha`).
 - If `$resume_phase` is `implement`: launch a sub-agent for
   Phases 4–5 only (implement + first commit). Instruct it to
   follow Phases 4–5 of this command exactly. Pass `$prompt` as
@@ -146,6 +150,12 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 Load and follow `references/apply-review-loop.md` exactly.
 
+If the review loop **STOP**s (e.g. open majors remain at round 3),
+end this entire `/spex apply` invocation immediately — do **not**
+run Phase 7, Phase 8, or Phase 9, and do **not** start the next
+task or the next `--all` spec. The step stays incomplete so a
+later `/spex apply` can resume via Phase 3 → Phase 6.
+
 ### Phase 7: Mark Task Complete
 
 Only after the review/fix loop finishes successfully. Refresh
@@ -179,7 +189,7 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 
 Display the output to the user.
 
-- In `--all` mode: continue with the next spec from Phase 2, or
-  **STOP** if none remain.
+- In `--all` mode: continue Phase 1's outer loop with the next
+  `$specs` entry (start at Phase 2), or **STOP** if none remain.
 - Otherwise: **STOP.** Do NOT start implementing additional steps
   or modifying project files beyond what was already committed.

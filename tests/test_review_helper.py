@@ -345,6 +345,47 @@ class TestBumpRound:
         assert _read(path)["commit_sha"] == "abc"
 
 
+class TestSetCommit:
+    def test_updates_commit_preserves_round_and_findings(
+        self, spec_dir, capsys,
+    ):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "major",
+            "--category", "tests", "--title", "Keep me",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "bump-round",
+            "--step", "step-1", "--commit", "def",
+        ])
+        _last_json_line(capsys)
+        review_helper.main([
+            "--name", "my-topic", "set-commit",
+            "--step", "step-1", "--commit", "ghi789",
+        ])
+        out = _last_json_line(capsys)
+        assert out["commit_sha"] == "ghi789"
+        assert out["round"] == 2
+        assert out["findings_count"] == 1
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["commit_sha"] == "ghi789"
+        assert data["round"] == 2
+        assert len(data["findings"]) == 1
+        assert data["findings"][0]["id"] == "r1-f1"
+
+    def test_requires_existing_file(self, spec_dir):
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "set-commit",
+                "--step", "step-1", "--commit", "abc",
+            ])
+
+
 class TestStatus:
     def test_needs_fix_when_only_minors(self, spec_dir, capsys):
         """Minor-only findings must still trigger the fix loop."""
@@ -363,6 +404,37 @@ class TestStatus:
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
+        assert payload["open_major"] == 0
+        assert payload["open_minor"] == 1
+        assert payload["needs_fix"] is True
+        # Round 1: open minors must not look "ready to complete"
+        assert payload["ready_to_complete"] is False
+        assert payload["done"] is False
+
+    def test_ready_to_complete_minors_at_max_round(self, spec_dir, capsys):
+        """At max round, minor-only leftovers may complete the step."""
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        path = spec_dir / "review-step-1.json"
+        data = _read(path)
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        data["findings"] = [{
+            "id": "f1",
+            "severity": "minor",
+            "category": "other",
+            "title": "Nit",
+            "details": "",
+            "completed_at": "",
+        }]
+        path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "status",
+            "--step", "step-1", "--json",
+        ])
+        payload = _last_json_line(capsys)
+        assert payload["round"] == review_helper.MAX_REVIEW_ROUND
         assert payload["open_major"] == 0
         assert payload["open_minor"] == 1
         assert payload["needs_fix"] is True
