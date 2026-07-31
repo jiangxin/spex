@@ -46,6 +46,9 @@ Internal commands (used by skill):
                 Render a Jinja2 template with metadata
   run-hook <hook_name> --event-type <type> --name <name>
                 Execute a hook script with event data
+  review-helper --name <name> <subcmd>
+                Operate on per-step review files (init, append, edit,
+                bump-round, status, show)
   todo-helper [--name <name> | --todo-file <path>] [--xml] <subcmd>
                 Operate on todo files (validate, append, edit, remove,
                 show, xml2json, json2xml)"""
@@ -364,6 +367,13 @@ def _run_todo_helper(argv=None):
     todo_helper.main(argv)
 
 
+def _run_review_helper(argv=None):
+    """Route review-helper subcommands."""
+    import review_helper
+
+    review_helper.main(argv)
+
+
 def _get_version():
     """Extract version from SKILL.md front-matter metadata."""
     skill_md = _skill_dir / "SKILL.md"
@@ -472,6 +482,7 @@ _INTERNAL_COMMANDS = [
     ("meta-helper", _run_meta_helper),
     ("prompt", _run_prompt),
     ("run-hook", _run_hook),
+    ("review-helper", _run_review_helper),
     ("todo-helper", _run_todo_helper),
     ("version", _run_version),
 ]

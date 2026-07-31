@@ -21,8 +21,8 @@ If `$spec_name` is `--all`:
 - Parse the output as a JSON array of objects, each containing
   `spec_name` and `spec_path`.
 - For each entry, set `$spec_name` and `$spec_path` and execute
-  Phases 2 through 7.
-- After completing all specs, proceed to Phase 8.
+  Phases 2 through 8.
+- After completing all specs, proceed to Phase 9.
 
 Otherwise, run:
 
@@ -61,17 +61,17 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 Parse the JSON output from stdout:
 
 - If the response contains `"all_done": true`, all tasks are
-  completed — proceed to Phase 7.
+  completed — proceed to Phase 8.
 - If the command exits with a non-zero exit code, a real error
   occurred — report the stderr message and stop.
 - Otherwise, save `$prompt` from the `"prompt"` field and
   `$current_task_id` from the `"task_id"` field.
 
 **Sub-agent boundary.** Launch a sub-agent to execute Phases 4
-through 6. The sub-agent receives `$prompt`, `$current_task_id`,
-and `$spec_name` as context. If the sub-agent fails, report
-the error to the user and retry. After it completes, continue
-with Phase 7 in the main context.
+through 5 only (implement + first commit). The sub-agent receives
+`$prompt`, `$current_task_id`, and `$spec_name` as context. If the
+sub-agent fails, report the error to the user and retry. After it
+completes, continue with Phase 6 in the main context.
 
 ### Phase 4: Execute Task
 
@@ -80,8 +80,8 @@ task. Follow the instructions in the rendered prompt precisely —
 it contains the specification, completed steps context, the task
 description, and implementation guidelines.
 
-If the implementation produces no file changes, report the issue
-and stop.
+Deliver production code and its tests together. If the implementation
+produces no file changes, report the issue and stop.
 
 ### Phase 5: Commit
 
@@ -105,9 +105,102 @@ After the commit succeeds, run:
 git log -1 --pretty="%h: %s"
 ```
 
-Save the output to `$commit_title`.
+Save the output to `$commit_title`. Also save the short SHA:
 
-### Phase 6: Mark Task Complete
+```bash
+git rev-parse --short HEAD
+```
+
+Save to `$commit_sha`.
+
+### Phase 6: Review Loop
+
+The main agent orchestrates this phase. Launch a fresh **review
+sub-agent** and (when needed) a fresh **fix sub-agent** each
+round. Maximum **3** review rounds.
+
+#### 6a. Initialize review file (first round only)
+
+Before the first review of this step, run:
+
+```bash
+$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  init --step "$current_task_id" --commit "$commit_sha"
+```
+
+#### 6b. Review sub-agent
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex prompt apply-review --json \
+  --name $spec_name --commit "$commit_sha"
+```
+
+Save `$review_prompt` from the `"prompt"` field. Launch a **review
+sub-agent** with `$review_prompt` as its instructions. The review
+sub-agent must only record findings via `review-helper` — it must
+not modify source code.
+
+#### 6c. Check status
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  status --step "$current_task_id" --json
+```
+
+Parse the JSON:
+
+- If `"done": true` (no open major findings), refresh `$commit_title`
+  with `git log -1 --pretty="%h: %s"` and proceed to Phase 7.
+- If `"open_major"` > 0 and `"round"` >= 3, stop the loop, report
+  the remaining open major findings to the user, and stop (do not
+  mark the task complete).
+- Otherwise continue to 6d.
+
+#### 6d. Fix sub-agent (amend)
+
+Run:
+
+```bash
+$spex_skill_dir/scripts/spex prompt apply-fix --json \
+  --name $spec_name --commit "$commit_sha"
+```
+
+Save `$fix_prompt` from the `"prompt"` field. Launch a **fix
+sub-agent** with `$fix_prompt` as its instructions.
+
+Amend constraints (the fix sub-agent must enforce these):
+
+- `HEAD` must still be the commit under review.
+- The commit must not have been pushed to a remote.
+- Do not amend someone else's commit.
+- Do NOT stage any files under `$spex_root/`.
+- Use `git commit --amend` to fold fixes into the original commit.
+- Mark each fixed finding complete with
+  `review-helper edit --completed-at now`.
+
+If amend is unsafe (already pushed / wrong HEAD), report the error
+and stop.
+
+After the fix sub-agent succeeds:
+
+```bash
+git rev-parse --short HEAD
+```
+
+Update `$commit_sha`. Then bump the review round:
+
+```bash
+$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  bump-round --step "$current_task_id"
+```
+
+Go back to **6b** (fresh review sub-agent).
+
+### Phase 7: Mark Task Complete
 
 Run:
 
@@ -119,10 +212,10 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 If the command fails, report the error and stop.
 
-### Phase 7: Loop
+### Phase 8: Loop
 
-Go back to Phase 3. Each iteration launches a fresh sub-agent,
-keeping token usage independent between steps.
+Go back to Phase 3. Each iteration launches a fresh sub-agent for
+Phases 4–5, keeping token usage independent between steps.
 
 Stop looping when Phase 3 reports `"all_done": true`.
 
@@ -130,7 +223,7 @@ If running in `--all` mode (Phase 1), after completing all steps
 for the current spec, move to the next spec and repeat from
 Phase 2.
 
-### Phase 8: Post Action
+### Phase 9: Post Action
 
 Run:
 

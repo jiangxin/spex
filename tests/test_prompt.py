@@ -1793,3 +1793,119 @@ class TestReadStdinExtraVars:
         from prompt import _read_stdin_extra_vars
         result = _read_stdin_extra_vars(stdin_flag=False)
         assert result is None
+
+
+def _parse_json_stdout(out: str):
+    """Parse JSON from stdout that may include a leading path line."""
+    start = out.index("{")
+    return json.loads(out[start:])
+
+
+@pytest.mark.slow
+class TestApplyReviewAndFix:
+    """Test apply-review and apply-fix prompt rendering."""
+
+    def test_apply_review_renders_checklist(self, tmp_path, monkeypatch, capsys):
+        """apply-review includes review checklist and commit SHA."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task(
+                "step-2", name="Add login API", details="Implement /login"
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-2", "--commit", "deadbeef",
+        ])
+        capsys.readouterr()  # drain init path on stdout
+
+        main([
+            "apply-review", "--name", "test-topic",
+            "--commit", "deadbeef", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert "Review Checklist" in data["prompt"]
+        assert "deadbeef" in data["prompt"]
+        assert data["review_round"] == 1
+        assert data["task_id"] == "step-2"
+        assert "review-helper" in data["prompt"]
+
+    def test_apply_fix_includes_open_findings(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """apply-fix injects open findings into the prompt."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature"),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-2", "--commit", "abc1234",
+        ])
+        review_helper.main([
+            "--name", "test-topic", "append",
+            "--step", "step-2",
+            "--id", "f1", "--severity", "major",
+            "--category", "tests",
+            "--title", "Missing unit tests",
+            "--details", "Add tests for edge cases",
+        ])
+        capsys.readouterr()  # drain helper stdout
+
+        main([
+            "apply-fix", "--name", "test-topic",
+            "--commit", "abc1234", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert "Missing unit tests" in data["prompt"]
+        assert "Add tests for edge cases" in data["prompt"]
+        assert "commit --amend" in data["prompt"]
+        assert data["task_id"] == "step-2"
+
+    def test_apply_review_requires_commit_without_file(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """apply-review without review file and without --commit exits 1."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import main
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["apply-review", "--name", "test-topic"])
+        assert exc_info.value.code == 1
+        assert "--commit is required" in caplog.text
+
+    def test_main_routes_apply_review(self, tmp_path, monkeypatch, capsys):
+        """main() routes apply-review subcommand."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import main
+
+        main([
+            "apply-review", "--name", "test-topic",
+            "--commit", "cafebabe", "--json",
+        ])
+        data = json.loads(capsys.readouterr().out)
+        assert "prompt" in data
+        assert data["commit_sha"] == "cafebabe"

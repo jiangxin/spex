@@ -528,6 +528,20 @@ class TestSubcommandRouting:
         finally:
             del sys.modules["todo_helper"]
 
+    def test_run_review_helper(self, monkeypatch):
+        """_run_review_helper imports review_helper module and calls main."""
+        called = {"argv": None}
+        def fake_main(argv=None):
+            called["argv"] = argv
+        fake_mod = type(sys)("review_helper")
+        fake_mod.main = fake_main
+        sys.modules["review_helper"] = fake_mod
+        try:
+            _spex_mod._run_review_helper(["status", "--step", "step-1"])
+            assert called["argv"] == ["status", "--step", "step-1"]
+        finally:
+            del sys.modules["review_helper"]
+
     def test_run_init(self, monkeypatch):
         """_run_init imports init module and calls main."""
         called = {"argv": None}
@@ -912,4 +926,5 @@ class TestAllCommandsRegistered:
         assert "prompt" in names
         assert "meta-helper" in names
         assert "todo-helper" in names
+        assert "review-helper" in names
         assert "run-hook" in names

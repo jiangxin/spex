@@ -103,6 +103,8 @@ class TestSyncTemplates:
         assert (examples_dir / "spec-template.md").exists()
         assert (examples_dir / "apply-one-task.md").exists()
         assert (examples_dir / "apply-commit.md").exists()
+        assert (examples_dir / "apply-review.md").exists()
+        assert (examples_dir / "apply-fix.md").exists()
 
 
 class TestSyncBuiltinTemplate:

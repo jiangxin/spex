@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content
   - current_task_description
@@ -58,8 +58,11 @@ files to change, and the acceptance criteria.
   they will be handled in subsequent iterations.
 - **Quality**: Write clean, well-structured code that follows the
   project's existing conventions and the specification's constraints.
-- **Tests**: Include all tests specified in the task description.
-  Run lint and tests after implementation to ensure everything passes.
+- **Tests**: Deliver production code and its tests in the same step.
+  Include all tests specified in the task description and cover new
+  behavior plus relevant edge cases. Missing required tests means
+  the step is incomplete. Run lint and tests after implementation
+  and proceed only when they pass.
 - **Commits**: Create a commit after the task is complete, following
   Conventional Commits format.
 {% if future_tasks_concise %}

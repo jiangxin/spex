@@ -267,7 +267,7 @@ def _build_metadata(template_name, spec_name=None):
         metadata["created_at"] = local_iso_timestamp()
         metadata["name"] = ""
 
-    if template_name == "apply-commit":
+    if template_name in ("apply-commit", "apply-review", "apply-fix"):
         metadata["spex_root"] = ""
         workdir = metadata.get("workdir", "")
         if workdir:
@@ -284,9 +284,50 @@ def _build_metadata(template_name, spec_name=None):
             metadata["user_name"] = ""
             metadata["user_email"] = ""
     # All spec-based templates except spec-template need task context:
-    # apply-commit, apply-one-task, modify-spec, modify-todo
+    # apply-commit, apply-one-task, apply-review, apply-fix,
+    # modify-spec, modify-todo
     if template_name != "spec-template" and spec_name:
         metadata.update(_build_task_context(spec_dir))
+
+    return metadata
+
+
+def _enrich_review_metadata(metadata, spec_name, commit_sha=None):
+    """Add review-loop fields from review-step-N.json and CLI args."""
+    import review_helper
+
+    metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
+    step_id = metadata.get("current_task_id") or ""
+    metadata["step_id"] = step_id
+
+    if not step_id or not spec_name:
+        metadata.setdefault("commit_sha", commit_sha or "")
+        metadata.setdefault("review_round", 1)
+        metadata.setdefault("review_file", "")
+        metadata.setdefault("open_findings", "(no open findings)")
+        return metadata
+
+    path = review_helper.resolve_review_path(spec_name, step_id)
+    metadata["review_file"] = str(path)
+
+    if path.is_file():
+        data = review_helper.load_review(path)
+        metadata["review_round"] = int(data.get("round", 1))
+        metadata["commit_sha"] = (
+            commit_sha or data.get("commit_sha") or ""
+        )
+        metadata["open_findings"] = (
+            review_helper._format_open_findings_markdown(
+                data.get("findings", []),
+            )
+        )
+    else:
+        metadata["review_round"] = 1
+        metadata["commit_sha"] = commit_sha or ""
+        metadata["open_findings"] = "(no open findings)"
+
+    if commit_sha:
+        metadata["commit_sha"] = commit_sha
 
     return metadata
 
@@ -312,9 +353,9 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
             metadata.update(extra_vars)
 
     # All-done detection for task-based templates
-    if name in ("apply-one-task", "apply-commit") and not metadata.get(
-        "current_task_description"
-    ):
+    if name in (
+        "apply-one-task", "apply-commit", "apply-review", "apply-fix",
+    ) and not metadata.get("current_task_description"):
         return ""
 
     validate_required_meta(content, metadata)
@@ -372,6 +413,44 @@ def _build_parser():
         "-o", "--output", help="Output file path (default: stdout)",
     )
 
+    # apply-review
+    p = subs.add_parser(
+        "apply-review",
+        description="Render apply-review template with spec metadata.",
+        help="Render review instructions for the current task commit",
+    )
+    p.add_argument("--name", required=True, help="Spec name (required)")
+    p.add_argument(
+        "--commit", dest="commit_sha", default=None,
+        help="Commit SHA under review (default: from review file)",
+    )
+    p.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON with prompt and review metadata",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
+    # apply-fix
+    p = subs.add_parser(
+        "apply-fix",
+        description="Render apply-fix template with open findings.",
+        help="Render fix instructions for open review findings",
+    )
+    p.add_argument("--name", required=True, help="Spec name (required)")
+    p.add_argument(
+        "--commit", dest="commit_sha", default=None,
+        help="Commit SHA to amend (default: from review file)",
+    )
+    p.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON with prompt and review metadata",
+    )
+    p.add_argument(
+        "-o", "--output", help="Output file path (default: stdout)",
+    )
+
     # modify-spec
     p = subs.add_parser(
         "modify-spec",
@@ -423,7 +502,8 @@ def _build_parser():
 
 # Known subcommands for routing (fallback to cli_render for others)
 _KNOWN_SUBCMDS = {
-    "apply-one-task", "apply-commit", "modify-spec", "modify-todo",
+    "apply-one-task", "apply-commit", "apply-review", "apply-fix",
+    "modify-spec", "modify-todo",
 }
 
 
@@ -520,6 +600,110 @@ def cli_apply_commit(argv=None):
     """CLI handler for apply-commit subcommand."""
     args = _build_parser().parse(["apply-commit"] + (argv or []))
     _do_apply_commit(args)
+
+
+def _do_apply_review(args):
+    """Handle apply-review subcommand."""
+    import json
+
+    from jinja2 import TemplateError
+
+    try:
+        metadata = _build_metadata("apply-review", args.name)
+        if not metadata.get("current_task_description"):
+            if args.json_mode:
+                print(json.dumps({
+                    "prompt": "", "all_done": True,
+                }))
+            sys.exit(0)
+
+        _enrich_review_metadata(
+            metadata, args.name, commit_sha=args.commit_sha,
+        )
+        if not metadata.get("commit_sha"):
+            logger.error(
+                "Error: --commit is required when no review file exists",
+            )
+            sys.exit(1)
+
+        rendered = render_prompt(
+            "apply-review", args.name, metadata=metadata,
+        )
+    except FileNotFoundError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    except TemplateError as e:
+        logger.error("Error rendering template: %s", e)
+        sys.exit(1)
+
+    if args.json_mode:
+        print(json.dumps({
+            "prompt": rendered,
+            "task_id": metadata.get("step_id", ""),
+            "commit_sha": metadata.get("commit_sha", ""),
+            "review_round": metadata.get("review_round", 1),
+            "review_file": metadata.get("review_file", ""),
+        }))
+    else:
+        _output_rendered(rendered, args.output)
+
+
+def cli_apply_review(argv=None):
+    """CLI handler for apply-review subcommand."""
+    args = _build_parser().parse(["apply-review"] + (argv or []))
+    _do_apply_review(args)
+
+
+def _do_apply_fix(args):
+    """Handle apply-fix subcommand."""
+    import json
+
+    from jinja2 import TemplateError
+
+    try:
+        metadata = _build_metadata("apply-fix", args.name)
+        if not metadata.get("current_task_description"):
+            if args.json_mode:
+                print(json.dumps({
+                    "prompt": "", "all_done": True,
+                }))
+            sys.exit(0)
+
+        _enrich_review_metadata(
+            metadata, args.name, commit_sha=args.commit_sha,
+        )
+        if not metadata.get("commit_sha"):
+            logger.error(
+                "Error: --commit is required when no review file exists",
+            )
+            sys.exit(1)
+
+        rendered = render_prompt(
+            "apply-fix", args.name, metadata=metadata,
+        )
+    except FileNotFoundError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    except TemplateError as e:
+        logger.error("Error rendering template: %s", e)
+        sys.exit(1)
+
+    if args.json_mode:
+        print(json.dumps({
+            "prompt": rendered,
+            "task_id": metadata.get("step_id", ""),
+            "commit_sha": metadata.get("commit_sha", ""),
+            "review_round": metadata.get("review_round", 1),
+            "review_file": metadata.get("review_file", ""),
+        }))
+    else:
+        _output_rendered(rendered, args.output)
+
+
+def cli_apply_fix(argv=None):
+    """CLI handler for apply-fix subcommand."""
+    args = _build_parser().parse(["apply-fix"] + (argv or []))
+    _do_apply_fix(args)
 
 
 def _do_modify_spec(args):
@@ -686,6 +870,10 @@ def main(argv=None):
         _do_apply_one_task(args)
     elif args.subcmd == "apply-commit":
         _do_apply_commit(args)
+    elif args.subcmd == "apply-review":
+        _do_apply_review(args)
+    elif args.subcmd == "apply-fix":
+        _do_apply_fix(args)
     elif args.subcmd == "modify-spec":
         _do_modify_spec(args)
     elif args.subcmd == "modify-todo":
