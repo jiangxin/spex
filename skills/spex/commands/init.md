@@ -8,13 +8,13 @@ Initialize the spex environment for the current project.
 /spex init
 ```
 
-## Procedure
+## Execution
 
-Follow these steps in order.
+Follow phases in order. Do not skip or reorder.
 
 ### Phase 1: Run Initialization
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex init
@@ -22,5 +22,5 @@ $spex_skill_dir/scripts/spex init
 
 ### Phase 2: Report Results
 
-Display the script output to the user. If any warnings were emitted
-(e.g., permission errors for CLI install), suggest manual resolution.
+- Display output; IF warnings (e.g. CLI install permission errors) ->
+  suggest manual resolution; report init results -> STOP

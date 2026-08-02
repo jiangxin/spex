@@ -8,56 +8,54 @@ Submit completed work by merging the feature branch or creating a PR.
 /spex merge [spec_name] [--dry-run | -n] [--no-archive]
 ```
 
-When `spec_name` is omitted, the CLI automatically searches for
-submittable specs (completed tasks + has `spex_branch` + related to
-the current project). If exactly one is found it is auto-selected;
-if multiple are found a numbered list is displayed for interactive
-selection.
+## Inputs
 
-## Procedure
+- OPT: `spec_name`
+- OPT: `--dry-run | -n`
+- OPT: `--no-archive`
+- IF `spec_name` omitted -> CLI searches submittable specs (completed
+  tasks + has `spex_branch` + related to current project)
+  - IF exactly 1 -> auto-select
+  - IF multiple -> numbered list for interactive selection
 
-Follow these steps in order. Do not skip or reorder.
+## Execution
+
+Follow phases in order. Do not skip or reorder.
 
 ### Phase 1: Resolve Spec
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
 ```
 
-Read the command output and parse it as a JSON array:
-
-- If the array contains a single element, set `$spec_name` to its
-  `spec_name` and `$spec_path` to its `spec_path`.
-- If the array contains multiple elements, present a numbered list of
-  `spec_name` values to the user and ask them to choose. Set
-  `$spec_name` and `$spec_path` from the selected entry.
-- If the script exits with an error, report the error and stop.
+- Parse stdout as JSON array:
+  - IF single element -> set `$spec_name` / `$spec_path` from entry
+  - IF multiple -> numbered `spec_name` list -> user chooses -> set `$spec_name` / `$spec_path` from selected entry
+  - IF script exits error -> report error -> STOP
 
 ### Phase 2: Validate
 
-Read `$spec_path/meta.json` and check:
-
-- If `spex_branch` is not set, report that branch management is not
-  active for this spec and stop.
+- Read `$spec_path/meta.json`
+- IF `spex_branch` not set -> report branch management inactive -> STOP
 
 ### Phase 3: Submit
 
-Run:
+- Forward any agent-supplied Usage flags unchanged.
+- CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex merge $spec_name
+$spex_skill_dir/scripts/spex merge $spec_name [-n|--dry-run] [--no-archive]
 ```
 
-Parse the JSON output:
-
-- If `errors` is non-empty, report the errors to the user and stop.
-- Otherwise, note the `action`, `source`, and `target` fields.
+- Parse JSON stdout:
+  - IF `errors` non-empty -> report errors -> STOP
+  - ELSE -> note `action`, `source`, `target`
 
 ### Phase 4: Output
 
-Display the following summary to the user:
+- Display summary:
 
 ```text
 **Submit**: `$spec_name`
@@ -68,8 +66,9 @@ Display the following summary to the user:
 - Archived: $archived
 ```
 
-Where `$archived` is `yes` if the JSON response has `"archived": true`,
-or `no` if `"archived": false`.
+- `$archived` = `yes` IF JSON `"archived": true` ELSE `no`
 
-**STOP.** The submit is complete. Do NOT start implementing any
-further changes.
+## STOP / Outputs
+
+- Submit complete -> STOP
+- Do NOT start implementing further changes
