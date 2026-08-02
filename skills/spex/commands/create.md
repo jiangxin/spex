@@ -1,7 +1,7 @@
 # spex create
 
-**PLAN only** — this command produces spec documents and a todo list.
-It does NOT write any application code.
+**PLAN only** — produces spec documents + todo list.
+Does NOT write any application code.
 
 Create a new spec with requirement analysis, detailed design,
 and test plan.
@@ -12,82 +12,74 @@ and test plan.
 /spex create [input]
 ```
 
-## Procedure
+## Inputs
 
-- **Role**: Act as a senior software architect. Focus on requirement
-  completeness, edge cases, and testability.
+- OPT: `$input` — requirement description
+- Role: senior software architect; focus on requirement completeness,
+  edge cases, testability
 
-**SCOPE: This command creates documents only — `spec.md`, `todo.json`,
-`meta.json` inside the spec directory. NO application code is written.
-NO existing project files are modified. Implementation happens later
-via `/spex apply` or `/spex apply-one-step`.**
+## Preconditions
 
-Follow these steps in order. Do not skip or reorder.
+- SCOPE: documents only — `spec.md`, `todo.json`, `meta.json` inside
+  the spec directory. NO application code. NO existing project file
+  modifications. Implementation later via `/spex apply` or
+  `/spex apply-one-step`.
+- Follow phases in order. Do not skip or reorder.
+
+## Execution
 
 ### Phase 1: Validate Branch
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper precheck
 ```
 
-If the script exits with an error (non-zero), the error message is already
-printed to stderr. Stop execution. On success, continue to the next phase.
+- IF non-zero exit -> error already on stderr -> STOP
+- ELSE -> continue
 
 ### Phase 2: Clarify Requirement
 
-If `$input` is not provided or empty, ask the user to describe the requirement.
+- IF `$input` missing/empty -> ask user to describe requirement;
+  reply becomes `$input`
+- Explore workspace only enough to locate relevant code + patterns for
+  the spec. Identify: (1) relevant source files/locations, (2) existing
+  patterns/conventions to reference, (3) dependencies touched.
+  Do NOT read full file contents unless needed for the spec, dig into
+  implementation details, or modify any files (`/spex apply` handles
+  that).
 
-Once you have `$input`, explore the workspace **only enough to understand
-where the relevant code lives and what existing patterns to reference in the
-spec**. Limit exploration to identifying: (1) relevant source files and
-their location, (2) existing patterns or conventions the spec should
-reference, (3) dependencies the requirement touches. Do NOT read full
-file contents unless necessary for the spec, dig into implementation
-details, or start modifying any files (those are handled by `/spex apply`).
+- Clarify IF any apply:
+  - Multiple viable implementation paths affect design
+    (e.g. REST vs GraphQL, polling vs WebSocket)
+  - Scope/boundaries unclear (modules in/out, backward compat)
+  - Dependencies on other systems/features unspecified
+  - Ambiguous terminology with multiple interpretations
+- ELSE IF requirement already specific/unambiguous -> skip clarification.
+  Do not ask just to be thorough; only when answer would
+  materially change the spec.
 
-**When to clarify** — ask the user if any of these apply:
-
-- Multiple viable implementation paths exist and the choice affects the
-  design (e.g., REST vs. GraphQL, polling vs. WebSocket).
-- Scope or boundaries are unclear (e.g., which modules are in/out,
-  whether backward compatibility is required).
-- Dependencies on other systems or features are not specified.
-- Ambiguous terminology is used that could be interpreted differently.
-
-**When NOT to clarify** — if the requirement is already specific and
-unambiguous, skip clarification entirely and proceed directly to Phase 3.
-Do not ask questions just to be thorough; only ask when the answer would
-materially change the spec.
-
-**How to clarify**:
-
-- Ask all clarification questions at once in a single message (not one
-  by one in a back-and-forth).
-- Limit to 2–4 questions maximum. Prioritize the questions whose answers
-  most affect the design.
-
-After clarification (or if none was needed), record the complete,
-unambiguous requirement as `$requirement`.
+- How to clarify:
+  - Ask all questions in one message (not back-and-forth)
+  - Limit 2–4 questions; prioritize those most affecting design
+- After clarification (or none needed) -> `$requirement` ← complete
+  unambiguous requirement -> Phase 3
 
 ### Phase 3: Generate Name and Description
 
-Based on `$requirement`, generate a JSON object with two fields:
-
-- `name`: a short English name (<32 bytes) using only `[a-z0-9-]`,
-  replacing spaces with `-`. Do NOT prepend any date prefix.
-- `description`: a brief English summary of the requirement, used as
-  merge commit message and PR description. Keep it as a single line
-  (do NOT embed newlines) — line wrapping is handled automatically.
-
-Example: `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`
-
-Parse this JSON and save the values as `$name` and `$description`.
+- From `$requirement`, generate JSON with two fields:
+  - `name`: short English (<32 bytes), `[a-z0-9-]` only, spaces -> `-`.
+    Do NOT prepend date prefix.
+  - `description`: brief English summary (merge commit message + PR
+    description). Single line — no embedded newlines; wrapping is
+    automatic.
+- Example: `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`
+- Parse JSON -> `$name`, `$description`
 
 ### Phase 4: Prepare Spec Directory
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name "$name" <<'EOF'
@@ -95,20 +87,14 @@ $requirement
 EOF
 ```
 
-The script creates the spec directory and `meta.json` (with the
-requirement saved to its `prompts` field and the description saved to
-its `description` field). Parse the JSON output and
-save these variables:
-
-- `$spec_name` ← `spec_name` (spec with date prefix,
-  e.g., `2026-05-24-10-30-add-login-api`)
-- `$spec_path` ← `spec_path`
-- `$spec_template` ← `spec_template`
-
-If the script exits with an error, return to Phase 3 and retry with a
-different name.
-
-Example JSON output:
+- Script creates spec directory + `meta.json` (`prompts` = requirement,
+  `description` = description). Parse JSON stdout:
+  - `$spec_name` ← `spec_name` (with date prefix,
+    e.g. `2026-05-24-10-30-add-login-api`)
+  - `$spec_path` ← `spec_path`
+  - `$spec_template` ← `spec_template`
+- ON_FAIL: return to Phase 3 -> retry with different name
+- Example JSON output:
 
 ```json
 {
@@ -120,64 +106,45 @@ Example JSON output:
 
 ### Phase 5: Design Specification
 
-Check for images from either of the following sources (supported
-extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
+- CHECK images from either source (ext: `.png`, `.jpg`, `.jpeg`, `.gif`,
+  `.svg`, `.webp`, `.bmp`):
+  - Pasted images (primary): scan conversation for markers
+    (e.g. `[Image: source: <path>]`) or inline image content; extract
+    absolute paths (agent-cached local dirs)
+  - Explicit file paths (secondary): local image paths in `$requirement`
+    with supported extension
+- IF images found:
+  1. `mkdir -p $spec_path/assets/`
+  2. Copy each image into `$spec_path/assets/`, keep original filename
+  3. In `spec.md` below, reference via `![description](assets/filename.png)`
+  4. After writing `spec.md`, register in `meta.json` (example):
 
-- **Pasted images (primary)**: Scan the conversation context for image
-  markers (e.g., `[Image: source: <path>]`) or inline image content.
-  These are images the user pasted into the chat, typically cached by
-  the coding agent in a local directory. Extract the absolute file path
-  from each image reference.
-- **Explicit file paths (secondary)**: Check if `$requirement` text
-  contains local image file paths with a supported extension.
+     ```bash
+     $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
+       --add-images assets/file1.png assets/file2.png
+     ```
 
-If images are found from either source:
-
-1. Create the assets directory: `mkdir -p $spec_path/assets/`
-2. Copy each discovered image file into `$spec_path/assets/`, keeping
-   the original filename.
-3. When writing `spec.md` below, reference the images using Markdown
-   syntax `![description](assets/filename.png)` in the appropriate
-   sections.
-4. After writing `spec.md`, register the images in `meta.json`
-   (example):
-
-   ```bash
-   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
-     --add-images assets/file1.png assets/file2.png
-   ```
-
-Perform detailed requirement analysis and solution design based on
-`$requirement`. Consider functional requirements, non-functional requirements,
-data models, API contracts, error handling, and edge cases.
-
-Using `$spec_template` as the template, create `$spec_path/spec.md`
-in the same language as the user's requirement (e.g., English or Chinese).
-Replace the placeholder sections (HTML comments like
-`<!-- Replace this section with ... -->`) with the analysis and design
-results. Fill the "User Clarification" section with clarifications
-gathered in Phase 2. Keep the Constraints section as-is.
-Do not remove or modify `<!-- spex:begin:* -->` comment lines.
+- Perform detailed requirement analysis + solution design from
+  `$requirement`. Cover functional/non-functional requirements, data
+  models, API contracts, error handling, edge cases.
+- Using `$spec_template`, create `$spec_path/spec.md` in same language
+  as user's requirement. Replace placeholder sections
+  (`<!-- Replace this section with ... -->`) with analysis/design.
+  Fill "User Clarification" from Phase 2. Keep Constraints as-is.
+  Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 
 ### Phase 6: Plan Implementation Steps
 
-Based on the design in `$spec_path/spec.md`, break down the work into
-incremental development steps. Each step should be independently
-committable and verifiable.
+- From `$spec_path/spec.md`, break work into incremental steps.
+  Each step independently committable + verifiable.
+- Principles:
+  - Small batches: minimal working increment per step
+  - Self-contained: production code + tests in same step — never split
+  - Ordered by dependency: each builds on previous; no forward refs
+- Use `spex todo-helper` to build `todo.json` step by step.
+  Number sequentially: `step-1`, `step-2`, etc.
 
-Principles:
-
-- **Small batches**: each step delivers a minimal, working increment.
-- **Self-contained**: group production code and its tests in the same
-  step — never split them into separate steps.
-- **Ordered by dependency**: list steps so that each builds on the
-  previous one; no forward references.
-
-Use `spex todo-helper` to build `todo.json` step by step.
-Number steps sequentially: `step-1`, `step-2`, etc.
-
-**Append** a step — use `--details-from-stdin` with a heredoc for
-multi-line Markdown details:
+- **Append** — `--details-from-stdin` + heredoc for multi-line Markdown:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
@@ -193,14 +160,14 @@ including file changes, logic, and acceptance criteria.
 DETAILS
 ```
 
-**Show** current steps (to review before adding more):
+- **Show** current steps (review before adding more):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name show \
   --format markdown
 ```
 
-**Edit** a step (only specified fields are updated):
+- **Edit** (only specified fields updated):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
@@ -212,33 +179,30 @@ Updated multi-line details for this step.
 DETAILS
 ```
 
-**Remove** a step:
+- **Remove**:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name remove \
   --id step-1
 ```
 
-The `details` field supports multi-line Markdown:
-
-- Including file changes, logic, and acceptance criteria, etc.
-- Use lists, bold, and inline code.
-- Do not use headings (`#`, `##`, etc.)
+- `details` field: multi-line Markdown OK (file changes, logic,
+  acceptance criteria). Use lists, bold, inline code. Do not use
+  headings (`#`, `##`, etc.).
 
 ### Phase 7: Post-Action
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 ```
 
-If the script exits with an error, read the error message, fix the
-JSON format in `todo.json`, and re-run until validation succeeds.
+- ON_FAIL: fix JSON format in `todo.json` -> re-run until validation OK
 
 ### Phase 8: Output
 
-Display the following summary to the user:
+- Display summary:
 
 ```text
 **Spec**: `$spec_name`
@@ -250,12 +214,14 @@ Display the following summary to the user:
 
 ### Phase 9: STOP — Do NOT Implement
 
-**This is a hard stop. Do NOT write any application code, modify any
-project files, or begin implementing the steps planned in `todo.json`.**
+- Hard STOP. Do NOT write application code, modify project files, or
+  begin implementing steps in `todo.json`.
+- Planning complete. Sole responsibility: produce `spec.md`,
+  `todo.json`, `meta.json` inside the spec directory.
+- Wait for user review -> `/spex apply` or `/spex apply-one-step`.
 
-Planning is complete. The `/spex create` command's sole responsibility
-was to produce the spec documents (`spec.md`, `todo.json`, `meta.json`)
-inside the spec directory.
+## STOP / Outputs
 
-Wait for the user to review the spec and invoke `/spex apply` or
-`/spex apply-one-step` when ready.
+- Writes: `$spec_path/spec.md`, `$spec_path/todo.json`,
+  `$spec_path/meta.json` (+ optional `assets/`)
+- Phase 9 hard STOP — no application code

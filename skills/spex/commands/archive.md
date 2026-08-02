@@ -8,43 +8,46 @@ Archive completed specs.
 /spex archive [--name <name>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects]
 ```
 
-## Options
+## Inputs
 
-| Flag           | Description                            |
-|----------------|----------------------------------------|
-| `--name`      | Archive a single spec by name         |
-| `--dry-run, -n`| Preview without moving                 |
-| `--force, -f`  | Bypass spex_branch existence check     |
-| `--restore`    | Restore a spec from archives to specs |
-| `--all-projects` | Archive specs from all projects     |
+| Flag | Description |
+|------|-------------|
+| `--name` | Archive a single spec by name |
+| `--dry-run, -n` | Preview without moving |
+| `--force, -f` | Bypass spex_branch existence check |
+| `--restore` | Restore a spec from archives to specs |
+| `--all-projects` | Archive specs from all projects |
 
-## Behavior
+## Preconditions
 
-Specs are only archived if all tasks in `todo.json` are completed.
-Additionally, if a spec has `spex_branch` in `meta.json` and the
-referenced git branch still exists, the spec is skipped with a warning
-unless `--force` is provided.
+- Archive only if all `todo.json` tasks completed
+- IF `spex_branch` in `meta.json` AND that git branch still exists ->
+  skip + warn UNLESS `--force`
+- `--restore` + `--name <name>` -> reverse op: fuzzy substring search in
+  `archives_dir`
+  - IF exactly 1 match -> move back to `specs_dir`
+  - ELSE (0 or many) -> FAIL
 
-When `--restore` is used with `--name <name>`, the operation is reversed:
-the spec is searched in `archives_dir` with fuzzy substring matching.
-If exactly one spec matches, it is moved back to `specs_dir`. Errors
-out if no match or multiple matches are found.
+## Execution
 
-## Procedure
-
-Follow these steps in order. Do not skip or reorder.
+Follow phases in order. Do not skip or reorder.
 
 ### Phase 1: Run Archive Script
 
-Run:
+- Forward any agent-supplied Usage flags unchanged.
+- CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex archive
+$spex_skill_dir/scripts/spex archive [--name <name>] [-n|--dry-run] [-f|--force] [--restore] [--all-projects]
 ```
 
 ### Phase 2: Report Results
 
-- If the script output indicates specs were archived, report the list of
-  archived specs to the user.
-- If no specs were archived, inform the user that there are no completed
-  specs to archive.
+- IF output matches `Archived:` / `Would archive` -> report that list
+- ELSE IF output matches `Restored:` / `Would restore` -> report restore result
+- ELSE IF output is `No completed specs to archive.` -> inform none
+- ELSE -> surface script output / errors as-is
+
+## STOP / Outputs
+
+- Report archive / restore result -> STOP

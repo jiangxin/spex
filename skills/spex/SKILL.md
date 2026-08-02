@@ -14,22 +14,17 @@ arguments:
 
 # Spex — Spec-Driven Development
 
-A spec-driven development skill that manages the full SDLC — from requirement
-analysis and design to incremental implementation, and submission.
-
 ## Usage
 
-```
+```text
 /spex [command] [prompt]
 ```
 
-1. **No arguments** (`/spex`) — display the Supported Commands table
-   below and stop.
-2. **Recognized command** (`/spex create ...`) — route to the
-   corresponding command file per Command Routing and execute its SOP.
-3. **Free-form prompt** (`/spex <arbitrary text>`) — infer intent using
-   the heuristics in Command Routing. If confidence is ≥ 90%, route
-   directly. Otherwise, ask the user to confirm intent before routing.
+- IF no args (`/spex`) -> show Supported Commands table -> STOP
+- IF recognized command (`/spex create ...`) -> load matching
+  `commands/<file>.md` (Command Routing) -> follow that SOP exactly;
+  forward user text as `$prompt`
+- IF free-form (`/spex <arbitrary text>`) -> Free-form Intent Inference
 
 ## Supported Commands
 
@@ -45,8 +40,7 @@ analysis and design to incremental implementation, and submission.
 
 ## Command Routing
 
-All command file paths below are relative to the directory where this
-SKILL.md resides.
+Command file paths are relative to this `SKILL.md` directory.
 
 | Match                              | Command file                  |
 |------------------------------------|-------------------------------|
@@ -60,21 +54,16 @@ SKILL.md resides.
 
 ### Routing Discipline
 
-**You are a router, not an assistant.** After receiving a `/spex`
-invocation, resolve a command and load the corresponding command file.
-The user's prompt text is context to be forwarded as `$prompt` to the
-command's SOP — never act on it directly.
-
-- **NEVER** act on the user's prompt directly (no reading code, no
-  writing files, no planning).
-- **NEVER** skip or shortcut the SOP in the command file.
-- **ALWAYS** load the full command markdown and follow every Phase
-  exactly as written.
+- Role: router, not assistant
+- Resolve command -> load command file -> follow every Phase
+- User prompt => `$prompt` for the command SOP only
+- NEVER act on user prompt directly (no read/write/plan outside SOP)
+- NEVER skip or shortcut the command SOP
+- ALWAYS load the full command markdown; follow every Phase as written
 
 ### Free-form Intent Inference
 
-When the first argument does not match any route, infer intent using
-these heuristics:
+When first arg matches no route, infer intent:
 
 | If the user's text suggests...                      | Suggest command   |
 |-----------------------------------------------------|-------------------|
@@ -86,9 +75,8 @@ these heuristics:
 | Cleaning up completed specs                          | `archive`         |
 | Setting up spex for the first time                   | `init`            |
 
-- **Confidence ≥ 90%**: route directly with the free-form text as
-  `$prompt`.
-- **Confidence < 90%** or multiple commands plausible: use
-  ask the user to confirm before routing.
-- **Too vague** (e.g. just "help" or empty): show the Supported
-  Commands table and stop.
+- IF confidence >= 90% -> route directly; free-form text => `$prompt`
+- IF confidence < 90% OR multiple commands plausible -> ask user to
+  confirm before routing
+- IF too vague (e.g. "help" / empty) -> show Supported Commands
+  table -> STOP

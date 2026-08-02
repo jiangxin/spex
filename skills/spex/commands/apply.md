@@ -8,138 +8,127 @@ Apply a specification to implement code step by step.
 /spex apply [spec_name | --all]
 ```
 
-## Procedure
+## Inputs
 
-Follow these steps in order. Do not skip or reorder.
+- OPT: `$spec_name` or `--all`
+
+## Preconditions
+
+- Follow phases in order. Do not skip or reorder.
+
+## Execution
 
 ### Phase 1: Resolve Spec
 
-If `$spec_name` is `--all`:
-
-- Run `$spex_skill_dir/scripts/spex list --json --must-undone`
-  to get all specs with undone tasks.
-- Parse the output as a JSON array `$specs` of objects, each
-  containing `spec_name` and `spec_path`.
-- For each entry in `$specs` (outer loop): set `$spec_name` and
-  `$spec_path`, then execute Phases 2 through 9 for that spec
-  (Phase 9 runs when that spec's tasks are all done).
-- After Phase 9 for one spec, continue the outer loop with the
-  next entry (start that entry at Phase 2). When no entries
-  remain, **STOP**.
-
-Otherwise, run:
+- IF `$spec_name` is `--all`:
+  - CMD: `$spex_skill_dir/scripts/spex list --json --must-undone`
+  - Parse stdout as JSON array `$specs` of objects (`spec_name`,
+    `spec_path`)
+  - For each entry in `$specs` (outer loop): set `$spec_name` /
+    `$spec_path` -> Phases 2–9 (Phase 9 when that spec's tasks all
+    done)
+  - After Phase 9 for one spec -> next `$specs` entry at Phase 2.
+    IF none remain -> **STOP**
+- ELSE -> CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
 ```
 
-Read the command output and parse it as a JSON array:
-
-- If the array contains a single element, set `$spec_name` to its
-  `spec_name` and `$spec_path` to its `spec_path`.
-- If the array contains multiple elements, present a numbered list of
-  `spec_name` values to the user and ask them to choose. Set
-  `$spec_name` and `$spec_path` from the selected entry.
-- If the script exits with an error, report the error and stop.
+- Parse stdout as JSON array:
+  - IF single element -> set `$spec_name` / `$spec_path` from entry
+  - IF multiple -> numbered `spec_name` list -> user chooses -> set
+    `$spec_name` / `$spec_path` from selected entry
+  - IF script exits error -> report error -> STOP
 
 ### Phase 2: Validate Branch
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
 ```
 
-If the script exits with an error (non-zero), the error message is already
-printed to stderr. Stop execution. On success, continue to the next phase.
+- IF non-zero exit -> error already on stderr -> STOP
+- ELSE -> continue
 
 ### Phase 3: Build Prompt / Resume Gate
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 ```
 
-Parse the JSON output from stdout:
+- Parse JSON stdout:
+  - IF `"all_done": true` -> Phase 9 (skip Phase 8). In `--all`
+    mode, after Phase 9 continue Phase 1 outer loop next `$specs`
+    entry at Phase 2, or **STOP** if none remain
+  - IF non-zero exit -> report stderr -> STOP
+  - ELSE save:
+    - `$prompt` ← `"prompt"`
+    - `$current_task_id` ← `"task_id"`
+    - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
+    - `$commit_title` ← `"commit_title"` (may be empty)
 
-- If the response contains `"all_done": true`, all tasks for this
-  spec are completed — proceed directly to **Phase 9** (do not
-  go through Phase 8). In `--all` mode, after Phase 9 continue
-  Phase 1's outer loop with the next `$specs` entry (start at
-  Phase 2), or **STOP** if none remain.
-- If the command exits with a non-zero exit code, a real error
-  occurred — report the stderr message and stop.
-- Otherwise, save:
-  - `$prompt` ← `"prompt"`
-  - `$current_task_id` ← `"task_id"`
-  - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
-  - `$commit_title` ← `"commit_title"` (may be empty)
+- Step incomplete until `completed_at` set. IF `commit_title` set
+  AND `completed_at` empty -> `$resume_phase` is `review` (skip
+  implement/commit)
 
-A step is incomplete until `completed_at` is set. If
-`commit_title` is already set and `completed_at` is empty,
-`resume_phase` is `review` (skip implement/commit).
-
-**Route:**
-
-- If `$resume_phase` is `review`: skip Phases 4–5 and continue with
-  Phase 6 in the main context. Do not set `$commit_sha` from
-  `HEAD` here — Phase 6 **6-entry** resolves it (prefer the
-  review file's `commit_sha`).
-- If `$resume_phase` is `implement`: launch a sub-agent for
-  Phases 4–5 only (implement + first commit). Instruct it to
-  follow Phases 4–5 of this command exactly. Pass `$prompt` as
-  the Phase 4 implementation guide, plus `$current_task_id` and
-  `$spec_name`. The implementation prompt must not create the
-  commit by itself — the sub-agent runs Phase 5 (`apply-commit`)
-  after implementation. On failure, report and retry **once**;
-  if it still fails, stop. After it completes, continue with
-  Phase 6 in the main context.
+- **Route:**
+  - IF `$resume_phase` is `review` -> skip Phases 4–5 -> Phase 6 in
+    main context. Do NOT set `$commit_sha` from `HEAD` here —
+    Phase 6 **6-entry** resolves it (prefer review file's
+    `commit_sha`)
+  - IF `$resume_phase` is `implement` -> launch sub-agent for
+    Phases 4–5 only (implement + first commit). Instruct it to
+    follow Phases 4–5 of this command exactly. Pass `$prompt` as
+    Phase 4 guide, plus `$current_task_id` and `$spec_name`.
+    Implementation prompt must NOT create the commit — sub-agent
+    runs Phase 5 (`apply-commit`) after implementation. ON_FAIL:
+    report + retry **once**; IF still fails -> STOP. After OK ->
+    Phase 6 in main context
 
 ### Phase 4: Execute Task
 
-Using `$prompt` as the implementation guide, implement the current
-task. Follow the instructions in the rendered prompt precisely —
-it contains the specification, completed steps context, the task
-description, and implementation guidelines.
-
-Deliver production code and its tests together. If the implementation
-produces no file changes, report the issue and stop.
-
-Do **not** create a git commit here — Phase 5 handles the commit.
+- Using `$prompt` as guide, implement current task. Follow rendered
+  prompt precisely (spec, completed steps, task description,
+  guidelines)
+- Deliver production code + tests together
+- IF no file changes -> report issue -> STOP
+- Do NOT create git commit here — Phase 5 handles commit
 
 ### Phase 5: Commit (record commit_title only)
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
 ```
 
-Save the output to `$commit_prompt`. Using `$commit_prompt` as the
-guide, stage the relevant file changes and create a git commit:
+- `$commit_prompt` ← output. Using `$commit_prompt`, stage relevant
+  changes + commit:
+  - Do NOT stage any files under `$spex_root/`
+  - Commit via heredoc: `git commit -F- <<-EOF ... EOF`
+  - ON_FAIL (e.g. pre-commit hook): fix + retry **once**; IF still
+    fails -> STOP + report
 
-- Do NOT stage any files under `$spex_root/`.
-- Create the commit using a heredoc: `git commit -F- <<-EOF ... EOF`.
-- If the commit fails (e.g., pre-commit hook), fix the issues and
-  retry **once**; if it still fails, stop and report.
-
-After the commit succeeds, run:
+- After commit OK:
 
 ```bash
 git log -1 --pretty="%h: %s"
 ```
 
-Save the output to `$commit_title`. Also save the short SHA:
+- `$commit_title` ← output
 
 ```bash
 git rev-parse --short HEAD
 ```
 
-Save to `$commit_sha`.
+- `$commit_sha` ← output
 
-**Persist commit_title now — do NOT set `completed_at` yet**
-(review/fix may still be pending; this enables interrupt resume):
+- **Persist commit_title now — do NOT set `completed_at` yet**
+  (review/fix may still be pending; enables interrupt resume):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
@@ -148,22 +137,20 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ### Phase 6: Review Loop
 
-Load and follow `references/apply-review-loop.md` exactly.
-
-If the review loop **STOP**s due to an abnormal failure (e.g.
-fix/amend verification fails after relaunch), end this entire
-`/spex apply` invocation immediately — do **not** run Phase 7,
-Phase 8, or Phase 9, and do **not** start the next task or the
-next `--all` spec. The step stays incomplete so a later
-`/spex apply` can resume via Phase 3 → Phase 6. Round-3 open
-majors are **not** a reason to STOP — the loop must enter 6c and
-fix them in this same invocation.
+- Load and follow `references/apply-review-loop.md` exactly
+- IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
+  verification fails after relaunch) -> end entire `/spex apply`
+  immediately — do **not** run Phase 7, Phase 8, or Phase 9; do
+  **not** start next task or next `--all` spec. Step stays
+  incomplete so later `/spex apply` can resume via Phase 3 →
+  Phase 6. Round-3 open majors are **not** a reason to STOP —
+  loop must enter 6c and fix them in this same invocation
 
 ### Phase 7: Mark Task Complete
 
-Only after the review/fix loop finishes successfully. Refresh
-`$commit_title` if needed, then set **`completed_at`** (the step
-is not done until this runs):
+- Only after review/fix loop finishes successfully. Refresh
+  `$commit_title` if needed, then set **`completed_at`** (step not
+  done until this runs):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
@@ -171,28 +158,32 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --commit-title "$commit_title"
 ```
 
-If the command fails, report the error and stop.
+- ON_FAIL: report error -> STOP
 
 ### Phase 8: Next Task
 
-Go back to Phase 3 for the next undone task. Each iteration uses a
-fresh sub-agent for Phases 4–5 when `resume_phase` is `implement`.
-
-When Phase 3 reports `"all_done": true`, Phase 3 routes to Phase 9
-(do not loop further for this spec).
+- Go back to Phase 3 for next undone task. Each iteration uses
+  fresh sub-agent for Phases 4–5 when `resume_phase` is `implement`
+- When Phase 3 reports `"all_done": true`, Phase 3 routes to
+  Phase 9 (do not loop further for this spec)
 
 ### Phase 9: Post Action
 
-Run for the **current** `$spec_name` (once per completed spec,
-including each entry in `--all` mode):
+- Run for **current** `$spec_name` (once per completed spec,
+  including each `--all` entry):
 
 ```bash
 $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
-Display the output to the user.
+- Display output to user
+- IF `--all` mode -> continue Phase 1 outer loop next `$specs`
+  entry at Phase 2, or **STOP** if none remain
+- ELSE -> **STOP.** Do NOT implement additional steps or modify
+  project files beyond what was already committed
 
-- In `--all` mode: continue Phase 1's outer loop with the next
-  `$specs` entry (start at Phase 2), or **STOP** if none remain.
-- Otherwise: **STOP.** Do NOT start implementing additional steps
-  or modifying project files beyond what was already committed.
+## STOP / Outputs
+
+- Phases 1–9 including `--all` outer loop, Phase 8 next-task loop,
+  Phase 9 post-action
+- Abnormal Phase 6 STOP leaves step incomplete for resume
