@@ -9,79 +9,68 @@ development plan.
 /spex modify [spec_name] [request]
 ```
 
-## Procedure
+## Inputs
 
-- **Role**: Act as a senior software architect. Focus on incremental
-  specification evolution while preserving completed work.
+- OPT: `$spec_name`
+- OPT: `$request` — modification/addition to existing spec
+- Role: senior software architect; focus on incremental specification
+  evolution while preserving completed work
 
-**SCOPE: This command updates spec documents only — `spec.md`,
-`todo.json`, `meta.json` inside the spec directory. NO application
-code is written. NO existing project files are modified.
-Implementation is handled by `/spex apply` or `/spex apply-one-step`.**
+## Preconditions
 
-Follow these steps in order. Do not skip or reorder.
+- SCOPE: updates spec documents only — `spec.md`, `todo.json`,
+  `meta.json` inside the spec directory. NO application code. NO
+  existing project file modifications. Implementation via
+  `/spex apply` or `/spex apply-one-step`.
+- Follow phases in order. Do not skip or reorder.
+
+## Execution
 
 ### Phase 1: Resolve Spec
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex list --json "$spec_name"
 ```
 
-Read the command output and parse it as a JSON array:
-
-- If the array contains a single element, set `$spec_name` to its
-  `spec_name` and `$spec_path` to its `spec_path`.
-- If the array contains multiple elements, present a numbered list of
-  `spec_name` values to the user and ask them to choose. Set `$spec_name`
-  and `$spec_path` from the selected entry.
-- If the script exits with an error, report the error and stop.
+- Parse stdout as JSON array:
+  - IF single element -> set `$spec_name` / `$spec_path` from entry
+  - IF multiple -> numbered `spec_name` list -> user chooses -> set
+    `$spec_name` / `$spec_path` from selected entry
+  - IF script exits error -> report error -> STOP
 
 ### Phase 2: Understand Context and Clarify
 
-If `$request` is not provided or empty, ask the user to describe what
-changes they want to make to the spec. The user's full input becomes
-`$request`.
+- IF `$request` missing/empty -> ask user what changes they want;
+  full input becomes `$request`
+- Read `$spec_path/spec.md` for existing requirements/design. Explore
+  workspace only enough to locate relevant code + patterns referenced
+  in the spec. Do NOT dig into full implementation details or modify
+  files.
+- `$request` is a modification/addition to the existing specification.
+  Evaluate clarity:
 
-Read the current specification at `$spec_path/spec.md` to understand
-the existing requirements and design. Then explore the workspace **only
-enough to understand where the relevant code lives and what existing
-patterns are referenced in the spec**. Do NOT dig into full
-implementation details or start modifying any files.
+- Clarify IF any apply:
+  - Scope of change unclear (which sections affected; replace vs extend
+    existing steps)
+  - Multiple viable implementation paths affect design
+  - Relationship to completed work unclear (preserve vs redo completed
+    steps)
+  - Ambiguous terminology in context of existing specification
+- ELSE IF request already specific/unambiguous in current-spec context
+  -> skip clarification -> Phase 3. Do not ask just to be thorough;
+  only when answer would materially change the spec.
 
-The user's `$request` is a modification or addition to the existing
-specification. Evaluate whether it is clear enough to proceed:
-
-**When to clarify** — ask the user if any of these apply:
-
-- The scope of the change is unclear (e.g., which sections of the spec
-  are affected, whether existing steps should be replaced or extended).
-- Multiple viable implementation paths exist and the choice affects the
-  design.
-- The relationship to completed work is not obvious (e.g., whether to
-  preserve or redo completed steps).
-- Ambiguous terminology is used that could be interpreted differently
-  in the context of the existing specification.
-
-**When NOT to clarify** — if the modification request is already specific
-and unambiguous in the context of the current spec, skip clarification
-entirely and proceed directly to Phase 3. Do not ask questions just to
-be thorough; only ask when the answer would materially change the spec.
-
-**How to clarify**:
-
-- Ask all clarification questions at once in a single message (not one
-  by one in a back-and-forth).
-- Limit to 2–4 questions maximum. Prioritize the questions whose answers
-  most affect the design.
-
-After clarification (or if none was needed), the finalized `$request`
-becomes the modification request.
+- How to clarify:
+  - Ask all questions in one message (not back-and-forth)
+  - Limit 2–4 questions; prioritize those most affecting design
+- After clarification (or none needed) -> finalized `$request` is the
+  modification request
 
 ### Phase 3: Save Request
 
-Record the modification request in `meta.json`:
+- Record modification request in `meta.json`:
 
 ```bash
 $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
@@ -90,36 +79,29 @@ $request
 EOF
 ```
 
-Check for images from either of the following sources (supported
-extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`):
+- CHECK images from either source (ext: `.png`, `.jpg`, `.jpeg`, `.gif`,
+  `.svg`, `.webp`, `.bmp`):
+  - Pasted images (primary): scan conversation for markers
+    (e.g. `[Image: source: <path>]`) or inline image content; extract
+    absolute paths (agent-cached local dirs)
+  - Explicit file paths (secondary): local image paths in `$request`
+    with supported extension
+- IF images found:
+  1. `mkdir -p $spec_path/assets/`
+  2. Copy each image into `$spec_path/assets/`, keep original filename
+  3. Register in `meta.json` (example):
 
-- **Pasted images (primary)**: Scan the conversation context for image
-  markers (e.g., `[Image: source: <path>]`) or inline image content.
-  These are images the user pasted into the chat, typically cached by
-  the coding agent in a local directory. Extract the absolute file path
-  from each image reference.
-- **Explicit file paths (secondary)**: Check if `$request` text
-  contains local image file paths with a supported extension.
+     ```bash
+     $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
+       --add-images assets/file1.png assets/file2.png
+     ```
 
-If images are found from either source:
-
-1. Create the assets directory: `mkdir -p $spec_path/assets/`
-2. Copy each discovered image file into `$spec_path/assets/`, keeping
-   the original filename.
-3. Register the images in `meta.json` (example):
-
-   ```bash
-   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
-     --add-images assets/file1.png assets/file2.png
-   ```
-
-4. When updating `spec.md` in Phase 5, reference the images using
-   Markdown syntax `![description](assets/filename.png)` in the
-   appropriate sections.
+  4. When updating `spec.md` in Phase 5, reference via
+     `![description](assets/filename.png)` in appropriate sections
 
 ### Phase 4: Build Prompt
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
@@ -128,58 +110,52 @@ $request
 EOF
 ```
 
-Parse the JSON output from stdout:
-
-- If the command exits with a non-zero exit code, report the stderr
-  message and stop.
-- Otherwise, save `$modify_prompt` from the `"prompt"` field.
-
-The `--remove-undone` flag removes incomplete steps from `todo.json`
-before rendering, so the prompt only includes completed step context.
+- Parse JSON stdout:
+  - IF non-zero exit -> report stderr -> STOP
+  - ELSE -> `$modify_prompt` ← `"prompt"` field
+- `--remove-undone` removes incomplete `todo.json` steps before render
+  so prompt includes completed-step context only
 
 ### Phase 5: Modify spec.md
 
-Using `$modify_prompt` as the prompt, update `$spec_path/spec.md`
-according to the instructions rendered in the prompt.
-
-Before writing, review the current codebase structure to ensure the
-updated design integrates properly with existing code.
+- Using `$modify_prompt`, update `$spec_path/spec.md` per prompt
+  instructions
+- Before writing, review current codebase structure so updated design
+  integrates with existing code
 
 ### Phase 6: Build Todo Prompt
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
 ```
 
-Parse the JSON output from stdout:
-
-- If the command exits with a non-zero exit code, report the stderr
-  message and stop.
-- Otherwise, save `$todo_prompt` from the `"prompt"` field.
+- Parse JSON stdout:
+  - IF non-zero exit -> report stderr -> STOP
+  - ELSE -> `$todo_prompt` ← `"prompt"` field
 
 ### Phase 7: Regenerate Development Steps
 
-Using `$todo_prompt` as the prompt, follow its instructions to design
-and add new development steps to `todo.json` via `spex todo-helper`.
-The prompt already contains the command syntax, planning principles,
-and step numbering rules.
+- Using `$todo_prompt`, follow its instructions to design and add new
+  development steps to `todo.json` via `spex todo-helper`. Prompt
+  already contains command syntax, planning principles, and step
+  numbering rules.
 
 ### Phase 8: Post-Action
 
-Run:
+- CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper post-action \
   --name $spec_name --event-type modify
 ```
 
-If the script exits with an error, report the error and stop.
+- ON_FAIL: report error -> STOP
 
 ### Phase 9: Output
 
-Display the following summary to the user:
+- Display summary:
 
 ```text
 **Spec**: `$spec_name`
@@ -191,10 +167,14 @@ Display the following summary to the user:
 
 ### Phase 10: STOP — Do NOT Implement
 
-**This is a hard stop. Do NOT write any application code, modify any
-project files, or begin implementing the updated plan.**
+- Hard STOP. Do NOT write application code, modify project files, or
+  begin implementing the updated plan.
+- Sole responsibility: update spec documents. Implementation via
+  `/spex apply` or `/spex apply-one-step`. Wait for user review ->
+  invoke those when ready.
 
-The `/spex modify` command's sole responsibility was to update the spec
-documents. Implementation is handled by `/spex apply` or
-`/spex apply-one-step`. Wait for the user to review the updated spec and
-invoke those commands when ready.
+## STOP / Outputs
+
+- Writes: updated `$spec_path/spec.md`, `$spec_path/todo.json`,
+  `$spec_path/meta.json` (+ optional `assets/`)
+- Phase 10 hard STOP — no application code
