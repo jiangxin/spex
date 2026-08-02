@@ -133,10 +133,13 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 Load and follow `references/apply-review-loop.md` exactly.
 
-If the review loop **STOP**s (e.g. open majors remain at round 3),
-end this invocation without Phase 7 or Phase 8. The step stays
-incomplete (`completed_at` unset) so a later `/spex apply-one-step`
-can resume via Phase 3 → Phase 6.
+If the review loop **STOP**s due to an abnormal failure (e.g.
+fix/amend verification fails after relaunch), end this invocation
+without Phase 7 or Phase 8. The step stays incomplete
+(`completed_at` unset) so a later `/spex apply-one-step` can
+resume via Phase 3 → Phase 6. Round-3 open majors are **not** a
+reason to STOP — the loop must enter 6c and fix them in this
+same invocation.
 
 ### Phase 7: Mark Task Complete
 

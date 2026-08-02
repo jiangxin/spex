@@ -11,17 +11,15 @@ flowchart TD
   entry -->|else| review[6a review sub-agent]
   review --> check[6b check status]
   check -->|no open findings| phase7[Phase 7]
-  check -->|open_major and round ge 3| stopNode[STOP this run]
   check -->|open_major eq 0 and round ge 3| phase7
-  check -->|needs_fix and round lt 3| fix
+  check -->|needs_fix| fix
   fix --> pick[6c-i next finding]
   pick -->|has id| oneFix[6c-ii fix amend]
   oneFix --> pick
   pick -->|id null| bumpOrDone[6c-iii]
   bumpOrDone -->|round lt 3| bump[bump-round then 6a]
   bump --> review
-  bumpOrDone -->|round ge 3 open_major eq 0| phase7
-  bumpOrDone -->|round ge 3 open_major gt 0| stopNode
+  bumpOrDone -->|round ge 3| phase7
 ```
 
 ## Round Model
@@ -33,14 +31,16 @@ flowchart TD
    minor): run the fix loop, then bump and re-review.
 4. After a review in round 3:
    - no open majors → proceed to Phase 7 (open minors may remain);
-   - open majors remain → **STOP this run** (do not mark the task
-     complete; do not enter 6c after that review pass).
-5. **STOP means pause this invocation only.** Do not run Phase 7+.
-   On a later `/spex apply` or `/spex apply-one-step`, Phase 3
-   resumes with `resume_phase=review`, then **6-entry** routes to
-   **6c** while `needs_fix` is true (even at `round == 3`) so
-   leftover findings can be fixed. Never bump or re-review past
-   round 3; after fixes, if `open_major == 0`, proceed to Phase 7.
+   - open majors remain → enter **6c** and fix them in this same
+     invocation. Do **not** bump or re-review past round 3. After
+     fixes, if `open_major == 0`, proceed to Phase 7.
+5. **STOP** is only for abnormal failures (e.g. fix/amend
+   verification fails after relaunch). Do not STOP merely because
+   round 3 found majors. If an earlier invocation was interrupted
+   while `needs_fix` is still true, a later `/spex apply` or
+   `/spex apply-one-step` resumes via Phase 3 with
+   `resume_phase=review`, then **6-entry** routes to **6c** (even
+   at `round == 3`). Never bump or re-review past round 3.
 
 ## Orchestration Rules (required)
 
@@ -136,20 +136,17 @@ minors remain).
    review file was created because the review found nothing):
    refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
    proceed to Phase 7.
-2. If `"open_major"` > 0 and `"round"` >= 3: **STOP this run**,
-   report remaining open major findings, and do not mark the task
-   complete. Do **not** enter 6c after this review pass. A later
-   invocation resumes via 6-entry → 6c (see Round Model).
-3. If `"open_major"` == 0 and `"round"` >= 3: refresh
+2. If `"open_major"` == 0 and `"round"` >= 3: refresh
    `$commit_title` and proceed to Phase 7 (remaining open minors
    may stay unfinished). At max round this matches
    `"ready_to_complete": true`, but earlier rounds must still fix
-   minors via rule 4.
-4. **Otherwise** (`needs_fix` is true and round < 3): you **MUST**
-   continue to 6c and launch the fix loop. Never proceed to
-   Phase 7 while open findings remain in rounds 1–2 — this includes
-   minor-only reviews. A review file always exists when
-   `needs_fix` is true.
+   minors via rule 3.
+3. **Otherwise** (`needs_fix` is true — including when
+   `"round"` >= 3 and `"open_major"` > 0): you **MUST** continue
+   to 6c and launch the fix loop. Never proceed to Phase 7 while
+   open majors remain, and never leave round-3 majors unfixed in
+   this invocation. In rounds 1–2 this also includes minor-only
+   reviews. A review file always exists when `needs_fix` is true.
 
 ## 6c. Fix loop — one finding at a time
 
@@ -236,11 +233,10 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
   commit).
 
 - If `"round"` >= 3: **do not bump** and **do not re-review**.
-  - If `"open_major"` == 0: refresh `$commit_title` and proceed
-    to Phase 7.
-  - If `"open_major"` > 0: report remaining open major findings
-    and **STOP this run** (do not mark the task complete; resume
-    later via 6-entry → 6c).
+  Refresh `$commit_title` and proceed to Phase 7. (After a
+  successful fix loop, `open_major` should be 0. If fix/amend
+  verification failed earlier, that path already stopped and
+  reported.)
 
 If `bump-round` exits non-zero because the round cap was reached,
 treat it the same as the `round >= 3` case (never force a fourth

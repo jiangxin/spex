@@ -65,7 +65,8 @@ Severity guide:
 
 - **major**: blocks merge quality — broken tests/lint, missing
   required tests, incorrect behavior, security holes, commit
-  message with no why.
+  message with no why. The fix loop addresses majors in every
+  round, including round 3 (no fourth review after those fixes).
 - **minor**: worthwhile improvements that need not block this step
   after max rounds (style nits, optional refactors, non-critical
   coverage gaps). In rounds 1–2 the fix loop will still address
