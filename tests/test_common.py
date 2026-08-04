@@ -230,6 +230,7 @@ def test_default_creates_internal_gitignore(tmp_path):
     content = gitignore.read_text()
     assert "/specs/" in content
     assert "/archives/" in content
+    assert "/sessions/" in content
 
 
 @pytest.mark.slow

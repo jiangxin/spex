@@ -272,17 +272,36 @@ def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
                 )
 
 
+_SPEX_ROOT_GITIGNORE = "/specs/\n/archives/\n/sessions/\n"
+_SESSIONS_GITIGNORE_ENTRY = "/sessions/"
+
+
 def _write_internal_gitignore(spex_root_path: Path, verbose=False,
                               dry_run=False, quiet=False):
-    """Create .gitignore files inside spex_root to ignore generated content."""
+    """Create .gitignore files inside spex_root to ignore generated content.
+
+    Ensures ``/sessions/`` is present for create-session runtime state, even
+    when an older spex_root ``.gitignore`` already exists without it.
+    """
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
         if dry_run:
             logger.info("  Would create: %s", root_gi)
         else:
-            root_gi.write_text("/specs/\n/archives/\n")
+            root_gi.write_text(_SPEX_ROOT_GITIGNORE)
             if not quiet:
                 logger.info("  Created: %s", root_gi)
+    elif not dry_run:
+        content = root_gi.read_text()
+        lines = content.splitlines()
+        if _SESSIONS_GITIGNORE_ENTRY not in lines:
+            separator = "" if not content or content.endswith("\n") else "\n"
+            root_gi.write_text(
+                f"{content}{separator}{_SESSIONS_GITIGNORE_ENTRY}\n"
+            )
+            if not quiet:
+                logger.info("  Updated: %s (added %s)", root_gi,
+                            _SESSIONS_GITIGNORE_ENTRY)
     tpl_dir = spex_root_path / TEMPLATE_DIR
     tpl_gi = tpl_dir / ".gitignore"
     if not dry_run:
@@ -319,6 +338,9 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
     if (spex_root_path / "specs").is_dir():
         if not quiet:
             logger.info("Already initialized: %s", spex_root_path)
+        # Migrate older spex_root .gitignore files to ignore /sessions/.
+        _write_internal_gitignore(spex_root_path, verbose=verbose,
+                                  dry_run=dry_run, quiet=quiet)
         return
     if dry_run:
         logger.info("Would initialize: %s", spex_root_path)
