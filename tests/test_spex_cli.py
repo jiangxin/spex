@@ -5,6 +5,7 @@ import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -905,6 +906,72 @@ class TestMergeRouting:
             assert called["kwargs"].get("command") == "submit"
         finally:
             del sys.modules["merge"]
+
+
+class TestDebugTracingIntegration:
+    """Integration tests for debug tracing wired into CLI main()."""
+
+    def _setup_repo(self, tmp_path, *, debug: Optional[bool] = None):
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        lines = ['[spex]', 'spex_root = ".spex"']
+        if debug is True:
+            lines.append("debug = true")
+        elif debug is False:
+            lines.append("debug = false")
+        (tmp_path / ".spex.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (tmp_path / ".spex").mkdir()
+
+    def test_debug_config_writes_spex_root_log(self, tmp_path):
+        """debug=true appends a trace block to <spex_root>/debug.log."""
+        self._setup_repo(tmp_path, debug=True)
+        log_path = tmp_path / ".spex" / "debug.log"
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "version"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 0
+        assert log_path.is_file()
+        content = log_path.read_text(encoding="utf-8")
+        assert "===== BEGIN " in content
+        assert "argv: spex version" in content
+        assert "===== END exit=0 duration_ms=" in content
+
+    def test_debug_cli_flag_writes_spex_root_log(self, tmp_path):
+        """-d/--debug appends a trace block to <spex_root>/debug.log."""
+        self._setup_repo(tmp_path)
+        log_path = tmp_path / ".spex" / "debug.log"
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "-d", "version"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 0
+        assert log_path.is_file()
+        content = log_path.read_text(encoding="utf-8")
+        assert "===== BEGIN " in content
+        assert "argv: spex -d version" in content
+        assert "===== END exit=0 duration_ms=" in content
+
+    def test_debug_off_by_default_writes_nothing(self, tmp_path):
+        """Without debug flag or config, no debug.log is created."""
+        self._setup_repo(tmp_path)
+
+        result = subprocess.run(
+            [sys.executable, SPEX_SCRIPT, "version"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 0
+        assert not (tmp_path / ".spex" / "debug.log").exists()
 
 
 class TestAllCommandsRegistered:
