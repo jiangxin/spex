@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from contextlib import contextmanager
@@ -13,6 +14,32 @@ from config import get_project_context
 
 MAX_STREAM_BYTES = 256 * 1024
 DEBUG_LOG_NAME = "debug.log"
+SESSIONS_DIR_NAME = "sessions"
+ACTIVE_SESSION_FILENAME = "active"
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def validate_session_id(session_id: str) -> str:
+    """Return a safe session id or raise ``ValueError``.
+
+    Rejects empty values, ``.`` / ``..``, path separators, the reserved
+    active-pointer name (case-insensitive), and any id that is not in the
+    ``[A-Za-z0-9._-]+`` allowlist.
+    """
+    cleaned = (session_id or "").strip()
+    if not cleaned:
+        raise ValueError("session_id must be non-empty")
+    if cleaned in {".", ".."}:
+        raise ValueError(f"invalid session_id: {session_id!r}")
+    if "/" in cleaned or "\\" in cleaned or "\0" in cleaned:
+        raise ValueError(f"invalid session_id: {session_id!r}")
+    if not _SESSION_ID_RE.fullmatch(cleaned):
+        raise ValueError(f"invalid session_id: {session_id!r}")
+    if cleaned.casefold() == ACTIVE_SESSION_FILENAME.casefold():
+        raise ValueError(
+            f"session_id is reserved for the active pointer: {session_id!r}"
+        )
+    return cleaned
 
 
 def debug_enabled(argv: list[str]) -> bool:
@@ -33,8 +60,133 @@ def parse_name_from_argv(argv: list[str]) -> str | None:
     return None
 
 
+def sessions_dir(spex_root: str | Path) -> Path:
+    """Return ``<spex_root>/sessions``."""
+    return Path(spex_root) / SESSIONS_DIR_NAME
+
+
+def active_session_path(spex_root: str | Path) -> Path:
+    """Return the active-session pointer file path."""
+    return sessions_dir(spex_root) / ACTIVE_SESSION_FILENAME
+
+
+def session_debug_log_path(spex_root: str | Path, session_id: str) -> Path:
+    """Return ``<spex_root>/sessions/<session_id>/debug.log``.
+
+    Validates ``session_id`` and asserts the resolved path stays under
+    ``sessions_dir(spex_root)``.
+    """
+    safe_id = validate_session_id(session_id)
+    base = sessions_dir(spex_root).resolve()
+    path = (base / safe_id / DEBUG_LOG_NAME).resolve()
+    try:
+        path.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(
+            f"session path escapes sessions dir: {session_id!r}"
+        ) from exc
+    return path
+
+
+def get_active_session_id(spex_root: str | Path) -> str | None:
+    """Read the active create-session id from the pointer file."""
+    pointer = active_session_path(spex_root)
+    if not pointer.is_file():
+        return None
+    try:
+        session_id = pointer.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.debug("Failed to read active session pointer %s: %s", pointer, exc)
+        return None
+    if not session_id:
+        return None
+    try:
+        return validate_session_id(session_id)
+    except ValueError:
+        logger.debug("Ignoring invalid active session id %r", session_id)
+        return None
+
+
+def set_active_session(spex_root: str | Path, session_id: str) -> None:
+    """Write ``session_id`` as the active create-session pointer."""
+    safe_id = validate_session_id(session_id)
+    pointer = active_session_path(spex_root)
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(f"{safe_id}\n", encoding="utf-8")
+
+
+def clear_active_session(spex_root: str | Path) -> None:
+    """Remove the active create-session pointer if present."""
+    pointer = active_session_path(spex_root)
+    try:
+        pointer.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug("Failed to clear active session pointer %s: %s", pointer, exc)
+
+
+def merge_session_log_into_spec(
+    spex_root: str | Path,
+    session_id: str,
+    spec_dir: str | Path,
+) -> Path | None:
+    """Append session log into ``spec_dir/debug.log``, then delete session log.
+
+    Returns the merged target path when a session log file existed (even if
+    empty). Returns ``None`` when there was no session log to merge.
+    Does not clear the active-session pointer.
+    """
+    if not session_id:
+        return None
+
+    try:
+        session_log = session_debug_log_path(spex_root, session_id)
+    except ValueError:
+        logger.debug("Ignoring invalid session_id for merge: %r", session_id)
+        return None
+    session_dir = session_log.parent
+
+    def _rmdir_if_empty() -> None:
+        try:
+            if session_dir.is_dir() and not any(session_dir.iterdir()):
+                session_dir.rmdir()
+        except OSError as exc:
+            logger.debug("Failed to remove empty session dir %s: %s", session_dir, exc)
+
+    if not session_log.is_file():
+        # begin-session creates the dir even when debug is off and no log
+        # is written; still best-effort clean the empty session dir.
+        _rmdir_if_empty()
+        return None
+
+    target = Path(spec_dir) / DEBUG_LOG_NAME
+    try:
+        content = session_log.read_text(encoding="utf-8")
+        if content:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(content)
+        session_log.unlink(missing_ok=True)
+        _rmdir_if_empty()
+    except OSError as exc:
+        logger.debug(
+            "Failed to merge session log %s into %s: %s",
+            session_log,
+            target,
+            exc,
+        )
+        return None
+
+    return target
+
+
 def resolve_debug_log_path(argv: list[str]) -> Path | None:
-    """Resolve debug.log path under spec dir or spex_root fallback."""
+    """Resolve debug.log with mutual-exclusive routing.
+
+    Priority (runtime never dual-writes):
+    1. Unique ``--name`` match → ``<spec_dir>/debug.log`` (ignores session)
+    2. Active create session → ``sessions/<id>/debug.log``
+    3. Fallback → ``<spex_root>/debug.log``
+    """
     ctx = get_project_context()
     if not ctx.spex_root:
         return None
@@ -46,6 +198,10 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
             matches = find_matching_specs(name, specs_dir)
             if len(matches) == 1:
                 return matches[0] / DEBUG_LOG_NAME
+
+    session_id = get_active_session_id(ctx.spex_root)
+    if session_id:
+        return session_debug_log_path(ctx.spex_root, session_id)
 
     return Path(ctx.spex_root) / DEBUG_LOG_NAME
 
@@ -142,7 +298,16 @@ def _normalize_exit_code(code) -> int:
 
 @contextmanager
 def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
-    """Context manager that tees stdout/stderr and appends a trace block."""
+    """Context manager that tees stdout/stderr and appends a trace block.
+
+    The flush path is re-resolved via ``resolve_debug_log_path`` after the
+    command body returns. This matters for ``prepare-spec``: the pre-command
+    path may be the active session log (new ``--name`` does not exist yet),
+    but handoff merges/deletes that file and clears the active pointer, after
+    which ``--name`` uniquely matches the new spec. Flushing the pre-resolved
+    session path would recreate an orphan session log; re-resolving appends
+    the tee block to ``<spec_dir>/debug.log`` instead.
+    """
     start = time.monotonic()
     exit_code = 0
     stdout_parts: list[str] = []
@@ -167,8 +332,10 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
+        # Prefer post-command routing; fall back to the pre-resolved path.
+        flush_path = resolve_debug_log_path(argv) or log_path
         _append_trace(
-            log_path,
+            flush_path,
             argv,
             stdout_parts,
             stdout_meta,

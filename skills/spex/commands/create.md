@@ -25,10 +25,23 @@ and test plan.
   modifications. Implementation later via `/spex apply` or
   `/spex apply-one-step`.
 - Follow phases in order. Do not skip or reorder.
+- Debug session: call `create-helper begin-session` before Phase 1
+  `precheck`. Pre-name CLI traces go to the session log. On
+  `prepare-spec` success, session content is merged into
+  `<spec_dir>/debug.log` and the session file is deleted. Runtime
+  does not dual-write session and spec logs. Do not call
+  `mark-phase`; script anchors (`begin-session`, `prepare-spec`,
+  `post-action`) are automatic.
 
 ## Execution
 
 ### Phase 1: Validate Branch
+
+- CMD (begin create debug session; idempotent):
+
+```bash
+$spex_skill_dir/scripts/spex create-helper begin-session
+```
 
 - CMD:
 
@@ -88,12 +101,16 @@ EOF
 ```
 
 - Script creates spec directory + `meta.json` (`prompts` = requirement,
-  `description` = description). Parse JSON stdout:
+  `description` = description). On success it merges any active
+  session log into `$spec_path/debug.log`, deletes the session file,
+  and clears the active pointer (merge-then-delete; no dual-write).
+  Parse JSON stdout:
   - `$spec_name` ← `spec_name` (with date prefix,
     e.g. `2026-05-24-10-30-add-login-api`)
   - `$spec_path` ← `spec_path`
   - `$spec_template` ← `spec_template`
-- ON_FAIL: return to Phase 3 -> retry with different name
+- ON_FAIL: session is left intact for retry; return to Phase 3 ->
+  retry with different name
 - Example JSON output:
 
 ```json
@@ -198,6 +215,8 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name remove \
 $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 ```
 
+- With debug enabled, appends a post-action anchor to
+  `$spec_path/debug.log` automatically (no agent `mark-phase`).
 - ON_FAIL: fix JSON format in `todo.json` -> re-run until validation OK
 
 ### Phase 8: Output

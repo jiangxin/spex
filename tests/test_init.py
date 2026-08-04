@@ -183,6 +183,7 @@ class TestEnsureGitignore:
         content = gitignore.read_text()
         assert "/specs/" in content
         assert "/archives/" in content
+        assert "/sessions/" in content
 
     def test_creates_templates_gitignore(self, tmp_path):
         from common import _write_internal_gitignore
@@ -195,17 +196,29 @@ class TestEnsureGitignore:
         assert tpl_gitignore.exists()
         assert "/examples/" in tpl_gitignore.read_text()
 
-    def test_skips_when_already_exists(self, tmp_path):
+    def test_preserves_custom_content_when_sessions_present(self, tmp_path):
         from common import _write_internal_gitignore
 
         spex_root = tmp_path / ".spex"
         spex_root.mkdir()
         gitignore = spex_root / ".gitignore"
-        gitignore.write_text("custom content\n")
+        gitignore.write_text("custom content\n/sessions/\n")
 
         _write_internal_gitignore(spex_root)
 
-        assert gitignore.read_text() == "custom content\n"
+        assert gitignore.read_text() == "custom content\n/sessions/\n"
+
+    def test_migrates_sessions_into_existing_gitignore(self, tmp_path):
+        from common import _write_internal_gitignore
+
+        spex_root = tmp_path / ".spex"
+        spex_root.mkdir()
+        gitignore = spex_root / ".gitignore"
+        gitignore.write_text("/specs/\n/archives/\n")
+
+        _write_internal_gitignore(spex_root)
+
+        assert gitignore.read_text() == "/specs/\n/archives/\n/sessions/\n"
 
 
 class TestEnsureInitialized:
