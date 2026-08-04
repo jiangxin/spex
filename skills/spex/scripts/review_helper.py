@@ -304,6 +304,12 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
         "commit_sha": commit_sha,
         "findings_count": len(data.get("findings", [])),
     }))
+    from debug_log import emit_apply_anchor
+
+    emit_apply_anchor(
+        path.parent,
+        f"===== APPLY review round → {data['round']} =====",
+    )
 
 
 def cmd_set_commit(path: Path, commit_sha: str) -> None:

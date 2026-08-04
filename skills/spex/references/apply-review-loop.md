@@ -48,6 +48,9 @@ The main agent orchestrates this phase. Launch a fresh **review
 sub-agent** and (when needed) a fresh **fix sub-agent** each
 round.
 
+- Debug timeline: with debug enabled, `prompt apply-review` and
+  `review-helper bump-round` append APPLY anchors to
+  `$spec_path/debug.log` automatically. Do not call `mark-phase`.
 - Run each `review-helper` / `prompt` command as its **own** shell
   invocation. Do not chain init + prompt + python one-liners.
 - Parse JSON from **stdout** yourself (tool output). Status/info

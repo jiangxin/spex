@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -197,6 +198,63 @@ def cmd_append(todo_path, is_xml, args):
     logger.info("Appended '%s'.", args.id)
 
 
+def _short_head_sha() -> str:
+    """Return short HEAD sha, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _sha_from_commit_title(commit_title) -> str:
+    """Extract leading short sha from persisted ``%h: %s`` commit_title."""
+    prefix = str(commit_title).split(":", 1)[0].strip()
+    if (
+        4 <= len(prefix) <= 40
+        and all(c in "0123456789abcdef" for c in prefix.lower())
+    ):
+        return prefix
+    return ""
+
+
+def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
+    """Emit APPLY anchors for commit-title / completed_at edits."""
+    from debug_log import emit_apply_anchor
+
+    # todo.json / todo.xml live directly under the spec directory.
+    spec_dir = Path(todo_path).parent
+
+    if args.completed_at is not None and item.get("completed_at"):
+        emit_apply_anchor(
+            spec_dir,
+            f"===== APPLY task done id={args.id} =====",
+        )
+        return
+
+    if (
+        args.commit_title is not None
+        and str(args.commit_title).strip()
+        and not item.get("completed_at")
+    ):
+        # Prefer sha already persisted in commit_title over probing HEAD.
+        sha = (
+            _sha_from_commit_title(args.commit_title)
+            or _short_head_sha()
+        )
+        emit_apply_anchor(
+            spec_dir,
+            f"===== APPLY task committed id={args.id} sha={sha} =====",
+        )
+
+
 def cmd_edit(todo_path, is_xml, args):
     """Edit an existing entry by ID."""
     details = args.details
@@ -209,6 +267,7 @@ def cmd_edit(todo_path, is_xml, args):
     data = load_todo_file(todo_path, is_xml)
 
     found = False
+    updated_item = None
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
             if args.step_name is not None:
@@ -220,6 +279,7 @@ def cmd_edit(todo_path, is_xml, args):
             if args.commit_title is not None:
                 item["commit_title"] = args.commit_title
             found = True
+            updated_item = item
             break
 
     if not found:
@@ -230,6 +290,8 @@ def cmd_edit(todo_path, is_xml, args):
 
     write_todo_file(todo_path, data, is_xml)
     logger.info("Updated '%s'.", args.id)
+    if updated_item is not None:
+        _emit_todo_edit_apply_anchor(todo_path, args, updated_item)
 
 
 def cmd_remove(todo_path, is_xml, args):

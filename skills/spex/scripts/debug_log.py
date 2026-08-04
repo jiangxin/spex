@@ -62,6 +62,32 @@ def debug_enabled(argv: list[str]) -> bool:
     return bool(ctx.config.get("debug"))
 
 
+def append_debug_anchor(log_path: Path, line: str) -> None:
+    """Append a timeline anchor best-effort (APPLY/tee); swallow OSError.
+
+    CREATE prepare/post-action anchors use a raising writer in
+    ``create_helper`` instead — do not route those through this helper.
+    """
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        text = line if line.endswith("\n") else f"{line}\n"
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(text)
+    except OSError as exc:
+        logger.debug("Failed to write debug anchor to %s: %s", log_path, exc)
+
+
+def emit_apply_anchor(
+    spec_dir: str | Path,
+    line: str,
+    argv: list[str] | None = None,
+) -> None:
+    """Append an APPLY timeline anchor when debug is enabled."""
+    if not debug_enabled(argv if argv is not None else sys.argv):
+        return
+    append_debug_anchor(Path(spec_dir) / DEBUG_LOG_NAME, line)
+
+
 def parse_name_from_argv(argv: list[str]) -> str | None:
     """Parse --name or --name= from argv."""
     return parse_flag_from_argv(argv, "--name")

@@ -15,6 +15,10 @@ Apply a specification to implement code step by step.
 ## Preconditions
 
 - Follow phases in order. Do not skip or reorder.
+- Debug timeline: when debug is enabled, scripts append APPLY
+  anchors to `$spec_path/debug.log` automatically (task begin,
+  committed, review begin/round, task done, post-action). Do not
+  call `mark-phase`.
 
 ## Execution
 
