@@ -298,7 +298,16 @@ def _normalize_exit_code(code) -> int:
 
 @contextmanager
 def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
-    """Context manager that tees stdout/stderr and appends a trace block."""
+    """Context manager that tees stdout/stderr and appends a trace block.
+
+    The flush path is re-resolved via ``resolve_debug_log_path`` after the
+    command body returns. This matters for ``prepare-spec``: the pre-command
+    path may be the active session log (new ``--name`` does not exist yet),
+    but handoff merges/deletes that file and clears the active pointer, after
+    which ``--name`` uniquely matches the new spec. Flushing the pre-resolved
+    session path would recreate an orphan session log; re-resolving appends
+    the tee block to ``<spec_dir>/debug.log`` instead.
+    """
     start = time.monotonic()
     exit_code = 0
     stdout_parts: list[str] = []
@@ -323,8 +332,10 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
+        # Prefer post-command routing; fall back to the pre-resolved path.
+        flush_path = resolve_debug_log_path(argv) or log_path
         _append_trace(
-            log_path,
+            flush_path,
             argv,
             stdout_parts,
             stdout_meta,

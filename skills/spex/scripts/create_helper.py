@@ -156,6 +156,58 @@ def _do_end_session(args):
     )
 
 
+def _append_create_debug_anchor(log_path: Path, line: str) -> None:
+    """Append a CREATE debug anchor line to ``log_path``."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    text = line if line.endswith("\n") else f"{line}\n"
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def _handoff_session_after_prepare(
+    spex_root: str, spec_dir: Path, spec_name: str,
+) -> None:
+    """Merge active session into spec debug.log, write prepare anchor, clear.
+
+    Fixed order: (1) merge session content into ``spec_dir/debug.log`` and
+    delete the session log; (2) if debug, append prepare-spec ok anchor;
+    (3) clear the active-session pointer — only after a successful merge or
+    when there was no session log to merge (so a failed merge keeps the
+    pointer for retry).
+    """
+    from debug_log import (
+        DEBUG_LOG_NAME,
+        clear_active_session,
+        debug_enabled,
+        get_active_session_id,
+        merge_session_log_into_spec,
+        session_debug_log_path,
+    )
+
+    session_id = get_active_session_id(spex_root)
+    should_clear = True
+    if session_id:
+        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
+        if target is None:
+            # merge returns None for no-file noop *and* OSError failure.
+            # Keep the pointer only when the session log still exists.
+            try:
+                should_clear = not session_debug_log_path(
+                    spex_root, session_id,
+                ).is_file()
+            except ValueError:
+                should_clear = True
+
+    if debug_enabled(sys.argv):
+        _append_create_debug_anchor(
+            Path(spec_dir) / DEBUG_LOG_NAME,
+            f"===== CREATE prepare-spec ok name={spec_name} =====",
+        )
+
+    if should_clear:
+        clear_active_session(spex_root)
+
+
 def create_spec(spec, specs_dir, auto_prefix=True):
     """Create a spec directory under specs_dir.
 
@@ -290,6 +342,9 @@ def _do_prepare_spec(args):
     timestamp = local_iso_timestamp()
     _write_meta(spec_dir, ctx, prompt, timestamp, args.description)
 
+    if ctx.spex_root:
+        _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
+
     spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
     hooks.run_pre_action(
         "create",
@@ -360,6 +415,7 @@ def _do_post_action(args):
             atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
+    from debug_log import DEBUG_LOG_NAME, debug_enabled
 
     meta = load_meta(spec_dir)
     spec_name = spec_dir.name
@@ -373,6 +429,14 @@ def _do_post_action(args):
     )
     undone = len(data) - done
     spex_branch = meta.spex_branch if meta else ""
+
+    if debug_enabled(sys.argv):
+        _append_create_debug_anchor(
+            spec_dir / DEBUG_LOG_NAME,
+            f"===== CREATE post-action ok name={spec_name} "
+            f"steps={len(data)} =====",
+        )
+
     hooks.run_post_action(
         args.event_type,
         {"spex_branch": spex_branch, "done": done, "undone": undone},

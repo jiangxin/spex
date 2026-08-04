@@ -19,7 +19,9 @@ from create_helper import (
 )
 from debug_log import (
     get_active_session_id,
+    resolve_debug_log_path,
     session_debug_log_path,
+    trace_command,
 )
 
 
@@ -1011,3 +1013,334 @@ class TestBeginEndSession:
             with pytest.raises(SystemExit) as exc_info:
                 create_helper.main(["begin-session"])
         assert exc_info.value.code == 1
+
+
+class TestPreparePostActionSession:
+    """Tests for prepare-spec handoff and post-action debug anchors."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        clear_config_cache()
+        yield
+        clear_config_cache()
+
+    def _ctx(self, tmp_path, *, debug=False):
+        spex_root = tmp_path / ".spex"
+        (spex_root / "specs").mkdir(parents=True, exist_ok=True)
+        return ProjectContext(
+            cwd=tmp_path,
+            top_workdir=tmp_path,
+            main_worktree=tmp_path,
+            remote_url="",
+            branch="main",
+            user_name="Test",
+            user_email="test@test.com",
+            spex_tomls=[],
+            config={"debug": debug},
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+        )
+
+    def _run_prepare(self, tmp_path, ctx, monkeypatch, capsys, name):
+        import common
+        import prompt as prompt_mod
+
+        specs_dir = Path(ctx.spex_root) / "specs"
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(common, "get_specs_dir", return_value=str(specs_dir)),
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch.object(
+                prompt_mod, "render_prompt", return_value="# Template",
+            ),
+            patch("hooks.run_pre_action"),
+        ):
+            create_helper.main(
+                ["prepare-spec", "--name", name, "--description", "desc"],
+            )
+        return json.loads(capsys.readouterr().out.strip())
+
+    def test_prepare_merges_session_then_anchor_and_deletes(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        ctx = self._ctx(tmp_path, debug=True)
+        name = "2026-08-04-15-50-handoff"
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_log = Path(begin["log_path"])
+            session_log.write_text(
+                "===== session history =====\n", encoding="utf-8",
+            )
+
+            with patch("debug_log.debug_enabled", return_value=True):
+                out = self._run_prepare(
+                    tmp_path, ctx, monkeypatch, capsys, name,
+                )
+
+        spec_dir = Path(out["spec_path"])
+        debug_log = spec_dir / "debug.log"
+        assert out["spec_name"] == name
+        assert get_active_session_id(ctx.spex_root) is None
+        assert not session_log.exists()
+        assert not session_log.parent.exists()
+        content = debug_log.read_text(encoding="utf-8")
+        assert content.index("===== session history =====\n") < content.index(
+            f"===== CREATE prepare-spec ok name={name} =====\n"
+        )
+        assert not (spec_dir / "debug.session-pre.log").exists()
+
+    def test_prepare_debug_false_clears_pointer_without_anchor(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        ctx = self._ctx(tmp_path, debug=False)
+        name = "2026-08-04-15-50-no-debug"
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=False),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_dir = Path(begin["log_path"]).parent
+            assert session_dir.is_dir()
+            assert not Path(begin["log_path"]).exists()
+
+            out = self._run_prepare(
+                tmp_path, ctx, monkeypatch, capsys, name,
+            )
+
+        spec_dir = Path(out["spec_path"])
+        assert get_active_session_id(ctx.spex_root) is None
+        assert not session_dir.exists()
+        assert not (spec_dir / "debug.log").exists()
+
+    def test_prepare_keeps_pointer_when_merge_fails(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Failed merge must not clear the active pointer (retryable handoff)."""
+        ctx = self._ctx(tmp_path, debug=True)
+        name = "2026-08-04-15-50-merge-fail"
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_id = begin["session_id"]
+            session_log = Path(begin["log_path"])
+            session_log.write_text(
+                "===== session history =====\n", encoding="utf-8",
+            )
+
+            with patch(
+                "debug_log.merge_session_log_into_spec",
+                return_value=None,
+            ):
+                # Simulate OSError failure: merge returns None but log remains.
+                out = self._run_prepare(
+                    tmp_path, ctx, monkeypatch, capsys, name,
+                )
+
+        assert out["spec_name"] == name
+        assert get_active_session_id(ctx.spex_root) == session_id
+        assert session_log.is_file()
+        # Prepare still succeeded; debug anchor may be written.
+        content = (Path(out["spec_path"]) / "debug.log").read_text(
+            encoding="utf-8",
+        )
+        assert f"===== CREATE prepare-spec ok name={name} =====\n" in content
+
+    def test_prepare_growth_isolation_before_handoff(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Session size stays put when --name resolves elsewhere; handoff deletes."""
+        ctx = self._ctx(tmp_path, debug=True)
+        spex_root = Path(ctx.spex_root)
+        side_spec = spex_root / "specs" / "2026-08-04-15-50-side"
+        side_spec.mkdir()
+        name = "2026-08-04-15-50-isolate"
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_log = Path(begin["log_path"])
+            session_log.write_text("session-entry\n", encoding="utf-8")
+            session_size = session_log.stat().st_size
+
+            with patch("debug_log.get_project_context", return_value=ctx):
+                named_path = resolve_debug_log_path(
+                    ["spex", "prompt", "--name", "2026-08-04-15-50-side"],
+                )
+            assert named_path == side_spec / "debug.log"
+            named_path.write_text("spec-entry\n", encoding="utf-8")
+
+            assert session_log.stat().st_size == session_size
+            assert named_path.read_text(encoding="utf-8") == "spec-entry\n"
+
+            out = self._run_prepare(
+                tmp_path, ctx, monkeypatch, capsys, name,
+            )
+
+        new_spec = Path(out["spec_path"])
+        assert not session_log.exists()
+        assert get_active_session_id(ctx.spex_root) is None
+        content = (new_spec / "debug.log").read_text(encoding="utf-8")
+        assert content.startswith("session-entry\n")
+        assert f"===== CREATE prepare-spec ok name={name} =====\n" in content
+        # Side-spec log was never the handoff target.
+        assert (side_spec / "debug.log").read_text(encoding="utf-8") == (
+            "spec-entry\n"
+        )
+
+    def test_prepare_under_trace_command_handoff_cli_path(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Regression: spex resolve + trace_command must not orphan session log."""
+        import common
+        import prompt as prompt_mod
+
+        ctx = self._ctx(tmp_path, debug=True)
+        name = "2026-08-04-15-50-cli-path"
+        monkeypatch.chdir(tmp_path)
+        specs_dir = Path(ctx.spex_root) / "specs"
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_log = Path(begin["log_path"])
+            session_log.write_text(
+                "===== session history =====\n", encoding="utf-8",
+            )
+
+            argv = [
+                "spex", "create-helper", "prepare-spec",
+                "--name", name, "--description", "desc",
+            ]
+            # Same pre-command resolve as spex: new --name does not exist yet.
+            log_path = resolve_debug_log_path(argv)
+            assert log_path == session_log
+
+            monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+            with (
+                patch.object(
+                    common, "get_specs_dir", return_value=str(specs_dir),
+                ),
+                patch.object(
+                    prompt_mod, "render_prompt", return_value="# Template",
+                ),
+                patch("hooks.run_pre_action"),
+                trace_command(log_path, argv),
+            ):
+                create_helper.main(
+                    ["prepare-spec", "--name", name, "--description", "desc"],
+                )
+            out = json.loads(capsys.readouterr().out.strip())
+
+        spec_dir = Path(out["spec_path"])
+        debug_log = spec_dir / "debug.log"
+        assert get_active_session_id(ctx.spex_root) is None
+        assert not session_log.exists()
+        assert not session_log.parent.exists()
+        content = debug_log.read_text(encoding="utf-8")
+        history = "===== session history =====\n"
+        anchor = f"===== CREATE prepare-spec ok name={name} =====\n"
+        assert content.index(history) < content.index(anchor)
+        assert "argv: spex create-helper prepare-spec" in content
+        assert content.index(anchor) < content.index(
+            "argv: spex create-helper prepare-spec",
+        )
+        assert "===== END exit=0 duration_ms=" in content
+
+    def test_post_action_writes_anchor_when_debug_enabled(
+        self, tmp_path, monkeypatch,
+    ):
+        todo = [
+            {"id": "step-1", "name": "First", "details": "D",
+             "completed_at": "", "commit_title": ""},
+            {"id": "step-2", "name": "Second", "details": "D",
+             "completed_at": "", "commit_title": ""},
+        ]
+        spex_root = tmp_path / ".spex"
+        spec_dir = spex_root / "specs" / "2026-08-04-15-50-post"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(
+            json.dumps(todo, indent=2), encoding="utf-8",
+        )
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "post", "workdir": str(tmp_path)}),
+            encoding="utf-8",
+        )
+        ctx = self._ctx(tmp_path, debug=True)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
+        )
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("config.get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+            patch("hooks.run_post_action"),
+        ):
+            create_helper.cli_post_action(
+                ["--name", "2026-08-04-15-50-post"],
+            )
+
+        content = (spec_dir / "debug.log").read_text(encoding="utf-8")
+        assert content == (
+            "===== CREATE post-action ok "
+            "name=2026-08-04-15-50-post steps=2 =====\n"
+        )
+
+    def test_post_action_skips_anchor_when_debug_disabled(
+        self, tmp_path, monkeypatch,
+    ):
+        todo = [{"id": "s1", "name": "N", "details": "D",
+                 "completed_at": "", "commit_title": ""}]
+        spex_root = tmp_path / ".spex"
+        spec_dir = spex_root / "specs" / "2026-08-04-15-50-quiet"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(
+            json.dumps(todo, indent=2), encoding="utf-8",
+        )
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "quiet", "workdir": str(tmp_path)}),
+            encoding="utf-8",
+        )
+        ctx = self._ctx(tmp_path, debug=False)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
+        )
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("config.get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=False),
+            patch("hooks.run_post_action"),
+        ):
+            create_helper.cli_post_action(
+                ["--name", "2026-08-04-15-50-quiet"],
+            )
+
+        assert not (spec_dir / "debug.log").exists()

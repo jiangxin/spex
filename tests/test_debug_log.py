@@ -363,6 +363,14 @@ class TestTeeIO:
 
 
 class TestTraceCommand:
+    @pytest.fixture(autouse=True)
+    def _fallback_flush_path(self, monkeypatch):
+        """Keep flush on the explicit log_path unless a test overrides resolve."""
+        monkeypatch.setattr(
+            "debug_log.resolve_debug_log_path",
+            lambda _argv: None,
+        )
+
     def test_writes_begin_end_and_preserves_stdout(self, tmp_path, capsys):
         log_path = tmp_path / "debug.log"
         argv = ["spex", "version"]
@@ -428,3 +436,32 @@ class TestTraceCommand:
 
         assert capsys.readouterr().out == "still works\n"
         assert not log_path.exists()
+
+    def test_reresolves_flush_path_after_handoff(self, tmp_path, monkeypatch):
+        """Flush must not recreate a deleted session log after routing changes."""
+        session_log = tmp_path / "sessions" / "sess-1" / "debug.log"
+        spec_log = tmp_path / "specs" / "my-spec" / "debug.log"
+        session_log.parent.mkdir(parents=True)
+        spec_log.parent.mkdir(parents=True)
+        argv = [
+            "spex", "create-helper", "prepare-spec",
+            "--name", "my-spec", "--description", "d",
+        ]
+
+        def resolve_after_handoff(_argv):
+            return spec_log
+
+        monkeypatch.setattr(
+            "debug_log.resolve_debug_log_path",
+            resolve_after_handoff,
+        )
+
+        with trace_command(session_log, argv):
+            # Simulate prepare-spec handoff: session log removed mid-command.
+            if session_log.exists():
+                session_log.unlink()
+
+        assert not session_log.exists()
+        content = spec_log.read_text(encoding="utf-8")
+        assert "argv: spex create-helper prepare-spec" in content
+        assert "===== END exit=0 duration_ms=" in content
