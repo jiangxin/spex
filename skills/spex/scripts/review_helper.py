@@ -513,7 +513,7 @@ class ReviewHelperParser(ArgumentParser):
 
     def parse(self, argv=None):
         global _PARSE_ARGV
-        _PARSE_ARGV = list(argv) if argv is not None else None
+        _PARSE_ARGV = list(sys.argv[1:] if argv is None else argv)
         try:
             return super().parse(argv)
         finally:
@@ -521,7 +521,8 @@ class ReviewHelperParser(ArgumentParser):
 
     def error(self, message):
         hints = []
-        if _PARSE_ARGV and "get" in _PARSE_ARGV:
+        # Only when subcommand token is literally 'get', not --id get.
+        if "invalid choice: 'get'" in message:
             hints.append(
                 "Did you mean: show --step <step> --id <id>?",
             )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 
 import pytest
 import review_helper
@@ -687,6 +688,44 @@ class TestCliHints:
             ])
         assert exc.value.code == 2
         err = capsys.readouterr().err
+        assert "Valid subcommands:" not in err
+
+    def test_get_hint_when_argv_is_none(self, capsys, monkeypatch):
+        """Direct CLI entry (main with no argv) still suggests show for get."""
+        monkeypatch.setattr(
+            sys, "argv",
+            [
+                "spex", "--name", "my-topic", "get",
+                "--step", "step-1", "--id", "f1",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Did you mean: show --step <step> --id <id>?" in err
+
+    def test_status_hint_when_argv_is_none(self, capsys, monkeypatch):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["spex", "--name", "my-topic", "status"],
+        )
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "status --step step-1" in err
+
+    def test_id_value_get_does_not_suggest_show(self, capsys):
+        """Finding id 'get' must not trigger the get→show subcommand hint."""
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "append",
+                "--step", "step-1", "--id", "get",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Did you mean: show --step <step> --id <id>?" not in err
         assert "Valid subcommands:" not in err
 
 
