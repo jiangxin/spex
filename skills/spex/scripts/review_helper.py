@@ -521,11 +521,6 @@ class ReviewHelperParser(ArgumentParser):
 
     def error(self, message):
         hints = []
-        # Only when subcommand token is literally 'get', not --id get.
-        if "invalid choice: 'get'" in message:
-            hints.append(
-                "Did you mean: show --step <step> --id <id>?",
-            )
         if (
             _PARSE_ARGV
             and "status" in _PARSE_ARGV
@@ -690,6 +685,39 @@ def _build_parser():
         ),
     )
 
+    # Compatibility aliases for agent probes (prefer show/status/next).
+    p_list = subs.add_parser(
+        "list",
+        description=(
+            "Alias: list findings for a step as JSON summary "
+            "(same as show --step … --json). "
+            "Without --step, exits 0 with empty findings and a hint."
+        ),
+        help="Alias for show --json (summary)",
+    )
+    p_list.add_argument(
+        "--step", default=None,
+        help="Step id (optional; omit → empty findings + hint)",
+    )
+    p_list.add_argument(
+        "--open", action="store_true", dest="open_only",
+        help="Show only open (incomplete) findings",
+    )
+
+    p_get = subs.add_parser(
+        "get",
+        description=(
+            "Alias: show one finding by ID as JSON "
+            "(same as show --step … --id … --json)."
+        ),
+        help="Alias for show --id --json",
+    )
+    p_get.add_argument("--step", required=True, help="Step id")
+    p_get.add_argument(
+        "--id", required=True, dest="finding_id",
+        help="Finding ID to show",
+    )
+
     p_next = subs.add_parser(
         "next",
         description="Print the first open finding as JSON.",
@@ -709,6 +737,17 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         sys.exit(0)
 
+    # Bare `list` (archived agent probe) must exit 0, not argparse exit=2.
+    if args.subcmd == "list" and not args.step:
+        print(json.dumps({
+            "findings": [],
+            "hint": (
+                "Provide --step S "
+                "(same as show --step S --json)."
+            ),
+        }, indent=2, ensure_ascii=False))
+        return
+
     step_id = args.step
     path = resolve_review_path(args.name, step_id)
 
@@ -727,6 +766,15 @@ def main(argv=None):
     elif args.subcmd == "show":
         cmd_show(
             path, args.open_only, args.json_mode,
+            finding_id=args.finding_id,
+        )
+    elif args.subcmd == "list":
+        # Alias → show-style JSON summary for the step (no --id).
+        cmd_show(path, args.open_only, as_json=True)
+    elif args.subcmd == "get":
+        # Alias → show --id --json.
+        cmd_show(
+            path, open_only=False, as_json=True,
             finding_id=args.finding_id,
         )
     elif args.subcmd == "next":

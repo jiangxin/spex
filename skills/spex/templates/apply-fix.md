@@ -1,5 +1,5 @@
 ---
-version: "0.1.6"
+version: "0.1.7"
 required:
   - spec_content_concise
   - current_task_description
@@ -23,6 +23,17 @@ Act as a senior software engineer fixing **exactly one** review
 finding. Do NOT fix other findings. Do NOT start a new review.
 Do NOT call `bump-round` (round is capped at 3 by the orchestrator).
 After this one fix, amend immediately.
+
+## review-helper CLI
+
+```text
+FORBIDDEN: review-helper list | get
+USE: edit --completed-at | show --step S --id ID
+```
+
+Do **not** probe with `list` or `get`. After the fix, mark complete
+with `edit --id {{ finding_id }} --completed-at now`. To verify,
+use `show --step {{ step_id }} --id {{ finding_id }} --json` only.
 
 ## Target Finding (only this one)
 

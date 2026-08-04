@@ -1,5 +1,5 @@
 ---
-version: "0.1.4"
+version: "0.1.5"
 required:
   - spec_content_concise
   - current_task_description
@@ -22,6 +22,17 @@ modify any production or test source files. Only record findings via
 `bump-round`. The review file is created lazily on the first append —
 if you find nothing, do not create any review file. At most 3 review
 rounds are allowed for a step; do not attempt to advance the round.
+
+## review-helper CLI
+
+```text
+FORBIDDEN: review-helper list | get
+USE: append (--commit) | show --step S [--id ID]
+```
+
+Do **not** probe with `list` or `get`. Record findings with `append`
+only; use `show --step {{ step_id }} --id <id> --json` if you must
+inspect an existing finding.
 
 ## Review Round
 

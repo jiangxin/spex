@@ -72,10 +72,16 @@ round.
   - `$fix_prompt` + `$fix_prompt_finding_id` (current finding id)
   Reuse a cached prompt **only** when its companion matches the current
   scope; otherwise treat the cache as empty and run the prompt command.
-- **review-helper CLI:** Use `status --step … --json`, `next --step …`,
-  and `show --step … [--id …]` only. There is no `get` or `list`
-  subcommand — to inspect one finding (e.g. verify `completed_at`),
-  use `show --step "$current_task_id" --id "$finding_id"`.
+- **review-helper CLI (required):**
+
+  ```text
+  FORBIDDEN: review-helper list | get
+  USE: status --json | next | show --step S [--id ID]
+  ```
+
+  Do **not** probe with `list` or `get`. To inspect one finding
+  (e.g. verify `completed_at`), use
+  `show --step "$current_task_id" --id "$finding_id" --json`.
 
 ## 6-entry. Resume / continue gate
 
