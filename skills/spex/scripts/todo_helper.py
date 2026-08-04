@@ -405,6 +405,79 @@ def _resolve_todo_path(args):
     return (spec_dir / filename, is_xml)
 
 
+_LOCATOR_FLAGS_WITH_VALUE = ("--name", "--todo-file")
+_LOCATOR_FLAGS_BOOL = ("--xml",)
+# Subcommand options that take a value. Their next argv token must
+# not be classified as a hoistable locator, even when it looks like
+# a flag (e.g. ``--commit-title --xml``).
+_VALUE_TAKING_SUB_FLAGS = frozenset({
+    "--id",
+    "--step-name",
+    "--details",
+    "--completed-at",
+    "--commit-title",
+    "--format",
+})
+
+
+def _hoist_locator_flags(argv):
+    """Move locator flags before the subcommand for argparse.
+
+    Agents sometimes place ``--name`` / ``--todo-file`` / ``--xml``
+    after the subcommand; argparse only accepts parent options before
+    it. Hoisting keeps mutual exclusivity and existing parse paths.
+
+    Value-taking subcommand flags keep their following token so a
+    value that literally equals a locator flag is not stolen.
+    """
+    argv = list(argv)
+    hoisted = []
+    remaining = []
+    i = 0
+    n = len(argv)
+    while i < n:
+        arg = argv[i]
+        if arg in _LOCATOR_FLAGS_WITH_VALUE:
+            # Only hoist when a value token follows; leave bare
+            # --name / --todo-file in place so argparse reports
+            # the real missing-argument error instead of rewriting
+            # the subcommand into the flag value.
+            if i + 1 < n and not argv[i + 1].startswith("-"):
+                hoisted.append(arg)
+                hoisted.append(argv[i + 1])
+                i += 2
+            else:
+                remaining.append(arg)
+                i += 1
+            continue
+        if arg.startswith("--name=") or arg.startswith("--todo-file="):
+            hoisted.append(arg)
+            i += 1
+            continue
+        if arg in _LOCATOR_FLAGS_BOOL:
+            hoisted.append(arg)
+            i += 1
+            continue
+        if arg in _VALUE_TAKING_SUB_FLAGS:
+            remaining.append(arg)
+            i += 1
+            # Consume the value even when it looks like an option
+            # (argparse accepts that for unknown-to-subparser tokens).
+            if i < n:
+                remaining.append(argv[i])
+                i += 1
+            continue
+        if arg.startswith("--") and "=" in arg:
+            flag, _sep, _val = arg.partition("=")
+            if flag in _VALUE_TAKING_SUB_FLAGS:
+                remaining.append(arg)
+                i += 1
+                continue
+        remaining.append(arg)
+        i += 1
+    return hoisted + remaining
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -416,10 +489,18 @@ def _build_parser():
     )
     locator = parser.add_mutually_exclusive_group()
     locator.add_argument(
-        "--name", help="Resolve spec dir for todo file",
+        "--name",
+        help=(
+            "Resolve spec dir for todo file"
+            " (accepted before or after the subcommand)"
+        ),
     )
     locator.add_argument(
-        "--todo-file", help="Direct path to todo file",
+        "--todo-file",
+        help=(
+            "Direct path to todo file"
+            " (accepted before or after the subcommand)"
+        ),
     )
     parser.add_argument(
         "--xml", action="store_true", help="Force XML format",
@@ -570,7 +651,9 @@ def _build_parser():
 def main(argv=None):
     """Parse args, resolve todo path, route to subcommand."""
     parser = _build_parser()
-    args = parser.parse(argv)
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parser.parse(_hoist_locator_flags(argv))
 
     if not args.subcmd:
         parser.print_help(sys.stderr)
