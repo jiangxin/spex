@@ -852,10 +852,26 @@ class TestGenerateUpdatedToml:
         result = generate_updated_toml({"spex_root": ".spex"})
         assert '# spex_root = ".spex"' in result
 
-    def test_unknown_key_ignored(self):
+    def test_unknown_key_preserved(self):
         result = generate_updated_toml({"unknown_key": "val"})
-        assert "unknown_key" not in result
-        assert result == generate_default_toml()
+        assert 'unknown_key = "val"' in result
+        assert "# Preserved (not in current schema)" in result
+        assert result != generate_default_toml()
+
+    def test_unknown_debug_preserved_when_not_in_schema(self, monkeypatch):
+        """Upgrade must keep debug=true even if schema lacks debug."""
+        import config as config_mod
+
+        old_schema = config_mod._CONFIG_SCHEMA
+        monkeypatch.setattr(
+            config_mod,
+            "_CONFIG_SCHEMA",
+            [t for t in old_schema if t[0] != "debug"],
+        )
+        result = generate_updated_toml({"debug": True, "spex_root": "/tmp/x"})
+        assert "debug = true" in result
+        assert 'spex_root = "/tmp/x"' in result
+        assert "# debug = false" not in result
 
     def test_all_keys_set_non_default(self):
         cfg = {

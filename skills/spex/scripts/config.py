@@ -493,9 +493,12 @@ def generate_updated_toml(
     Keys in user_config with non-default values are rendered uncommented.
     Keys matching defaults or absent from user_config are commented out.
     Keys in force_keys are always rendered uncommented.
+    Keys in user_config that are not in the current schema are appended
+    at the end (explicit values) so upgrades never drop unknown settings.
     """
     if force_keys is None:
         force_keys = set()
+    schema_keys = {key for key, _, _ in _CONFIG_SCHEMA}
     lines = ["[spex]"]
     for i, (key, default, comment) in enumerate(_CONFIG_SCHEMA):
         if i > 0:
@@ -510,14 +513,21 @@ def generate_updated_toml(
         else:
             rendered = _render_toml_value(default)
             lines.append(f"# {key} = {rendered}")
+    for key, value in user_config.items():
+        if key in schema_keys:
+            continue
+        lines.append("")
+        lines.append("# Preserved (not in current schema)")
+        lines.append(f"{key} = {_render_toml_value(value)}")
     return "\n".join(lines) + "\n"
 
 
 def safe_update_toml(toml_path, dry_run=False):
     """Safe-update a single .spex.toml with the latest config schema.
 
-    Reads the existing file, preserves user-set keys, and regenerates with
-    the full schema. New keys appear as commented-out defaults.
+    Reads the existing file, preserves user-set keys (including keys not
+    in the current schema), and regenerates with the full schema. New
+    schema keys appear as commented-out defaults.
 
     Returns True if the file was (or would be) modified.
     """

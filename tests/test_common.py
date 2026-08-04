@@ -10,6 +10,7 @@ from common import (
     ICON_IN_PROGRESS,
     Spec,
     SpecMeta,
+    _create_default_toml,
     _resolve_template_roots,
     clear_spex_root_cache,
     format_spec,
@@ -291,6 +292,37 @@ def test_toml_missing_key_skipped(monkeypatch, tmp_path):
 
     result = get_spex_root(str(repo))
     assert result == str((tmp_path / "fakehome" / ".spex").resolve())
+
+
+class TestCreateDefaultToml:
+    def test_creates_when_missing(self, monkeypatch, tmp_path):
+        fakehome = tmp_path / "fakehome"
+        fakehome.mkdir()
+        monkeypatch.setattr("common.Path.home", lambda: fakehome)
+        monkeypatch.setattr("config.Path.home", lambda: fakehome)
+
+        assert _create_default_toml() == "created"
+        content = (fakehome / ".spex.toml").read_text()
+        assert "[spex]" in content
+        assert "# debug = false" in content
+
+    def test_upgrades_existing_without_wipe(self, monkeypatch, tmp_path):
+        fakehome = tmp_path / "fakehome"
+        fakehome.mkdir()
+        monkeypatch.setattr("common.Path.home", lambda: fakehome)
+        monkeypatch.setattr("config.Path.home", lambda: fakehome)
+        toml_path = fakehome / ".spex.toml"
+        toml_path.write_text(
+            '[spex]\nspex_root = "/keep"\ndebug = true\nextra = 1\n',
+            encoding="utf-8",
+        )
+
+        assert _create_default_toml() == "updated"
+        content = toml_path.read_text()
+        assert 'spex_root = "/keep"' in content
+        assert "debug = true" in content
+        assert "extra = 1" in content
+        assert "# branch_management = true" in content
 
 
 @pytest.mark.slow

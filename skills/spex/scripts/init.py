@@ -309,11 +309,23 @@ def _create_toml_config(workdir=None, verbose=False, dry_run=False):
 
     home_toml = Path.home() / ".spex.toml"
     if dry_run:
-        logger.info("Would create: %s", home_toml)
+        if home_toml.is_file():
+            if safe_update_toml(home_toml, dry_run=True):
+                logger.info("Would reinitialize: %s", home_toml)
+            else:
+                logger.info("Config up-to-date: %s", home_toml)
+        else:
+            logger.info("Would create: %s", home_toml)
         return
-    _create_default_toml()
-    logger.info("Created: %s", home_toml)
-    clear_config_cache()
+    result = _create_default_toml()
+    if result == "created":
+        logger.info("Created: %s", home_toml)
+        clear_config_cache()
+    elif result == "updated":
+        logger.info("Reinitialized: %s", home_toml)
+        clear_config_cache()
+    else:
+        logger.info("Config up-to-date: %s", home_toml)
 
 
 def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):

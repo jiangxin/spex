@@ -300,6 +300,33 @@ class TestSafeUpdateToml:
         assert safe_update_toml(toml_file) is False
         assert toml_file.stat().st_mtime == original_mtime
 
+    def test_preserves_unknown_keys(self, tmp_path):
+        """Unknown keys (e.g. future flags) survive schema upgrade."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text(
+            '[spex]\nspex_root = "custom"\ncustom_flag = true\n'
+        )
+
+        from config import safe_update_toml
+
+        safe_update_toml(toml_file)
+        content = toml_file.read_text()
+        assert 'spex_root = "custom"' in content
+        assert "custom_flag = true" in content
+        assert "# branch_management = true" in content
+
+    def test_preserves_debug_true(self, tmp_path):
+        """Explicit debug = true is kept when schema includes debug."""
+        toml_file = tmp_path / ".spex.toml"
+        toml_file.write_text('[spex]\ndebug = true\n')
+
+        from config import safe_update_toml
+
+        safe_update_toml(toml_file)
+        content = toml_file.read_text()
+        assert "debug = true" in content
+        assert "# debug = false" not in content
+
 
 class TestCreateTomlConfig:
     def test_creates_home_toml_when_no_config(self, tmp_path):
@@ -321,6 +348,33 @@ class TestCreateTomlConfig:
         toml_file = fake_home / ".spex.toml"
         assert toml_file.exists()
         assert toml_file.read_text() == generate_default_toml()
+
+    def test_upgrades_existing_home_toml_without_wipe(self, tmp_path):
+        """Existing ~/.spex.toml is upgraded, not replaced with defaults."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        toml_file = fake_home / ".spex.toml"
+        toml_file.write_text(
+            '[spex]\nspex_root = "/keep"\ndebug = true\nextra = "x"\n'
+        )
+
+        ctx = _make_context(spex_tomls=[])
+        with (
+            patch("init.get_project_context", return_value=ctx),
+            patch("init.Path.home", return_value=fake_home),
+            patch("common.Path.home", return_value=fake_home),
+            patch("init.clear_config_cache"),
+        ):
+            from init import _create_toml_config
+
+            _create_toml_config()
+
+        content = toml_file.read_text()
+        assert 'spex_root = "/keep"' in content
+        assert "debug = true" in content
+        assert 'extra = "x"' in content
+        assert "# branch_management = true" in content
+        assert content != generate_default_toml()
 
     def test_safe_updates_all_discovered_tomls(self, tmp_path):
         """Updates every toml in spex_tomls, not just ~/.spex.toml."""

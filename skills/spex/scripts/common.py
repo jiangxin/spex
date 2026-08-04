@@ -17,6 +17,7 @@ from config import (
     clear_config_cache,
     generate_default_toml,
     get_project_context,
+    safe_update_toml,
 )
 
 logger = logging.getLogger("spex")
@@ -225,9 +226,22 @@ class Spec:
 
 
 def _create_default_toml():
-    """Create ~/.spex.toml with default content."""
+    """Create or upgrade ~/.spex.toml with the latest config schema.
+
+    If the file is missing, write the default template. If it already
+    exists, run ``safe_update_toml`` so new schema keys are added without
+    wiping user values (including unknown keys).
+
+    Returns:
+        ``"created"``, ``"updated"``, or ``"unchanged"``.
+    """
     target = Path.home() / ".spex.toml"
+    if target.is_file():
+        if safe_update_toml(target):
+            return "updated"
+        return "unchanged"
     target.write_text(generate_default_toml(), encoding="utf-8")
+    return "created"
 
 
 

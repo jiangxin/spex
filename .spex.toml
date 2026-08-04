@@ -10,3 +10,6 @@
 
 # How to submit completed work: merge or pr
 # submit_method = "merge"
+
+# Append script traces to <spec_dir>/debug.log
+# debug = false
