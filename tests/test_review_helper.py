@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 
 import pytest
 import review_helper
@@ -562,6 +563,170 @@ class TestShow:
         data = json.loads(capsys.readouterr().out)
         assert data["step_id"] == "step-1"
         assert data["findings"] == []
+
+    def test_show_by_id(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "major",
+            "--category", "tests", "--title", "First",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f2", "--severity", "minor",
+            "--category", "other", "--title", "Second",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "show",
+            "--step", "step-1", "--id", "f2",
+        ])
+        out = capsys.readouterr().out
+        assert "Second" in out
+        assert "First" not in out
+
+    def test_show_by_id_json(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "major",
+            "--category", "tests", "--title", "Only one",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "show",
+            "--step", "step-1", "--id", "f1", "--json",
+        ])
+        data = json.loads(capsys.readouterr().out)
+        assert len(data["findings"]) == 1
+        assert data["findings"][0]["id"] == "f1"
+
+    def test_show_by_id_not_found(self, spec_dir, caplog):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc:
+                review_helper.main([
+                    "--name", "my-topic", "show",
+                    "--step", "step-1", "--id", "missing",
+                ])
+        assert exc.value.code == 1
+        assert "not found" in caplog.text
+
+    def test_show_by_id_ignores_open_filter(self, spec_dir, capsys):
+        """--id shows a completed finding even when --open is set."""
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "major",
+            "--category", "tests", "--title", "Done one",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "edit",
+            "--step", "step-1", "--id", "f1",
+            "--completed-at", "now",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "show",
+            "--step", "step-1", "--id", "f1", "--open",
+        ])
+        out = capsys.readouterr().out
+        assert "Done one" in out
+
+
+class TestCliHints:
+    def test_unknown_subcommand_lists_valid(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "list",
+                "--step", "step-1",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Valid subcommands:" in err
+        assert "show" in err
+
+    def test_get_subcommand_suggests_show(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "get",
+                "--step", "step-1", "--id", "f1",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Did you mean: show --step <step> --id <id>?" in err
+
+    def test_status_missing_step_shows_example(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "status",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "status --step step-1" in err
+        assert "Valid subcommands:" not in err
+
+    def test_known_subcommand_missing_args_no_subcommand_list(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "append",
+                "--step", "step-1",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Valid subcommands:" not in err
+
+    def test_get_hint_when_argv_is_none(self, capsys, monkeypatch):
+        """Direct CLI entry (main with no argv) still suggests show for get."""
+        monkeypatch.setattr(
+            sys, "argv",
+            [
+                "spex", "--name", "my-topic", "get",
+                "--step", "step-1", "--id", "f1",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Did you mean: show --step <step> --id <id>?" in err
+
+    def test_status_hint_when_argv_is_none(self, capsys, monkeypatch):
+        monkeypatch.setattr(
+            sys, "argv",
+            ["spex", "--name", "my-topic", "status"],
+        )
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "status --step step-1" in err
+
+    def test_id_value_get_does_not_suggest_show(self, capsys):
+        """Finding id 'get' must not trigger the get→show subcommand hint."""
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main([
+                "--name", "my-topic", "append",
+                "--step", "step-1", "--id", "get",
+            ])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "Did you mean: show --step <step> --id <id>?" not in err
+        assert "Valid subcommands:" not in err
 
 
 class TestFormatOpenFindings:

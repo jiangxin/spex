@@ -34,6 +34,19 @@ VALID_CATEGORIES = (
 )
 MAX_REVIEW_ROUND = 3
 
+VALID_SUBCOMMANDS = (
+    "init",
+    "append",
+    "edit",
+    "bump-round",
+    "set-commit",
+    "status",
+    "show",
+    "next",
+)
+
+_PARSE_ARGV: Optional[list[str]] = None
+
 _STEP_NUM_RE = re.compile(r"(\d+)$")
 
 
@@ -367,11 +380,22 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
         )
 
 
-def cmd_show(path: Path, open_only: bool, as_json: bool) -> None:
-    """Display findings, optionally filtering to open items."""
+def cmd_show(
+    path: Path,
+    open_only: bool,
+    as_json: bool,
+    finding_id: Optional[str] = None,
+) -> None:
+    """Display findings, optionally filtering to open items or one id."""
     data = load_review(path)
     findings = data["findings"]
-    if open_only:
+    if finding_id:
+        item = get_finding_by_id(data, finding_id)
+        if item is None:
+            logger.error("Error: finding id '%s' not found.", finding_id)
+            sys.exit(1)
+        findings = [item]
+    elif open_only:
         findings = [
             f for f in findings
             if isinstance(f, dict) and not f.get("completed_at")
@@ -484,14 +508,50 @@ def load_open_findings_text(path: Path) -> str:
     return _format_open_findings_markdown(data["findings"])
 
 
+class ReviewHelperParser(ArgumentParser):
+    """ArgumentParser with review-helper-specific usage hints."""
+
+    def parse(self, argv=None):
+        global _PARSE_ARGV
+        _PARSE_ARGV = list(sys.argv[1:] if argv is None else argv)
+        try:
+            return super().parse(argv)
+        finally:
+            _PARSE_ARGV = None
+
+    def error(self, message):
+        hints = []
+        # Only when subcommand token is literally 'get', not --id get.
+        if "invalid choice: 'get'" in message:
+            hints.append(
+                "Did you mean: show --step <step> --id <id>?",
+            )
+        if (
+            _PARSE_ARGV
+            and "status" in _PARSE_ARGV
+            and "--step" in message
+        ):
+            hints.append(
+                "Example: spex review-helper --name <spec> "
+                "status --step step-1",
+            )
+        if "invalid choice" in message:
+            hints.append(
+                "Valid subcommands: " + ", ".join(VALID_SUBCOMMANDS),
+            )
+        if hints:
+            super().error(message + "\n" + "\n".join(hints))
+        else:
+            super().error(message)
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
-    parser = ArgumentParser(
+    parser = ReviewHelperParser(
         prog="spex review-helper",
         description=(
             "Operate on per-step review finding files "
-            "(init, append, edit, bump-round, set-commit, "
-            "status, show, next)."
+            f"({', '.join(VALID_SUBCOMMANDS)})."
         ),
     )
     parser.add_argument(
@@ -622,6 +682,13 @@ def _build_parser():
         "--json", action="store_true", dest="json_mode",
         help="Output JSON",
     )
+    p_show.add_argument(
+        "--id", default=None, dest="finding_id",
+        help=(
+            "Show a single finding by ID "
+            "(ignores --open; includes completed findings)"
+        ),
+    )
 
     p_next = subs.add_parser(
         "next",
@@ -658,7 +725,10 @@ def main(argv=None):
     elif args.subcmd == "status":
         cmd_status(path, args.json_mode, step_id=step_id)
     elif args.subcmd == "show":
-        cmd_show(path, args.open_only, args.json_mode)
+        cmd_show(
+            path, args.open_only, args.json_mode,
+            finding_id=args.finding_id,
+        )
     elif args.subcmd == "next":
         cmd_next(path, step_id=step_id)
 

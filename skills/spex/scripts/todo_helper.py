@@ -335,7 +335,17 @@ def cmd_show(todo_path, is_xml, args):
     """Display entries with optional filtering and format."""
     data = load_todo_file(todo_path, is_xml)
 
-    if args.done:
+    if args.step_id:
+        data = [
+            item for item in data
+            if isinstance(item, dict) and item.get("id") == args.step_id
+        ]
+        if not data:
+            logger.error(
+                "Error: id '%s' not found.", args.step_id,
+            )
+            sys.exit(1)
+    elif args.done:
         data = [
             item for item in data
             if isinstance(item, dict) and item.get("completed_at")
@@ -509,6 +519,13 @@ def _build_parser():
     show_filter.add_argument(
         "--undone", action="store_true",
         help="Show only incomplete entries",
+    )
+    p_show.add_argument(
+        "--id", dest="step_id", default=None,
+        help=(
+            "Show a single entry by ID "
+            "(ignores --done/--undone if set)"
+        ),
     )
     p_show.add_argument(
         "--format", dest="fmt",
