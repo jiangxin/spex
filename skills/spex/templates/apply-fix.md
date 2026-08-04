@@ -1,5 +1,5 @@
 ---
-version: "0.1.7"
+version: "0.1.8"
 required:
   - spec_content_concise
   - current_task_description
@@ -24,16 +24,19 @@ finding. Do NOT fix other findings. Do NOT start a new review.
 Do NOT call `bump-round` (round is capped at 3 by the orchestrator).
 After this one fix, amend immediately.
 
-## review-helper CLI
+## review-helper CLI cheat sheet
 
 ```text
-FORBIDDEN: review-helper list | get
-USE: edit --completed-at | show --step S --id ID
+FORBIDDEN: review-helper list | get | status | next | bump-round | append | init
+REQUIRED after fix: edit --step S --id ID --completed-at now
+VERIFY (optional):  show --step S --id ID --json
 ```
 
-Do **not** probe with `list` or `get`. After the fix, mark complete
-with `edit --id {{ finding_id }} --completed-at now`. To verify,
-use `show --step {{ step_id }} --id {{ finding_id }} --json` only.
+Do **not** probe with `list` or `get`, and do **not** call
+`init` (it creates or resets the review file). After the fix, only
+`edit --completed-at` + amend — do not call `status` or `next`.
+To verify `completed_at`, use
+`show --step {{ step_id }} --id {{ finding_id }} --json` once.
 
 ## Target Finding (only this one)
 

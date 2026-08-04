@@ -86,9 +86,27 @@ round.
   (e.g. verify `completed_at`), use
   `show --step "$current_task_id" --id "$finding_id" --json`.
 
+- **Avoid redundant status / next / show (required):** Call each
+  helper only at the step that needs it. Reuse the last parsed JSON
+  in shell/context — there is no process-level status cache.
+
+  | Step | Required call | Do not |
+  |------|---------------|--------|
+  | 6-entry | `status --json` once | re-status before routing |
+  | 6b (after review) | `status --json` once | re-status before 6c / Phase 7 |
+  | 6c-i (pick finding) | `next` only | `status` / `list` / `get` |
+  | 6c-ii (verify fix) | `show --id` once | `status` / `list` / `get` |
+  | 6c-iii (`next` null) | `status --json` once | re-status after bump-round |
+
+  Never re-run `status --json` immediately after an unchanged status
+  result (same step, same argv, seconds apart). After 6b routes to
+  6c, start at **6c-i** with `next` — do not status again first.
+  After `bump-round` stdout confirms the new `round`, go to **6a**
+  without another status.
+
 ## 6-entry. Resume / continue gate
 
-Resolve `$commit_sha`, then branch on status:
+Resolve `$commit_sha`, then branch on status (**once**):
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
@@ -152,16 +170,17 @@ source code, must not call `init`, and must not call `bump-round`.
 
 ## 6b. Check status (after a review pass)
 
-Run:
+Run status **once**:
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
   status --step "$current_task_id" --json
 ```
 
-Parse the JSON. Match **in order** (do not skip steps). Decide from
-`needs_fix`, `open_major`, and `round` — **do not** use
-`ready_to_complete` alone to enter Phase 7 (it is false while
+Parse that JSON and decide — do **not** re-run status before
+entering 6c or Phase 7. Match **in order** (do not skip steps).
+Decide from `needs_fix`, `open_major`, and `round` — **do not**
+use `ready_to_complete` alone to enter Phase 7 (it is false while
 open minors remain in rounds 1–2, and true at max round when only
 minors remain).
 
@@ -190,6 +209,8 @@ batch-fix or batch-mark multiple findings in one sub-agent pass
 every single finding.**
 
 ### 6c-i. Pick next open finding
+
+Use `next` only — do **not** call `status`, `list`, or `get` here:
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
@@ -260,7 +281,8 @@ After the fix sub-agent returns:
 
 ### 6c-iii. Bump round or finish (hard cap)
 
-When `next` reports no open findings, decide whether to re-review:
+When `next` reports no open findings, run status **once** to decide
+whether to re-review (do not status again after this decision):
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
@@ -275,11 +297,13 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
     bump-round --step "$current_task_id" --commit "$commit_sha"
   ```
 
-  Confirm stdout JSON shows the new `round` and `commit_sha`. Clear
-  the review prompt cache (`unset $review_prompt $review_prompt_round`
-  or equivalent) so **6a** renders a fresh `prompt apply-review` for
-  the new round. Then go back to **6a** (fresh review sub-agent on the
-  latest amended commit).
+  Confirm stdout JSON shows the new `round` and `commit_sha` — that
+  is enough; do **not** re-run `status` after a successful bump.
+  Clear the review prompt cache
+  (`unset $review_prompt $review_prompt_round` or equivalent) so
+  **6a** renders a fresh `prompt apply-review` for the new round.
+  Then go back to **6a** (fresh review sub-agent on the latest
+  amended commit).
 
 - If `"round"` >= 3: **do not bump** and **do not re-review**.
   Refresh `$commit_title` and proceed to Phase 7. (After a

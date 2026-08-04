@@ -1,5 +1,5 @@
 ---
-version: "0.1.5"
+version: "0.1.6"
 required:
   - spec_content_concise
   - current_task_description
@@ -23,15 +23,18 @@ modify any production or test source files. Only record findings via
 if you find nothing, do not create any review file. At most 3 review
 rounds are allowed for a step; do not attempt to advance the round.
 
-## review-helper CLI
+## review-helper CLI cheat sheet
 
 ```text
-FORBIDDEN: review-helper list | get
-USE: append (--commit) | show --step S [--id ID]
+FORBIDDEN: review-helper list | get | status | next | bump-round | init
+ALLOWED:  append --step S --commit SHA --id … …
+OPTIONAL: show --step S --id ID --json
 ```
 
-Do **not** probe with `list` or `get`. Record findings with `append`
-only; use `show --step {{ step_id }} --id <id> --json` if you must
+Do **not** probe with `list`/`get`, and do **not** call
+`status`/`next`/`bump-round`/`init` — the orchestrator owns those.
+Record findings with `append` only; use
+`show --step {{ step_id }} --id <id> --json` only if you must
 inspect an existing finding.
 
 ## Review Round
