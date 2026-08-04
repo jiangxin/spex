@@ -308,6 +308,39 @@ class TestApplyOneTaskRendering:
         rendered = render_prompt("apply-one-task", "test-topic")
         assert "## Future Steps" not in rendered
 
+    def test_completed_steps_use_concise_format(
+        self, tmp_path, monkeypatch
+    ):
+        """Completed steps render id+name only, not verbose details."""
+        verbose_details = "Long acceptance criteria and bullet list here"
+        tasks = [
+            _make_task(
+                f"step-{i}",
+                name=f"Completed step {i}",
+                details=verbose_details,
+                completed=True,
+            )
+            for i in range(1, 6)
+        ] + [
+            _make_task(
+                "step-6",
+                name="Current step",
+                details="Implement the current task",
+                completed=False,
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        from prompt import render_prompt
+
+        rendered = render_prompt("apply-one-task", "test-topic")
+        assert "<completed-steps>" in rendered
+        for i in range(1, 6):
+            assert f"- **step-{i}**: Completed step {i}" in rendered
+        assert verbose_details not in rendered
+        assert "Implement the current task" in rendered
+
 
 @pytest.mark.slow
 class TestTaskIdStderr:

@@ -1,10 +1,10 @@
 ---
-version: "0.1.2"
+version: "0.1.3"
 required:
   - spec_content
   - current_task_description
 optional:
-  - completed_tasks
+  - completed_tasks_concise
   - future_tasks_concise
 ---
 
@@ -25,11 +25,12 @@ implementation must conform to this specification.
 {{ spec_content }}
 </specification>
 
-{% if completed_tasks -%}
+{% if completed_tasks_concise -%}
 ## Completed Steps
 
-The following steps have already been implemented and committed. Use
-them to understand what has been built so far:
+The following steps have already been implemented and committed (id and
+name only — see the repository for implementation details). Use them to
+understand what has been built so far:
 
 - Ensure your implementation is consistent with completed work — reuse
   existing patterns, APIs, and conventions introduced in earlier steps.
@@ -38,7 +39,7 @@ them to understand what has been built so far:
   step, build on the existing implementation.
 
 <completed-steps>
-{{ completed_tasks }}
+{{ completed_tasks_concise }}
 </completed-steps>
 
 {% endif -%}
