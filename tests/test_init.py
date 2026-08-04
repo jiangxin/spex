@@ -627,7 +627,7 @@ class TestVerboseFlag:
 
             main(argv=["-v"])
         mock_run.assert_called_once_with(
-            target_dir=None, verbose=True, dry_run=False,
+            target_dir=None, verbose=True, dry_run=False, skip_deps=False,
         )
 
     def test_main_parses_verbose_long(self):
@@ -637,7 +637,7 @@ class TestVerboseFlag:
 
             main(argv=["--verbose"])
         mock_run.assert_called_once_with(
-            target_dir=None, verbose=True, dry_run=False,
+            target_dir=None, verbose=True, dry_run=False, skip_deps=False,
         )
 
     def test_main_default_not_verbose(self):
@@ -647,7 +647,7 @@ class TestVerboseFlag:
 
             main(argv=[])
         mock_run.assert_called_once_with(
-            target_dir=None, verbose=False, dry_run=False,
+            target_dir=None, verbose=False, dry_run=False, skip_deps=False,
         )
 
     def test_main_parses_target_dir(self):
@@ -658,6 +658,7 @@ class TestVerboseFlag:
             main(argv=["/some/dir"])
         mock_run.assert_called_once_with(
             target_dir="/some/dir", verbose=False, dry_run=False,
+            skip_deps=False,
         )
 
     def test_main_parses_target_dir_with_verbose(self):
@@ -668,6 +669,17 @@ class TestVerboseFlag:
             main(argv=["-v", "/some/dir"])
         mock_run.assert_called_once_with(
             target_dir="/some/dir", verbose=True, dry_run=False,
+            skip_deps=False,
+        )
+
+    def test_main_parses_skip_deps(self):
+        """main() passes skip_deps=True when --skip-deps is given."""
+        with patch("init.run_init") as mock_run:
+            from init import main
+
+            main(argv=["--skip-deps"])
+        mock_run.assert_called_once_with(
+            target_dir=None, verbose=False, dry_run=False, skip_deps=True,
         )
 
     def test_run_init_passes_verbose_to_ensure_initialized(self, tmp_path):
@@ -934,7 +946,7 @@ class TestDryRun:
 
             main(argv=["-n"])
         mock_run.assert_called_once_with(
-            target_dir=None, verbose=False, dry_run=True,
+            target_dir=None, verbose=False, dry_run=True, skip_deps=False,
         )
 
     def test_dry_run_flag_long(self):
@@ -944,26 +956,121 @@ class TestDryRun:
 
             main(argv=["--dry-run"])
         mock_run.assert_called_once_with(
-            target_dir=None, verbose=False, dry_run=True,
+            target_dir=None, verbose=False, dry_run=True, skip_deps=False,
         )
+
+
+class TestDepsSatisfied:
+    """Fast tests for dependency presence checks and skip paths."""
+
+    def test_deps_satisfied_when_imports_exist(self, tmp_path, monkeypatch):
+        from init import _deps_satisfied
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\ndependencies = ["jinja2"]\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "init.importlib.util.find_spec",
+            lambda name: object() if name == "jinja2" else None,
+        )
+        assert _deps_satisfied(tmp_path) is True
+
+    def test_deps_not_satisfied_when_missing(self, tmp_path, monkeypatch):
+        from init import _deps_satisfied
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\ndependencies = ["jinja2"]\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "init.importlib.util.find_spec",
+            lambda name: None,
+        )
+        assert _deps_satisfied(tmp_path) is False
+
+    def test_install_deps_skips_when_satisfied(self, caplog, monkeypatch):
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)
+        with patch("init.subprocess.run") as mock_run:
+            with caplog.at_level(logging.INFO):
+                from init import _install_deps
+                assert _install_deps() is True
+        mock_run.assert_not_called()
+        assert "already satisfied" in caplog.text
+
+    def test_install_deps_runs_pip_when_missing(self, monkeypatch):
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
+        with patch(
+            "init.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ) as mock_run:
+            from init import _install_deps
+            assert _install_deps() is True
+        assert mock_run.called
+        cmd = mock_run.call_args[0][0]
+        assert "pip" in cmd
+
+    def test_dry_run_would_skip_when_satisfied(self, caplog, monkeypatch):
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)
+        with caplog.at_level(logging.INFO):
+            from init import _install_deps
+            assert _install_deps(dry_run=True) is True
+        assert "Would skip dependency installation" in caplog.text
+
+    def test_dry_run_would_install_when_missing(self, caplog, monkeypatch):
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
+        with caplog.at_level(logging.INFO):
+            from init import _install_deps
+            assert _install_deps(dry_run=True) is True
+        assert "Would install dependencies" in caplog.text
+
+    def test_skip_deps_bypasses_install(self, tmp_path, caplog):
+        spex_root = tmp_path / ".spex"
+        ctx = _make_context(
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+            spex_tomls=[tmp_path / ".spex.toml"],
+        )
+        with (
+            patch("init.get_project_context", return_value=ctx),
+            patch("init.get_top_workdir", return_value=tmp_path),
+            patch("init._install_deps") as mock_install,
+            patch("init._create_toml_config"),
+            patch("init.ensure_initialized"),
+            patch("init._sync_all_templates"),
+            patch("init._install_cli"),
+        ):
+            with caplog.at_level(logging.INFO):
+                from init import run_init
+                run_init(workdir=str(tmp_path), skip_deps=True)
+        mock_install.assert_not_called()
+        assert "--skip-deps" in caplog.text
 
 
 @pytest.mark.slow
 class TestInstallDeps:
     """Test _install_deps function (lines 41-61)."""
 
-    def test_dry_run_returns_true(self, caplog):
+    def test_dry_run_returns_true(self, caplog, monkeypatch):
         """_install_deps(dry_run=True) returns True without installing."""
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
         with caplog.at_level(logging.INFO):
             from init import _install_deps
             assert _install_deps(dry_run=True) is True
         assert "Would install dependencies" in caplog.text
 
-    def test_verbose_shows_message(self, caplog):
-        """_install_deps(verbose=True) shows installing message."""
-        with caplog.at_level(logging.INFO):
-            from init import _install_deps
-            _install_deps(verbose=True)
+    def test_verbose_shows_message(self, caplog, monkeypatch):
+        """_install_deps(verbose=True) shows installing message when needed."""
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
+        with patch(
+            "init.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ):
+            with caplog.at_level(logging.INFO):
+                from init import _install_deps
+                _install_deps(verbose=True)
         assert "Installing dependencies from" in caplog.text
 
 

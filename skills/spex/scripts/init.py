@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -31,6 +32,12 @@ from config import (
     safe_update_toml,
 )
 
+# PyPI package name -> importable module name for presence checks.
+_PKG_TO_IMPORT = {
+    "jinja2": "jinja2",
+    "tomli": "tomli",
+}
+
 
 def is_initialized(workdir=None):
     """Check if spex environment is initialized.
@@ -45,10 +52,42 @@ def is_initialized(workdir=None):
     return True
 
 
+def _deps_for_env_check(pyproject_path: Path) -> list[str]:
+    """Return package names that must be importable in this Python.
+
+    Includes unconditional deps from pyproject.toml. Also includes
+    ``tomli`` when running on Python < 3.11 (matches the environment
+    marker in the skill pyproject).
+    """
+    deps = _parse_pyproject_deps(pyproject_path)
+    content = pyproject_path.read_text(encoding="utf-8")
+    # Support the only conditional dep we ship today.
+    if sys.version_info < (3, 11) and re.search(
+        r"tomli[^;\n]*;\s*python_version\s*<\s*[\"']3\.11[\"']",
+        content,
+    ):
+        if "tomli" not in deps:
+            deps.append("tomli")
+    return deps
+
+
+def _deps_satisfied(skill_dir: Path) -> bool:
+    """Return True if all required runtime packages are importable."""
+    pyproject = skill_dir / "pyproject.toml"
+    if not pyproject.is_file():
+        return True
+    for pkg in _deps_for_env_check(pyproject):
+        mod = _PKG_TO_IMPORT.get(pkg, pkg.replace("-", "_"))
+        if importlib.util.find_spec(mod) is None:
+            return False
+    return True
+
+
 def _install_deps(verbose=False, dry_run=False):
     """Install Python dependencies from the skill's pyproject.toml.
 
-    Tries multiple installation methods in order:
+    Skips installation when required packages are already importable.
+    Otherwise tries multiple methods in order:
     1. pip install (standard)
     2. uv pip install (fast, if available)
     3. Manual wheel download + extract (fallback when pip is broken)
@@ -56,8 +95,17 @@ def _install_deps(verbose=False, dry_run=False):
     from common import _get_skill_path
 
     skill_dir = _get_skill_path()
+    satisfied = _deps_satisfied(skill_dir)
     if dry_run:
-        logger.info("Would install dependencies from %s", skill_dir)
+        if satisfied:
+            logger.info(
+                "Would skip dependency installation (already satisfied)",
+            )
+        else:
+            logger.info("Would install dependencies from %s", skill_dir)
+        return True
+    if satisfied:
+        logger.info("Dependencies already satisfied, skipping pip.")
         return True
     if verbose:
         logger.info("Installing dependencies from %s ...", skill_dir)
@@ -328,7 +376,10 @@ def _create_toml_config(workdir=None, verbose=False, dry_run=False):
         logger.info("Config up-to-date: %s", home_toml)
 
 
-def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):
+def run_init(
+    workdir=None, target_dir=None, verbose=False, dry_run=False,
+    skip_deps=False,
+):
     """Run full spex initialization."""
     if dry_run:
         verbose = True
@@ -337,7 +388,10 @@ def run_init(workdir=None, target_dir=None, verbose=False, dry_run=False):
         top = get_top_workdir()
         workdir = str(top) if top else None
 
-    _install_deps(verbose=verbose, dry_run=dry_run)
+    if skip_deps:
+        logger.info("Skipping dependency installation (--skip-deps).")
+    else:
+        _install_deps(verbose=verbose, dry_run=dry_run)
 
     if target_dir:
         resolved = _resolve_target_dir(target_dir)
@@ -392,6 +446,11 @@ def _build_parser() -> ArgumentParser:
         "-n", "--dry-run", action="store_true",
         help="Preview operations without executing them",
     )
+    parser.add_argument(
+        "--skip-deps",
+        action="store_true",
+        help="Skip Python dependency installation",
+    )
     return parser
 
 
@@ -402,7 +461,12 @@ def main(argv=None):
     if args.check:
         sys.exit(0 if is_initialized() else 1)
 
-    run_init(target_dir=args.dir, verbose=args.verbose, dry_run=args.dry_run)
+    run_init(
+        target_dir=args.dir,
+        verbose=args.verbose,
+        dry_run=args.dry_run,
+        skip_deps=args.skip_deps,
+    )
 
 
 if __name__ == "__main__":
