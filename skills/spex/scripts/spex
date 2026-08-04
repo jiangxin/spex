@@ -547,10 +547,14 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     from common import logger, setup_logging
-    setup_logging(verbose=("-d" in argv or "--debug" in argv))
+    from debug_log import debug_enabled, resolve_debug_log_path, trace_command
+
+    argv = list(argv)
+    full_argv = ["spex", *argv]
+    enabled = debug_enabled(full_argv)
+    setup_logging(verbose=enabled)
 
     parser = _build_parser()
-    argv = list(argv)
 
     # Normalize subcommand: underscores -> hyphens (for display-name
     # matching).  Also pre-check for unknown commands so we can produce
@@ -569,6 +573,13 @@ def main(argv=None):
     if args.command is None:
         parser.print_help(sys.stderr)
         sys.exit(0)
+
+    if enabled:
+        log_path = resolve_debug_log_path(full_argv)
+        if log_path is not None:
+            with trace_command(log_path, full_argv):
+                args.func(remaining)
+            return
 
     args.func(remaining)
 
