@@ -311,6 +311,19 @@ class TestBranchConfig:
         assert result["branch_management"] is True
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
+        assert result["debug"] is False
+
+    def test_load_debug_config(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            '[spex]\ndebug = true\n',
+            encoding="utf-8",
+        )
+
+        result = load_config()
+
+        assert result["debug"] is True
 
 
 # ===================== _resolve_spex_roots =====================
@@ -774,7 +787,13 @@ class TestGenerateDefaultToml:
 
     def test_all_default_keys_present(self):
         result = generate_default_toml()
-        for key in ("spex_root", "branch_management", "main_branch_name", "submit_method"):
+        for key in (
+            "spex_root",
+            "branch_management",
+            "main_branch_name",
+            "submit_method",
+            "debug",
+        ):
             assert f"# {key} = " in result
 
     def test_boolean_formatting(self):
@@ -792,6 +811,8 @@ class TestGenerateDefaultToml:
         result = generate_default_toml()
         assert "# Root directory for spec storage" in result
         assert "# Create and manage branches for specs" in result
+        assert "# Append script traces to <spec_dir>/debug.log" in result
+        assert "# debug = false" in result
 
     def test_blank_line_separators(self):
         lines = generate_default_toml().splitlines()
@@ -842,12 +863,14 @@ class TestGenerateUpdatedToml:
             "branch_management": False,
             "main_branch_name": "develop",
             "submit_method": "pr",
+            "debug": True,
         }
         result = generate_updated_toml(cfg)
         assert 'spex_root = "/my/root"' in result
         assert "branch_management = false" in result
         assert 'main_branch_name = "develop"' in result
         assert 'submit_method = "pr"' in result
+        assert "debug = true" in result
 
     def test_comments_always_present(self):
         result = generate_updated_toml({"spex_root": "x"})

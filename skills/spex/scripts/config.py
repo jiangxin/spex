@@ -24,12 +24,14 @@ class SpexConfig(TypedDict, total=False):
     branch_management: bool
     main_branch_name: str
     submit_method: str
+    debug: bool
 
 _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("spex_root", ".spex", "Root directory for spec storage"),
     ("branch_management", True, "Create and manage branches for specs"),
     ("main_branch_name", "", "Restrict spec creation to this branch"),
     ("submit_method", "merge", "How to submit completed work: merge or pr"),
+    ("debug", False, "Append script traces to <spec_dir>/debug.log"),
 ]
 
 _DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
