@@ -403,6 +403,60 @@ class TestShow:
         assert len(result) == 1
         assert result[0]["id"] == "step-2"
 
+    def test_show_by_id(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show", "--id", "step-2",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 1
+        assert result[0]["id"] == "step-2"
+        assert result[0]["name"] == "Second step"
+
+    def test_show_by_id_json(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--id", "step-1", "--format", "json",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 1
+        assert result[0]["id"] == "step-1"
+
+    def test_show_by_id_not_found(self, todo_file, caplog):
+        _write(todo_file, SAMPLE_DATA)
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc:
+                todo_helper.main([
+                    "--todo-file", str(todo_file), "show",
+                    "--id", "missing",
+                ])
+        assert exc.value.code == 1
+        assert "missing" in caplog.text
+
+    def test_show_by_id_ignores_done_filter(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--id", "step-2", "--done",
+        ])
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert len(result) == 1
+        assert result[0]["id"] == "step-2"
+
+    def test_show_by_id_markdown(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--id", "step-1", "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "1. ✅ step-1\n" in out
+        assert "step-2" not in out
+
     def test_done_and_undone_mutual_exclusion(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         with pytest.raises(SystemExit):
