@@ -69,6 +69,10 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
     - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
     - `$commit_title` ← `"commit_title"` (may be empty)
 
+- **Single render:** Call `prompt apply-one-task` **once** per task
+  iteration. Reuse `$prompt` for Phase 4. Do **not** re-run unless
+  `$prompt` was lost (e.g. new session).
+
 - Step incomplete until `completed_at` set. IF `commit_title` set
   AND `completed_at` empty -> `$resume_phase` is `review` (skip
   implement/commit)
@@ -81,7 +85,8 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 
 ### Phase 4: Execute Task
 
-- Using `$prompt` as guide, implement current task. Follow rendered
+- Using `$prompt` as guide (from Phase 3 — do **not** re-run
+  `prompt apply-one-task`), implement current task. Follow rendered
   prompt precisely (spec, completed steps, task description,
   guidelines)
 - Deliver production code + tests together
@@ -95,6 +100,10 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
 ```
+
+- **Single render:** Call `prompt apply-commit` **once** per commit.
+  Save output as `$commit_prompt` and reuse for staging/commit. Do
+  **not** re-run unless `$commit_prompt` was lost.
 
 - `$commit_prompt` ← output. Using `$commit_prompt`, stage relevant
   changes + commit:
@@ -127,7 +136,10 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ### Phase 6: Review Loop
 
-- Load and follow `references/apply-review-loop.md` exactly
+- Load and follow `references/apply-review-loop.md` exactly (includes
+  single-prompt rules for `$review_prompt` / `$fix_prompt` and
+  review-helper CLI: `status --json`, `next`, `show [--id]` — no
+  `get`/`list`)
 - IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
   verification fails after relaunch) -> end this invocation without
   Phase 7 or Phase 8. Step stays incomplete (`completed_at` unset)

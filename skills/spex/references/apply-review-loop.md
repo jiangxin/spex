@@ -57,6 +57,25 @@ round.
   shell string first.
 - Sub-agent / amend verification failures: relaunch **at most once**;
   if it still fails, stop and report.
+- **Single prompt render (required):** Run each `prompt …` at most once
+  per scope — `$review_prompt` once per review round in **6a**, and
+  `$fix_prompt` once per `$finding_id` in **6c-ii**. Parse the `"prompt"`
+  field from stdout JSON (or plain stdout for `apply-commit`) into a
+  shell variable and reuse it for sub-agent launch and relaunch. Do
+  **not** re-run the same `prompt apply-review` for the same round or
+  `prompt apply-fix` for the same finding because verification failed,
+  a sub-agent returned incomplete work, or you are double-checking —
+  unless the variable was lost (e.g. new session with no prior context).
+  Track scope with companion variables so stale shell state cannot
+  skip a render:
+  - `$review_prompt` + `$review_prompt_round` (current review round)
+  - `$fix_prompt` + `$fix_prompt_finding_id` (current finding id)
+  Reuse a cached prompt **only** when its companion matches the current
+  scope; otherwise treat the cache as empty and run the prompt command.
+- **review-helper CLI:** Use `status --step … --json`, `next --step …`,
+  and `show --step … [--id …]` only. There is no `get` or `list`
+  subcommand — to inspect one finding (e.g. verify `completed_at`),
+  use `show --step "$current_task_id" --id "$finding_id"`.
 
 ## 6-entry. Resume / continue gate
 
@@ -110,10 +129,15 @@ $spex_skill_dir/scripts/spex prompt apply-review --json \
 ```
 
 Parse the JSON object from stdout. Save `$review_prompt` from the
-`"prompt"` field (and optionally `"review_round"` /
-`"review_file"`). Pass `$review_prompt` directly to a **review
-sub-agent** as its instructions — do not rewrite it via shell
-helpers. The review sub-agent must only record findings via
+`"prompt"` field and set `$review_prompt_round` from `"review_round"`
+in the same JSON (or from review `status --json` `"round"` if absent).
+If `$review_prompt` is already set **and**
+`$review_prompt_round` equals the current review round, reuse it —
+do **not** run `prompt apply-review` again. Otherwise clear
+`$review_prompt` and run the command above. Pass `$review_prompt`
+directly to a **review sub-agent** as
+its instructions — do not rewrite it via shell helpers. The review
+sub-agent must only record findings via
 `review-helper append` (with `--commit`) — it must not modify
 source code, must not call `init`, and must not call `bump-round`.
 
@@ -167,7 +191,10 @@ Parse JSON from stdout:
 
 - If `"id"` is `null` / empty: all findings for this round are
   marked complete — go to **6c-iii**.
-- Otherwise set `$finding_id` from `"id"` and continue to 6c-ii.
+- Otherwise set `$finding_id` from `"id"`. If `$finding_id` differs
+  from `$fix_prompt_finding_id`, clear the fix prompt cache
+  (`unset $fix_prompt $fix_prompt_finding_id` or equivalent) before
+  continuing to **6c-ii**.
 
 ### 6c-ii. Fix + amend one finding
 
@@ -177,8 +204,12 @@ $spex_skill_dir/scripts/spex prompt apply-fix --json \
   --finding-id "$finding_id"
 ```
 
-Parse `"prompt"` into `$fix_prompt`. Launch a **fresh fix
-sub-agent** with `$fix_prompt`. That sub-agent must:
+Parse `"prompt"` into `$fix_prompt` and set
+`$fix_prompt_finding_id="$finding_id"`. If `$fix_prompt` is already
+set **and** `$fix_prompt_finding_id` equals `$finding_id`, reuse it —
+do **not** run `prompt apply-fix` again for the same finding.
+Otherwise clear `$fix_prompt` and run the command above. Launch a **fresh
+fix sub-agent** with `$fix_prompt`. That sub-agent must:
 
 - Fix **only** `$finding_id`
 - Call `review-helper edit --id $finding_id --completed-at now`
@@ -196,8 +227,15 @@ Amend constraints:
 
 After the fix sub-agent returns:
 
-- Verify `$finding_id` has a non-empty `completed_at`. If not,
-  relaunch once; if it still fails, stop and report.
+- Verify `$finding_id` has a non-empty `completed_at`:
+
+  ```bash
+  $spex_skill_dir/scripts/spex review-helper --name $spec_name \
+    show --step "$current_task_id" --id "$finding_id" --json
+  ```
+
+  If not, relaunch the fix sub-agent once with the same `$fix_prompt`;
+  if it still fails, stop and report.
 - Refresh the SHA after this amend with
   `git rev-parse --short HEAD`. Save to `$commit_sha` (required —
   the next finding amends this new HEAD).
@@ -228,9 +266,11 @@ $spex_skill_dir/scripts/spex review-helper --name $spec_name \
     bump-round --step "$current_task_id" --commit "$commit_sha"
   ```
 
-  Confirm stdout JSON shows the new `round` and `commit_sha`. Then
-  go back to **6a** (fresh review sub-agent on the latest amended
-  commit).
+  Confirm stdout JSON shows the new `round` and `commit_sha`. Clear
+  the review prompt cache (`unset $review_prompt $review_prompt_round`
+  or equivalent) so **6a** renders a fresh `prompt apply-review` for
+  the new round. Then go back to **6a** (fresh review sub-agent on the
+  latest amended commit).
 
 - If `"round"` >= 3: **do not bump** and **do not re-review**.
   Refresh `$commit_title` and proceed to Phase 7. (After a
