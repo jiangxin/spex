@@ -227,6 +227,21 @@ class TestSessionHelpers:
         spec_dir.mkdir(parents=True)
         assert merge_session_log_into_spec(spex_root, "missing", spec_dir) is None
 
+    def test_merge_missing_log_removes_empty_session_dir(self, tmp_path):
+        spex_root = tmp_path / ".spex"
+        spec_dir = spex_root / "specs" / "my-spec"
+        spec_dir.mkdir(parents=True)
+        session_id = _activate_session(spex_root)
+        session_log = session_debug_log_path(spex_root, session_id)
+        assert session_log.parent.is_dir()
+        assert not session_log.exists()
+
+        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
+
+        assert target is None
+        assert not session_log.parent.exists()
+        assert get_active_session_id(spex_root) == session_id
+
 
 class TestResolveDebugLogPath:
     def test_with_name_resolves_spec_dir(self, tmp_path, monkeypatch):

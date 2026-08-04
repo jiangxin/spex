@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+import secrets
 import subprocess
 import sys
 from datetime import datetime
@@ -22,6 +24,136 @@ from common import (
 SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
 MAX_SPEC_NAME_BYTES = 64
+
+
+def _new_session_id() -> str:
+    """Generate a collision-resistant create-session id."""
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return f"{stamp}-{secrets.token_hex(2)}"
+
+
+def _require_spex_root() -> str:
+    """Return spex_root or exit with an error."""
+    import config as cfg
+
+    spex_root = cfg.get_project_context().spex_root
+    if not spex_root:
+        logger.error(
+            "Error: cannot determine spex_root. "
+            "Configure .spex.toml with spex_root.",
+        )
+        sys.exit(1)
+    return spex_root
+
+
+def _do_begin_session(_args=None):
+    """Create or reuse an active create session; print JSON to stdout."""
+    from common import local_iso_timestamp
+    from debug_log import (
+        debug_enabled,
+        get_active_session_id,
+        session_debug_log_path,
+        set_active_session,
+    )
+
+    spex_root = _require_spex_root()
+    existing = get_active_session_id(spex_root)
+    if existing:
+        log_path = session_debug_log_path(spex_root, existing)
+        print(
+            json.dumps(
+                {
+                    "session_id": existing,
+                    "log_path": str(log_path),
+                    "active": True,
+                }
+            )
+        )
+        return
+
+    session_id = _new_session_id()
+    log_path = session_debug_log_path(spex_root, session_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    set_active_session(spex_root, session_id)
+
+    if debug_enabled(sys.argv):
+        ts = local_iso_timestamp()
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                f"===== CREATE session begin id={session_id} ts={ts} =====\n"
+            )
+
+    print(
+        json.dumps(
+            {
+                "session_id": session_id,
+                "log_path": str(log_path),
+                "active": True,
+            }
+        )
+    )
+
+
+def _resolve_end_session_spec_dir(args, spex_root: str) -> Path | None:
+    """Resolve optional --name / --spec-path to an existing spec directory.
+
+    Returns ``None`` only when neither target flag was provided. When a target
+    was given but cannot be resolved uniquely, logs an error and exits 1.
+    """
+    spec_path = getattr(args, "spec_path", None)
+    if spec_path:
+        path = Path(spec_path)
+        if not path.is_dir():
+            logger.error(
+                "Error: spec path does not exist or is not a directory: %s",
+                path,
+            )
+            sys.exit(1)
+        return path
+
+    name = getattr(args, "name", None)
+    if not name:
+        return None
+
+    return resolve_spec_dir(name, Path(spex_root) / "specs")
+
+
+def _do_end_session(args):
+    """Clear active session; optionally merge-then-delete into a spec.
+
+    When ``--name`` / ``--spec-path`` is provided, resolve the target before
+    clearing the active pointer so a failed handoff leaves the session intact.
+    """
+    from debug_log import (
+        clear_active_session,
+        get_active_session_id,
+        merge_session_log_into_spec,
+    )
+
+    spex_root = _require_spex_root()
+    # Resolve explicit merge target first — may exit(1) without clearing.
+    spec_dir = _resolve_end_session_spec_dir(args, spex_root)
+
+    session_id = get_active_session_id(spex_root)
+    merged_into = None
+    deleted = False
+
+    if session_id and spec_dir is not None:
+        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
+        if target is not None:
+            merged_into = str(target)
+            deleted = True
+
+    clear_active_session(spex_root)
+    print(
+        json.dumps(
+            {
+                "ended": True,
+                "merged_into": merged_into,
+                "deleted": deleted,
+            }
+        )
+    )
 
 
 def create_spec(spec, specs_dir, auto_prefix=True):
@@ -141,8 +273,6 @@ def cli_create_validate() -> None:
 
 def _do_prepare_spec(args):
     """Create spec directory and return JSON with metadata."""
-    import json
-
     import config as cfg
     import hooks
     from common import get_specs_dir, local_iso_timestamp
@@ -272,6 +402,29 @@ def _build_parser():
         help="Validate branch creation feasibility",
     )
 
+    subs.add_parser(
+        "begin-session",
+        description=(
+            "Create or reuse an active create debug session."
+        ),
+        help="Create or reuse an active create debug session",
+    )
+
+    p_end = subs.add_parser(
+        "end-session",
+        description=(
+            "Clear active create session; optionally merge into spec."
+        ),
+        help="Clear active create session; optionally merge into spec",
+    )
+    p_end.add_argument(
+        "--name", default=None, help="Spec name to merge session log into",
+    )
+    p_end.add_argument(
+        "--spec-path", default=None,
+        help="Spec directory path to merge session log into",
+    )
+
     p_prepare = subs.add_parser(
         "prepare-spec",
         description=(
@@ -317,6 +470,10 @@ def main(argv=None):
 
     if args.subcmd == "precheck":
         cli_create_validate()
+    elif args.subcmd == "begin-session":
+        _do_begin_session(args)
+    elif args.subcmd == "end-session":
+        _do_end_session(args)
     elif args.subcmd == "prepare-spec":
         _do_prepare_spec(args)
     elif args.subcmd == "post-action":

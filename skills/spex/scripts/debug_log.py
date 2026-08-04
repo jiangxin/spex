@@ -143,7 +143,19 @@ def merge_session_log_into_spec(
     except ValueError:
         logger.debug("Ignoring invalid session_id for merge: %r", session_id)
         return None
+    session_dir = session_log.parent
+
+    def _rmdir_if_empty() -> None:
+        try:
+            if session_dir.is_dir() and not any(session_dir.iterdir()):
+                session_dir.rmdir()
+        except OSError as exc:
+            logger.debug("Failed to remove empty session dir %s: %s", session_dir, exc)
+
     if not session_log.is_file():
+        # begin-session creates the dir even when debug is off and no log
+        # is written; still best-effort clean the empty session dir.
+        _rmdir_if_empty()
         return None
 
     target = Path(spec_dir) / DEBUG_LOG_NAME
@@ -154,12 +166,7 @@ def merge_session_log_into_spec(
             with target.open("a", encoding="utf-8") as handle:
                 handle.write(content)
         session_log.unlink(missing_ok=True)
-        session_dir = session_log.parent
-        try:
-            if session_dir.is_dir() and not any(session_dir.iterdir()):
-                session_dir.rmdir()
-        except OSError as exc:
-            logger.debug("Failed to remove empty session dir %s: %s", session_dir, exc)
+        _rmdir_if_empty()
     except OSError as exc:
         logger.debug(
             "Failed to merge session log %s into %s: %s",
