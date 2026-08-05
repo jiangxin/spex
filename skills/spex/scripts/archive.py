@@ -25,6 +25,51 @@ from common import (
     resolve_spec_dir,
 )
 from config import get_project_context
+from debug_log import DEBUG_LOG_NAME
+
+_DEBUG_ORPHAN_ALLOWED = frozenset({
+    DEBUG_LOG_NAME,
+    f"{DEBUG_LOG_NAME}.prev_end",
+})
+
+
+def is_debug_orphan_stub(spec_dir: Path) -> bool:
+    """Return True if ``spec_dir`` only contains debug tee artifacts.
+
+    A debug orphan stub is a directory whose entries are a subset of
+    ``{debug.log, debug.log.prev_end}`` and that contains ``debug.log``.
+    Directories with any other file (e.g. ``.DS_Store``) are not stubs.
+    """
+    if not spec_dir.is_dir():
+        return False
+    if not (spec_dir / DEBUG_LOG_NAME).is_file():
+        return False
+    names = {p.name for p in spec_dir.iterdir()}
+    return names <= _DEBUG_ORPHAN_ALLOWED
+
+
+def remove_debug_orphan_stub(
+    spec_dir: Path,
+    archives_dir: Path,
+    *,
+    dry_run: bool = False,
+) -> bool:
+    """Remove a debug-only stub when archives already has the same name.
+
+    Returns True if the stub was removed, or would be removed in dry-run.
+    Returns False when ``spec_dir`` is not a stub or no archives sibling
+    exists (stub is left untouched).
+    """
+    if not is_debug_orphan_stub(spec_dir):
+        return False
+    if not (archives_dir / spec_dir.name).is_dir():
+        return False
+    if dry_run:
+        logger.info("Would remove orphan stub: %s", spec_dir.name)
+        return True
+    shutil.rmtree(spec_dir)
+    logger.info("Removed orphan stub: %s", spec_dir.name)
+    return True
 
 
 def move_spec_with_conflict(source_dir: Path, dest_dir: Path) -> Path:
@@ -65,8 +110,12 @@ def archive_single_spec(
     """Archive a single spec by name. Supports partial name matching.
 
     Returns the destination path, or None if skipped due to active branch.
+    When a debug-only stub is cleaned because archives already has the
+    same name, returns the existing archives path (success, no ``-2``).
     """
     spec_dir = resolve_spec_dir(spec_name, specs_dir)
+    if remove_debug_orphan_stub(spec_dir, archives_dir, dry_run=dry_run):
+        return archives_dir / spec_dir.name
     if not force and not is_spec_completed(spec_dir):
         logger.info(
             "Skipping: spec is not completed (use --force to archive)"
@@ -180,9 +229,16 @@ def main(argv=None):
         specs_dir, ctx, args.force, all_projects=args.all_projects,
     )
 
-    if not completed:
-        logger.info("No completed specs to archive.")
-        return
+    def _cleanup_orphan_stubs(*, dry_run: bool) -> int:
+        count = 0
+        if not specs_dir.is_dir():
+            return 0
+        for entry in sorted(specs_dir.iterdir()):
+            if entry.is_dir() and remove_debug_orphan_stub(
+                entry, archives_dir, dry_run=dry_run
+            ):
+                count += 1
+        return count
 
     if args.dry_run:
         # Show specs that would be skipped due to active branches
@@ -190,9 +246,12 @@ def main(argv=None):
             d for d in sorted(specs_dir.iterdir())
             if d.is_dir() and is_spec_completed(d) and has_active_branch(d)
         ]
-        logger.info("Would archive %d spec(s):", len(completed))
-        for spec_dir in completed:
-            logger.info("  %s", spec_dir.name)
+        if completed:
+            logger.info("Would archive %d spec(s):", len(completed))
+            for spec_dir in completed:
+                logger.info("  %s", spec_dir.name)
+        else:
+            logger.info("No completed specs to archive.")
         if skipped:
             logger.info(
                 "Would skip %d spec(s) (active spex_branch):", len(skipped)
@@ -201,6 +260,13 @@ def main(argv=None):
                 meta = load_meta(spec_dir)
                 branch = meta.spex_branch if meta else ""
                 logger.info("  %s (%s)", spec_dir.name, branch)
+        _cleanup_orphan_stubs(dry_run=True)
+        return
+
+    cleaned = _cleanup_orphan_stubs(dry_run=False)
+    if not completed:
+        if cleaned == 0:
+            logger.info("No completed specs to archive.")
         return
 
     archives_dir.mkdir(parents=True, exist_ok=True)

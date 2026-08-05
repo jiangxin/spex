@@ -264,10 +264,13 @@ def merge_session_log_into_spec(
 def resolve_debug_log_path(argv: list[str]) -> Path | None:
     """Resolve debug.log with mutual-exclusive routing.
 
-    Priority (runtime never dual-writes):
-    1. Unique ``--name`` match → ``<spec_dir>/debug.log`` (ignores session)
-    2. Active create session → ``sessions/<id>/debug.log``
-    3. Fallback → ``<spex_root>/debug.log``
+    Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
+    1. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    2. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    3. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    4. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    5. Active create session → ``sessions/<id>/debug.log``
+    6. Fallback → ``<spex_root>/debug.log``
     """
     ctx = get_project_context()
     if not ctx.spex_root:
@@ -275,9 +278,25 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
     name = parse_name_from_argv(argv)
     if name:
-        specs_dir = Path(ctx.spex_root) / "specs"
+        spex_root = Path(ctx.spex_root)
+        specs_dir = spex_root / "specs"
+        archives_dir = spex_root / "archives"
+
+        exact_specs = specs_dir / name
+        if exact_specs.is_dir():
+            return exact_specs / DEBUG_LOG_NAME
+
+        exact_archives = archives_dir / name
+        if exact_archives.is_dir():
+            return exact_archives / DEBUG_LOG_NAME
+
         if specs_dir.is_dir():
             matches = find_matching_specs(name, specs_dir)
+            if len(matches) == 1:
+                return matches[0] / DEBUG_LOG_NAME
+
+        if archives_dir.is_dir():
+            matches = find_matching_specs(name, archives_dir)
             if len(matches) == 1:
                 return matches[0] / DEBUG_LOG_NAME
 
@@ -286,6 +305,75 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
         return session_debug_log_path(ctx.spex_root, session_id)
 
     return Path(ctx.spex_root) / DEBUG_LOG_NAME
+
+
+def safe_flush_debug_log_path(
+    argv: list[str],
+    pre_resolved: Path | None,
+) -> Path | None:
+    """Choose a post-command flush path that never recreates specs stubs.
+
+    Selection:
+    1. Post-command ``resolve_debug_log_path`` when available
+    2. ``pre_resolved`` only if its parent directory still exists
+    3. ``<spex_root>/debug.log`` when spex_root is configured
+    4. ``None`` to skip the flush
+    """
+    resolved = resolve_debug_log_path(argv)
+    if resolved is not None:
+        return resolved
+
+    if pre_resolved is not None and pre_resolved.parent.is_dir():
+        return pre_resolved
+
+    ctx = get_project_context()
+    if ctx.spex_root:
+        return Path(ctx.spex_root) / DEBUG_LOG_NAME
+    return None
+
+
+def _is_under_specs_tree(path: Path) -> bool:
+    """Return True if ``path`` lies under ``<spex_root>/specs`` (may be missing).
+
+    Uses path structure relative to configured ``spex_root``, so the check
+    still holds when the entire ``specs/`` directory has vanished.
+    """
+    ctx = get_project_context()
+    if ctx.spex_root:
+        specs_root = Path(ctx.spex_root) / "specs"
+        try:
+            path.resolve(strict=False).relative_to(specs_root.resolve(strict=False))
+            return True
+        except ValueError:
+            return False
+    # No spex_root: refuse classic ``.../specs/<name>/`` parents.
+    return path.parent.name == "specs"
+
+
+def _prepare_debug_log_parent(log_path: Path) -> bool:
+    """Ensure ``log_path`` parent exists; never recreate vanished specs dirs.
+
+    Returns False when the write should be skipped.
+    """
+    parent = log_path.parent
+    if parent.is_dir():
+        return True
+
+    # Refuse mkdir for any missing parent under specs/, even if specs/ itself
+    # is absent. Never mkdir(parents=True) for a missing parent under specs/.
+    if _is_under_specs_tree(parent):
+        logger.debug(
+            "Refusing to recreate vanished specs debug log parent: %s",
+            parent,
+        )
+        return False
+
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+        return True
+    except OSError as exc:
+        logger.debug("Failed to create debug log parent %s: %s", parent, exc)
+        return False
 
 
 class TeeIO:
@@ -475,8 +563,9 @@ def _append_trace(
         f"{_format_stream_block('stderr', stderr_parts, stderr_meta)}"
         f"===== END exit={exit_code} duration_ms={duration_ms} =====\n"
     )
+    if not _prepare_debug_log_parent(log_path):
+        return
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(block)
         _remember_end_instant(log_path, now)
@@ -499,13 +588,17 @@ def _normalize_exit_code(code) -> int:
 def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
-    The flush path is re-resolved via ``resolve_debug_log_path`` after the
+    The flush path is chosen via ``safe_flush_debug_log_path`` after the
     command body returns. This matters for ``prepare-spec``: the pre-command
     path may be the active session log (new ``--name`` does not exist yet),
     but handoff merges/deletes that file and clears the active pointer, after
     which ``--name`` uniquely matches the new spec. Flushing the pre-resolved
     session path would recreate an orphan session log; re-resolving appends
     the tee block to ``<spec_dir>/debug.log`` instead.
+
+    After ``archive`` moves a spec to ``archives/``, re-resolve follows the
+    archived directory so tee appends there instead of recreating a vanished
+    ``specs/<name>/`` stub via ``mkdir``.
     """
     start = time.monotonic()
     exit_code = 0
@@ -531,8 +624,9 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
-        # Prefer post-command routing; fall back to the pre-resolved path.
-        flush_path = resolve_debug_log_path(argv) or log_path
+        flush_path = safe_flush_debug_log_path(argv, log_path)
+        if flush_path is None:
+            return
         _append_trace(
             flush_path,
             argv,

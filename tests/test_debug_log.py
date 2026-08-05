@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from debug_log import (
     parse_flag_from_argv,
     parse_name_from_argv,
     resolve_debug_log_path,
+    safe_flush_debug_log_path,
     session_debug_log_path,
     set_active_session,
     trace_command,
@@ -417,6 +419,120 @@ class TestResolveDebugLogPath:
         with patch("debug_log.get_project_context", return_value=ctx):
             assert resolve_debug_log_path(["spex", "version"]) is None
 
+    def test_name_only_in_archives_resolves_archived_dir(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        archived = spex_root / "archives" / "my-spec"
+        archived.mkdir(parents=True)
+        # Remove the specs copy created by _make_ctx so only archives matches.
+        shutil.rmtree(spex_root / "specs" / "my-spec")
+        with patch("debug_log.get_project_context", return_value=ctx):
+            path = resolve_debug_log_path(["spex", "archive", "--name", "my-spec"])
+        assert path == archived / "debug.log"
+
+    def test_specs_match_wins_over_archives(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        archived = spex_root / "archives" / "my-spec"
+        archived.mkdir(parents=True)
+        with patch("debug_log.get_project_context", return_value=ctx):
+            path = resolve_debug_log_path(["spex", "prompt", "--name", "my-spec"])
+        assert path == spex_root / "specs" / "my-spec" / "debug.log"
+
+    def test_archived_exact_wins_over_specs_fuzzy_sibling(
+        self, tmp_path, monkeypatch
+    ):
+        """Exact archives match must beat a unique fuzzy specs sibling."""
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        specs_dir = spex_root / "specs"
+        archives_dir = spex_root / "archives"
+        shutil.rmtree(specs_dir / "my-spec")
+        (specs_dir / "foo-v2").mkdir()
+        (archives_dir / "foo").mkdir(parents=True)
+        with patch("debug_log.get_project_context", return_value=ctx):
+            path = resolve_debug_log_path(["spex", "archive", "--name", "foo"])
+        assert path == archives_dir / "foo" / "debug.log"
+
+
+class TestSafeFlushDebugLogPath:
+    def test_prefers_post_resolve(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        pre = tmp_path / "pre" / "debug.log"
+        pre.parent.mkdir()
+        resolved = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+        with patch("debug_log.get_project_context", return_value=ctx):
+            path = safe_flush_debug_log_path(
+                ["spex", "prompt", "--name", "my-spec"],
+                pre,
+            )
+        assert path == resolved
+
+    def test_falls_back_to_pre_when_parent_exists(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        pre = tmp_path / "still-here" / "debug.log"
+        pre.parent.mkdir()
+        with patch("debug_log.resolve_debug_log_path", return_value=None):
+            with patch(
+                "debug_log.get_project_context",
+                return_value=ProjectContext(
+                    cwd=tmp_path,
+                    top_workdir=tmp_path,
+                    main_worktree=tmp_path,
+                    remote_url="",
+                    branch="",
+                    user_name="",
+                    user_email="",
+                    spex_tomls=[],
+                    config={},
+                    spex_root="",
+                    spex_roots=[],
+                ),
+            ):
+                path = safe_flush_debug_log_path(["spex", "version"], pre)
+        assert path == pre
+
+    def test_vanished_pre_falls_back_to_spex_root(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        pre = spex_root / "specs" / "gone" / "debug.log"
+        # parent does not exist
+        with patch("debug_log.resolve_debug_log_path", return_value=None):
+            with patch("debug_log.get_project_context", return_value=ctx):
+                path = safe_flush_debug_log_path(
+                    ["spex", "archive", "--name", "gone"],
+                    pre,
+                )
+        assert path == spex_root / "debug.log"
+
+    def test_vanished_pre_without_spex_root_skips(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        pre = tmp_path / "specs" / "gone" / "debug.log"
+        with patch("debug_log.resolve_debug_log_path", return_value=None):
+            with patch(
+                "debug_log.get_project_context",
+                return_value=ProjectContext(
+                    cwd=tmp_path,
+                    top_workdir=tmp_path,
+                    main_worktree=tmp_path,
+                    remote_url="",
+                    branch="",
+                    user_name="",
+                    user_email="",
+                    spex_tomls=[],
+                    config={},
+                    spex_root="",
+                    spex_roots=[],
+                ),
+            ):
+                path = safe_flush_debug_log_path(["spex", "version"], pre)
+        assert path is None
+
 
 class TestTeeIO:
     def test_truncates_after_cap(self):
@@ -695,3 +811,109 @@ class TestTraceCommand:
         assert "gap_ms=" in last_meta
         gap = int(last_meta.split("gap_ms=")[1].split()[0])
         assert gap == 5000
+
+
+class TestTraceCommandArchiveFollow:
+    """Flush must follow archive moves and never recreate specs stubs."""
+
+    def test_flush_follows_move_to_archives(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path, debug=True)
+        spex_root = Path(ctx.spex_root)
+        spec_dir = spex_root / "specs" / "my-spec"
+        archives_dir = spex_root / "archives"
+        archives_dir.mkdir(parents=True)
+        pre_log = spec_dir / "debug.log"
+        pre_log.write_text("===== pre-archive =====\n", encoding="utf-8")
+        argv = ["spex", "archive", "--name", "my-spec"]
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            with trace_command(pre_log, argv):
+                shutil.move(str(spec_dir), str(archives_dir / "my-spec"))
+
+        assert not spec_dir.exists()
+        archived_log = archives_dir / "my-spec" / "debug.log"
+        content = archived_log.read_text(encoding="utf-8")
+        assert "===== pre-archive =====\n" in content
+        assert "argv: spex archive --name my-spec" in content
+        assert "===== END exit=0 duration_ms=" in content
+        # Must not recreate a specs stub for tee.
+        assert not (spex_root / "specs" / "my-spec").exists()
+
+    def test_vanished_specs_without_archives_uses_spex_root(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path, debug=True)
+        spex_root = Path(ctx.spex_root)
+        spec_dir = spex_root / "specs" / "my-spec"
+        pre_log = spec_dir / "debug.log"
+        pre_log.write_text("keep\n", encoding="utf-8")
+        argv = ["spex", "archive", "--name", "my-spec"]
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            with trace_command(pre_log, argv):
+                # Spec vanished with no archives counterpart.
+                shutil.rmtree(spec_dir)
+
+        assert not spec_dir.exists()
+        root_log = spex_root / "debug.log"
+        assert root_log.is_file()
+        content = root_log.read_text(encoding="utf-8")
+        assert "argv: spex archive --name my-spec" in content
+        assert not (spex_root / "specs" / "my-spec").exists()
+
+    def test_refuses_mkdir_for_vanished_specs_parent(self, tmp_path, monkeypatch):
+        """Direct append must not recreate specs/<name>/ when parent is gone."""
+        from debug_log import _append_trace
+
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        vanished = spex_root / "specs" / "ghost" / "debug.log"
+        # Ensure specs/ exists but ghost/ does not.
+        assert (spex_root / "specs").is_dir()
+        assert not vanished.parent.exists()
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            _append_trace(
+                vanished,
+                ["spex", "version"],
+                ["out"],
+                {"buffered_bytes": 3, "total_bytes": 3, "truncated": False},
+                [],
+                {"buffered_bytes": 0, "total_bytes": 0, "truncated": False},
+                0,
+                1,
+            )
+
+        assert not vanished.parent.exists()
+        assert not vanished.exists()
+
+    def test_refuses_mkdir_when_entire_specs_tree_missing(
+        self, tmp_path, monkeypatch
+    ):
+        """Even if specs/ itself is gone, do not recreate specs/<name>/."""
+        from debug_log import _append_trace
+
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path)
+        spex_root = Path(ctx.spex_root)
+        shutil.rmtree(spex_root / "specs")
+        vanished = spex_root / "specs" / "ghost" / "debug.log"
+        assert not (spex_root / "specs").exists()
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            _append_trace(
+                vanished,
+                ["spex", "version"],
+                ["out"],
+                {"buffered_bytes": 3, "total_bytes": 3, "truncated": False},
+                [],
+                {"buffered_bytes": 0, "total_bytes": 0, "truncated": False},
+                0,
+                1,
+            )
+
+        assert not (spex_root / "specs").exists()
+        assert not vanished.exists()

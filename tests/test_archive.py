@@ -1,5 +1,6 @@
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -10,12 +11,30 @@ from archive import (
     archive_single_spec,
     find_completed_specs,
     has_active_branch,
+    is_debug_orphan_stub,
     move_spec,
     move_spec_with_conflict,
+    remove_debug_orphan_stub,
     restore_single_spec,
 )
 from common import is_spec_completed
 from config import ProjectContext
+from debug_log import DEBUG_LOG_NAME
+
+SPEX_SCRIPT = str(
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "spex"
+    / "scripts"
+    / "spex"
+)
+ARCHIVE_SOP = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "spex"
+    / "commands"
+    / "archive.md"
+)
 
 
 def _mock_project_context(top_workdir=None):
@@ -165,6 +184,106 @@ class TestFindCompletedSpecs:
         result = find_completed_specs(specs, ctx)
 
         assert len(result) == 2
+
+
+class TestDebugOrphanStub:
+    """Tests for debug orphan stub detection and cleanup."""
+
+    def _make_stub(self, path, *, with_prev_end=False, extra=None):
+        path.mkdir(parents=True, exist_ok=True)
+        (path / DEBUG_LOG_NAME).write_text("tee\n", encoding="utf-8")
+        if with_prev_end:
+            (path / f"{DEBUG_LOG_NAME}.prev_end").write_text(
+                "0\n", encoding="utf-8"
+            )
+        if extra:
+            for name, content in extra.items():
+                (path / name).write_text(content, encoding="utf-8")
+        return path
+
+    def test_only_debug_log_is_stub(self, tmp_path):
+        stub = self._make_stub(tmp_path / "my-topic")
+        assert is_debug_orphan_stub(stub) is True
+
+    def test_debug_log_with_prev_end_is_stub(self, tmp_path):
+        stub = self._make_stub(tmp_path / "my-topic", with_prev_end=True)
+        assert is_debug_orphan_stub(stub) is True
+
+    def test_other_files_not_stub(self, tmp_path):
+        stub = self._make_stub(
+            tmp_path / "my-topic", extra={".DS_Store": ""}
+        )
+        assert is_debug_orphan_stub(stub) is False
+
+    def test_empty_dir_not_stub(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        assert is_debug_orphan_stub(empty) is False
+
+    def test_missing_debug_log_not_stub(self, tmp_path):
+        d = tmp_path / "my-topic"
+        d.mkdir()
+        (d / f"{DEBUG_LOG_NAME}.prev_end").write_text("0\n", encoding="utf-8")
+        assert is_debug_orphan_stub(d) is False
+
+    def test_remove_stub_with_archives_sibling(self, tmp_path, caplog):
+        specs = tmp_path / "specs"
+        stub = self._make_stub(specs / "my-topic")
+        archives = tmp_path / "archives"
+        (archives / "my-topic").mkdir(parents=True)
+        (archives / "my-topic" / "todo.json").write_text("[]", encoding="utf-8")
+
+        with caplog.at_level(logging.INFO):
+            removed = remove_debug_orphan_stub(stub, archives)
+
+        assert removed is True
+        assert not stub.exists()
+        assert (archives / "my-topic").is_dir()
+        assert "Removed orphan stub" in caplog.text
+        assert not (archives / "my-topic-2").exists()
+
+    def test_remove_stub_without_archives_sibling_keeps_stub(self, tmp_path):
+        specs = tmp_path / "specs"
+        stub = self._make_stub(specs / "my-topic")
+        archives = tmp_path / "archives"
+        archives.mkdir()
+
+        removed = remove_debug_orphan_stub(stub, archives)
+
+        assert removed is False
+        assert stub.is_dir()
+        assert (stub / DEBUG_LOG_NAME).is_file()
+
+    def test_remove_dry_run_does_not_delete(self, tmp_path, caplog):
+        specs = tmp_path / "specs"
+        stub = self._make_stub(specs / "my-topic")
+        archives = tmp_path / "archives"
+        (archives / "my-topic").mkdir(parents=True)
+
+        with caplog.at_level(logging.INFO):
+            removed = remove_debug_orphan_stub(stub, archives, dry_run=True)
+
+        assert removed is True
+        assert stub.is_dir()
+        assert "Would remove orphan stub" in caplog.text
+
+    def test_archive_single_cleans_stub_without_conflict_suffix(
+        self, tmp_path, caplog
+    ):
+        specs = tmp_path / "specs"
+        stub = self._make_stub(specs / "my-topic")
+        archives = tmp_path / "archives"
+        archived = archives / "my-topic"
+        archived.mkdir(parents=True)
+        (archived / "todo.json").write_text("[]", encoding="utf-8")
+
+        with caplog.at_level(logging.INFO):
+            dest = archive_single_spec("my-topic", specs, archives)
+
+        assert dest == archived
+        assert not stub.exists()
+        assert not (archives / "my-topic-2").exists()
+        assert "Removed orphan stub" in caplog.text
 
 
 class TestMoveTopic:
@@ -384,6 +503,58 @@ class TestMain:
             assert exc_info.value.code == 2
         err = capsys.readouterr().err
         assert "--name" in err
+
+    def test_batch_cleans_orphan_stub(self, tmp_path, caplog):
+        """Batch archive (no --name) removes debug-only stub when archives sibling exists."""
+        specs = tmp_path / "specs"
+        stub = specs / "my-topic"
+        stub.mkdir(parents=True)
+        (stub / DEBUG_LOG_NAME).write_text("tee\n", encoding="utf-8")
+        archives = tmp_path / "archives"
+        archived = archives / "my-topic"
+        archived.mkdir(parents=True)
+        (archived / "todo.json").write_text("[]", encoding="utf-8")
+        ctx = _mock_project_context(top_workdir="/my/repo")
+
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), caplog.at_level(logging.INFO):
+            spex_archive.main([])
+
+        assert not stub.exists()
+        assert archived.is_dir()
+        assert not (archives / "my-topic-2").exists()
+        assert "Removed orphan stub" in caplog.text
+
+    def test_batch_dry_run_keeps_orphan_stub(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        """Batch --dry-run / -n logs orphan cleanup without deleting the stub."""
+        specs = tmp_path / "specs"
+        stub = specs / "my-topic"
+        stub.mkdir(parents=True)
+        (stub / DEBUG_LOG_NAME).write_text("tee\n", encoding="utf-8")
+        archives = tmp_path / "archives"
+        (archives / "my-topic").mkdir(parents=True)
+        ctx = _mock_project_context(top_workdir="/my/repo")
+        monkeypatch.setattr(sys, "argv", ["archive.py", "-n"])
+
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), caplog.at_level(logging.INFO):
+            spex_archive.main()
+
+        assert stub.is_dir()
+        assert (stub / DEBUG_LOG_NAME).is_file()
+        assert "Would remove orphan stub" in caplog.text
 
 
 class TestArchiveSingleTopic:
@@ -1002,3 +1173,101 @@ class TestAllProjectsFlag:
             spex_archive.main()
         assert "done-topic" in caplog.text
         assert (archives / "done-topic").is_dir()
+
+
+class TestArchiveSopSpecPath:
+    """Lightweight checks that archive.md documents $spec_path updates."""
+
+    def test_sop_updates_spec_path_after_archive_and_restore(self):
+        content = ARCHIVE_SOP.read_text(encoding="utf-8")
+        assert "Archived: <name> -> <dest>" in content
+        assert "Restored: <name> -> <dest>" in content
+        assert "$spec_path" in content
+        assert "pre-move" in content or "specs/..." in content
+
+
+class TestDebugArchiveCliRegression:
+    """CLI regressions: debug=true archive must not leave specs stubs."""
+
+    def _setup_repo(self, tmp_path, *, debug: bool = True):
+        subprocess.run(
+            ["git", "init", str(tmp_path)], capture_output=True, check=True
+        )
+        lines = ['[spex]', 'spex_root = ".spex"']
+        # Always set debug explicitly so a developer ~/.spex.toml with
+        # debug=true cannot leak into subprocess integration tests.
+        lines.append("debug = true" if debug else "debug = false")
+        (tmp_path / ".spex.toml").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8"
+        )
+        spex_root = tmp_path / ".spex"
+        (spex_root / "specs").mkdir(parents=True)
+        (spex_root / "archives").mkdir(parents=True)
+        return spex_root
+
+    def _run_spex(self, tmp_path, *args):
+        return subprocess.run(
+            [sys.executable, SPEX_SCRIPT, *args],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+    def test_debug_archive_name_no_specs_stub(self, tmp_path):
+        """debug=true + archive --name: specs gone; tee in archives."""
+        spex_root = self._setup_repo(tmp_path, debug=True)
+        spec_name = "2026-08-05-09-44-cli-archive-debug"
+        spec_dir = spex_root / "specs" / spec_name
+        _write_todo(spec_dir, [_make_task("1")])
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": spec_name, "workdir": str(tmp_path)}),
+            encoding="utf-8",
+        )
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        (spec_dir / DEBUG_LOG_NAME).write_text(
+            "===== pre-archive =====\n", encoding="utf-8"
+        )
+
+        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+
+        assert result.returncode == 0, result.stderr
+        assert not (spex_root / "specs" / spec_name).exists()
+        archived = spex_root / "archives" / spec_name
+        assert archived.is_dir()
+        assert (archived / "todo.json").is_file()
+        assert (archived / "meta.json").is_file()
+        assert (archived / "spec.md").is_file()
+        debug_log = archived / DEBUG_LOG_NAME
+        assert debug_log.is_file()
+        content = debug_log.read_text(encoding="utf-8")
+        assert "===== pre-archive =====\n" in content
+        assert f"argv: spex archive --name {spec_name}" in content
+        assert "===== END exit=0 duration_ms=" in content
+        # No debug-only stub recreated under specs/
+        specs_entries = list((spex_root / "specs").iterdir())
+        assert specs_entries == []
+
+    def test_debug_archive_cleans_orphan_stub_no_suffix(self, tmp_path):
+        """Pre-seeded debug stub + archives sibling: stub removed, no -2."""
+        spex_root = self._setup_repo(tmp_path, debug=True)
+        spec_name = "my-topic"
+        stub = spex_root / "specs" / spec_name
+        stub.mkdir(parents=True)
+        (stub / DEBUG_LOG_NAME).write_text("orphan tee\n", encoding="utf-8")
+        archived = spex_root / "archives" / spec_name
+        archived.mkdir(parents=True)
+        (archived / "todo.json").write_text(
+            json.dumps([_make_task("1")]), encoding="utf-8"
+        )
+        (archived / "meta.json").write_text(
+            json.dumps({"name": spec_name}), encoding="utf-8"
+        )
+        (archived / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+
+        assert result.returncode == 0, result.stderr
+        assert not stub.exists()
+        assert archived.is_dir()
+        assert not (spex_root / "archives" / f"{spec_name}-2").exists()
+        assert (archived / "todo.json").is_file()
