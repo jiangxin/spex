@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -197,6 +198,63 @@ def cmd_append(todo_path, is_xml, args):
     logger.info("Appended '%s'.", args.id)
 
 
+def _short_head_sha() -> str:
+    """Return short HEAD sha, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _sha_from_commit_title(commit_title) -> str:
+    """Extract leading short sha from persisted ``%h: %s`` commit_title."""
+    prefix = str(commit_title).split(":", 1)[0].strip()
+    if (
+        4 <= len(prefix) <= 40
+        and all(c in "0123456789abcdef" for c in prefix.lower())
+    ):
+        return prefix
+    return ""
+
+
+def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
+    """Emit APPLY anchors for commit-title / completed_at edits."""
+    from debug_log import emit_apply_anchor
+
+    # todo.json / todo.xml live directly under the spec directory.
+    spec_dir = Path(todo_path).parent
+
+    if args.completed_at is not None and item.get("completed_at"):
+        emit_apply_anchor(
+            spec_dir,
+            f"===== APPLY task done id={args.id} =====",
+        )
+        return
+
+    if (
+        args.commit_title is not None
+        and str(args.commit_title).strip()
+        and not item.get("completed_at")
+    ):
+        # Prefer sha already persisted in commit_title over probing HEAD.
+        sha = (
+            _sha_from_commit_title(args.commit_title)
+            or _short_head_sha()
+        )
+        emit_apply_anchor(
+            spec_dir,
+            f"===== APPLY task committed id={args.id} sha={sha} =====",
+        )
+
+
 def cmd_edit(todo_path, is_xml, args):
     """Edit an existing entry by ID."""
     details = args.details
@@ -209,6 +267,7 @@ def cmd_edit(todo_path, is_xml, args):
     data = load_todo_file(todo_path, is_xml)
 
     found = False
+    updated_item = None
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
             if args.step_name is not None:
@@ -220,6 +279,7 @@ def cmd_edit(todo_path, is_xml, args):
             if args.commit_title is not None:
                 item["commit_title"] = args.commit_title
             found = True
+            updated_item = item
             break
 
     if not found:
@@ -230,6 +290,8 @@ def cmd_edit(todo_path, is_xml, args):
 
     write_todo_file(todo_path, data, is_xml)
     logger.info("Updated '%s'.", args.id)
+    if updated_item is not None:
+        _emit_todo_edit_apply_anchor(todo_path, args, updated_item)
 
 
 def cmd_remove(todo_path, is_xml, args):
@@ -405,6 +467,79 @@ def _resolve_todo_path(args):
     return (spec_dir / filename, is_xml)
 
 
+_LOCATOR_FLAGS_WITH_VALUE = ("--name", "--todo-file")
+_LOCATOR_FLAGS_BOOL = ("--xml",)
+# Subcommand options that take a value. Their next argv token must
+# not be classified as a hoistable locator, even when it looks like
+# a flag (e.g. ``--commit-title --xml``).
+_VALUE_TAKING_SUB_FLAGS = frozenset({
+    "--id",
+    "--step-name",
+    "--details",
+    "--completed-at",
+    "--commit-title",
+    "--format",
+})
+
+
+def _hoist_locator_flags(argv):
+    """Move locator flags before the subcommand for argparse.
+
+    Agents sometimes place ``--name`` / ``--todo-file`` / ``--xml``
+    after the subcommand; argparse only accepts parent options before
+    it. Hoisting keeps mutual exclusivity and existing parse paths.
+
+    Value-taking subcommand flags keep their following token so a
+    value that literally equals a locator flag is not stolen.
+    """
+    argv = list(argv)
+    hoisted = []
+    remaining = []
+    i = 0
+    n = len(argv)
+    while i < n:
+        arg = argv[i]
+        if arg in _LOCATOR_FLAGS_WITH_VALUE:
+            # Only hoist when a value token follows; leave bare
+            # --name / --todo-file in place so argparse reports
+            # the real missing-argument error instead of rewriting
+            # the subcommand into the flag value.
+            if i + 1 < n and not argv[i + 1].startswith("-"):
+                hoisted.append(arg)
+                hoisted.append(argv[i + 1])
+                i += 2
+            else:
+                remaining.append(arg)
+                i += 1
+            continue
+        if arg.startswith("--name=") or arg.startswith("--todo-file="):
+            hoisted.append(arg)
+            i += 1
+            continue
+        if arg in _LOCATOR_FLAGS_BOOL:
+            hoisted.append(arg)
+            i += 1
+            continue
+        if arg in _VALUE_TAKING_SUB_FLAGS:
+            remaining.append(arg)
+            i += 1
+            # Consume the value even when it looks like an option
+            # (argparse accepts that for unknown-to-subparser tokens).
+            if i < n:
+                remaining.append(argv[i])
+                i += 1
+            continue
+        if arg.startswith("--") and "=" in arg:
+            flag, _sep, _val = arg.partition("=")
+            if flag in _VALUE_TAKING_SUB_FLAGS:
+                remaining.append(arg)
+                i += 1
+                continue
+        remaining.append(arg)
+        i += 1
+    return hoisted + remaining
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -416,10 +551,18 @@ def _build_parser():
     )
     locator = parser.add_mutually_exclusive_group()
     locator.add_argument(
-        "--name", help="Resolve spec dir for todo file",
+        "--name",
+        help=(
+            "Resolve spec dir for todo file"
+            " (accepted before or after the subcommand)"
+        ),
     )
     locator.add_argument(
-        "--todo-file", help="Direct path to todo file",
+        "--todo-file",
+        help=(
+            "Direct path to todo file"
+            " (accepted before or after the subcommand)"
+        ),
     )
     parser.add_argument(
         "--xml", action="store_true", help="Force XML format",
@@ -570,7 +713,9 @@ def _build_parser():
 def main(argv=None):
     """Parse args, resolve todo path, route to subcommand."""
     parser = _build_parser()
-    args = parser.parse(argv)
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parser.parse(_hoist_locator_flags(argv))
 
     if not args.subcmd:
         parser.print_help(sys.stderr)

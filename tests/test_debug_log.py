@@ -9,11 +9,14 @@ import pytest
 from config import ProjectContext, clear_config_cache
 from debug_log import (
     MAX_STREAM_BYTES,
+    PROMPT_STDOUT_LOG_BYTES,
     TeeIO,
     clear_active_session,
     debug_enabled,
     get_active_session_id,
+    is_prompt_argv,
     merge_session_log_into_spec,
+    parse_flag_from_argv,
     parse_name_from_argv,
     resolve_debug_log_path,
     session_debug_log_path,
@@ -87,6 +90,24 @@ class TestParseNameFromArgv:
 
     def test_missing(self):
         assert parse_name_from_argv(["spex", "version"]) is None
+
+
+class TestParseFlagFromArgv:
+    def test_step_and_commit(self):
+        argv = ["spex", "prompt", "apply-review", "--step", "step-1", "--commit=abc"]
+        assert parse_flag_from_argv(argv, "--step") == "step-1"
+        assert parse_flag_from_argv(argv, "--commit") == "abc"
+
+    def test_missing(self):
+        assert parse_flag_from_argv(["spex", "version"], "--step") is None
+
+
+class TestIsPromptArgv:
+    def test_prompt_after_debug_flag(self):
+        assert is_prompt_argv(["spex", "-d", "prompt", "apply-one-task"]) is True
+
+    def test_non_prompt(self):
+        assert is_prompt_argv(["spex", "todo-helper", "show"]) is False
 
 
 class TestSessionHelpers:
@@ -242,6 +263,63 @@ class TestSessionHelpers:
         assert not session_log.parent.exists()
         assert get_active_session_id(spex_root) == session_id
 
+    def test_merge_relocates_prev_end_sidecar_and_gap_continues(
+        self, tmp_path, monkeypatch
+    ):
+        """Session .prev_end must move with merge so dir cleans and gap_ms works."""
+        from datetime import datetime, timedelta, timezone
+
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path, debug=True)
+        spex_root = Path(ctx.spex_root)
+        spec_dir = spex_root / "specs" / "my-spec"
+        session_id = _activate_session(spex_root)
+        session_log = session_debug_log_path(spex_root, session_id)
+
+        tz = timezone(timedelta(hours=8))
+        t0 = datetime(2026, 8, 4, 17, 0, 0, tzinfo=tz)
+        t1 = t0 + timedelta(seconds=3)
+        stamps = iter([t0.isoformat(), t1.isoformat()])
+        monkeypatch.setattr(
+            "debug_log.local_iso_timestamp",
+            lambda: next(stamps),
+        )
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            with trace_command(session_log, ["spex", "version"]):
+                print("session")
+
+        session_sidecar = Path(str(session_log) + ".prev_end")
+        assert session_sidecar.is_file()
+
+        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
+
+        assert target == spec_dir / "debug.log"
+        assert not session_log.exists()
+        assert not session_sidecar.exists()
+        assert not session_log.parent.exists()
+
+        target_sidecar = Path(str(target) + ".prev_end")
+        assert target_sidecar.is_file()
+        assert target_sidecar.read_text(encoding="utf-8").strip() == t0.isoformat()
+
+        with patch("debug_log.get_project_context", return_value=ctx):
+            with trace_command(
+                target, ["spex", "version", "--name", "my-spec"]
+            ):
+                print("after-merge")
+
+        metas = [
+            line
+            for line in target.read_text(encoding="utf-8").splitlines()
+            if line.startswith("meta:")
+        ]
+        assert metas
+        last_meta = metas[-1]
+        assert "gap_ms=" in last_meta
+        gap = int(last_meta.split("gap_ms=")[1].split()[0])
+        assert gap == 3000
+
 
 class TestResolveDebugLogPath:
     def test_with_name_resolves_spec_dir(self, tmp_path, monkeypatch):
@@ -386,6 +464,7 @@ class TestTraceCommand:
         content = log_path.read_text(encoding="utf-8")
         assert "===== BEGIN " in content
         assert "argv: spex version" in content
+        assert "meta:" in content
         assert "----- stdout -----" in content
         assert "hello stdout" in content
         assert "----- stderr -----" in content
@@ -465,3 +544,154 @@ class TestTraceCommand:
         content = spec_log.read_text(encoding="utf-8")
         assert "argv: spex create-helper prepare-spec" in content
         assert "===== END exit=0 duration_ms=" in content
+
+    def test_prompt_stdout_summarized_caller_sees_full(
+        self, tmp_path, capsys
+    ):
+        import json
+        import sys
+
+        log_path = tmp_path / "debug.log"
+        argv = ["spex", "prompt", "apply-one-task", "--name", "my-spec", "--json"]
+        prompt_body = "x" * 8000
+        payload = {
+            "task_id": "step-3",
+            "prompt": prompt_body,
+            "resume_phase": "implement",
+            "commit_title": "fix(debug): truncate prompt stdout",
+        }
+        full = json.dumps(payload)
+
+        with trace_command(log_path, argv):
+            sys.stdout.write(full)
+            sys.stdout.flush()
+
+        assert capsys.readouterr().out == full
+
+        content = log_path.read_text(encoding="utf-8")
+        stdout_section = content.split("----- stdout -----", 1)[1].split(
+            "----- stderr -----", 1
+        )[0]
+        assert "truncated prompt stdout" in stdout_section
+        assert f"total={len(full.encode('utf-8'))}B" in stdout_section
+        assert "task_id=step-3" in stdout_section
+        assert "prompt_len=8000" in stdout_section
+        assert "keys=" in stdout_section
+        assert prompt_body not in stdout_section
+        assert len(stdout_section) < len(full)
+
+    def test_prompt_plain_stdout_truncated_in_log(self, tmp_path, capsys):
+        import sys
+
+        log_path = tmp_path / "debug.log"
+        argv = ["spex", "prompt", "apply-commit", "--name", "my-spec"]
+        big = "P" * (PROMPT_STDOUT_LOG_BYTES + 1500)
+
+        with trace_command(log_path, argv):
+            sys.stdout.write(big)
+            sys.stdout.flush()
+
+        assert capsys.readouterr().out == big
+        content = log_path.read_text(encoding="utf-8")
+        stdout_section = content.split("----- stdout -----", 1)[1].split(
+            "----- stderr -----", 1
+        )[0]
+        assert "truncated prompt stdout" in stdout_section
+        assert f"total={len(big.encode('utf-8'))}B" in stdout_section
+        assert big not in stdout_section
+
+    def test_non_prompt_stdout_still_recorded_in_full(self, tmp_path):
+        log_path = tmp_path / "debug.log"
+        body = "keep-me-" + ("n" * 500)
+
+        with trace_command(log_path, ["spex", "todo-helper", "show"]):
+            print(body)
+
+        content = log_path.read_text(encoding="utf-8")
+        assert body in content
+        assert "truncated prompt stdout" not in content
+
+    def test_meta_gap_ms_and_argv_fields(self, tmp_path, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+
+        log_path = tmp_path / "debug.log"
+        tz = timezone(timedelta(hours=8))
+        t0 = datetime(2026, 8, 4, 17, 0, 0, tzinfo=tz)
+        t1 = t0 + timedelta(seconds=5)
+        stamps = iter([t0.isoformat(), t1.isoformat()])
+        monkeypatch.setattr(
+            "debug_log.local_iso_timestamp",
+            lambda: next(stamps),
+        )
+
+        with trace_command(log_path, ["spex", "version"]):
+            print("first")
+
+        with trace_command(
+            log_path,
+            [
+                "spex",
+                "review-helper",
+                "status",
+                "--step",
+                "step-3",
+                "--commit",
+                "deadbeef",
+            ],
+        ):
+            print("second")
+
+        content = log_path.read_text(encoding="utf-8")
+        blocks = content.split("===== BEGIN ")
+        assert len(blocks) == 3  # leading empty + 2 blocks
+        first_meta = [
+            line for line in blocks[1].splitlines() if line.startswith("meta:")
+        ][0]
+        second_meta = [
+            line for line in blocks[2].splitlines() if line.startswith("meta:")
+        ][0]
+        assert "gap_ms=" not in first_meta
+        assert "step=step-3" in second_meta
+        assert "commit=deadbeef" in second_meta
+        assert "gap_ms=" in second_meta
+        gap = int(second_meta.split("gap_ms=")[1].split()[0])
+        # BEGIN is stamped at flush (end); gap is stamp delta, not minus duration
+        assert gap == 5000
+
+    def test_meta_gap_ms_ignores_begin_end_in_stdout(self, tmp_path, monkeypatch):
+        """Embedded BEGIN/END in stdout must not poison gap_ms."""
+        from datetime import datetime, timedelta, timezone
+
+        log_path = tmp_path / "debug.log"
+        tz = timezone(timedelta(hours=8))
+        t0 = datetime(2026, 8, 4, 17, 0, 0, tzinfo=tz)
+        t1 = t0 + timedelta(seconds=5)
+        stamps = iter([t0.isoformat(), t1.isoformat()])
+        monkeypatch.setattr(
+            "debug_log.local_iso_timestamp",
+            lambda: next(stamps),
+        )
+
+        fake_later = (t0 + timedelta(hours=1)).isoformat()
+        poison = (
+            f"===== BEGIN {fake_later} =====\n"
+            "argv: spex version\n"
+            "meta:\n"
+            "===== END exit=0 duration_ms=999999 =====\n"
+        )
+        with trace_command(log_path, ["spex", "version"]):
+            print(poison, end="")
+
+        with trace_command(log_path, ["spex", "version"]):
+            print("second")
+
+        content = log_path.read_text(encoding="utf-8")
+        # Last structural meta is the second real block (poison meta is earlier).
+        metas = [
+            line for line in content.splitlines() if line.startswith("meta:")
+        ]
+        assert metas
+        last_meta = metas[-1]
+        assert "gap_ms=" in last_meta
+        gap = int(last_meta.split("gap_ms=")[1].split()[0])
+        assert gap == 5000

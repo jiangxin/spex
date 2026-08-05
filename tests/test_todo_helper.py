@@ -73,12 +73,66 @@ class TestFileLocating:
             "--todo-file", str(todo_file), "validate",
         ])
 
+    def test_name_after_subcommand(self, tmp_path, monkeypatch):
+        """--name after subcommand must succeed (archived apply failure)."""
+        spec_dir = tmp_path / "2026-08-04-15-50-create-debug-session"
+        spec_dir.mkdir()
+        todo = spec_dir / "todo.json"
+        _write(todo, SAMPLE_DATA)
+
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir",
+            lambda name, **kw: spec_dir,
+        )
+        # Exact argv shape from debug.log (name after edit flags).
+        todo_helper.main([
+            "edit",
+            "--id", "step-3",
+            "--commit-title",
+            "84e59c4: feat(create-helper): handoff session on prepare-spec",
+            "--name", "2026-08-04-15-50-create-debug-session",
+        ])
+        result = _read(todo)
+        step3 = [i for i in result if i["id"] == "step-3"][0]
+        assert step3["commit_title"] == (
+            "84e59c4: feat(create-helper): handoff session on prepare-spec"
+        )
+
+    def test_todo_file_after_subcommand(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "validate", "--todo-file", str(todo_file),
+        ])
+
+    def test_name_equals_form_after_subcommand(
+        self, tmp_path, monkeypatch,
+    ):
+        spec_dir = tmp_path / "my-topic"
+        spec_dir.mkdir()
+        todo = spec_dir / "todo.json"
+        _write(todo, SAMPLE_DATA)
+
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir",
+            lambda name, **kw: spec_dir,
+        )
+        todo_helper.main(["validate", "--name=my-topic"])
+
     def test_both_topic_and_todo_file_error(self, todo_file):
         with pytest.raises(SystemExit):
             todo_helper.main([
                 "--name", "x",
                 "--todo-file", str(todo_file),
                 "validate",
+            ])
+
+    def test_both_name_and_todo_file_mixed_positions_error(
+        self, todo_file,
+    ):
+        with pytest.raises(SystemExit):
+            todo_helper.main([
+                "--name", "x", "validate",
+                "--todo-file", str(todo_file),
             ])
 
     def test_neither_topic_nor_todo_file_error(self):
@@ -944,6 +998,54 @@ class TestXmlFormat:
         assert len(result) == 3
         assert result[0]["id"] == "step-1"
 
+
+
+class TestHoistLocatorFlags:
+    def test_hoists_name_from_end(self):
+        assert todo_helper._hoist_locator_flags([
+            "edit", "--id", "step-3", "--name", "spec",
+        ]) == ["--name", "spec", "edit", "--id", "step-3"]
+
+    def test_preserves_leading_name(self):
+        assert todo_helper._hoist_locator_flags([
+            "--name", "spec", "edit", "--id", "step-3",
+        ]) == ["--name", "spec", "edit", "--id", "step-3"]
+
+    def test_leaves_bare_name_in_place(self):
+        # Bare --name must not steal the subcommand as its value.
+        assert todo_helper._hoist_locator_flags([
+            "edit", "--id", "step-3", "--name",
+        ]) == ["edit", "--id", "step-3", "--name"]
+
+    def test_leaves_bare_todo_file_in_place(self):
+        assert todo_helper._hoist_locator_flags([
+            "show", "--todo-file",
+        ]) == ["show", "--todo-file"]
+
+    def test_hoists_equals_form(self):
+        assert todo_helper._hoist_locator_flags([
+            "edit", "--id", "step-3", "--name=spec",
+        ]) == ["--name=spec", "edit", "--id", "step-3"]
+
+    def test_does_not_steal_option_values(self):
+        # --xml is the --commit-title value, not the locator flag.
+        assert todo_helper._hoist_locator_flags([
+            "edit", "--id", "step-3",
+            "--commit-title", "--xml", "--name", "spec",
+        ]) == [
+            "--name", "spec", "edit", "--id", "step-3",
+            "--commit-title", "--xml",
+        ]
+
+    def test_does_not_steal_equals_option_value(self):
+        assert todo_helper._hoist_locator_flags([
+            "edit", "--commit-title=--xml", "--name", "spec",
+        ]) == ["--name", "spec", "edit", "--commit-title=--xml"]
+
+    def test_hoists_xml_bool(self):
+        assert todo_helper._hoist_locator_flags([
+            "show", "--xml", "--format", "json",
+        ]) == ["--xml", "show", "--format", "json"]
 
 
 class TestSubcommandHelp:

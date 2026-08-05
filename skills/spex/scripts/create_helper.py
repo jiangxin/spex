@@ -157,7 +157,12 @@ def _do_end_session(args):
 
 
 def _append_create_debug_anchor(log_path: Path, line: str) -> None:
-    """Append a CREATE debug anchor line to ``log_path``."""
+    """Append a CREATE debug anchor; propagate OSError (hard success signal).
+
+    Unlike APPLY's soft ``append_debug_anchor`` (tee best-effort), CREATE
+    handoff/post-action anchors must fail loud so prepare does not clear
+    the active session after a missing prepare-ok marker.
+    """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     text = line if line.endswith("\n") else f"{line}\n"
     with log_path.open("a", encoding="utf-8") as handle:

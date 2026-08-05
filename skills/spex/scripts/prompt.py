@@ -584,6 +584,15 @@ def _do_apply_one_task(args):
         logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
+    task_id = metadata.get("current_task_id", "")
+    if task_id and args.name:
+        from debug_log import emit_apply_anchor
+
+        emit_apply_anchor(
+            resolve_spec_dir(args.name),
+            f"===== APPLY task begin id={task_id} =====",
+        )
+
     if args.json_mode:
         print(json.dumps({
             "task_id": metadata.get("current_task_id", ""),
@@ -684,6 +693,16 @@ def _do_apply_review(args):
     except TemplateError as e:
         logger.error("Error rendering template: %s", e)
         sys.exit(1)
+
+    if args.name:
+        from debug_log import emit_apply_anchor
+
+        emit_apply_anchor(
+            resolve_spec_dir(args.name),
+            "===== APPLY review begin "
+            f"round={metadata.get('review_round', 1)} "
+            f"commit={metadata.get('commit_sha', '')} =====",
+        )
 
     if args.json_mode:
         print(json.dumps({

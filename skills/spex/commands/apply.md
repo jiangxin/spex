@@ -15,6 +15,10 @@ Apply a specification to implement code step by step.
 ## Preconditions
 
 - Follow phases in order. Do not skip or reorder.
+- Debug timeline: when debug is enabled, scripts append APPLY
+  anchors to `$spec_path/debug.log` automatically (task begin,
+  committed, review begin/round, task done, post-action). Do not
+  call `mark-phase`.
 
 ## Execution
 
@@ -147,9 +151,11 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 ### Phase 6: Review Loop
 
 - Load and follow `references/apply-review-loop.md` exactly (includes
-  single-prompt rules for `$review_prompt` / `$fix_prompt` and
-  review-helper CLI: `status --json`, `next`, `show [--id]` — no
-  `get`/`list`)
+  single-prompt rules for `$review_prompt` / `$fix_prompt`;
+  review-helper always needs `--name`; most subcommands need
+  `--step`; prefer `status` / `next` / `show` — `list`/`get` are
+  show aliases; reuse last status JSON — do not re-status right
+  after 6b or after a successful `bump-round`)
 - IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
   verification fails after relaunch) -> end entire `/spex apply`
   immediately — do **not** run Phase 7, Phase 8, or Phase 9; do

@@ -153,6 +153,7 @@ def _do_post_action(args):
     import common
     import config as cfg
     import hooks
+    from debug_log import emit_apply_anchor
 
     spec_dir = common.resolve_spec_dir(args.name)
     spec_name = spec_dir.name
@@ -174,6 +175,8 @@ def _do_post_action(args):
         workdir,
         spec_name,
     )
+
+    emit_apply_anchor(spec_dir, "===== APPLY post-action ok =====")
 
     if hooks.find_hook("post-action", workdir) is None:
         logger.info(

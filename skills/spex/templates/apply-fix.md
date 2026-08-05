@@ -1,5 +1,5 @@
 ---
-version: "0.1.6"
+version: "0.1.9"
 required:
   - spec_content_concise
   - current_task_description
@@ -23,6 +23,22 @@ Act as a senior software engineer fixing **exactly one** review
 finding. Do NOT fix other findings. Do NOT start a new review.
 Do NOT call `bump-round` (round is capped at 3 by the orchestrator).
 After this one fix, amend immediately.
+
+## review-helper CLI cheat sheet
+
+```text
+REQUIRED: --name <spec> on every call; --step S for edit/show/get/list
+FORBIDDEN for this fix agent: status | next | bump-round | append | init
+REQUIRED after fix: edit --step S --id ID --completed-at now
+VERIFY (optional):  show --step S --id ID --json
+                    (alias: get --step S --id ID)
+```
+
+Do **not** call `init` (it creates or resets the review file).
+After the fix, only `edit --completed-at` + amend — do not call
+`status` or `next` (orchestrator owns those). `list` / `get` are
+valid aliases of `show`; prefer `show --id` to verify `completed_at`:
+`show --step {{ step_id }} --id {{ finding_id }} --json` once.
 
 ## Target Finding (only this one)
 

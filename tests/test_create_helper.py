@@ -1160,6 +1160,53 @@ class TestPreparePostActionSession:
         )
         assert f"===== CREATE prepare-spec ok name={name} =====\n" in content
 
+    def test_append_create_debug_anchor_raises_oserror(
+        self, tmp_path, monkeypatch,
+    ):
+        """CREATE writer must not swallow OSError (unlike APPLY soft append)."""
+        log_path = tmp_path / "debug.log"
+
+        def fail_open(*_args, **_kwargs):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(Path, "open", fail_open)
+        with pytest.raises(OSError, match="permission denied"):
+            create_helper._append_create_debug_anchor(
+                log_path,
+                "===== CREATE prepare-spec ok name=x =====",
+            )
+
+    def test_prepare_anchor_write_failure_keeps_pointer(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """CREATE anchor write must raise so handoff does not clear session."""
+        ctx = self._ctx(tmp_path, debug=True)
+        name = "2026-08-04-15-50-anchor-fail"
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+        ):
+            create_helper.main(["begin-session"])
+            begin = json.loads(capsys.readouterr().out.strip())
+            session_id = begin["session_id"]
+            Path(begin["log_path"]).write_text(
+                "===== session history =====\n", encoding="utf-8",
+            )
+
+            with patch.object(
+                create_helper,
+                "_append_create_debug_anchor",
+                side_effect=OSError("permission denied"),
+            ):
+                with pytest.raises(OSError, match="permission denied"):
+                    self._run_prepare(
+                        tmp_path, ctx, monkeypatch, capsys, name,
+                    )
+
+        assert get_active_session_id(ctx.spex_root) == session_id
+
     def test_prepare_growth_isolation_before_handoff(
         self, tmp_path, monkeypatch, capsys,
     ):
