@@ -43,8 +43,18 @@ $spex_skill_dir/scripts/spex archive [--name <name>] [-n|--dry-run] [-f|--force]
 
 ### Phase 2: Report Results
 
-- IF output matches `Archived:` / `Would archive` -> report that list
-- ELSE IF output matches `Restored:` / `Would restore` -> report restore result
+- IF output matches `Archived: <name> -> <dest>`:
+  - Set `$spec_path` to `<dest>` (path under `archives/`)
+  - Report the archived result
+  - Subsequent ops for that spec (hooks, open files, read meta) MUST
+    use the updated `$spec_path`; do not keep using the pre-move
+    `specs/...` path
+- ELSE IF output matches `Restored: <name> -> <dest>`:
+  - Set `$spec_path` to `<dest>` (path under `specs/`)
+  - Report the restore result
+  - Subsequent ops MUST use the updated `$spec_path`
+- ELSE IF output matches `Would archive` / `Would restore` -> report
+  that list
 - ELSE IF output is `No completed specs to archive.` -> inform none
 - ELSE -> surface script output / errors as-is
 

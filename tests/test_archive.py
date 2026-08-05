@@ -1,5 +1,6 @@
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +20,21 @@ from archive import (
 from common import is_spec_completed
 from config import ProjectContext
 from debug_log import DEBUG_LOG_NAME
+
+SPEX_SCRIPT = str(
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "spex"
+    / "scripts"
+    / "spex"
+)
+ARCHIVE_SOP = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "spex"
+    / "commands"
+    / "archive.md"
+)
 
 
 def _mock_project_context(top_workdir=None):
@@ -1157,3 +1173,101 @@ class TestAllProjectsFlag:
             spex_archive.main()
         assert "done-topic" in caplog.text
         assert (archives / "done-topic").is_dir()
+
+
+class TestArchiveSopSpecPath:
+    """Lightweight checks that archive.md documents $spec_path updates."""
+
+    def test_sop_updates_spec_path_after_archive_and_restore(self):
+        content = ARCHIVE_SOP.read_text(encoding="utf-8")
+        assert "Archived: <name> -> <dest>" in content
+        assert "Restored: <name> -> <dest>" in content
+        assert "$spec_path" in content
+        assert "pre-move" in content or "specs/..." in content
+
+
+class TestDebugArchiveCliRegression:
+    """CLI regressions: debug=true archive must not leave specs stubs."""
+
+    def _setup_repo(self, tmp_path, *, debug: bool = True):
+        subprocess.run(
+            ["git", "init", str(tmp_path)], capture_output=True, check=True
+        )
+        lines = ['[spex]', 'spex_root = ".spex"']
+        # Always set debug explicitly so a developer ~/.spex.toml with
+        # debug=true cannot leak into subprocess integration tests.
+        lines.append("debug = true" if debug else "debug = false")
+        (tmp_path / ".spex.toml").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8"
+        )
+        spex_root = tmp_path / ".spex"
+        (spex_root / "specs").mkdir(parents=True)
+        (spex_root / "archives").mkdir(parents=True)
+        return spex_root
+
+    def _run_spex(self, tmp_path, *args):
+        return subprocess.run(
+            [sys.executable, SPEX_SCRIPT, *args],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+
+    def test_debug_archive_name_no_specs_stub(self, tmp_path):
+        """debug=true + archive --name: specs gone; tee in archives."""
+        spex_root = self._setup_repo(tmp_path, debug=True)
+        spec_name = "2026-08-05-09-44-cli-archive-debug"
+        spec_dir = spex_root / "specs" / spec_name
+        _write_todo(spec_dir, [_make_task("1")])
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": spec_name, "workdir": str(tmp_path)}),
+            encoding="utf-8",
+        )
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+        (spec_dir / DEBUG_LOG_NAME).write_text(
+            "===== pre-archive =====\n", encoding="utf-8"
+        )
+
+        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+
+        assert result.returncode == 0, result.stderr
+        assert not (spex_root / "specs" / spec_name).exists()
+        archived = spex_root / "archives" / spec_name
+        assert archived.is_dir()
+        assert (archived / "todo.json").is_file()
+        assert (archived / "meta.json").is_file()
+        assert (archived / "spec.md").is_file()
+        debug_log = archived / DEBUG_LOG_NAME
+        assert debug_log.is_file()
+        content = debug_log.read_text(encoding="utf-8")
+        assert "===== pre-archive =====\n" in content
+        assert f"argv: spex archive --name {spec_name}" in content
+        assert "===== END exit=0 duration_ms=" in content
+        # No debug-only stub recreated under specs/
+        specs_entries = list((spex_root / "specs").iterdir())
+        assert specs_entries == []
+
+    def test_debug_archive_cleans_orphan_stub_no_suffix(self, tmp_path):
+        """Pre-seeded debug stub + archives sibling: stub removed, no -2."""
+        spex_root = self._setup_repo(tmp_path, debug=True)
+        spec_name = "my-topic"
+        stub = spex_root / "specs" / spec_name
+        stub.mkdir(parents=True)
+        (stub / DEBUG_LOG_NAME).write_text("orphan tee\n", encoding="utf-8")
+        archived = spex_root / "archives" / spec_name
+        archived.mkdir(parents=True)
+        (archived / "todo.json").write_text(
+            json.dumps([_make_task("1")]), encoding="utf-8"
+        )
+        (archived / "meta.json").write_text(
+            json.dumps({"name": spec_name}), encoding="utf-8"
+        )
+        (archived / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+
+        assert result.returncode == 0, result.stderr
+        assert not stub.exists()
+        assert archived.is_dir()
+        assert not (spex_root / "archives" / f"{spec_name}-2").exists()
+        assert (archived / "todo.json").is_file()
