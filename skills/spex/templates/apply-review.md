@@ -1,5 +1,5 @@
 ---
-version: "0.1.6"
+version: "0.1.7"
 required:
   - spec_content_concise
   - current_task_description
@@ -26,16 +26,17 @@ rounds are allowed for a step; do not attempt to advance the round.
 ## review-helper CLI cheat sheet
 
 ```text
-FORBIDDEN: review-helper list | get | status | next | bump-round | init
+REQUIRED: --name <spec> on every call; --step S for append/show/list/get
+FORBIDDEN for this review agent: status | next | bump-round | init
 ALLOWED:  append --step S --commit SHA --id … …
 OPTIONAL: show --step S --id ID --json
+          (aliases: list → show summary; get → show --id)
 ```
 
-Do **not** probe with `list`/`get`, and do **not** call
-`status`/`next`/`bump-round`/`init` — the orchestrator owns those.
-Record findings with `append` only; use
-`show --step {{ step_id }} --id <id> --json` only if you must
-inspect an existing finding.
+Do **not** call `status` / `next` / `bump-round` / `init` — the
+orchestrator owns those. Record findings with `append` only; use
+`show --step {{ step_id }} --id <id> --json` (or `get`) only if you
+must inspect an existing finding.
 
 ## Review Round
 

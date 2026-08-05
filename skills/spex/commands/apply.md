@@ -152,8 +152,9 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 - Load and follow `references/apply-review-loop.md` exactly (includes
   single-prompt rules for `$review_prompt` / `$fix_prompt`;
-  review-helper CLI: `status --json` / `next` / `show [--id]` only —
-  no `get`/`list`; reuse last status JSON — do not re-status right
+  review-helper always needs `--name`; most subcommands need
+  `--step`; prefer `status` / `next` / `show` — `list`/`get` are
+  show aliases; reuse last status JSON — do not re-status right
   after 6b or after a successful `bump-round`)
 - IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
   verification fails after relaunch) -> end entire `/spex apply`

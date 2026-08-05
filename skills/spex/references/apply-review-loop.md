@@ -78,13 +78,19 @@ round.
 - **review-helper CLI (required):**
 
   ```text
-  FORBIDDEN: review-helper list | get
-  USE: status --json | next | show --step S [--id ID]
+  REQUIRED: --name <spec> on every invocation
+  REQUIRED: --step <id> for most subcommands (status, next, show,
+            append, edit, bump-round, set-commit, list, get)
+  USE:      status --json | next | show --step S [--id ID]
+  ALIASES:  list → show summary; get → show --id
   ```
 
-  Do **not** probe with `list` or `get`. To inspect one finding
-  (e.g. verify `completed_at`), use
-  `show --step "$current_task_id" --id "$finding_id" --json`.
+  `--name` is always required. Prefer `status` / `next` / `show` at
+  the steps below. `list` and `get` are supported aliases of `show`
+  (compat); use them only with `--name` and `--step` as needed.
+  To inspect one finding (e.g. verify `completed_at`), use
+  `show --step "$current_task_id" --id "$finding_id" --json`
+  (or `get --step … --id …`).
 
 - **Avoid redundant status / next / show (required):** Call each
   helper only at the step that needs it. Reuse the last parsed JSON
@@ -94,8 +100,8 @@ round.
   |------|---------------|--------|
   | 6-entry | `status --json` once | re-status before routing |
   | 6b (after review) | `status --json` once | re-status before 6c / Phase 7 |
-  | 6c-i (pick finding) | `next` only | `status` / `list` / `get` |
-  | 6c-ii (verify fix) | `show --id` once | `status` / `list` / `get` |
+  | 6c-i (pick finding) | `next` only | `status` (reuse prior JSON) |
+  | 6c-ii (verify fix) | `show --id` once | `status` |
   | 6c-iii (`next` null) | `status --json` once | re-status after bump-round |
 
   Never re-run `status --json` immediately after an unchanged status
@@ -210,7 +216,7 @@ every single finding.**
 
 ### 6c-i. Pick next open finding
 
-Use `next` only — do **not** call `status`, `list`, or `get` here:
+Use `next` only — do **not** call `status` here:
 
 ```bash
 $spex_skill_dir/scripts/spex review-helper --name $spec_name \
