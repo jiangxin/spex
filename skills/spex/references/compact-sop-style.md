@@ -111,10 +111,18 @@ Style rules:
 - NEVER skip / shortcut command SOP
 - ALWAYS load full command markdown; follow every Phase
 
+### Credential Safety
+- Redact secrets in user text BEFORE assigning `$prompt`
+- Secrets include: API keys, passwords, tokens, private keys,
+  connection strings that embed credentials
+- Replace secret values with placeholders (`[REDACTED]` or env var names)
+- NEVER emit secret values in replies, logs, spec.md, todo.json,
+  meta.json, or debug.log
+
 ### Free-form Intent Inference
 | Heuristic | Suggest |
 | ... unchanged mapping ... |
-- IF confidence >= 90% -> route with `$prompt`
+- IF confidence >= 90% -> route with redacted `$prompt`
 - ELSE IF ambiguous -> ask user to confirm
 - ELSE too vague -> show Supported Commands -> STOP
 ```
