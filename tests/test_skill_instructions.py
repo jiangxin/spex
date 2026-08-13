@@ -5,6 +5,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_MD = REPO_ROOT / "skills" / "spex" / "SKILL.md"
 COMPACT_SOP = REPO_ROOT / "skills" / "spex" / "references" / "compact-sop-style.md"
+CREATE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "create.md"
+MODIFY_MD = REPO_ROOT / "skills" / "spex" / "commands" / "modify.md"
 
 FORBIDDEN_PHRASES = ("verbatim", "forward user text", "as-is", "in full")
 
@@ -21,6 +23,21 @@ def _skill_body() -> str:
         if end != -1:
             return text[end + 4 :]
     return text
+
+
+def _h3_section(text: str, title: str) -> str:
+    """Return a ### section (heading included) until the next ### heading."""
+    marker = f"### {title}"
+    start = text.find(marker)
+    assert start != -1, f"missing ### {title}"
+    nxt = text.find("\n### ", start + 1)
+    return text[start:] if nxt == -1 else text[start:nxt]
+
+
+def _index(text: str, needle: str) -> int:
+    idx = text.lower().find(needle.lower())
+    assert idx != -1, f"missing {needle!r}"
+    return idx
 
 
 class TestSkillCredentialSafety:
@@ -68,3 +85,31 @@ class TestCompactSopRouterSkeleton:
         text = _read(COMPACT_SOP)
         assert "redact" in text.lower()
         assert "route with redacted `$prompt`" in text
+
+
+class TestCommandPersistRedact:
+    def test_create_redacts_requirement_before_prepare_spec(self):
+        text = _read(CREATE_MD)
+        phase2 = _h3_section(text, "Phase 2: Clarify Requirement")
+        _index(phase2, "redact secrets in `$requirement`")
+        redact_at = _index(text, "redact secrets in `$requirement`")
+        persist_at = _index(text, "create-helper prepare-spec")
+        assert redact_at < persist_at, (
+            "create.md must redact $requirement before prepare-spec persist"
+        )
+
+    def test_modify_redacts_request_in_phase_3_before_meta_helper(self):
+        phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
+        redact_at = _index(phase3, "redact secrets in `$request`")
+        helper_at = _index(phase3, "meta-helper")
+        assert redact_at < helper_at, (
+            "modify.md Phase 3 must redact $request before meta-helper persist"
+        )
+        first_bullet = next(
+            (line for line in phase3.splitlines() if line.startswith("- ")),
+            "",
+        )
+        assert "redact secrets in `$request`" in first_bullet.lower(), (
+            "redact $request must be the first Phase 3 instruction "
+            "(runs when clarification is skipped)"
+        )

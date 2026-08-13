@@ -77,7 +77,8 @@ $spex_skill_dir/scripts/spex create-helper precheck
   - Ask all questions in one message (not back-and-forth)
   - Limit 2–4 questions; prioritize those most affecting design
 - After clarification (or none needed) -> `$requirement` ← complete
-  unambiguous requirement -> Phase 3
+  unambiguous requirement (including replies)
+- Redact secrets in `$requirement` before persist -> Phase 3
 
 ### Phase 3: Generate Name and Description
 
@@ -147,7 +148,7 @@ EOF
 - Using `$spec_template`, create `$spec_path/spec.md` in same language
   as user's requirement. Replace placeholder sections
   (`<!-- Replace this section with ... -->`) with analysis/design.
-  Fill "User Clarification" from Phase 2. Keep Constraints as-is.
+  Fill "User Clarification" from redacted `$requirement`. Keep Constraints as-is.
   Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 
 ### Phase 6: Plan Implementation Steps
