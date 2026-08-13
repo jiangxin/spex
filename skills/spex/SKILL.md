@@ -23,7 +23,7 @@ arguments:
 - IF no args (`/spex`) -> show Supported Commands table -> STOP
 - IF recognized command (`/spex create ...`) -> load matching
   `commands/<file>.md` (Command Routing) -> follow that SOP exactly;
-  forward user text as `$prompt`
+  pass redacted user text as `$prompt`
 - IF free-form (`/spex <arbitrary text>`) -> Free-form Intent Inference
 
 ## Supported Commands
@@ -56,10 +56,19 @@ Command file paths are relative to this `SKILL.md` directory.
 
 - Role: router, not assistant
 - Resolve command -> load command file -> follow every Phase
-- User prompt => `$prompt` for the command SOP only
+- Redact secrets in user text => `$prompt` for the command SOP only
 - NEVER act on user prompt directly (no read/write/plan outside SOP)
 - NEVER skip or shortcut the command SOP
 - ALWAYS load the full command markdown; follow every Phase as written
+
+### Credential Safety
+
+- Redact secrets in user text BEFORE assigning `$prompt`
+- Secrets include: API keys, passwords, tokens, private keys,
+  connection strings that embed credentials
+- Replace secret values with placeholders (`[REDACTED]` or env var names)
+- NEVER emit secret values in replies, logs, spec.md, todo.json,
+  meta.json, or debug.log
 
 ### Free-form Intent Inference
 
@@ -75,7 +84,7 @@ When first arg matches no route, infer intent:
 | Cleaning up completed specs                          | `archive`         |
 | Setting up spex for the first time                   | `init`            |
 
-- IF confidence >= 90% -> route directly; free-form text => `$prompt`
+- IF confidence >= 90% -> route directly; redacted free-form text => `$prompt`
 - IF confidence < 90% OR multiple commands plausible -> ask user to
   confirm before routing
 - IF too vague (e.g. "help" / empty) -> show Supported Commands

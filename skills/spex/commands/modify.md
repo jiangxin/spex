@@ -70,6 +70,7 @@ $spex_skill_dir/scripts/spex list --json "$spec_name"
 
 ### Phase 3: Save Request
 
+- Redact secrets in `$request` before persist
 - Record modification request in `meta.json`:
 
 ```bash

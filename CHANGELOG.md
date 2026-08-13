@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+- **W007 credential handling** — skill router instructions redact
+  secrets before assigning `$prompt`, so user text is not passed
+  through unchanged.
+
 ## 0.7.0
 
 ### Refactoring
