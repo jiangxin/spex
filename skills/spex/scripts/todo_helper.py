@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import string
 import subprocess
 import sys
 import tempfile
@@ -219,7 +220,7 @@ def _sha_from_commit_title(commit_title) -> str:
     prefix = str(commit_title).split(":", 1)[0].strip()
     if (
         4 <= len(prefix) <= 40
-        and all(c in "0123456789abcdef" for c in prefix.lower())
+        and all(c in string.hexdigits for c in prefix)
     ):
         return prefix
     return ""
