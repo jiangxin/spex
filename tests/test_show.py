@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import common as spex_common
 import pytest
@@ -429,6 +430,49 @@ class TestPagedOutput:
         _paged_output("paged content")
         out = capfd.readouterr().out
         assert "paged content" in out
+
+    def test_default_pager_argv(self, monkeypatch):
+        """Default PAGER is split into ['less', '-R'] without a shell."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.delenv("PAGER", raising=False)
+        from show import _paged_output
+        mock_proc = MagicMock()
+        with patch("show.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            _paged_output("content")
+        args, kwargs = mock_popen.call_args
+        assert args[0] == ["less", "-R"]
+        assert isinstance(args[0], list)
+        assert kwargs.get("shell", False) is False
+        assert kwargs.get("stdin") == subprocess.PIPE
+        mock_proc.communicate.assert_called_once()
+
+    def test_empty_pager_falls_back_to_less(self, monkeypatch):
+        """Empty PAGER= falls back to ['less', '-R'] without a shell."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.setenv("PAGER", "")
+        from show import _paged_output
+        mock_proc = MagicMock()
+        with patch("show.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            _paged_output("content")
+        args, kwargs = mock_popen.call_args
+        assert args[0] == ["less", "-R"]
+        assert isinstance(args[0], list)
+        assert kwargs.get("shell", False) is False
+        mock_proc.communicate.assert_called_once()
+
+    def test_malicious_pager_not_shelled(self, monkeypatch):
+        """Malicious PAGER is passed as argv; shell is not True."""
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.setenv("PAGER", "less; rm -rf /")
+        from show import _paged_output
+        mock_proc = MagicMock()
+        with patch("show.subprocess.Popen", return_value=mock_proc) as mock_popen:
+            _paged_output("content")
+        args, kwargs = mock_popen.call_args
+        assert args[0] == ["less;", "rm", "-rf", "/"]
+        assert isinstance(args[0], list)
+        assert kwargs.get("shell", False) is not True
+        mock_proc.communicate.assert_called_once()
 
 
 class TestMainBriefAndVerbose:

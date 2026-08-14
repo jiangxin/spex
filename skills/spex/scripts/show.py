@@ -13,6 +13,7 @@ from common import (
     format_spec,
     resolve_spec,
     select_spec_interactive,
+    split_command,
     strip_front_matter,
 )
 
@@ -22,9 +23,10 @@ def _paged_output(text):
     if not sys.stdout.isatty():
         print(text)
         return
-    pager = os.environ.get("PAGER", "less -R")
+    pager = os.environ.get("PAGER") or "less -R"
+    argv = split_command(pager)
     try:
-        proc = subprocess.Popen(pager, shell=True, stdin=subprocess.PIPE)
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE)
         proc.communicate(input=text.encode())
     except (BrokenPipeError, OSError):
         print(text)
