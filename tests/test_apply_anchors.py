@@ -127,7 +127,12 @@ class TestPromptApplyAnchors:
             output=None,
             commit_sha="abc1234",
         )
+
+        class _Ctx:
+            config = {"step_review": True}
+
         with (
+            patch("prompt.get_project_context", return_value=_Ctx()),
             patch("prompt._build_metadata", return_value=metadata),
             patch("prompt._enrich_review_metadata", return_value=metadata),
             patch("prompt.render_prompt", return_value="REVIEW"),

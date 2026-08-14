@@ -183,6 +183,7 @@ Display spex configuration, including Git info, paths, config file list, and spe
   branch_management = true
   main_branch_name  =
   submit_method     = merge
+  step_review       = true
 
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml

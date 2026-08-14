@@ -7,19 +7,21 @@ Load and follow this document exactly for Phase 6.
 
 ```mermaid
 flowchart TD
-  entry[6-entry status gate] -->|needs_fix| fix[6c fix loop]
-  entry -->|else| review[6a review sub-agent]
-  review --> check[6b check status]
-  check -->|no open findings| phase7[Phase 7]
-  check -->|open_major eq 0 and round ge 3| phase7
-  check -->|needs_fix| fix
-  fix --> pick[6c-i next finding]
-  pick -->|has id| oneFix[6c-ii fix amend]
-  oneFix --> pick
-  pick -->|id null| bumpOrDone[6c-iii]
-  bumpOrDone -->|round lt 3| bump[bump-round then 6a]
-  bump --> review
-  bumpOrDone -->|round ge 3| phase7
+    entry[6-entry status gate] -->|needs_fix and step_review false| phase7[Phase 7]
+    entry -->|needs_fix| fix[6c fix loop]
+    entry -->|else| review[6a review sub-agent]
+    review -->|skipped| phase7
+    review --> check[6b check status]
+    check -->|no open findings| phase7
+    check -->|open_major eq 0 and round ge 3| phase7
+    check -->|needs_fix| fix
+    fix --> pick[6c-i next finding]
+    pick -->|has id| oneFix[6c-ii fix amend]
+    oneFix --> pick
+    pick -->|id null| bumpOrDone[6c-iii]
+    bumpOrDone -->|round lt 3| bump[bump-round then 6a]
+    bump --> review
+    bumpOrDone -->|round ge 3| phase7
 ```
 
 ## Round Model
@@ -36,11 +38,13 @@ flowchart TD
      fixes, if `open_major == 0`, proceed to Phase 7.
 5. **STOP** is only for abnormal failures (e.g. fix/amend
    verification fails after relaunch). Do not STOP merely because
-   round 3 found majors. If an earlier invocation was interrupted
-   while `needs_fix` is still true, a later `/spex apply` or
-   `/spex apply-one-step` resumes via Phase 3 with
-   `resume_phase=review`, then **6-entry** routes to **6c** (even
-   at `round == 3`). Never bump or re-review past round 3.
+   round 3 found majors. `"skipped": true` from `prompt
+   apply-review` is **not** a STOP — proceed to Phase 7. If an
+   earlier invocation was interrupted while `needs_fix` is still
+   true, a later `/spex apply` or `/spex apply-one-step` resumes
+   via Phase 3 with `resume_phase=review`, then **6-entry** routes
+   to **6c** (even at `round == 3`) unless `step_review` is false
+   (then Phase 7). Never bump or re-review past round 3.
 
 ## Orchestration Rules (required)
 
@@ -143,6 +147,11 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
 
 Then:
 
+- If `"needs_fix": true` **and** `step_review` is false (read
+  config, or probe `prompt apply-review --json` and parse
+  `"skipped": true`): do **not** enter **6c**. Refresh
+  `$commit_title` with `git log -1 --pretty="%h: %s"` and proceed
+  to Phase 7.
 - If `"needs_fix": true`: open findings remain — go to **6c**
   (fix loop). Do not start a new review first. (Allowed at any
   `round`, including 3, so resume can finish leftover findings.)
@@ -161,18 +170,26 @@ $spex_skill_dir/scripts/spex prompt apply-review --json \
   --name $spec_name --commit "$commit_sha"
 ```
 
-Parse the JSON object from stdout. Save `$review_prompt` from the
-`"prompt"` field and set `$review_prompt_round` from `"review_round"`
-in the same JSON (or from review `status --json` `"round"` if absent).
-If `$review_prompt` is already set **and**
-`$review_prompt_round` equals the current review round, reuse it —
-do **not** run `prompt apply-review` again. Otherwise clear
-`$review_prompt` and run the command above. Pass `$review_prompt`
-directly to a **review sub-agent** as
-its instructions — do not rewrite it via shell helpers. The review
-sub-agent must only record findings via
-`review-helper append` (with `--commit`) — it must not modify
-source code, must not call `init`, and must not call `bump-round`.
+Parse the JSON object from stdout.
+
+- If `"skipped": true`: do **not** launch a review sub-agent and
+  do **not** pass an empty `"prompt"` to one. This is **not** a
+  loop STOP. Refresh `$commit_title` with
+  `git log -1 --pretty="%h: %s"` and proceed to Phase 7.
+  Orchestration keys off `"skipped": true`.
+- ELSE: Save `$review_prompt` from the `"prompt"` field and set
+  `$review_prompt_round` from `"review_round"` in the same JSON
+  (or from review `status --json` `"round"` if absent).
+  If `$review_prompt` is already set **and**
+  `$review_prompt_round` equals the current review round, reuse
+  it — do **not** run `prompt apply-review` again. Otherwise
+  clear `$review_prompt` and run the command above. Pass
+  `$review_prompt` directly to a **review sub-agent** as its
+  instructions — do not rewrite it via shell helpers. The review
+  sub-agent must only record findings via
+  `review-helper append` (with `--commit`) — it must not modify
+  source code, must not call `init`, and must not call
+  `bump-round`.
 
 ## 6b. Check status (after a review pass)
 
