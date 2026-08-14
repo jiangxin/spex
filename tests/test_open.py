@@ -6,6 +6,16 @@ import pytest
 from open import main, open_directory, run_in_directory  # noqa: A004
 
 
+def _assert_argv_run(mock_run, expected_argv, cwd):
+    """Assert subprocess.run was called with an argv list and no shell."""
+    mock_run.assert_called_once()
+    args, kwargs = mock_run.call_args
+    assert args[0] == expected_argv
+    assert isinstance(args[0], list)
+    assert kwargs.get("cwd") == cwd
+    assert kwargs.get("shell", False) is False
+
+
 class TestOpenDirectory:
     """Tests for open_directory."""
 
@@ -163,13 +173,13 @@ class TestRunInDirectory:
     """Tests for run_in_directory."""
 
     def test_runs_command_in_directory(self, tmp_path):
-        """run_in_directory calls subprocess.run with shell=True and cwd."""
+        """run_in_directory calls subprocess.run with argv list and cwd."""
         mock_result = MagicMock(returncode=0)
         with patch("open.subprocess.run", return_value=mock_result) as mock_run:
             with pytest.raises(SystemExit) as exc_info:
                 run_in_directory(str(tmp_path), "ls -la")
 
-        mock_run.assert_called_once_with("ls -la", shell=True, cwd=str(tmp_path))
+        _assert_argv_run(mock_run, ["ls", "-la"], str(tmp_path))
         assert exc_info.value.code == 0
 
     def test_propagates_nonzero_exit_code(self, tmp_path):
@@ -180,6 +190,35 @@ class TestRunInDirectory:
                 run_in_directory(str(tmp_path), "false")
 
         assert exc_info.value.code == 42
+
+    def test_metacharacters_are_not_shell_interpreted(self, tmp_path):
+        """Metacharacters like ; are argv tokens, not shell operators."""
+        mock_result = MagicMock(returncode=0)
+        with patch("open.subprocess.run", return_value=mock_result) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_in_directory(str(tmp_path), "ls; echo pwned")
+
+        _assert_argv_run(mock_run, ["ls;", "echo", "pwned"], str(tmp_path))
+        assert exc_info.value.code == 0
+
+    @pytest.mark.parametrize("command", ["", "   ", "''"])
+    def test_empty_command_exits_without_subprocess(self, tmp_path, command):
+        """Empty, whitespace-only, or quoted-empty commands exit 1 without subprocess."""
+        with patch("open.subprocess.run") as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_in_directory(str(tmp_path), command)
+
+        assert exc_info.value.code == 1
+        mock_run.assert_not_called()
+
+    def test_unmatched_quote_exits_without_subprocess(self, tmp_path):
+        """Unparseable quotes exit 1 without calling subprocess."""
+        with patch("open.subprocess.run") as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_in_directory(str(tmp_path), "ls 'foo")
+
+        assert exc_info.value.code == 1
+        mock_run.assert_not_called()
 
 
 class TestRunOption:
@@ -225,7 +264,7 @@ class TestRunOption:
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
-        mock_run.assert_called_once_with("ls", shell=True, cwd=str(spec_dir))
+        _assert_argv_run(mock_run, ["ls"], str(spec_dir))
         assert exc_info.value.code == 0
 
     def test_run_no_topic_no_topics_runs_in_spex_root(self, tmp_path):
@@ -243,7 +282,7 @@ class TestRunOption:
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
-        mock_run.assert_called_once_with("ls", shell=True, cwd=spex_root)
+        _assert_argv_run(mock_run, ["ls"], spex_root)
         assert exc_info.value.code == 0
 
     def test_run_command_nonzero_exit_propagates(self, tmp_path):

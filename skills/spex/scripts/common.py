@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import sys
 from dataclasses import dataclass, field, fields
@@ -1186,6 +1187,35 @@ def filter_completed_todos(data):
         item for item in data
         if isinstance(item, dict) and item.get("completed_at")
     ]
+
+
+def split_command(command: str) -> list[str]:
+    """Split a command string into an argv list without invoking a shell.
+
+    Uses POSIX ``shlex.split``. Callers must pass the result to
+    ``subprocess`` with ``shell=False`` (the default). Does not execute
+    a process.
+
+    Args:
+        command: Command string such as ``"ls -la"`` or ``"less -R"``.
+
+    Returns:
+        Non-empty argv list whose first element is a non-empty token.
+
+    Exits with code 1 if the string is empty, unparseable, or yields
+    no executable name.
+    """
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError as exc:
+        logger.error("Error: invalid command: %s", exc)
+        sys.exit(1)
+
+    if not argv or not argv[0]:
+        logger.error("Error: empty command.")
+        sys.exit(1)
+
+    return argv
 
 
 if __name__ == "__main__":

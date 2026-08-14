@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from cli import ArgumentParser
-from common import get_spex_root, resolve_spec, select_spec_interactive
+from common import get_spex_root, resolve_spec, select_spec_interactive, split_command
 
 
 def open_directory(path):
@@ -31,13 +31,14 @@ def open_directory(path):
 
 
 def run_in_directory(path, command):
-    """Run a command in the given directory.
+    """Run a command as argv in the given directory.
 
     Args:
         path: Path string of the working directory.
-        command: Shell command string to execute.
+        command: Command string split into argv (not a shell script).
     """
-    result = subprocess.run(command, shell=True, cwd=path)
+    argv = split_command(command)
+    result = subprocess.run(argv, cwd=path)
     sys.exit(result.returncode)
 
 
@@ -83,7 +84,10 @@ def _build_parser() -> ArgumentParser:
         const="",
         default=None,
         metavar="COMMAND",
-        help="Run a command in the spec directory instead of opening it",
+        help=(
+            "Run COMMAND as argv in the spec directory instead of opening it "
+            "(not a shell script; use sh -c for pipes)"
+        ),
     )
     return parser
 
