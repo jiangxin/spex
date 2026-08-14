@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 from datetime import datetime
@@ -57,12 +58,62 @@ def _build_event_data(event_type: str, payload: dict, workdir=None) -> dict:
     }
 
 
+def _matching_hook_root(hook_path: Path, hook_name: str, workdir=None) -> Path | None:
+    """Return the configured hook root that produced ``hook_path``, if any."""
+    for root in _resolve_hook_roots(workdir):
+        if Path(os.path.normpath(hook_path)) == Path(
+            os.path.normpath(root / hook_name)
+        ):
+            return root
+    return None
+
+
+def _is_within_root(path: Path, root: Path) -> bool:
+    """Return True if ``path``'s realpath is inside ``root``'s realpath."""
+    real_path = os.path.realpath(path)
+    real_root = os.path.realpath(root)
+    try:
+        return os.path.commonpath([real_path, real_root]) == real_root
+    except ValueError:
+        return False
+
+
+def _is_safe_to_execute(hook_path: Path, hook_name: str, workdir=None) -> bool:
+    """Return True if the hook is confined to its hook root and not world-writable.
+
+    Unsafe hooks are skipped (treated as missing): log a warning and do not
+    execute. Pre-action must not ``sys.exit(1)`` for these cases.
+    """
+    matching_root = _matching_hook_root(hook_path, hook_name, workdir)
+    if matching_root is None or not _is_within_root(hook_path, matching_root):
+        logger.warning(
+            "Skipping hook '%s': resolved path is outside hook root",
+            hook_name,
+        )
+        return False
+
+    try:
+        mode = os.stat(hook_path).st_mode
+    except OSError as exc:
+        logger.warning("Skipping hook '%s': cannot stat file: %s", hook_name, exc)
+        return False
+    if mode & stat.S_IWOTH:
+        logger.warning(
+            "Skipping hook '%s': file is world-writable",
+            hook_name,
+        )
+        return False
+    return True
+
+
 def run_hook(
     hook_name: str, event_data: dict, workdir=None,
 ) -> subprocess.CompletedProcess | None:
     """Find and execute a hook, piping JSON event data to stdin.
 
     If no hook is found, returns None.
+    If the hook path escapes its hook root or is world-writable, logs a
+    warning and returns None (same as a missing hook).
     If the hook fails (non-zero exit), logs error to stderr.
 
     Args:
@@ -75,6 +126,9 @@ def run_hook(
     """
     hook_path = find_hook(hook_name, workdir)
     if hook_path is None:
+        return None
+
+    if not _is_safe_to_execute(hook_path, hook_name, workdir):
         return None
 
     payload = json.dumps(event_data)

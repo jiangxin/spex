@@ -684,3 +684,100 @@ class TestRunPreAction:
             hooks.run_pre_action(
                 "create", {}, str(tmp_path),
             )
+
+
+# ===================== hook path confinement =====================
+
+
+def _hook_project_ctx(tmp_path):
+    from config import ProjectContext
+
+    return ProjectContext(
+        cwd=tmp_path,
+        top_workdir=tmp_path,
+        main_worktree=tmp_path,
+        remote_url="",
+        branch="",
+        user_name="",
+        user_email="",
+        spex_tomls=[],
+        config={},
+        spex_root=str(tmp_path),
+        spex_roots=[str(tmp_path)],
+    )
+
+
+class TestHookConfinement:
+    def test_normal_0755_hook_still_runs(self, tmp_path):
+        """A mode 0755 hook inside the hook root is executed."""
+        from unittest.mock import patch
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        marker = tmp_path / "ran.txt"
+        hook_file = hooks_dir / "post-action"
+        hook_file.write_text(f"#!/bin/bash\necho ran > '{marker}'\n")
+        os.chmod(hook_file, 0o755)
+
+        ctx = _hook_project_ctx(tmp_path)
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "post-action",
+                {"event_type": "apply", "payload": {}},
+                str(tmp_path),
+            )
+
+        assert result is not None
+        assert result.returncode == 0
+        assert marker.read_text().strip() == "ran"
+
+    def test_symlink_outside_hook_root_not_executed(self, tmp_path):
+        """A symlink pointing outside the hook root is not executed."""
+        from unittest.mock import patch
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        marker = tmp_path / "pwned.txt"
+        evil = outside / "evil.sh"
+        evil.write_text(f"#!/bin/bash\necho pwned > '{marker}'\nexit 1\n")
+        os.chmod(evil, 0o755)
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hook_file = hooks_dir / "pre-action"
+        hook_file.symlink_to(evil)
+
+        ctx = _hook_project_ctx(tmp_path)
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "pre-action",
+                {"event_type": "create", "payload": {}},
+                str(tmp_path),
+            )
+            hooks.run_pre_action("create", {}, str(tmp_path))
+
+        assert result is None
+        assert not marker.exists()
+
+    def test_world_writable_hook_not_executed(self, tmp_path):
+        """A world-writable hook file is not executed."""
+        from unittest.mock import patch
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        marker = tmp_path / "ran.txt"
+        hook_file = hooks_dir / "pre-action"
+        hook_file.write_text(f"#!/bin/bash\necho ran > '{marker}'\nexit 1\n")
+        os.chmod(hook_file, 0o777)
+
+        ctx = _hook_project_ctx(tmp_path)
+        with patch("common.get_project_context", return_value=ctx):
+            result = hooks.run_hook(
+                "pre-action",
+                {"event_type": "create", "payload": {}},
+                str(tmp_path),
+            )
+            hooks.run_pre_action("create", {}, str(tmp_path))
+
+        assert result is None
+        assert not marker.exists()
