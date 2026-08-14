@@ -113,7 +113,7 @@ spex/
 
 Open your coding agent tool and type `/spex init`. This will:
 
-1. Install Python dependencies.
+1. Install only this skill's declared Python dependencies from the local skill directory, plus official PyPI when resolving those deps.
 2. Create the `~/.spex.toml` configuration file.
 3. Initialize the spec storage directory under `~/.spex/`.
 4. Sync template files.
@@ -158,6 +158,8 @@ After installing the skill, run `/spex init` in your coding agent to set up the 
 ### spex init
 
 In addition to performing the same setup as the `/spex init` skill command, it also accepts a path argument to create `.spex.toml` and a local `.spex/` directory at the root of the specified repository.
+
+Dependency installation uses only this skill's `pyproject.toml`: the local skill directory plus official PyPI (`pypi.org` / `files.pythonhosted.org` over https). It does not fetch or run arbitrary remote scripts.
 
 ### spex config
 
@@ -214,9 +216,18 @@ Display the detailed requirements, design, and development step plan for a given
 spex show [spec-name]
 ```
 
+When stdout is a TTY, `spex show` pages the output by starting `$PAGER` as argv (default `less -R`), not via `/bin/sh -c`. Set `PAGER=cat` to disable paging. Shell metacharacters in `PAGER` are not interpreted.
+
 ### spex open
 
 Open a specific spec directory, or the spex_root directory if no spec is specified.
+
+```bash
+spex open [spec-name]
+spex open [spec-name] --run "ls -la"
+```
+
+`--run COMMAND` executes `COMMAND` as argv in the spec directory, not via `/bin/sh -c`. Pipelines and `&&` are not implicit; use `sh -c '...'` if you need a shell.
 
 ### spex archive
 
@@ -393,7 +404,7 @@ Run `spex config` to see the `spex_roots` path list, pick a template directory (
 
 ### Customizing Hooks
 
-Spex supports pre-action and post-action hooks:
+Spex supports pre-action and post-action hooks. They are project-local (equivalent to git hooks): Spex runs a user-provided script from the project's spex_root, not remote code.
 
 - **pre-action** — Triggered before an operation. A non-zero exit code aborts the operation. Use for permission checks, environment validation, etc.
 - **post-action** — Triggered after an operation. Failures do not affect already-completed operations. Useful for notifications, telemetry, syncing with third-party platforms, etc.
@@ -407,7 +418,14 @@ The following operations trigger hooks:
 | `/spex apply` | apply | Before executing development steps | After all steps complete |
 | `/spex merge` | merge | Before merge execution | After merge completes |
 
-Each hook receives JSON-formatted event data via stdin. Hook scripts are placed in the `hooks/` directory under `spex_root`, with the filename matching the hook type. They must have execute permissions.
+Each hook receives JSON-formatted event data via stdin. Hook scripts must:
+
+- Live under the `hooks/` directory of a spex_root (filename is the hook type, e.g. `pre-action` or `post-action`)
+- Be executable
+- Not be a symlink that resolves outside that `hooks/` directory
+- Not be world-writable
+
+Unsafe hooks are skipped (treated as missing) with a warning.
 
 ---
 

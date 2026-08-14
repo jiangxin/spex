@@ -113,7 +113,7 @@ spex/
 
 打开 Coding Agent 工具，输入 `/spex init`。这将会：
 
-1. 安装 Python 依赖。
+1. 仅安装本 skill 在本地 skill 目录中声明的 Python 依赖（解析这些依赖时使用官方 PyPI）。
 2. 创建 `~/.spex.toml` 配置文件。
 3. 在 `~/.spex/` 目录下初始化规格存储目录。
 4. 同步模板文件。
@@ -158,6 +158,8 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 ### spex init
 
 除了执行与 `/spex init` 技能命令相同的设置之外，还支持以路径为参数，在指定仓库的根目录下创建 `.spex.toml` 和本地 `.spex/` 目录。
+
+依赖安装仅使用本 skill 的 `pyproject.toml`：本地 skill 目录加上官方 PyPI（仅 `pypi.org` / `files.pythonhosted.org` 的 https）。不会拉取或执行任意远程脚本。
 
 ### spex config
 
@@ -214,9 +216,18 @@ spex list --json             # JSON 格式输出
 spex show [spec-name]
 ```
 
+当 stdout 是 TTY 时，`spex show` 会把 `$PAGER` 作为 argv 启动（默认 `less -R`），而不是通过 `/bin/sh -c`。设置 `PAGER=cat` 可关闭分页。`PAGER` 中的 shell 元字符不会被解释。
+
 ### spex open
 
 打开某个 spec 目录，或者在没有选择具体 spec 时，打开 spex_root 目录。
+
+```bash
+spex open [spec-name]
+spex open [spec-name] --run "ls -la"
+```
+
+`--run COMMAND` 在 spec 目录中以 argv 执行 `COMMAND`，而不是通过 `/bin/sh -c`。管道和 `&&` 不会隐式生效；需要 shell 时请使用 `sh -c '...'`。
 
 ### spex archive
 
@@ -393,7 +404,7 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 ### 定制 hook
 
-Spex 支持 pre-action 和 post-action 两种 hook：
+Spex 支持 pre-action 和 post-action 两种 hook。它们是项目本地的，语义等同于 git hooks：Spex 执行的是 spex_root 中用户提供的脚本，而不是远程代码。
 
 - **pre-action** — 操作执行前触发。返回非零退出码时终止执行，可用于权限检查、环境验证。
 - **post-action** — 操作执行后触发。即使失败也不影响已完成的操作，适合通知、遥测、和三方平台同步等。
@@ -407,7 +418,14 @@ Spex 支持 pre-action 和 post-action 两种 hook：
 | `/spex apply` | apply | 开发步骤执行前 | 所有步骤完成后 |
 | `/spex merge` | merge | 合并执行前 | 合并完成后 |
 
-每个 hook 通过 stdin 接收 JSON 格式的事件数据。hook 脚本放置在 `spex_root` 下的 `hooks/` 目录中，文件名即为 hook 类型，需要设置可执行权限。
+每个 hook 通过 stdin 接收 JSON 格式的事件数据。hook 脚本必须：
+
+- 位于某个 spex_root 下的 `hooks/` 目录中（文件名即为 hook 类型，例如 `pre-action` 或 `post-action`）
+- 具有可执行权限
+- 不得是解析到该 `hooks/` 目录之外的符号链接
+- 不得对其他用户可写（world-writable）
+
+不安全的 hook 会被跳过（视为不存在）并记录警告。
 
 ---
 

@@ -7,6 +7,11 @@
 - **W007 credential handling** — skill router instructions redact
   secrets before assigning `$prompt`, so user text is not passed
   through unchanged.
+- **Local execution hardening** — confine remaining local execution:
+  hooks must live under spex_root `hooks/` (executable, no outside
+  symlinks, not world-writable); `open --run` and `show` start
+  argv rather than `/bin/sh -c`; `init` installs only this skill's
+  declared deps from the local skill dir plus official PyPI.
 
 ## 0.7.0
 
