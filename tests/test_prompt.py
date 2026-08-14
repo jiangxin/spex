@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 from common import clear_spex_root_cache
+from config import clear_config_cache
 
 
 def _init_git_repo(path):
@@ -75,8 +76,10 @@ def _setup_topic(tmp_path, spec_name, tasks):
 @pytest.fixture(autouse=True)
 def _clear_cache():
     clear_spex_root_cache()
+    clear_config_cache()
     yield
     clear_spex_root_cache()
+    clear_config_cache()
 
 
 @pytest.mark.slow
@@ -1921,6 +1924,126 @@ def _parse_json_stdout(out: str):
     return json.loads(out[start:])
 
 
+def _pin_step_review_enabled(monkeypatch):
+    """Force the apply-review path regardless of home/project TOML."""
+    import prompt as prompt_mod
+    from config import get_project_context as _real_get_project_context
+
+    def _wrapped(workdir=None):
+        ctx = _real_get_project_context(workdir)
+        ctx.config = {**dict(ctx.config), "step_review": True}
+        return ctx
+
+    monkeypatch.setattr(prompt_mod, "get_project_context", _wrapped)
+
+
+class TestApplyReviewStepReviewGate:
+    """step_review config short-circuits apply-review without rendering."""
+
+    def test_skipped_json_when_step_review_false(self, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        import prompt as prompt_mod
+
+        monkeypatch.setattr(
+            prompt_mod,
+            "get_project_context",
+            lambda: SimpleNamespace(config={"step_review": False}),
+        )
+        monkeypatch.setattr(
+            prompt_mod,
+            "_build_metadata",
+            lambda *a, **k: {"current_task_id": "step-1"},
+        )
+        args = SimpleNamespace(
+            name="test-topic", commit_sha="deadbeef", json_mode=True,
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            prompt_mod._do_apply_review(args)
+        assert exc_info.value.code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["skipped"] is True
+        assert data["step_review"] is False
+        assert data["prompt"] == ""
+        assert data["task_id"] == "step-1"
+        assert data["commit_sha"] == "deadbeef"
+        assert "skip_review" not in data
+
+    def test_skip_path_propagates_metadata_lookup_failure(
+        self, monkeypatch, capsys,
+    ):
+        from types import SimpleNamespace
+
+        import prompt as prompt_mod
+
+        monkeypatch.setattr(
+            prompt_mod,
+            "get_project_context",
+            lambda: SimpleNamespace(config={"step_review": False}),
+        )
+
+        def _fail(*a, **k):
+            raise SystemExit(1)
+
+        monkeypatch.setattr(prompt_mod, "_build_metadata", _fail)
+        args = SimpleNamespace(
+            name="missing-spec", commit_sha="deadbeef", json_mode=True,
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            prompt_mod._do_apply_review(args)
+        assert exc_info.value.code == 1
+        assert capsys.readouterr().out == ""
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            pytest.param({"step_review": True}, id="explicit-true"),
+            pytest.param({}, id="unset-defaults-true"),
+        ],
+    )
+    def test_renders_when_step_review_enabled(
+        self, monkeypatch, capsys, config,
+    ):
+        from types import SimpleNamespace
+
+        import prompt as prompt_mod
+
+        def _enrich(metadata, spec_name, commit_sha=None, finding_id=None):
+            metadata["commit_sha"] = commit_sha or ""
+            metadata["review_round"] = 1
+            metadata["review_file"] = ""
+            metadata["step_id"] = "step-1"
+            return metadata
+
+        monkeypatch.setattr(
+            prompt_mod,
+            "get_project_context",
+            lambda: SimpleNamespace(config=config),
+        )
+        monkeypatch.setattr(
+            prompt_mod,
+            "_build_metadata",
+            lambda *a, **k: {
+                "current_task_id": "step-1",
+                "current_task_description": "Work",
+            },
+        )
+        monkeypatch.setattr(prompt_mod, "_enrich_review_metadata", _enrich)
+        monkeypatch.setattr(
+            prompt_mod, "render_prompt",
+            lambda *a, **k: "Review Checklist full prompt",
+        )
+        args = SimpleNamespace(
+            name="", commit_sha="deadbeef", json_mode=True,
+        )
+        prompt_mod._do_apply_review(args)
+        data = json.loads(capsys.readouterr().out)
+        assert data.get("skipped") is not True
+        assert "skip_review" not in data
+        assert "Review Checklist" in data["prompt"]
+        assert data["commit_sha"] == "deadbeef"
+
+
 @pytest.mark.slow
 class TestApplyReviewAndFix:
     """Test apply-review and apply-fix prompt rendering."""
@@ -1935,6 +2058,7 @@ class TestApplyReviewAndFix:
         ]
         repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
 
         import review_helper
         from prompt import main
@@ -2019,6 +2143,7 @@ class TestApplyReviewAndFix:
         ]
         repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
 
         from prompt import main
 
@@ -2035,6 +2160,7 @@ class TestApplyReviewAndFix:
         ]
         repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
 
         from prompt import main
 
@@ -2045,3 +2171,72 @@ class TestApplyReviewAndFix:
         data = json.loads(capsys.readouterr().out)
         assert "prompt" in data
         assert data["commit_sha"] == "cafebabe"
+        assert data.get("skipped") is not True
+        assert "skip_review" not in data
+
+    def test_apply_review_skipped_when_step_review_false(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """step_review=false short-circuits apply-review with skipped JSON."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        (repo / ".spex.toml").write_text(
+            "[spex]\nstep_review = false\n", encoding="utf-8",
+        )
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.chdir(repo)
+
+        from prompt import main
+
+        clear_config_cache()
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "apply-review", "--name", "test-topic",
+                    "--commit", "deadbeef", "--json",
+                ])
+            assert exc_info.value.code == 0
+            data = _parse_json_stdout(capsys.readouterr().out)
+            assert data["skipped"] is True
+            assert data["step_review"] is False
+            assert data["prompt"] == ""
+            assert data["task_id"] == "step-1"
+            assert data["commit_sha"] == "deadbeef"
+            assert "skip_review" not in data
+            assert "Review Checklist" not in data["prompt"]
+        finally:
+            clear_config_cache()
+
+    def test_apply_review_renders_when_step_review_true(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """step_review=true keeps the full apply-review prompt payload."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        (repo / ".spex.toml").write_text(
+            "[spex]\nstep_review = true\n", encoding="utf-8",
+        )
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.chdir(repo)
+
+        from prompt import main
+
+        clear_config_cache()
+        try:
+            main([
+                "apply-review", "--name", "test-topic",
+                "--commit", "cafebabe", "--json",
+            ])
+            data = _parse_json_stdout(capsys.readouterr().out)
+            assert data.get("skipped") is not True
+            assert "skip_review" not in data
+            assert data["prompt"]
+            assert "Review Checklist" in data["prompt"]
+            assert data["commit_sha"] == "cafebabe"
+            assert data["task_id"] == "step-1"
+        finally:
+            clear_config_cache()

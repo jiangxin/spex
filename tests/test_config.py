@@ -312,6 +312,7 @@ class TestBranchConfig:
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
         assert result["debug"] is False
+        assert result["step_review"] is True
 
     def test_load_debug_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
@@ -324,6 +325,26 @@ class TestBranchConfig:
         result = load_config()
 
         assert result["debug"] is True
+
+    def test_load_step_review_false(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            '[spex]\nstep_review = false\n',
+            encoding="utf-8",
+        )
+
+        result = load_config()
+
+        assert result["step_review"] is False
+
+    def test_unset_step_review_equals_default_true(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
+
+        result = load_config()
+
+        assert result["step_review"] is True
 
 
 # ===================== _resolve_spex_roots =====================
@@ -793,12 +814,15 @@ class TestGenerateDefaultToml:
             "main_branch_name",
             "submit_method",
             "debug",
+            "step_review",
         ):
             assert f"# {key} = " in result
+        assert "skip_review" not in result
 
     def test_boolean_formatting(self):
         result = generate_default_toml()
         assert "# branch_management = true" in result
+        assert "# step_review = true" in result
         assert "True" not in result
 
     def test_string_formatting(self):
@@ -813,6 +837,9 @@ class TestGenerateDefaultToml:
         assert "# Create and manage branches for specs" in result
         assert "# Append script traces to <spec_dir>/debug.log" in result
         assert "# debug = false" in result
+        assert "# Review each apply step commit before marking it done" in result
+        assert "# step_review = true" in result
+        assert "skip_review" not in result
 
     def test_blank_line_separators(self):
         lines = generate_default_toml().splitlines()
@@ -880,6 +907,7 @@ class TestGenerateUpdatedToml:
             "main_branch_name": "develop",
             "submit_method": "pr",
             "debug": True,
+            "step_review": False,
         }
         result = generate_updated_toml(cfg)
         assert 'spex_root = "/my/root"' in result
@@ -887,11 +915,15 @@ class TestGenerateUpdatedToml:
         assert 'main_branch_name = "develop"' in result
         assert 'submit_method = "pr"' in result
         assert "debug = true" in result
+        assert "step_review = false" in result
+        assert "skip_review" not in result
 
     def test_comments_always_present(self):
         result = generate_updated_toml({"spex_root": "x"})
         assert "# Root directory for spec storage" in result
         assert "# Create and manage branches for specs" in result
+        assert "# Review each apply step commit before marking it done" in result
+        assert "skip_review" not in result
 
 
 # ===================== get_effective_user_config =====================

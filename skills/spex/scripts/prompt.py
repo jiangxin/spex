@@ -666,6 +666,21 @@ def _do_apply_review(args):
 
     from jinja2 import TemplateError
 
+    if get_project_context().config.get("step_review") is False:
+        payload = {
+            "prompt": "",
+            "skipped": True,
+            "step_review": False,
+            "task_id": "",
+            "commit_sha": args.commit_sha or "",
+            "review_round": 1,
+            "review_file": "",
+        }
+        metadata = _build_metadata("apply-review", args.name)
+        payload["task_id"] = metadata.get("current_task_id") or ""
+        print(json.dumps(payload))
+        sys.exit(0)
+
     try:
         metadata = _build_metadata("apply-review", args.name)
         if not metadata.get("current_task_description"):
