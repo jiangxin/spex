@@ -1,3 +1,4 @@
+import json
 import logging
 import subprocess
 import sys
@@ -1024,6 +1025,51 @@ class TestDepsSatisfied:
         assert mock_run.called
         cmd = mock_run.call_args[0][0]
         assert "pip" in cmd
+        from common import _get_skill_path
+        assert str(_get_skill_path()) in cmd
+        assert "--no-input" in cmd
+        assert "--no-deps" not in cmd
+        assert not any(
+            isinstance(a, str) and a.startswith(("http://", "https://"))
+            for a in cmd
+        )
+
+    def test_install_deps_uv_argv_local_skill_dir(self, monkeypatch):
+        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
+        monkeypatch.setattr(
+            "init.shutil.which",
+            lambda name: "/usr/bin/uv" if name == "uv" else None,
+        )
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+            if "-m" in cmd and "pip" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 1, stdout="", stderr="fail",
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("init.subprocess.run", side_effect=fake_run):
+            from init import _install_deps
+            assert _install_deps() is True
+        uv_cmd = calls[1]
+        from common import _get_skill_path
+        assert str(_get_skill_path()) in uv_cmd
+        assert "--no-input" in uv_cmd
+        assert "--no-deps" not in uv_cmd
+        assert not any(
+            isinstance(a, str) and a.startswith(("http://", "https://"))
+            for a in uv_cmd
+        )
+
+    def test_pyproject_pins_jinja2(self):
+        pyproject = (
+            Path(__file__).resolve().parent.parent
+            / "skills" / "spex" / "pyproject.toml"
+        )
+        content = pyproject.read_text(encoding="utf-8")
+        assert '"jinja2>=3.1.0"' in content
 
     def test_dry_run_would_skip_when_satisfied(self, caplog, monkeypatch):
         monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)
@@ -1162,3 +1208,154 @@ class TestInitModuleDirectExecution:
         )
         # Should exit 0 (initialized) or 1 (not initialized)
         assert result.returncode in (0, 1)
+
+
+_GOOD_WHEEL = (
+    "https://files.pythonhosted.org/packages/"
+    "jinja2-3.1.0-py3-none-any.whl"
+)
+_PYPI_WHEEL = "https://pypi.org/packages/jinja2-3.1.0-py3-none-any.whl"
+
+
+class TestWheelUrlAllowlist:
+    """URL checks for the wheel-download fallback."""
+
+    def test_allows_pythonhosted_https(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(_GOOD_WHEEL) is True
+
+    def test_allows_pypi_org_https(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(_PYPI_WHEEL) is True
+
+    def test_rejects_http(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(
+            "http://files.pythonhosted.org/packages/"
+            "jinja2-3.1.0-py3-none-any.whl"
+        ) is False
+
+    def test_rejects_unknown_host(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(
+            "https://evil.example/jinja2-3.1.0-py3-none-any.whl"
+        ) is False
+
+    def test_rejects_lookalike_host(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(
+            "https://files.pythonhosted.org.evil.example/x.whl"
+        ) is False
+
+    def test_rejects_userinfo(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url(
+            "https://user:pass@pypi.org/x.whl"
+        ) is False
+
+    def test_rejects_invalid_port(self):
+        from init import _is_allowed_wheel_url
+
+        assert _is_allowed_wheel_url("https://pypi.org:abc/x.whl") is False
+
+    def test_pypi_json_url_exact(self):
+        from init import _is_allowed_pypi_json_url
+
+        assert _is_allowed_pypi_json_url(
+            "https://pypi.org/pypi/jinja2/json", "jinja2",
+        ) is True
+        assert _is_allowed_pypi_json_url(
+            "http://pypi.org/pypi/jinja2/json", "jinja2",
+        ) is False
+        assert _is_allowed_pypi_json_url(
+            "https://pypi.org/pypi/jinja2/json", "evil",
+        ) is False
+        assert _is_allowed_pypi_json_url(
+            "https://pypi.org/pypi/jinja2/../evil/json", "jinja2/../evil",
+        ) is False
+
+
+class TestInstallSingleWheel:
+    """_install_single_wheel rejects untrusted URLs before downloading."""
+
+    @staticmethod
+    def _pypi_json(url):
+        return json.dumps({
+            "urls": [{
+                "filename": "jinja2-3.1.0-py3-none-any.whl",
+                "url": url,
+            }],
+        })
+
+    def test_rejects_bad_wheel_url_without_download(self):
+        from init import _install_single_wheel
+
+        bad = "https://evil.example/jinja2-3.1.0-py3-none-any.whl"
+        payload = self._pypi_json(bad)
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=payload, stderr="",
+            )
+
+        with patch("init.subprocess.run", side_effect=fake_run):
+            assert _install_single_wheel("jinja2", "/tmp/site") is False
+        assert len(calls) == 1
+        assert calls[0][-1] == "https://pypi.org/pypi/jinja2/json"
+        assert not any(bad in part for cmd in calls for part in cmd)
+
+    def test_rejects_http_wheel_url_without_download(self):
+        from init import _install_single_wheel
+
+        bad = (
+            "http://files.pythonhosted.org/packages/"
+            "jinja2-3.1.0-py3-none-any.whl"
+        )
+        payload = self._pypi_json(bad)
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=payload, stderr="",
+            )
+
+        with patch("init.subprocess.run", side_effect=fake_run):
+            assert _install_single_wheel("jinja2", "/tmp/site") is False
+        assert len(calls) == 1
+        assert not any(bad in part for cmd in calls for part in cmd)
+
+    def test_allowed_pythonhosted_url_is_fetched(self):
+        from init import _install_single_wheel
+
+        payload = self._pypi_json(_GOOD_WHEEL)
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+            if any("pypi.org/pypi/" in str(a) for a in cmd):
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=payload, stderr="",
+                )
+            return subprocess.CompletedProcess(cmd, 1)
+
+        with patch("init.subprocess.run", side_effect=fake_run):
+            _install_single_wheel("jinja2", "/tmp/site")
+        assert any(_GOOD_WHEEL in part for cmd in calls for part in cmd)
+
+    def test_rejects_invalid_package_name(self):
+        from init import _install_single_wheel
+
+        with patch("init.subprocess.run") as mock_run:
+            assert _install_single_wheel(
+                "jinja2/../../evil", "/tmp/site",
+            ) is False
+        mock_run.assert_not_called()
