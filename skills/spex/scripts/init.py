@@ -14,6 +14,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from cli import ArgumentParser
 from common import (
@@ -37,6 +38,10 @@ _PKG_TO_IMPORT = {
     "jinja2": "jinja2",
     "tomli": "tomli",
 }
+
+# PEP 508 / PyPI normalized names used when building the JSON API URL.
+_PKG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ALLOWED_WHEEL_HOSTS = frozenset({"pypi.org", "files.pythonhosted.org"})
 
 
 def is_initialized(workdir=None):
@@ -86,7 +91,9 @@ def _deps_satisfied(skill_dir: Path) -> bool:
 def _install_deps(verbose=False, dry_run=False):
     """Install Python dependencies from the skill's pyproject.toml.
 
-    Skips installation when required packages are already importable.
+    Installs only this skill's declared runtime deps from the local skill
+    directory (plus official PyPI when resolving those deps). Skips
+    installation when required packages are already importable.
     Otherwise tries multiple methods in order:
     1. pip install (standard)
     2. uv pip install (fast, if available)
@@ -110,9 +117,10 @@ def _install_deps(verbose=False, dry_run=False):
     if verbose:
         logger.info("Installing dependencies from %s ...", skill_dir)
 
-    # Method 1: pip install
+    # Method 1: pip install — local skill dir only, never a remote URL.
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", str(skill_dir), "--quiet"],
+        [sys.executable, "-m", "pip", "install", "--quiet", "--no-input",
+         str(skill_dir)],
         capture_output=True,
         text=True,
     )
@@ -128,7 +136,7 @@ def _install_deps(verbose=False, dry_run=False):
         if verbose:
             logger.info("Trying uv pip install ...")
         result = subprocess.run(
-            [uv, "pip", "install", str(skill_dir), "--quiet",
+            [uv, "pip", "install", "--quiet", "--no-input", str(skill_dir),
              "--system", "--python", sys.executable],
             capture_output=True,
             text=True,
@@ -208,9 +216,36 @@ def _parse_pyproject_deps(pyproject_path):
     return deps
 
 
+def _is_allowed_pypi_json_url(url, pkg):
+    """Return True if url is exactly https://pypi.org/pypi/{pkg}/json."""
+    if not pkg or not _PKG_NAME_RE.fullmatch(pkg):
+        return False
+    return url == f"https://pypi.org/pypi/{pkg}/json"
+
+
+def _is_allowed_wheel_url(url):
+    """Return True if url is an https PyPI / pythonhosted wheel URL."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        if parsed.username is not None or parsed.password is not None:
+            return False
+        host = (parsed.hostname or "").rstrip(".").lower()
+        if host not in _ALLOWED_WHEEL_HOSTS:
+            return False
+        if parsed.port not in (None, 443):
+            return False
+        return True
+    except (ValueError, UnicodeError):
+        return False
+
+
 def _install_single_wheel(pkg, site_packages, verbose=False):
-    """Download and install a single package via wheel from PyPI."""
+    """Download and install a single package via wheel from official PyPI."""
     pypi_url = f"https://pypi.org/pypi/{pkg}/json"
+    if not _is_allowed_pypi_json_url(pypi_url, pkg):
+        return False
     try:
         result = subprocess.run(
             ["curl", "-sL", pypi_url],
@@ -243,6 +278,8 @@ def _install_single_wheel(pkg, site_packages, verbose=False):
             wheel_url = f["url"]
 
     if wheel_url is None:
+        return False
+    if not _is_allowed_wheel_url(wheel_url):
         return False
 
     try:
