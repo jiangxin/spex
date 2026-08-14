@@ -147,7 +147,10 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   Phase 7 or Phase 8. Step stays incomplete (`completed_at` unset)
   so later `/spex apply-one-step` can resume via Phase 3 → Phase 6.
   Round-3 open majors are **not** a reason to STOP — loop must
-  enter 6c and fix them in this same invocation
+  enter 6c and fix them in this same invocation.
+  `step_review=false` is **not** an abnormal STOP: `prompt
+  apply-review` returns `"skipped": true`, the loop continues to
+  Phase 7, and this STOP clause does not apply
 
 ### Phase 7: Mark Task Complete
 

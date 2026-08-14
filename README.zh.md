@@ -183,6 +183,7 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
   branch_management = true
   main_branch_name  =
   submit_method     = merge
+  step_review       = true
 
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml

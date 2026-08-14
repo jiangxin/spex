@@ -7,6 +7,13 @@ SKILL_MD = REPO_ROOT / "skills" / "spex" / "SKILL.md"
 COMPACT_SOP = REPO_ROOT / "skills" / "spex" / "references" / "compact-sop-style.md"
 CREATE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "create.md"
 MODIFY_MD = REPO_ROOT / "skills" / "spex" / "commands" / "modify.md"
+APPLY_MD = REPO_ROOT / "skills" / "spex" / "commands" / "apply.md"
+APPLY_ONE_STEP_MD = REPO_ROOT / "skills" / "spex" / "commands" / "apply-one-step.md"
+APPLY_REVIEW_LOOP = (
+    REPO_ROOT / "skills" / "spex" / "references" / "apply-review-loop.md"
+)
+README_MD = REPO_ROOT / "README.md"
+README_ZH = REPO_ROOT / "README.zh.md"
 
 FORBIDDEN_PHRASES = ("verbatim", "forward user text", "as-is", "in full")
 
@@ -23,6 +30,15 @@ def _skill_body() -> str:
         if end != -1:
             return text[end + 4 :]
     return text
+
+
+def _h2_section(text: str, title: str) -> str:
+    """Return a ## section (heading included) until the next ## heading."""
+    marker = f"## {title}"
+    start = text.find(marker)
+    assert start != -1, f"missing ## {title}"
+    nxt = text.find("\n## ", start + 1)
+    return text[start:] if nxt == -1 else text[start:nxt]
 
 
 def _h3_section(text: str, title: str) -> str:
@@ -113,3 +129,67 @@ class TestCommandPersistRedact:
             "redact $request must be the first Phase 3 instruction "
             "(runs when clarification is skipped)"
         )
+
+
+SOP_STEP_REVIEW_PATHS = (
+    APPLY_REVIEW_LOOP,
+    APPLY_MD,
+    APPLY_ONE_STEP_MD,
+    README_MD,
+    README_ZH,
+)
+
+
+class TestApplyStepReviewSop:
+    def test_6a_skipped_continues_to_phase_7(self):
+        section = _h2_section(_read(APPLY_REVIEW_LOOP), "6a. Review sub-agent")
+        skipped_at = _index(section, '"skipped": true')
+        no_launch_at = _index(section, "do **not** launch a review sub-agent")
+        phase7_at = _index(section, "proceed to Phase 7")
+        assert skipped_at < no_launch_at < phase7_at
+        assert "loop STOP" in section
+        assert "not" in section.lower()
+
+    def test_6_entry_step_review_false_skips_6c(self):
+        section = _h2_section(
+            _read(APPLY_REVIEW_LOOP), "6-entry. Resume / continue gate"
+        )
+        _index(section, "`step_review` is false")
+        _index(section, "do **not** enter **6c**")
+        _index(section, "to Phase 7")
+        _index(section, '"skipped": true')
+
+    def test_loop_stop_is_abnormal_only(self):
+        text = _read(APPLY_REVIEW_LOOP)
+        round_model = _h2_section(text, "Round Model")
+        _index(round_model, "STOP** is only for abnormal failures")
+        _index(round_model, '"skipped": true')
+        _index(round_model, "is **not** a STOP")
+        _index(round_model, "proceed to Phase 7")
+
+    def test_apply_commands_exclude_step_review_false_from_stop(self):
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            phase6 = _h3_section(_read(path), "Phase 6: Review Loop")
+            _index(phase6, "Load and follow `references/apply-review-loop.md`")
+            _index(phase6, "abnormal failure")
+            _index(phase6, "`step_review=false` is **not** an abnormal STOP")
+            _index(phase6, '"skipped": true')
+            _index(phase6, "the loop continues to")
+            _index(phase6, "Phase 7")
+            assert "config get" not in phase6.lower()
+            assert "skip_review" not in phase6
+
+    def test_docs_name_step_review_not_skip_review(self):
+        for path in SOP_STEP_REVIEW_PATHS:
+            text = _read(path)
+            assert "skip_review" not in text, f"{path.name} must not name skip_review"
+            if path in (APPLY_REVIEW_LOOP, APPLY_MD, APPLY_ONE_STEP_MD):
+                assert "step_review" in text, f"{path.name} must name step_review"
+
+    def test_readme_lists_step_review_true(self):
+        for path in (README_MD, README_ZH):
+            text = _read(path)
+            assert "step_review       = true" in text, (
+                f"{path.name} config example must show step_review = true"
+            )
+            assert "skip_review" not in text
