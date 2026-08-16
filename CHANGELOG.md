@@ -1,17 +1,59 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
+
+### Features
+
+- **Step review skip** — add `step_review` config to skip the
+  apply-review phase for a step; skipped step review routes to Phase 7.
+- **Debug log tracing** — add `debug_log` module that tees output and
+  times each command; wired into the `spex` CLI main via `debug` config
+  key in `.spex.toml` schema. Emit APPLY timeline anchors on success;
+  summarize prompt stdout with `gap_ms` timing.
+- **Debug session helpers** — add `begin-session`/`end-session`
+  `create-helper` subcommands with merge-then-delete behavior and
+  exclusive log routing; hand off session on `prepare-spec`.
+- **Post-commit review loop** — apply steps now run a post-commit
+  review loop that fixes findings one at a time with per-finding
+  amends; `apply` resumes at review when `commit_title` is set; minor
+  findings run a fix loop with synced review commit SHA.
+- **Concise task rendering** — `apply-one-task` prompt uses concise
+  completed steps; `todo-helper show --id` and `review-helper show --id`
+  filter a single step.
+- **Init performance** — skip pip when dependencies are already
+  satisfied.
 
 ### Bug Fixes
 
-- **W007 credential handling** — skill router instructions redact
-  secrets before assigning `$prompt`, so user text is not passed
-  through unchanged.
+- **Secret redaction** — skill router instructions redact secrets
+  before assigning `$prompt` and before `create`/`modify` persist, so
+  user text is not passed through unchanged.
 - **Local execution hardening** — confine remaining local execution:
   hooks must live under spex_root `hooks/` (executable, no outside
   symlinks, not world-writable); `open --run` and `show` start
   argv rather than `/bin/sh -c`; `init` installs only this skill's
   declared deps from the local skill dir plus official PyPI.
+- **Snyk W008 false positive** — `todo-helper` uses `string.hexdigits`
+  instead of a custom hex constant.
+- **Archive debug stubs** — remove debug orphan stubs before moving
+  specs; update `$spec_path` after archive/restore.
+- **Config upgrade** — upgrade `.spex.toml` without wiping user keys.
+- **CLI consistency** — standardize `todo-helper` args to hyphens; use
+  `--step-name` instead of `--name` in modify-todo template; accept
+  `--name` after subcommand; alias `review-helper list`/`get` to stop
+  exit=2 probes.
+- **Apply review loop** — harden orchestration against shell
+  one-liners; keep running for round-3 majors; shared SOP with round
+  cap; create review files lazily on first finding append.
+- **CI** — install dev dependencies from the correct `pyproject.toml`
+  path.
+
+### Refactoring
+
+- **Compact skill markdown** — compress `SKILL.md` router and
+  create/modify/apply/apply-one-step/init/archive/merge command SOPs
+  into terse form; unify review/fix prompt context into one reference
+  section.
 
 ## 0.7.0
 
