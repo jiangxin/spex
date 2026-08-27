@@ -57,7 +57,12 @@ def validate_apply_branch(
     spex_branch = meta.spex_branch
 
     if spex_branch:
-        current = get_current_branch(cwd)
+        try:
+            current = get_current_branch(cwd)
+        except RuntimeError:
+            # Detached HEAD (e.g. review agent ran `git checkout <sha>`):
+            # treat as not on spex_branch and re-attach below.
+            current = None
         if current != spex_branch:
             if not branch_exists(spex_branch, cwd):
                 logger.error(
@@ -73,7 +78,12 @@ def validate_apply_branch(
                     f"{e.stderr.strip() or e}",
                 )
                 sys.exit(1)
-            logger.info(f"Switched to branch '{spex_branch}'.")
+            if current is None:
+                logger.info(
+                    f"Re-attached detached HEAD to branch '{spex_branch}'.",
+                )
+            else:
+                logger.info(f"Switched to branch '{spex_branch}'.")
         return
 
     spec_name = _extract_spec_name_for_branch(spec_dir, meta)
@@ -148,6 +158,27 @@ def cli_precheck(argv=None):
     _do_precheck(args)
 
 
+def _do_ensure_branch(args):
+    """Re-attach to spex_branch without running apply hooks.
+
+    Used after review/fix sub-agents that may have left detached HEAD
+    via ``git checkout <sha>``.
+    """
+    import common
+    import config as cfg
+
+    ctx = cfg.get_project_context()
+    spec_dir = common.resolve_spec_dir(args.name)
+    validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
+
+
+def cli_ensure_branch(argv=None):
+    """CLI: ensure HEAD is on the spec's spex_branch."""
+
+    args = _build_parser().parse(["ensure-branch"] + (argv or []))
+    _do_ensure_branch(args)
+
+
 def _do_post_action(args):
     """Run post-action hook, and show hint."""
     import common
@@ -212,6 +243,18 @@ def _build_parser():
         "--name", required=True, help="Spec name",
     )
 
+    p_ensure = subs.add_parser(
+        "ensure-branch",
+        description=(
+            "Ensure HEAD is on the spec's spex_branch "
+            "(re-attach if detached). Does not run apply hooks."
+        ),
+        help="Re-attach to spex_branch if detached",
+    )
+    p_ensure.add_argument(
+        "--name", required=True, help="Spec name",
+    )
+
     p_post = subs.add_parser(
         "post-action",
         description="Run post-action hook and show hint.",
@@ -236,5 +279,7 @@ def main(argv=None):
 
     if args.subcmd == "precheck":
         _do_precheck(args)
+    elif args.subcmd == "ensure-branch":
+        _do_ensure_branch(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)

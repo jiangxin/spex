@@ -193,3 +193,29 @@ class TestApplyStepReviewSop:
                 f"{path.name} config example must show step_review = true"
             )
             assert "skip_review" not in text
+
+
+class TestApplyReviewNoCheckout:
+    def test_review_loop_reattaches_after_review(self):
+        section = _h2_section(_read(APPLY_REVIEW_LOOP), "6a. Review sub-agent")
+        _index(section, "git checkout")
+        _index(section, "detached HEAD")
+        ensure_at = _index(section, "apply-helper ensure-branch")
+        six_b_at = _index(section, "Then continue to **6b**")
+        assert ensure_at < six_b_at
+
+    def test_review_loop_reattaches_after_fix(self):
+        text = _read(APPLY_REVIEW_LOOP)
+        section = _h3_section(text, "6c-ii. Fix + amend one finding")
+        _index(section, "apply-helper ensure-branch")
+        _index(section, "detached HEAD")
+
+    def test_apply_review_template_forbids_checkout(self):
+        path = (
+            REPO_ROOT / "skills" / "spex" / "templates" / "apply-review.md"
+        )
+        text = _read(path)
+        _index(text, "Git / HEAD safety")
+        _index(text, "FORBIDDEN")
+        _index(text, "git checkout")
+        _index(text, "detached HEAD")

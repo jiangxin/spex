@@ -36,7 +36,7 @@ Commands (LLM skill only — invoked via /spex, not directly):
 Internal commands (used by skill):
   apply-helper <subcommand>
                 Helper utilities for applying specs
-                (precheck, post-action)
+                (precheck, ensure-branch, post-action)
   create-helper <subcommand>
                 Helper utilities for spec creation
                 (precheck, prepare-spec)

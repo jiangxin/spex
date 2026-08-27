@@ -1,5 +1,5 @@
 ---
-version: "0.1.9"
+version: "0.1.10"
 required:
   - spec_content_concise
   - current_task_description
@@ -23,6 +23,14 @@ Act as a senior software engineer fixing **exactly one** review
 finding. Do NOT fix other findings. Do NOT start a new review.
 Do NOT call `bump-round` (round is capped at 3 by the orchestrator).
 After this one fix, amend immediately.
+
+## Git / HEAD safety (required)
+
+Stay on the current spex development branch. `{{ commit_sha }}`
+must already be `HEAD` — do **not** `git checkout` /
+`git switch` / `git reset` that SHA (even when it matches the tip;
+checkout-by-SHA leaves **detached HEAD**). Amend on the branch tip
+only.
 
 ## review-helper CLI cheat sheet
 
@@ -135,4 +143,6 @@ Brief notes on future commit steps to be executed one by one:
 ## Constraints
 
 - **Do NOT stage or commit any files under `{{ spex_root }}/`.**
+- Do NOT run `git checkout` / `git switch` / `git reset` (except
+  the amend itself via `git commit --amend`).
 {% endif %}

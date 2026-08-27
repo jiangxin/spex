@@ -188,8 +188,20 @@ Parse the JSON object from stdout.
   instructions — do not rewrite it via shell helpers. The review
   sub-agent must only record findings via
   `review-helper append` (with `--commit`) — it must not modify
-  source code, must not call `init`, and must not call
-  `bump-round`.
+  source code, must not call `init`, must not call
+  `bump-round`, and must **not** run `git checkout` /
+  `git switch` / `git reset` / `git stash` (checkout-by-SHA
+  leaves detached HEAD even when the SHA is the branch tip).
+
+After the review sub-agent returns, re-attach if it left detached
+HEAD (no apply hooks — safe mid-loop):
+
+```bash
+$spex_skill_dir/scripts/spex apply-helper ensure-branch \
+  --name $spec_name
+```
+
+Then continue to **6b**.
 
 ## 6b. Check status (after a review pass)
 
@@ -270,6 +282,8 @@ fix sub-agent** with `$fix_prompt`. That sub-agent must:
 - **Amend immediately** after marking that finding complete
 - **Not** mark other findings complete
 - **Not** call `bump-round`
+- **Not** run `git checkout` / `git switch` / `git reset`
+  (checkout-by-SHA detaches HEAD)
 
 Amend constraints:
 
@@ -289,6 +303,13 @@ After the fix sub-agent returns:
 
   If not, relaunch the fix sub-agent once with the same `$fix_prompt`;
   if it still fails, stop and report.
+- Re-attach if the fix agent left detached HEAD:
+
+  ```bash
+  $spex_skill_dir/scripts/spex apply-helper ensure-branch \
+    --name $spec_name
+  ```
+
 - Refresh the SHA after this amend with
   `git rev-parse --short HEAD`. Save to `$commit_sha` (required —
   the next finding amends this new HEAD).

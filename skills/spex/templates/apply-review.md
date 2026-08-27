@@ -1,5 +1,5 @@
 ---
-version: "0.1.7"
+version: "0.1.8"
 required:
   - spec_content_concise
   - current_task_description
@@ -22,6 +22,23 @@ modify any production or test source files. Only record findings via
 `bump-round`. The review file is created lazily on the first append —
 if you find nothing, do not create any review file. At most 3 review
 rounds are allowed for a step; do not attempt to advance the round.
+
+## Git / HEAD safety (required)
+
+HEAD is already on the spex development branch tip under review.
+`{{ commit_sha }}` identifies that tip — it is **not** an invitation
+to switch commits.
+
+- **FORBIDDEN:** `git checkout`, `git switch`, `git reset`,
+  `git stash` (or any command that changes HEAD / branch /
+  worktree state). Checking out a commit SHA — even when it is the
+  current tip — leaves a **detached HEAD** and breaks later apply
+  steps.
+- **ALLOWED:** read-only inspection —
+  `git show {{ commit_sha }}`, `git log -1 {{ commit_sha }}`,
+  `git diff {{ commit_sha }}^!`, `git rev-parse`.
+- Run lint and tests on the **current working tree** (already at
+  that commit). Do not check out to "get onto" the commit.
 
 ## review-helper CLI cheat sheet
 
@@ -58,15 +75,17 @@ Do NOT append minor issues.
 ## Review Checklist
 
 Perform all of the following against commit `{{ commit_sha }}`
-(`git show {{ commit_sha }}` / `git log -1`):
+using read-only git commands only (`git show {{ commit_sha }}` /
+`git log -1 {{ commit_sha }}` — never checkout):
 
 1. **Lint and tests**: Inspect the files changed in this commit.
-   Run the project's lint and the relevant unit tests. Record any
-   failures as **major**.
-2. **Commit message quality**: Read `git log -1 --format=%B`. The
-   message must explain **why** the change was made and the chosen
-   approach (not only a file list). Missing why / rationale →
-   **major** (or **minor** if only stylistic).
+   Run the project's lint and the relevant unit tests on the
+   current tree. Record any failures as **major**.
+2. **Commit message quality**: Read
+   `git log -1 --format=%B {{ commit_sha }}`. The message must
+   explain **why** the change was made and the chosen approach
+   (not only a file list). Missing why / rationale → **major**
+   (or **minor** if only stylistic).
 3. **Code review** of the diff:
    - Reinventing existing project utilities or patterns?
    - Are tests included with the production change? Is coverage
@@ -148,4 +167,5 @@ Brief notes on future commit steps to be executed one by one:
 
 - Do NOT stage or commit files under `{{ spex_root }}/`.
 - Do NOT modify source code in this review pass.
+- Do NOT run `git checkout` / `git switch` / `git reset` / `git stash`.
 {% endif %}

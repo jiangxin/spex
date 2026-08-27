@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from apply_helper import (
+    cli_ensure_branch,
     cli_post_action,
     cli_precheck,
     validate_apply_branch,
@@ -191,6 +192,29 @@ class TestValidateApplyBranch:
         validate_apply_branch({"branch_management": True}, tmp_path)
         mock_switch.assert_called_once_with("spex/feat", None)
 
+    @patch("branch.switch_branch")
+    @patch(
+        "branch.get_current_branch",
+        side_effect=RuntimeError("Currently in detached HEAD state, no branch name."),
+    )
+    @patch("branch.branch_exists", return_value=True)
+    @patch("common.is_spec_completed", return_value=False)
+    def test_detached_head_reattaches_to_spex_branch(
+        self, _completed, _exists, _curr, mock_switch, tmp_path, caplog,
+    ):
+        """Review agents that `git checkout <sha>` leave detached HEAD."""
+        import logging
+
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({"spex_branch": "spex/feat"}), encoding="utf-8"
+        )
+        with caplog.at_level(logging.INFO):
+            validate_apply_branch({"branch_management": True}, tmp_path)
+        mock_switch.assert_called_once_with("spex/feat", None)
+        assert "Re-attached detached HEAD" in caplog.text
+        assert "spex/feat" in caplog.text
+
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
     @patch("common.is_spec_completed", return_value=False)
@@ -276,6 +300,22 @@ class TestCliPrecheck:
         cli_precheck(["--name", "test-topic"])
         out = capsys.readouterr().out
         assert out == ""
+
+
+class TestCliEnsureBranch:
+    @patch("apply_helper.validate_apply_branch")
+    @patch("common.resolve_spec_dir")
+    @patch("config.get_project_context", return_value=_fake_context(
+        config={"branch_management": True}, top_workdir="/repo"))
+    def test_ensure_branch_calls_validate_only(
+        self, _ctx, mock_resolve, mock_validate, tmp_path,
+    ):
+        """ensure-branch re-attaches without firing apply hooks."""
+        mock_resolve.return_value = tmp_path
+        cli_ensure_branch(["--name", "test-topic"])
+        mock_validate.assert_called_once_with(
+            {"branch_management": True}, tmp_path, cwd="/repo",
+        )
 
 
 class TestCliPostAction:

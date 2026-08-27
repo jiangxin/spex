@@ -2081,6 +2081,9 @@ class TestApplyReviewAndFix:
         assert "review-helper" in data["prompt"]
         assert "--commit" in data["prompt"]
         assert "Do NOT call `review-helper init`" in data["prompt"]
+        assert "git checkout" in data["prompt"]
+        assert "detached HEAD" in data["prompt"]
+        assert "FORBIDDEN" in data["prompt"]
 
     def test_apply_fix_includes_single_finding(
         self, tmp_path, monkeypatch, capsys,
@@ -2133,6 +2136,8 @@ class TestApplyReviewAndFix:
         )
         assert data["task_id"] == "step-2"
         assert data["finding_id"] == "r1-f1"
+        assert "detached HEAD" in data["prompt"]
+        assert "git checkout" in data["prompt"]
 
     def test_apply_review_requires_commit_without_file(
         self, tmp_path, monkeypatch, caplog,

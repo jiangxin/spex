@@ -25,6 +25,10 @@
 
 ### Bug Fixes
 
+- **Review detached HEAD** — forbid review/fix agents from
+  `git checkout <sha>` (tip checkout still detaches HEAD); add
+  `apply-helper ensure-branch` and re-attach after review/fix
+  sub-agents; `validate_apply_branch` recovers from detached HEAD.
 - **Secret redaction** — skill router instructions redact secrets
   before assigning `$prompt` and before `create`/`modify` persist, so
   user text is not passed through unchanged.
