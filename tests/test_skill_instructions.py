@@ -219,3 +219,23 @@ class TestApplyReviewNoCheckout:
         _index(text, "FORBIDDEN")
         _index(text, "git checkout")
         _index(text, "detached HEAD")
+
+
+class TestCreatePhase8JsonResult:
+    """Lock create.md Phase 8 human summary + machine-result JSON contract."""
+
+    def test_phase8_has_human_summary_spec_line(self):
+        phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
+        assert "**Spec**:" in phase8
+
+    def test_phase8_has_fenced_json_with_required_keys(self):
+        phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
+        assert "```json" in phase8
+        assert '"spec_name"' in phase8
+        assert '"spec_path"' in phase8
+
+    def test_phase8_instructs_parsing_last_fenced_json(self):
+        phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
+        _index(phase8, "parse the last fenced")
+        _index(phase8, "json")
+        _index(phase8, "block")
