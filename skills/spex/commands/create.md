@@ -224,7 +224,7 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 
 ### Phase 8: Output
 
-- Display summary:
+- Display human summary:
 
 ```text
 **Spec**: `$spec_name`
@@ -233,6 +233,22 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 - Todo: `$spec_path/todo.json`
 - Meta: `$spec_path/meta.json`
 ```
+
+- Append exactly one trailing fenced `json` block (fields
+  `spec_name` and `spec_path` only):
+
+```json
+{
+  "spec_name": "$spec_name",
+  "spec_path": "$spec_path"
+}
+```
+
+- `spec_name` MUST include the `YYYY-MM-DD-HH-MM-` prefix (Phase 4
+  directory name); `spec_path` MUST be the absolute spec directory
+- Do NOT add other Phase 8 `json` fences or extra JSON fields
+- Callers that need a machine result MUST parse the last fenced
+  `json` block in the create command's final output
 
 ### Phase 9: STOP — Do NOT Implement
 
@@ -246,4 +262,6 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 
 - Writes: `$spec_path/spec.md`, `$spec_path/todo.json`,
   `$spec_path/meta.json` (+ optional `assets/`)
+- Phase 8: human summary + trailing fenced `json` (`spec_name`,
+  `spec_path`); callers MUST parse the last fenced `json` block
 - Phase 9 hard STOP — no application code
