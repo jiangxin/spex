@@ -61,25 +61,78 @@ class TestSkillCredentialSafety:
         body = _skill_body()
         assert "### Credential Safety" in body
 
-    def test_redact_before_assigning_prompt(self):
+    def test_redact_before_assigning_user_prompt(self):
         body = _skill_body()
-        assert "Redact secrets in user text BEFORE assigning `$prompt`" in body
+        assert (
+            "Redact secrets in user text BEFORE assigning `$user_prompt`"
+            in body
+        )
         assert "redact" in body.lower()
 
-    def test_prompt_assignment_lines_require_redact(self):
+    def test_user_prompt_assignment_lines_require_redact(self):
         body = _skill_body()
         assignment_lines = [
-            line for line in body.splitlines() if "$prompt" in line
+            line for line in body.splitlines() if "$user_prompt" in line
         ]
-        assert assignment_lines, "expected $prompt assignment lines in SKILL.md"
+        assert assignment_lines, (
+            "expected $user_prompt assignment lines in SKILL.md"
+        )
         for line in assignment_lines:
             assert "redact" in line.lower(), (
-                f"$prompt assignment must mention redact: {line!r}"
+                f"$user_prompt assignment must mention redact: {line!r}"
             )
         joined = "\n".join(assignment_lines)
-        assert "pass redacted user text as `$prompt`" in joined
-        assert "Redact secrets in user text => `$prompt`" in joined
-        assert "redacted free-form text => `$prompt`" in joined
+        assert "pass redacted user text as `$user_prompt`" in joined
+        assert "Redact secrets in user text => `$user_prompt`" in joined
+        assert "full redacted text => `$user_prompt`" in joined
+
+    def test_no_router_prompt_assignment_or_confidence(self):
+        body = _skill_body()
+        text = _read(SKILL_MD)
+        prompt_lines = [
+            line for line in body.splitlines() if "$prompt" in line
+        ]
+        assert not prompt_lines, (
+            "SKILL.md must not assign router $prompt; use $user_prompt: "
+            + repr(prompt_lines)
+        )
+        assert "confidence >= 90%" not in text
+        assert "confidence ≥ 90%" not in text
+        assert "$spex_skill_dir" in body
+        assert "absolute directory containing this `SKILL.md`" in body
+
+        # Front-matter free-form summary (no confidence threshold)
+        fm_end = text.find("\n---", 3)
+        assert fm_end != -1, "SKILL.md missing front-matter close"
+        front_matter = text[: fm_end + 4]
+        assert "confidence" not in front_matter.lower()
+        assert "explicit command verb/alias with single intent → route" in (
+            front_matter
+        )
+        assert (
+            "change-requirements uniquely tied to an active spec → modify"
+            in front_matter
+        )
+        assert "too vague → show Supported Commands" in front_matter
+        assert (
+            "otherwise list candidates and ask to confirm" in front_matter
+        )
+
+        # Ordered Decision rules in Free-form Intent Inference
+        rules = _h3_section(body, "Free-form Intent Inference")
+        r1 = _index(rules, "Explicit command alias/verb and single intent")
+        r2 = _index(rules, "uniquely ties to")
+        r3 = _index(rules, "Too short/vague")
+        r4 = _index(rules, "Otherwise OR multiple commands plausible")
+        assert "-> route" in rules[r1 : r1 + 80]
+        assert "`modify`" in rules[r2 : r2 + 120]
+        assert "Supported" in rules[r3 : r3 + 80]
+        assert "Commands" in rules[r3 : r3 + 120]
+        assert "list candidates" in rules[r4 : r4 + 120]
+        assert r1 < r2 < r3 < r4, (
+            "Decision rules must stay in order: "
+            "alias/verb -> modify -> vague -> candidates"
+        )
 
 
 class TestForbiddenForwardingLanguage:
@@ -97,10 +150,26 @@ class TestForbiddenForwardingLanguage:
 
 
 class TestCompactSopRouterSkeleton:
-    def test_mentions_redact(self):
+    def test_mentions_user_prompt_and_task_prompt(self):
         text = _read(COMPACT_SOP)
         assert "redact" in text.lower()
-        assert "route with redacted `$prompt`" in text
+        assert "`$user_prompt`" in text
+        assert "`$task_prompt`" in text
+        assert "BEFORE assigning `$user_prompt`" in text
+        assert "confidence >= 90%" not in text
+        assert "confidence ≥ 90%" not in text
+
+        # Free-form decision-rule skeleton (ordered anchors)
+        r1 = _index(text, "Explicit alias/verb + single intent -> route")
+        r2 = _index(
+            text, "Change-requirements uniquely tied to active spec -> `modify`"
+        )
+        r3 = _index(text, "Too vague -> show Supported Commands")
+        r4 = _index(text, "ELSE / multiple plausible -> list candidates")
+        assert r1 < r2 < r3 < r4, (
+            "Compact free-form rules must stay ordered: "
+            "alias/verb -> modify -> vague -> candidates"
+        )
 
 
 class TestCommandPersistRedact:

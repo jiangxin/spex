@@ -107,12 +107,16 @@ Style rules:
 
 ### Routing Discipline
 - Role: router, not assistant
+- `$spex_skill_dir` = absolute directory containing this SKILL.md
+- Redact secrets in user text => `$user_prompt` for command SOP
 - NEVER act on user prompt directly
 - NEVER skip / shortcut command SOP
 - ALWAYS load full command markdown; follow every Phase
+- Apply task implementation prompt variable: `$task_prompt`
+  (not `$user_prompt`)
 
 ### Credential Safety
-- Redact secrets in user text BEFORE assigning `$prompt`
+- Redact secrets in user text BEFORE assigning `$user_prompt`
 - Secrets include: API keys, passwords, tokens, private keys,
   connection strings that embed credentials
 - Replace secret values with placeholders (`[REDACTED]` or env var names)
@@ -122,9 +126,10 @@ Style rules:
 ### Free-form Intent Inference
 | Heuristic | Suggest |
 | ... unchanged mapping ... |
-- IF confidence >= 90% -> route with redacted `$prompt`
-- ELSE IF ambiguous -> ask user to confirm
-- ELSE too vague -> show Supported Commands -> STOP
+- Explicit alias/verb + single intent -> route; text => `$user_prompt`
+- Change-requirements uniquely tied to active spec -> `modify`
+- Too vague -> show Supported Commands -> STOP
+- ELSE / multiple plausible -> list candidates; ask to confirm
 ```
 
 Rules:
@@ -134,6 +139,8 @@ Rules:
 - Keep both tables complete (no dropped rows / renamed paths / changed
   aliases). Surrounding prose may tighten.
 - Body: terse Usage branches, Routing Discipline, Intent Inference.
+- Router user context is `$user_prompt`; apply task prompts use
+  `$task_prompt`.
 
 ### Command SOP — `commands/*.md`
 
