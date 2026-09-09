@@ -22,6 +22,7 @@ from common import (
 )
 from common import filter_completed_todos as _filter_completed_todos
 from config import get_project_context
+from todo_helper import normalize_skip_commit
 
 
 def validate_required_meta(content, metadata):
@@ -162,7 +163,8 @@ def _build_task_context(spec_dir, verbose_items=20):
 
     Returns:
         Dict with keys: spec_content, completed_tasks, current_task_id,
-        current_task_description, future_tasks.
+        current_task_description, current_commit_title, resume_phase,
+        skip_commit, future_tasks.
     """
     spec_path = spec_dir / "spec.md"
     if spec_path.exists():
@@ -199,6 +201,7 @@ def _build_task_context(spec_dir, verbose_items=20):
             resume_phase = (
                 "review" if current_commit_title.strip() else "implement"
             )
+            skip_commit = normalize_skip_commit(current.get("skip_commit"))
 
             future = undone[1:]
             if future:
@@ -227,6 +230,7 @@ def _build_task_context(spec_dir, verbose_items=20):
             current_task_description = ""
             current_commit_title = ""
             resume_phase = "implement"
+            skip_commit = normalize_skip_commit(None)
             future_tasks = ""
             future_tasks_concise = ""
     else:
@@ -236,6 +240,7 @@ def _build_task_context(spec_dir, verbose_items=20):
         current_task_description = ""
         current_commit_title = ""
         resume_phase = "implement"
+        skip_commit = normalize_skip_commit(None)
         future_tasks = ""
         future_tasks_concise = ""
 
@@ -248,6 +253,7 @@ def _build_task_context(spec_dir, verbose_items=20):
         "current_task_description": current_task_description,
         "current_commit_title": current_commit_title,
         "resume_phase": resume_phase,
+        "skip_commit": skip_commit,
         "future_tasks": future_tasks,
         "future_tasks_concise": future_tasks_concise,
     }
@@ -563,6 +569,7 @@ def _do_apply_one_task(args):
                 "all_done": True,
                 "resume_phase": "",
                 "commit_title": "",
+                "skip_commit": "",
             }))
             sys.exit(0)
 
@@ -599,6 +606,7 @@ def _do_apply_one_task(args):
             "prompt": rendered,
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
+            "skip_commit": metadata.get("skip_commit", "false"),
         }))
     else:
         _output_rendered(rendered, args.output)

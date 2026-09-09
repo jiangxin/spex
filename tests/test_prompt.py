@@ -32,17 +32,21 @@ def _make_task(
     details="Details here",
     completed=False,
     commit_title=None,
+    skip_commit=None,
 ):
     """Create a single todo item dict."""
     if commit_title is None:
         commit_title = f"commit for {task_id}" if completed else ""
-    return {
+    item = {
         "id": task_id,
         "name": name,
         "details": details,
         "completed_at": "2026-01-01T00:00:00Z" if completed else "",
         "commit_title": commit_title,
     }
+    if skip_commit is not None:
+        item["skip_commit"] = skip_commit
+    return item
 
 
 def _setup_topic(tmp_path, spec_name, tasks):
@@ -425,6 +429,7 @@ class TestJsonMode:
         assert "all_done" not in data
         assert data["resume_phase"] == "implement"
         assert data["commit_title"] == ""
+        assert data["skip_commit"] == "false"
 
     def test_prompt_json_resume_review(self, tmp_path, monkeypatch, capsys):
         """--json with commit_title set emits resume_phase=review."""
@@ -453,6 +458,7 @@ class TestJsonMode:
         assert data["task_id"] == "step-1"
         assert data["resume_phase"] == "review"
         assert data["commit_title"] == "deadbeef: feat: first"
+        assert data["skip_commit"] == "false"
 
     def test_prompt_json_all_done(self, tmp_path, monkeypatch, capsys):
         """--json all-done outputs JSON with all_done=true and exits 0."""
@@ -482,6 +488,7 @@ class TestJsonMode:
         assert data["all_done"] is True
         assert data["resume_phase"] == ""
         assert data["commit_title"] == ""
+        assert data["skip_commit"] == ""
         # stderr must NOT contain error message in JSON mode
         assert "all tasks are completed" not in captured.err
 
@@ -655,6 +662,7 @@ class TestBuildTaskContext:
         assert result["future_tasks"] == ""
         assert result["resume_phase"] == "implement"
         assert result["current_commit_title"] == ""
+        assert result["skip_commit"] == "false"
 
     def test_resume_phase_implement_without_commit_title(self, tmp_path):
         """Undone task with empty commit_title → resume at implement."""
@@ -675,6 +683,7 @@ class TestBuildTaskContext:
         assert result["current_task_id"] == "step-1"
         assert result["resume_phase"] == "implement"
         assert result["current_commit_title"] == ""
+        assert result["skip_commit"] == "false"
 
     def test_resume_phase_review_with_commit_title(self, tmp_path):
         """commit_title set but completed_at empty → resume at review."""
@@ -700,6 +709,88 @@ class TestBuildTaskContext:
         assert result["current_task_id"] == "step-1"
         assert result["resume_phase"] == "review"
         assert result["current_commit_title"] == "abc1234: feat: something"
+        assert result["skip_commit"] == "false"
+
+    def test_skip_commit_defaults_to_false(self, tmp_path):
+        """Missing skip_commit on current task normalizes to false."""
+        tasks = [
+            _make_task("step-1", name="First", completed=False),
+        ]
+        spec_dir = tmp_path / "specs" / "skip-default"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["skip_commit"] == "false"
+        assert result["resume_phase"] == "implement"
+
+    def test_skip_commit_true_stays_implement(self, tmp_path):
+        """skip_commit=true with empty commit_title resumes at implement."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Docs only",
+                completed=False,
+                skip_commit="true",
+            ),
+        ]
+        spec_dir = tmp_path / "specs" / "skip-true"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["skip_commit"] == "true"
+        assert result["resume_phase"] == "implement"
+        assert result["current_commit_title"] == ""
+
+    def test_skip_commit_auto_normalized(self, tmp_path):
+        """skip_commit=auto is emitted as normalized string."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Maybe commit",
+                completed=False,
+                skip_commit="auto",
+            ),
+        ]
+        spec_dir = tmp_path / "specs" / "skip-auto"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["skip_commit"] == "auto"
+        assert result["resume_phase"] == "implement"
+
+    def test_resume_review_ignores_skip_commit(self, tmp_path):
+        """Non-empty commit_title still resumes review regardless of skip_commit."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="First",
+                completed=False,
+                commit_title="abc1234: feat: something",
+                skip_commit="true",
+            ),
+        ]
+        spec_dir = tmp_path / "specs" / "skip-review"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "todo.json").write_text(json.dumps(tasks), encoding="utf-8")
+        (spec_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        from prompt import _build_task_context
+
+        result = _build_task_context(spec_dir)
+        assert result["skip_commit"] == "true"
+        assert result["resume_phase"] == "review"
 
 
 class TestTrimSpecContent:
@@ -1601,6 +1692,7 @@ class TestBuildTaskContextNoTodo:
         assert result["current_task_description"] == ""
         assert result["future_tasks"] == ""
         assert result["future_tasks_concise"] == ""
+        assert result["skip_commit"] == "false"
 
 
 class TestBuildTaskContextVerboseOverflow:
