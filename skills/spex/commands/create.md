@@ -156,11 +156,16 @@ EOF
 ### Phase 6: Plan Implementation Steps
 
 - From `$spec_path/spec.md`, break work into incremental steps.
-  Each step independently committable + verifiable.
+  Each coding step independently committable + verifiable.
 - Principles:
   - Small batches: minimal working increment per step
   - Self-contained: production code + tests in same step — never split
   - Ordered by dependency: each builds on previous; no forward refs
+  - `skip_commit`: coding steps keep default (`false`, omit the
+    flag). Non-coding / expected no-repo-change steps should use
+    `--skip-commit true` (or `auto` when a commit is only needed if
+    files change). No per-step review flag — review runs only when
+    a step produces a commit (and global `step_review` allows it)
 - Use `spex todo-helper` to build `todo.json` step by step.
   Number sequentially: `step-1`, `step-2`, etc.
 
@@ -179,6 +184,9 @@ including file changes, logic, and acceptance criteria.
 **Acceptance criteria**: all tests pass, endpoint returns JWT
 DETAILS
 ```
+
+- Optional: `--skip-commit true|auto|false` on `append` / `edit`
+  (default `false` / omit)
 
 - **Show** current steps (review before adding more):
 

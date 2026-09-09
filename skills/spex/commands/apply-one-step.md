@@ -43,6 +43,15 @@ $spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
 
 - IF non-zero exit -> error already on stderr -> STOP
 - ELSE -> continue
+- Bind `$spex_root`:
+
+```bash
+$spex_skill_dir/scripts/spex config
+```
+
+  - `$spex_root` ← **Paths** section `spex_root` (absolute path
+    only). Do **not** use Config section's relative `spex_root`
+  - Reuse for dirty filter + commit staging exclude
 
 ### Phase 3: Build Prompt / Resume Gate
 
@@ -68,6 +77,8 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
     - `$current_task_id` ← `"task_id"`
     - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
     - `$commit_title` ← `"commit_title"` (may be empty)
+    - `$skip_commit` ← `"skip_commit"` (`false` | `auto` | `true`;
+      missing → `false`)
 
 - **Single render:** Call `prompt apply-one-task` **once** per task
   iteration. Reuse `$prompt` for Phase 4. Do **not** re-run unless
@@ -78,10 +89,18 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
   implement/commit)
 
 - **Route:**
-  - IF `$resume_phase` is `review` -> skip Phases 4–5 -> Phase 6.
+  - IF `$resume_phase` is `review` -> `$did_commit` ← `true`
+    (commit already happened; durable: non-empty `commit_title`
+    + empty `completed_at`); skip Phases 4–5 -> Phase 6.
     Do NOT set `$commit_sha` from `HEAD` here — Phase 6
     **6-entry** resolves it (prefer review file's `commit_sha`)
-  - IF `$resume_phase` is `implement` -> Phase 4
+  - IF `$resume_phase` is `implement` -> Phase 4 (then Phase 5
+    only when `$skip_commit` requires a commit; after Phases 4–5,
+    IF `$did_commit` -> Phase 6; ELSE -> Phase 7). Phase 4
+    intentional STOP (`false`+clean, `true`+dirty) ends the
+    command — do **not** Phase 7 (`completed_at` stays unset).
+    Only Phase 4 skip arms (`$did_commit=false`) continue to
+    Phase 7
 
 ### Phase 4: Execute Task
 
@@ -89,12 +108,45 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
   `prompt apply-one-task`), implement current task. Follow rendered
   prompt precisely (spec, completed steps, task description,
   guidelines)
-- Deliver production code + tests together
-- IF no file changes -> report issue -> STOP
-- Do NOT create git commit here — Phase 5 handles commit
+- Deliver production code + tests together when the step changes
+  code; docs-only / no-op steps may leave the tree clean
+- Do NOT create git commit here — Phase 5 handles commit when
+  required
+- `$dirty` = **whole working tree** after implementation (not
+  this-step delta). Pre-existing dirty paths outside `$spex_root`
+  count. Prefer a clean tree before `skip_commit=true`
+- Compute `$dirty`:
+  1. `git status --porcelain`
+  2. Each line: path(s) after status (rename: both sides of
+     ` -> `; strip surrounding quotes)
+  3. Resolve each path to absolute (join with
+     `git rev-parse --show-toplevel` when relative). Compare
+     against Paths absolute `$spex_root` only
+  4. Path is under `$spex_root` iff it equals `$spex_root` or
+     starts with `$spex_root` + `/` (directory boundary — never
+     bare string prefix; avoids treating `.spex.toml` as under
+     `.spex`)
+  5. Drop a line only if **every** path on that line is under
+     `$spex_root`
+  6. `$dirty` ← true iff any line remains
+- Clean skip (`auto`/`true` + not `$dirty`) still must satisfy
+  the task acceptance criteria
+- Branch on `$skip_commit` + `$dirty`:
+  - `$skip_commit=false` and not `$dirty` -> report issue ->
+    **FAIL/STOP** (not a skip path; no Phase 7)
+  - `$skip_commit=true` and `$dirty` -> report issue (must be
+    clean) -> **FAIL/STOP** (no Phase 7)
+  - `$skip_commit=false` and `$dirty` -> continue Phase 5
+  - `$skip_commit=auto` and `$dirty` -> continue Phase 5
+  - `$skip_commit=true` and not `$dirty` -> `$did_commit=false`;
+    skip Phase 5–6 -> Phase 7
+  - `$skip_commit=auto` and not `$dirty` -> `$did_commit=false`;
+    skip Phase 5–6 -> Phase 7
 
 ### Phase 5: Commit (record commit_title only)
 
+- Enter only when Phase 4 routed here (`$skip_commit=false`, or
+  `$skip_commit=auto` with `$dirty`)
 - CMD:
 
 ```bash
@@ -105,8 +157,12 @@ $spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
   Save output as `$commit_prompt` and reuse for staging/commit. Do
   **not** re-run unless `$commit_prompt` was lost.
 
-- `$commit_prompt` ← output. Using `$commit_prompt`, stage relevant
-  changes + commit:
+- `$commit_prompt` ← output. Using `$commit_prompt`, stage changes
+  + commit:
+  - Prefer staging **all** dirty paths outside `$spex_root` so the
+    tree is clean after this commit. Leftover dirty paths poison
+    later `skip_commit=true|auto` steps (false STOP / unwanted
+    commits)
   - Do NOT stage any files under `$spex_root/`
   - Commit via heredoc: `git commit -F- <<-EOF ... EOF`
   - ON_FAIL (e.g. pre-commit hook): fix + retry **once**; IF still
@@ -125,6 +181,10 @@ git rev-parse --short HEAD
 ```
 
 - `$commit_sha` ← output
+- Recompute `$dirty` (same Phase 4 algorithm). IF `$dirty` ->
+  report leftover paths excl. `$spex_root` -> STOP (do not
+  persist `commit_title`; do not Phase 6/7)
+- `$did_commit` ← `true`
 
 - **Persist commit_title now — do NOT set `completed_at` yet**
   (review/fix may still be pending; enables interrupt resume):
@@ -136,6 +196,10 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ### Phase 6: Review Loop
 
+- Enter only when this step produced a commit: `$did_commit` is
+  true, **or** durable todo state (non-empty `commit_title` AND
+  empty `completed_at`) — on durable entry set `$did_commit` ←
+  `true`. IF neither -> skip to Phase 7
 - Load and follow `references/apply-review-loop.md` exactly (includes
   single-prompt rules for `$review_prompt` / `$fix_prompt`;
   review-helper always needs `--name`; most subcommands need
@@ -154,14 +218,24 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ### Phase 7: Mark Task Complete
 
-- Only after review/fix loop finishes successfully. Refresh
-  `$commit_title` if needed, then set **`completed_at`** (step not
-  done until this runs):
+- Only after Phase 6 finishes successfully, or when Phase 4/5
+  skipped review because `$did_commit` is false. Set
+  **`completed_at`** (step not done until this runs):
+- IF `$did_commit`:
+  - Refresh `$commit_title` if needed (from todo `commit_title`,
+    or `git log -1 --pretty="%h: %s"`) before the edit below
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
   --id "$current_task_id" --completed-at now \
   --commit-title "$commit_title"
+```
+
+- ELSE (`$did_commit` false — keep `commit_title` empty):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+  --id "$current_task_id" --completed-at now
 ```
 
 - ON_FAIL: report error -> STOP
@@ -171,7 +245,8 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 - Count remaining undone tasks in `$spec_path/todo.json` (items
   with empty/`null` `completed_at`) -> `$remaining`
 - Display summary:
-  - Completed step name and `$commit_title`
+  - Completed step name and `$commit_title` (or
+    `(skip_commit / no commit)` when empty)
   - `$remaining` (undone tasks left)
 - IF `$remaining` is 0 -> run post-action (spec fully done):
 

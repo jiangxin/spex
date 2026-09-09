@@ -398,6 +398,7 @@ def _do_post_action(args):
 
     data = load_and_validate_todo_json(json_path)
     validate_unique_ids(data)
+    from todo_helper import normalize_skip_commit
     for i, item in enumerate(data):
         for field in REQUIRED_FIELDS:
             if field not in item:
@@ -406,6 +407,8 @@ def _do_post_action(args):
                     f" field '{field}'.",
                 )
                 sys.exit(1)
+        if "skip_commit" in item:
+            normalize_skip_commit(item["skip_commit"])
     logger.info(f"OK: {len(data)} step(s) validated.")
 
     # Update description from spec.md front-matter

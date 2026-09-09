@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content
   - spec_name
@@ -49,7 +49,9 @@ Do NOT regenerate or duplicate them. Use them to:
    or conflict with the updated specification, add corrective steps
    to fix the divergence.
 3. **Small batches**: Each step delivers a minimal, working increment
-   that can be independently committed and verified.
+   that can be independently verified. Coding steps should be
+   independently committed (default `skip_commit=false`). Non-coding
+   / no-repo-change steps may use `--skip-commit true` or `auto`.
 4. **Self-contained**: Group production code and its tests in the same
    step — never split them into separate steps.
 5. **Ordered by dependency**: List steps so that each builds on the
@@ -57,6 +59,11 @@ Do NOT regenerate or duplicate them. Use them to:
 6. **Sequential IDs**: Number steps starting from the next available ID
    after the last completed step (e.g., if step-2 is completed, start
    from `step-3`).
+7. **skip_commit**: Prefer default (omit / `false`) for code changes.
+   Set `true` when the step must not touch the repo; set `auto` when
+   a commit is only needed if files change. Do not invent a per-step
+   review flag — review follows whether a commit was created and the
+   global `step_review` setting.
 
 ## Instructions
 
@@ -69,12 +76,12 @@ final plan is coherent and complete.
 
 ### Using spex todo-helper
 
-**Append** a new step — use `--details-from-stdin` with a heredoc for
-multi-line Markdown details:
+**Append** a coding step (default — omit `--skip-commit`):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
-  --id step-N --step-name "Short name" --details-from-stdin <<'DETAILS'
+  --id step-N --step-name "Short name" \
+  --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -82,6 +89,25 @@ including file changes, logic, and acceptance criteria.
 - Do not use headings (`#`, `##`, etc.)
 DETAILS
 ```
+
+**Append** a non-coding / no-repo-change step — set
+`--skip-commit true` (or `auto` when a commit is only needed if
+files change):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
+  --id step-N --step-name "Confirm checklist without repo edits" \
+  --skip-commit true \
+  --details-from-stdin <<'DETAILS'
+Verify acceptance criteria without changing tracked files.
+
+**Acceptance criteria**: working tree stays clean (excl. spex_root)
+DETAILS
+```
+
+Do **not** put `--skip-commit true` on coding steps. Values:
+`true` | `auto` | `false` (default omit / `false`). JSON bool
+`true`/`false` and lowercase strings only — not `"True"` / `"AUTO"`.
 
 **Show** current steps (to review before adding more):
 

@@ -293,7 +293,29 @@ Small batches（将功能拆分为多个小的开发步骤）是高质量开发�
 
 使用 Coding Agent 时，大模型很难自觉遵循"每步一提交"的实践。即使明确要求，它们仍然倾向于生成一个包含成百上千行更改的大提交。
 
-Spex 的解法是记录开发步骤的 `todo.json` 中，每个开发步骤包含两个必填字段 `completed_at`（完成时间）和 `commit_title`（提交说明标题），只有在创建 Git 提交之后，才能将提交标题回填到 `commit_title` 字段，标记开发步骤已经完成。文件 `todo.json` 的内容示例如下：
+Spex 的解法是：`todo.json` 中每个开发步骤包含两个必填字段
+`completed_at`（完成时间）和 `commit_title`（提交说明标题）。对编码步骤
+（默认），在创建 Git 提交后回填 `commit_title`，再经可选的 code review
+后标记步骤完成。
+
+可选逐步字段 `skip_commit`（`false` | `auto` | `true`；默认 `false` /
+省略）用于非编码工作：
+
+| `skip_commit` | 行为 |
+|---------------|------|
+| `false`（默认） | 必须改仓库并 commit；若 `step_review` 允许则进入 review |
+| `auto` | 仅当工作区有改动（排除 `$spex_root`）时 commit；仅当产生了 commit 才 review |
+| `true` | 工作区必须干净；不 commit，`commit_title` 为空，跳过 review；只设 `completed_at` |
+
+没有逐步的 review 开关。全局 `.spex.toml` 的 `step_review` 仍可对
+**已产生 commit** 的步骤跳过 review。脏检测针对**整棵工作区**
+（`git status --porcelain`），并排除 `$spex_root` 下路径——不是仅本步
+改过的文件。执行 `skip_commit=true` 的步骤前，应保证仓库（排除
+`$spex_root`）干净。编码步骤 commit 之后，工作区（排除 `$spex_root`）
+也必须干净——残留未提交改动会破坏后续 `true`/`auto` 步骤，因此 apply
+SOP 在发现残留时会 STOP。取值只接受 JSON 布尔 `true`/`false` 或小写
+字符串 `"false"` | `"auto"` | `"true"`（不接受 `"True"` / `"AUTO"`）。
+`todo.json` 示例如下：
 
 ```json
 [
@@ -303,6 +325,14 @@ Spex 的解法是记录开发步骤的 `todo.json` 中，每个开发步骤包�
     "details": "Update SKILL.md to make `merge` the primary command...",
     "completed_at": "2026-06-17T12:08:42+08:00",
     "commit_title": "fae3c7c: docs: make merge the primary command..."
+  },
+  {
+    "id": "step-2",
+    "name": "Confirm docs-only checklist",
+    "details": "Verify README wording without touching the repo.",
+    "completed_at": "2026-06-17T12:20:00+08:00",
+    "commit_title": "",
+    "skip_commit": "true"
   }
 ]
 ```

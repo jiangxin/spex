@@ -26,6 +26,35 @@ from common import (
 
 REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
 
+_SKIP_COMMIT_FALSE = "false"
+_SKIP_COMMIT_AUTO = "auto"
+_SKIP_COMMIT_TRUE = "true"
+_SKIP_COMMIT_VALUES = (
+    _SKIP_COMMIT_FALSE, _SKIP_COMMIT_AUTO, _SKIP_COMMIT_TRUE,
+)
+
+
+def normalize_skip_commit(value=None):
+    """Normalize skip_commit to 'false'|'auto'|'true'.
+
+    Missing/None/false/False/"false" → "false".
+    "auto" → "auto".
+    true/True/"true" → "true".
+    Any other value exits with code 1.
+    """
+    if value is None or value is False or value == _SKIP_COMMIT_FALSE:
+        return _SKIP_COMMIT_FALSE
+    if value is True or value == _SKIP_COMMIT_TRUE:
+        return _SKIP_COMMIT_TRUE
+    if value == _SKIP_COMMIT_AUTO:
+        return _SKIP_COMMIT_AUTO
+    logger.error(
+        "Error: invalid skip_commit value %r;"
+        " expected false, auto, or true.",
+        value,
+    )
+    sys.exit(1)
+
 
 def _resolve_completed_at(value):
     """Resolve the special value 'now' to a local ISO timestamp."""
@@ -44,8 +73,12 @@ _XML_TO_DICT = {
     "step-details": "details",
     "completed-at": "completed_at",
     "commit-title": "commit_title",
+    "skip-commit": "skip_commit",
 }
 _DICT_TO_XML = {v: k for k, v in _XML_TO_DICT.items()}
+_XML_REQUIRED_KEYS = (
+    "id", "name", "details", "completed_at", "commit_title",
+)
 
 
 def load_todo_xml(path):
@@ -74,6 +107,11 @@ def load_todo_xml(path):
         entry = {}
         for xml_name, dict_key in _XML_TO_DICT.items():
             elem = step.find(xml_name)
+            if dict_key == "skip_commit":
+                # Optional: omit when element is absent or empty.
+                if elem is not None and elem.text:
+                    entry[dict_key] = elem.text
+                continue
             entry[dict_key] = (
                 elem.text if elem is not None and elem.text
                 else ""
@@ -88,15 +126,20 @@ def write_todo_xml(path, data):
     lines = ["<todo>"]
     for item in data:
         lines.append("  <step>")
-        for dict_key in (
-            "id", "name", "details",
-            "completed_at", "commit_title",
-        ):
+        for dict_key in _XML_REQUIRED_KEYS:
             xml_name = _DICT_TO_XML[dict_key]
             value = escape_xml_text(str(item.get(dict_key, "")))
             lines.append(
                 f"    <{xml_name}>{value}</{xml_name}>",
             )
+        if "skip_commit" in item:
+            normalized = normalize_skip_commit(item["skip_commit"])
+            if normalized != _SKIP_COMMIT_FALSE:
+                xml_name = _DICT_TO_XML["skip_commit"]
+                value = escape_xml_text(normalized)
+                lines.append(
+                    f"    <{xml_name}>{value}</{xml_name}>",
+                )
         lines.append("  </step>")
     lines.append("</todo>\n")
     content = "\n".join(lines)
@@ -163,6 +206,8 @@ def cmd_validate(todo_path, is_xml):
                     " '%s'.", i, field,
                 )
                 sys.exit(1)
+        if "skip_commit" in item:
+            normalize_skip_commit(item["skip_commit"])
     logger.info("OK")
 
 
@@ -194,6 +239,12 @@ def cmd_append(todo_path, is_xml, args):
         "completed_at": _resolve_completed_at(args.completed_at),
         "commit_title": args.commit_title,
     }
+    skip_commit = getattr(args, "skip_commit", None)
+    if skip_commit is not None:
+        normalized = normalize_skip_commit(skip_commit)
+        # Omit key for default false so files stay compact.
+        if normalized != _SKIP_COMMIT_FALSE:
+            entry["skip_commit"] = normalized
     data.append(entry)
     write_todo_file(todo_path, data, is_xml)
     logger.info("Appended '%s'.", args.id)
@@ -279,6 +330,13 @@ def cmd_edit(todo_path, is_xml, args):
                 item["completed_at"] = args.completed_at
             if args.commit_title is not None:
                 item["commit_title"] = args.commit_title
+            skip_commit = getattr(args, "skip_commit", None)
+            if skip_commit is not None:
+                normalized = normalize_skip_commit(skip_commit)
+                if normalized == _SKIP_COMMIT_FALSE:
+                    item.pop("skip_commit", None)
+                else:
+                    item["skip_commit"] = normalized
             found = True
             updated_item = item
             break
@@ -390,6 +448,11 @@ def _format_markdown(data, width=0):
             lines.append(
                 _wrap_field("commit_title", commit_title, indent, w),
             )
+
+        if "skip_commit" in item:
+            skip_commit = normalize_skip_commit(item["skip_commit"])
+            if skip_commit != _SKIP_COMMIT_FALSE:
+                lines.append(f"{indent}- skip_commit: {skip_commit}")
 
     return "\n".join(lines)
 
@@ -608,6 +671,15 @@ def _build_parser():
         "--commit-title", default="",
         help="Commit title for the task",
     )
+    p_append.add_argument(
+        "--skip-commit",
+        choices=list(_SKIP_COMMIT_VALUES),
+        default=None,
+        help=(
+            "Skip commit mode: false (default, omit key),"
+            " auto, or true (lowercase strings only)"
+        ),
+    )
 
     # edit
     p_edit = subs.add_parser(
@@ -635,6 +707,15 @@ def _build_parser():
     p_edit.add_argument(
         "--commit-title", default=None,
         help="Commit title for the task",
+    )
+    p_edit.add_argument(
+        "--skip-commit",
+        choices=list(_SKIP_COMMIT_VALUES),
+        default=None,
+        help=(
+            "Skip commit mode: false (clears key),"
+            " auto, or true (lowercase strings only)"
+        ),
     )
 
     # remove

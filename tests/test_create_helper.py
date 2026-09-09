@@ -492,6 +492,43 @@ class TestCliPostAction:
 
         assert (spec_dir / "todo.json").is_file()
 
+    def test_allows_optional_skip_commit(self, tmp_path, monkeypatch):
+        """post-action accepts optional skip_commit on todo items."""
+        todo = [{"id": "step-1", "name": "First",
+                 "details": "D", "completed_at": "",
+                 "commit_title": "", "skip_commit": "auto"}]
+        spec_dir = self._setup_topic(
+            tmp_path, "my-topic", todo,
+        )
+        monkeypatch.setattr(
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
+        )
+
+        with patch("hooks.run_post_action"):
+            create_helper.cli_post_action(
+                ["--name", "my-topic"],
+            )
+
+    def test_rejects_invalid_skip_commit(self, tmp_path, monkeypatch):
+        """post-action rejects unknown skip_commit values."""
+        todo = [{"id": "step-1", "name": "First",
+                 "details": "D", "completed_at": "",
+                 "commit_title": "", "skip_commit": "yes"}]
+        spec_dir = self._setup_topic(
+            tmp_path, "my-topic", todo,
+        )
+        monkeypatch.setattr(
+            "create_helper.resolve_spec_dir",
+            lambda _name: spec_dir,
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            create_helper.cli_post_action(
+                ["--name", "my-topic"],
+            )
+        assert exc.value.code == 1
+
     def test_missing_json_fails(self, tmp_path, monkeypatch):
         """post-action errors when todo.json does not exist."""
         spec_dir = tmp_path / "no-json"
