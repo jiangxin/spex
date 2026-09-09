@@ -493,19 +493,47 @@ class TestApplyStepReviewSop:
         _index(round_model, "proceed to Phase 7")
 
     def test_apply_commands_exclude_step_review_false_from_stop(self):
+        """Phase 6 in commands is Load-only; STOP/6c SSOT is review-loop."""
+        loop = _read(APPLY_REVIEW_LOOP)
+        invariants = _h2_section(loop, "Invariants (do not weaken)")
+        _index(invariants, "Durable entry")
+        _index(invariants, "`$did_commit`")
+        _index(invariants, "commit_title")
+        _index(invariants, "completed_at")
+        _index(invariants, "STOP** only for abnormal")
+        _index(invariants, '"skipped": true')
+        _index(invariants, "step_review=false")
+        _index(invariants, "Phase 7")
+        # Checklist stays short (≤15 non-blank content lines under heading)
+        inv_lines = []
+        for ln in invariants.splitlines()[1:]:
+            if ln.strip().startswith("**Caller"):
+                break
+            if ln.strip():
+                inv_lines.append(ln)
+        assert len(inv_lines) <= 15, (
+            f"Invariants checklist too long: {len(inv_lines)} lines"
+        )
+
         for path in (APPLY_MD, APPLY_ONE_STEP_MD):
             phase6 = _h3_section(_read(path), "Phase 6: Review Loop")
             _index(phase6, "Load and follow `references/apply-review-loop.md`")
-            _index(phase6, "abnormal failure")
-            _index(phase6, "`step_review=false` is **not** an abnormal STOP")
-            _index(phase6, '"skipped": true')
-            _index(phase6, "the loop continues to")
-            _index(phase6, "Phase 7")
-            # No duplicated review-helper CLI tips in command Phase 6
+            _index(phase6, "ON_FAIL")
+            _index(phase6, "abnormal")
+            # No duplicated review-helper / STOP / step_review detail
             assert "config get" not in phase6.lower()
             assert "skip_review" not in phase6
             assert "bump-round" not in phase6
             assert "review-helper" not in phase6
+            assert "step_review=false" not in phase6
+            assert "open majors" not in phase6.lower()
+            assert "Round-3" not in phase6
+
+        # apply.md: abnormal STOP ends entire apply
+        apply_p6 = _h3_section(_read(APPLY_MD), "Phase 6: Review Loop")
+        _index(apply_p6, "ends entire `/spex apply`")
+        _index(apply_p6, "no")
+        _index(apply_p6, "Phase 7/8/9")
 
     def test_apply_commands_load_shared_phase_refs(self):
         """Commands Load shared refs; skip_commit semantics live in refs."""
@@ -518,7 +546,17 @@ class TestApplyStepReviewSop:
             _index(pre, "untrusted")
             _index(pre, "SCOPE")
             _index(pre, "`$spex_root`")
-            _index(_h2_section(text, "Failure Handling"), "ON_FAIL")
+            fail = _h2_section(text, "Failure Handling")
+            _index(fail, "ON_FAIL")
+            # R2-F10: intentional STOP is first Failure Handling item
+            rest = "\n".join(fail.splitlines()[1:]).strip()
+            assert rest.startswith("- "), "Failure Handling must start with a bullet"
+            first_item = rest.split("\n- ", 1)[0]
+            assert "intentional STOP" in first_item, (
+                "Phase 4 intentional STOP must be first Failure Handling item"
+            )
+            assert "retryable" in first_item.lower()
+            assert "not" in first_item.lower()
             for phase, title in (
                 ("Phase 2: Validate Branch", "apply-task-phases.md"),
                 ("Phase 3: Build Prompt / Resume Gate", "apply-task-phases.md"),
@@ -537,7 +575,7 @@ class TestApplyStepReviewSop:
             _index(phase3, "`$task_prompt`")
             _index(phase3, "`$skip_commit`")
             phase6 = _h3_section(text, "Phase 6: Review Loop")
-            _index(phase6, "`$did_commit`")
+            _index(phase6, "Load and follow `references/apply-review-loop.md`")
             phase1 = _h3_section(text, "Phase 1: Resolve Spec")
             _index(
                 phase1,
@@ -556,14 +594,29 @@ class TestApplyStepReviewSop:
         assert "apply-subagent-handoff.md" in phase3_apply
         control = _h2_section(apply, "Control flow")
         _index(control, "```mermaid")
+        _index(control, "ALL -->|yes| P2")
+        _index(control, "never")
+        _index(control, "re-run `list`")
         _index(control, "apply-task-phases.md")
         _index(control, "apply-subagent-handoff.md")
-        _index(_h3_section(apply, "Phase 1: Resolve Spec"), "--all")
+        phase1_apply = _h3_section(apply, "Phase 1: Resolve Spec")
+        _index(phase1_apply, "--all")
+        _index(phase1_apply, "do **not** re-run `list`")
+        _index(phase1_apply, "next `$specs` item at Phase 2")
         _index(_h3_section(apply, "Phase 8: Next Task"), "Phase 3")
-        _index(_h3_section(apply, "Phase 9: Post Action"), "post-action")
+        phase9 = _h3_section(apply, "Phase 9: Post Action")
+        _index(phase9, "post-action")
+        _index(phase9, "next `$specs` item at Phase 2")
+        assert "Phase 1 outer" not in apply
         assert "apply-subagent-handoff" not in one
 
-        # apply-one-step: HARD STOP + only current task + post-action
+        # apply-one-step: no handoff; HARD STOP; ignore outcome=
+        pre_one = _h2_section(one, "Preconditions")
+        _index(pre_one, "Unlike `/spex apply`")
+        _index(pre_one, "never return to Phase 3")
+        _index(pre_one, "no Phases 4–5 sub-agent handoff")
+        _index(pre_one, "ignore `outcome=`")
+        _index(pre_one, "apply-helper dirty --json")
         phase4 = _h3_section(one, "Phase 4: Execute Task")
         _index(phase4, "**Only** `$current_task_id`")
         phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
@@ -592,7 +645,11 @@ class TestApplyStepReviewSop:
         _index(phase4, "`$skip_commit`")
         _index(phase4, "`$dirty`")
         _index(phase4, "whole working tree")
-        _index(phase4, "apply-helper dirty --json")
+        dirty_cli = _index(phase4, "apply-helper dirty --json")
+        debug_only = _index(phase4, "**Debug only**")
+        assert dirty_cli < debug_only, (
+            "dirty CLI CMD must appear before Debug-only porcelain"
+        )
         _index(phase4, "`$did_commit=false`")
         _index(phase4, "**FAIL/STOP**")
         _index(phase4, "directory boundary")
@@ -606,11 +663,12 @@ class TestApplyStepReviewSop:
         _index(phase5, "do not persist `commit_title`")
         _index(phase5, "outcome=committed")
 
+        # Phase 6 is Load-only pointer; STOP/6c live in review-loop
         phase6 = _h2_section(phases, "Phase 6: Review Loop")
-        _index(phase6, "`$did_commit`")
-        _index(phase6, "`step_review=false`")
-        _index(phase6, "abnormal STOP")
-        _index(phase6, '"skipped": true')
+        _index(phase6, "Load and follow `references/apply-review-loop.md`")
+        assert "step_review=false" not in phase6
+        assert "open majors" not in phase6.lower()
+        assert "bump-round" not in phase6
 
         phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
         _index(phase7, "`$did_commit`")
@@ -639,17 +697,25 @@ class TestApplyStepReviewSop:
 
     def test_review_loop_requires_did_commit_precondition(self):
         text = _read(APPLY_REVIEW_LOOP)
-        assert "produced a git commit" in text
-        assert "`$did_commit`" in text
+        invariants = _h2_section(text, "Invariants (do not weaken)")
+        _index(invariants, "Durable entry")
+        _index(invariants, "`$did_commit`")
+        _index(invariants, "commit_title")
+        _index(invariants, "completed_at")
+        _index(invariants, "skip")
         assert "skip_commit" in text
-        assert "Orthogonal to global `step_review`" in text
+        _index(invariants, "Orthogonal to")
+        _index(invariants, "`step_review`")
+        _index(text, "Caller precondition")
 
     def test_docs_name_step_review_not_skip_review(self):
         for path in SOP_STEP_REVIEW_PATHS:
             text = _read(path)
             assert "skip_review" not in text, f"{path.name} must not name skip_review"
-            if path in (APPLY_REVIEW_LOOP, APPLY_MD, APPLY_ONE_STEP_MD):
-                assert "step_review" in text, f"{path.name} must name step_review"
+            if path is APPLY_REVIEW_LOOP:
+                assert "step_review" in text, (
+                    f"{path.name} must name step_review"
+                )
 
     def test_readme_lists_step_review_true(self):
         for path in (README_MD, README_ZH):

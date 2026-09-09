@@ -99,9 +99,11 @@ $spex_skill_dir/scripts/spex apply-helper dirty --json
   stderr -> STOP
 - Prefer `--spex-root "$spex_root"` when the Paths bind must be
   forced; otherwise CLI uses Paths absolute `spex_root`
+- Clean skip (`auto`/`true` + not `$dirty`) still must satisfy
+  the task acceptance criteria
 
-**Equivalent semantics** (encoded by the CLI — do not re-implement
-by hand unless debugging the script):
+**Debug only** — equivalent porcelain semantics (encoded by the
+CLI; do **not** re-implement by hand in normal apply):
 
 1. `git status --porcelain`
 2. Each line: path(s) after status (rename: both sides of
@@ -116,9 +118,6 @@ by hand unless debugging the script):
 5. Drop a line only if **every** path on that line is under
    `$spex_root`
 6. `$dirty` ← true iff any line remains
-
-- Clean skip (`auto`/`true` + not `$dirty`) still must satisfy
-  the task acceptance criteria
 
 ### skip_commit six-arm matrix
 
@@ -199,27 +198,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 
 ## Phase 6: Review Loop
 
-- Enter only when this step produced a commit: `$did_commit` is
-  true, **or** durable todo state (non-empty `commit_title` AND
-  empty `completed_at`) — on durable entry set `$did_commit` ←
-  `true`. IF neither -> skip to Phase 7
 - Load and follow `references/apply-review-loop.md` exactly
-  (includes single-prompt rules for `$review_prompt` /
-  `$fix_prompt`; review-helper always needs `--name`; most
-  subcommands need `--step`; prefer `status` / `next` / `show` —
-  `list`/`get` are show aliases; reuse last status JSON — do not
-  re-status right after 6b or after a successful `bump-round`)
-- IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
-  verification fails after relaunch) -> end the current
-  invocation immediately — do **not** run Phase 7 or later
-  command phases (apply: no Phase 8/9 / next task / next `--all`
-  spec; apply-one-step: no Phase 8). Step stays incomplete so
-  later apply can resume via Phase 3 → Phase 6. Round-3 open
-  majors are **not** a reason to STOP — loop must enter 6c and
-  fix them in this same invocation. `step_review=false` is
-  **not** an abnormal STOP: `prompt apply-review` returns
-  `"skipped": true`, the loop continues to Phase 7, and this
-  STOP clause does not apply
 
 ## Phase 7: Mark Task Complete
 

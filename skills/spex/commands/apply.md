@@ -33,10 +33,14 @@ Apply a specification to implement code step by step.
 
 ## Control flow
 
-Three nested loops; abnormal Phase 6 STOP aborts all of them:
+Three nested loops; abnormal Phase 6 STOP aborts all of them.
+`--all`: `list` **once** in Phase 1; iterate `$specs` only — never
+re-run `list` inside the loop. Next `$specs` item always resumes at
+Phase 2.
 
 ```text
-for each spec in (--all list | single resolve):          # Phase 1 outer
+Phase 1: resolve once (--all -> $specs list | single resolve)
+for each spec in $specs (or the one resolved spec):
   Phase 2 validate + bind $spex_root
   loop:                                                  # Phase 8 tasks
     Phase 3 prompt / resume
@@ -48,7 +52,7 @@ for each spec in (--all list | single resolve):          # Phase 1 outer
     Phase 7 mark complete
     -> next undone task (Phase 3)
   Phase 9 post-action (once per completed spec)
--> next --all spec or STOP
+-> next $specs item at Phase 2, or STOP
 ```
 
 ```mermaid
@@ -68,7 +72,7 @@ flowchart TD
   P8 -->|yes| P3
   P8 -->|no / via all_done| P9
   P9 --> ALL{--all more?}
-  ALL -->|yes| P1
+  ALL -->|yes| P2
   ALL -->|no| END[STOP]
 ```
 
@@ -85,10 +89,11 @@ for outer loops; Phase bodies below do not restate the diagram.
   - CMD: `$spex_skill_dir/scripts/spex list --json --must-undone`
   - Parse stdout as JSON array `$specs` of objects (`spec_name`,
     `spec_path`)
-  - For each entry in `$specs` (outer loop): set `$spec_name` /
-    `$spec_path` -> Phases 2–9 (Phase 9 when that spec's tasks all
-    done)
-  - After Phase 9 for one spec -> next `$specs` entry at Phase 2.
+  - **Hard rule:** do **not** re-run `list` inside the `--all`
+    loop — only iterate this Phase 1 `$specs` array
+  - For each entry in `$specs`: set `$spec_name` / `$spec_path` ->
+    Phases 2–9 (Phase 9 when that spec's tasks all done)
+  - After Phase 9 for one spec -> next `$specs` item at Phase 2.
     IF none remain -> **STOP**
 - ELSE:
   - CMD:
@@ -114,8 +119,8 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 
 - Parse JSON stdout:
   - IF `"all_done": true` -> Phase 9 (skip Phase 8). In `--all`
-    mode, after Phase 9 continue Phase 1 outer loop next `$specs`
-    entry at Phase 2, or **STOP** if none remain
+    mode, after Phase 9 continue to next `$specs` item at Phase 2,
+    or **STOP** if none remain
   - IF non-zero exit -> report stderr -> STOP
   - ELSE -> Load and follow `references/apply-task-phases.md`
     Phase 3 exactly (bind `$task_prompt` / `$current_task_id` /
@@ -139,20 +144,9 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 
 ### Phase 6: Review Loop
 
-- Enter only when `$did_commit` is true, **or** durable todo state
-  (non-empty `commit_title` AND empty `completed_at`) — on durable
-  entry set `$did_commit` ← `true`. IF neither -> skip to Phase 7
-- Load and follow `references/apply-review-loop.md` exactly
-- IF review loop **STOP**s due to abnormal failure (e.g. fix/amend
-  verification fails after relaunch) -> end entire `/spex apply`
-  immediately — do **not** run Phase 7, Phase 8, or Phase 9; do
-  **not** start next task or next `--all` spec. Step stays
-  incomplete so later `/spex apply` can resume via Phase 3 →
-  Phase 6. Round-3 open majors are **not** a reason to STOP —
-  loop must enter 6c and fix them in this same invocation.
-  `step_review=false` is **not** an abnormal STOP: `prompt
-  apply-review` returns `"skipped": true`, the loop continues to
-  Phase 7, and this STOP clause does not apply
+- Load and follow `references/apply-review-loop.md` exactly; ON_FAIL
+  abnormal -> STOP per that doc (ends entire `/spex apply`: no
+  Phase 7/8/9, no next task, no next `$specs` item)
 
 ### Phase 7: Mark Task Complete
 
@@ -175,28 +169,29 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 ```
 
 - Display output to user
-- IF `--all` mode -> continue Phase 1 outer loop next `$specs`
-  entry at Phase 2, or **STOP** if none remain
+- IF `--all` mode -> continue to next `$specs` item at Phase 2, or
+  **STOP** if none remain
 - ELSE -> **STOP.** Do NOT implement additional steps or modify
   project files beyond what was already committed
 
 ## Failure Handling
 
+- Phase 4 intentional STOP (`false`+clean, `true`+dirty) is **not**
+  retryable — FAIL; no Phase 7; leave `completed_at` unset; do **not**
+  treat as `outcome=skip_commit`
 - ON_FAIL Phase 1 list / resolve -> STOP (stderr)
 - ON_FAIL Phase 2 precheck -> STOP (stderr)
 - ON_FAIL Phase 3 prompt -> STOP (stderr)
 - ON_FAIL Phases 4–5 execution (not intentional STOP) -> report +
   retry once; still fails -> STOP
-- Phase 4 intentional STOP (`false`+clean, `true`+dirty) -> FAIL;
-  no Phase 7; leave `completed_at` unset
 - Unexpected handoff / residual dirty after commit -> STOP; no
   Phase 7
-- Phase 6 abnormal STOP -> end invocation (see Phase 6); no Phase
-  7/8/9 / next `--all`
+- Phase 6 abnormal STOP -> end entire `/spex apply` per
+  `apply-review-loop.md` (no 7/8/9 / next task / next `$specs`)
 - ON_FAIL Phase 7 todo edit -> STOP
 
 ## STOP / Outputs
 
-- Phases 1–9 including `--all` outer loop, Phase 8 next-task loop,
-  Phase 9 post-action
+- Phases 1–9 including `--all` `$specs` loop (list once), Phase 8
+  next-task loop, Phase 9 post-action
 - Abnormal Phase 6 STOP leaves step incomplete for resume

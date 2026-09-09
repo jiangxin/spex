@@ -1,13 +1,30 @@
 # Apply Review Loop (Phase 6)
 
 Shared orchestration for `/spex apply` and `/spex apply-one-step`.
-Load and follow this document exactly for Phase 6.
+Load and follow this document exactly for Phase 6. **SSOT** for
+STOP / 6c rules — commands and `apply-task-phases.md` only Load
+this file.
 
-**Caller precondition:** enter this loop only when the current step
-**produced a git commit** (`$did_commit` true). Steps with
-`skip_commit` that skipped commit must go to Phase 7 without
-loading this file. Orthogonal to global `step_review` (that switch
-short-circuits inside this loop via `"skipped": true`).
+## Invariants (do not weaken)
+
+1. **Durable entry:** `$did_commit` true **or** non-empty
+   `commit_title` + empty `completed_at` → set `$did_commit`←`true`;
+   else skip to Phase 7 (no load for skip-commit without commit).
+2. **STOP** only for abnormal failures (fix/amend verify fails
+   after relaunch) — not for round-3 open majors.
+3. Round-3 open majors → **6c** same invocation; never bump past 3.
+4. `"skipped": true` (`step_review=false`) is **not** STOP → Phase 7.
+5. Abnormal STOP ends whole invocation (apply: no 7/8/9 / next
+   task/`$specs`; one-step: no Phase 7/8); step stays incomplete.
+6. Prefer `status`/`next`/`show`; no re-status after 6b or bump-round.
+7. Single render: `$review_prompt` / round; `$fix_prompt` / finding.
+8. After review/fix: `ensure-branch` — never `git checkout` to fix HEAD.
+9. Orthogonal to `step_review` — probe via `prompt apply-review --json`
+   only (do **not** read `.spex.toml`).
+
+**Caller precondition:** same as durable entry. Steps with
+`skip_commit` that skipped commit → Phase 7 without loading this
+file.
 
 ## Flow Overview
 
