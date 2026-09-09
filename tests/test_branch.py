@@ -101,6 +101,35 @@ class TestBranchExists:
         assert branch_exists("spex/nonexistent") is False
 
 
+def _git_init_with_commit(tmp_path, branch_name="master"):
+    """Init a git repo with one commit on *branch_name*; return tip SHA."""
+    subprocess.run(
+        ["git", "init", "-b", branch_name],
+        cwd=tmp_path, capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"],
+        cwd=tmp_path, capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "T"],
+        cwd=tmp_path, capture_output=True, check=True,
+    )
+    (tmp_path / "README").write_text("init\n")
+    subprocess.run(
+        ["git", "add", "."], cwd=tmp_path, capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=tmp_path, capture_output=True, check=True,
+    )
+    tip = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    )
+    return tip.stdout.strip()
+
+
 @pytest.mark.slow
 class TestCreateBranch:
     def test_create_branch_on_unborn_branch(self, tmp_path):
@@ -118,6 +147,34 @@ class TestCreateBranch:
         # but the branch won't show in rev-parse --verify until a commit
         # is made. Verify we're on the new branch via symbolic-ref.
         assert get_current_branch(tmp_path) == "spex/test-feature"
+
+    def test_create_branch_from_explicit_base(self, tmp_path):
+        """create_and_switch_branch with base starts from that ref."""
+        master_tip = _git_init_with_commit(tmp_path, "master")
+        # Advance HEAD on a divergent branch so current HEAD != master
+        create_and_switch_branch("spex/other", cwd=tmp_path)
+        (tmp_path / "other.txt").write_text("other\n")
+        subprocess.run(
+            ["git", "add", "."], cwd=tmp_path, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "other"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+
+        create_and_switch_branch("spex/from-master", cwd=tmp_path, base="master")
+        assert get_current_branch(tmp_path) == "spex/from-master"
+        tip = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert tip == master_tip
+        # Must not contain the divergent commit
+        contains = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", "spex/other", "HEAD"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert contains.returncode != 0
 
 
 class TestMergeBranch:
@@ -244,7 +301,8 @@ class TestValidateApplyBranch:
             encoding="utf-8",
         )
         validate_apply_branch({"branch_management": True}, tmp_path)
-        mock_create.assert_called_once_with("spex/add-feature", None)
+        # base "main" does not exist (branch_exists mocked False) → base=None
+        mock_create.assert_called_once_with("spex/add-feature", None, base=None)
 
     @patch("branch.set_branch_description")
     @patch("branch.get_current_branch", return_value="main")
@@ -266,8 +324,10 @@ class TestValidateApplyBranch:
         validate_apply_branch({"branch_management": True}, tmp_path)
         # First call with short name fails, second with long name succeeds
         assert mock_create.call_count == 2
-        mock_create.assert_any_call("spex/add-feature", None)
-        mock_create.assert_any_call("spex/2026-05-27-10-00-add-feature", None)
+        mock_create.assert_any_call("spex/add-feature", None, base=None)
+        mock_create.assert_any_call(
+            "spex/2026-05-27-10-00-add-feature", None, base=None,
+        )
 
     @patch("branch.get_current_branch", return_value="main")
     @patch("branch.branch_exists", return_value=False)
@@ -285,6 +345,166 @@ class TestValidateApplyBranch:
             assert False, "Should have called sys.exit(1)"
         except SystemExit as e:
             assert e.code == 1
+
+    @patch("branch.set_branch_description")
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.create_and_switch_branch")
+    @patch("common.is_spec_completed", return_value=False)
+    def test_creates_branch_with_meta_branch_base(
+        self, _completed, mock_create, _curr, _desc, tmp_path,
+    ):
+        """When meta.branch exists, pass it as base to create_and_switch_branch."""
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({
+                "name": "2026-05-27-10-00-add-feature",
+                "branch": "master",
+            }),
+            encoding="utf-8",
+        )
+
+        def _exists(name, cwd=None):
+            return name == "master"
+
+        with patch("branch.branch_exists", side_effect=_exists):
+            validate_apply_branch({"branch_management": True}, tmp_path)
+        mock_create.assert_called_once_with(
+            "spex/add-feature", None, base="master",
+        )
+
+    @patch("branch.set_branch_description")
+    @patch("branch.get_current_branch", return_value="main")
+    @patch("branch.create_and_switch_branch")
+    @patch("common.is_spec_completed", return_value=False)
+    def test_missing_base_falls_back_with_warning(
+        self, _completed, mock_create, _curr, _desc, tmp_path, caplog,
+    ):
+        """Missing meta.branch base → warn, fall back to HEAD (base=None)."""
+        import logging
+
+        meta_path = tmp_path / "meta.json"
+        meta_path.write_text(
+            json.dumps({
+                "name": "2026-05-27-10-00-add-feature",
+                "branch": "does-not-exist",
+            }),
+            encoding="utf-8",
+        )
+        with patch("branch.branch_exists", return_value=False), \
+             caplog.at_level(logging.WARNING):
+            validate_apply_branch({"branch_management": True}, tmp_path)
+        mock_create.assert_called_once_with(
+            "spex/add-feature", None, base=None,
+        )
+        assert "does-not-exist" in caplog.text
+        assert "current HEAD" in caplog.text
+
+
+@pytest.mark.slow
+class TestValidateApplyBranchBaseIntegration:
+    """Integration: new spex branches start from meta.branch, not prior tip."""
+
+    def test_no_cross_spec_commit_leakage(self, tmp_path):
+        """HEAD on spex/a + meta.branch=master → B's branch merge-base is master."""
+        master_tip = _git_init_with_commit(tmp_path, "master")
+
+        # Spec A branch with an extra commit (simulates --all after applying A)
+        create_and_switch_branch("spex/a", cwd=tmp_path, base="master")
+        (tmp_path / "a.txt").write_text("spec-a\n")
+        subprocess.run(
+            ["git", "add", "."], cwd=tmp_path, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "spec-a work"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+        a_tip = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert a_tip != master_tip
+        assert get_current_branch(tmp_path) == "spex/a"
+
+        # Spec B: incomplete todo so validate_apply_branch proceeds
+        spec_b = tmp_path / "spec-b"
+        spec_b.mkdir()
+        (spec_b / "meta.json").write_text(
+            json.dumps({
+                "name": "2026-05-27-10-00-b-feature",
+                "branch": "master",
+            }),
+            encoding="utf-8",
+        )
+        (spec_b / "todo.json").write_text(
+            json.dumps([{"id": "t1", "name": "do something"}]),
+            encoding="utf-8",
+        )
+
+        validate_apply_branch(
+            {"branch_management": True}, spec_b, cwd=tmp_path,
+        )
+
+        assert get_current_branch(tmp_path) == "spex/b-feature"
+        merge_base = subprocess.run(
+            ["git", "merge-base", "HEAD", "master"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert merge_base == master_tip
+        # Spec A's commit must NOT be an ancestor of B's branch
+        contains_a = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", a_tip, "HEAD"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert contains_a.returncode != 0
+
+    def test_missing_base_falls_back_to_head_integration(
+        self, tmp_path, caplog,
+    ):
+        """Missing base branch → create from current HEAD + warning, no exit."""
+        import logging
+
+        _git_init_with_commit(tmp_path, "master")
+        create_and_switch_branch("spex/a", cwd=tmp_path, base="master")
+        (tmp_path / "a.txt").write_text("spec-a\n")
+        subprocess.run(
+            ["git", "add", "."], cwd=tmp_path, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "spec-a work"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+        a_tip = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        spec_b = tmp_path / "spec-b"
+        spec_b.mkdir()
+        (spec_b / "meta.json").write_text(
+            json.dumps({
+                "name": "2026-05-27-10-00-b-feature",
+                "branch": "nonexistent-base",
+            }),
+            encoding="utf-8",
+        )
+        (spec_b / "todo.json").write_text(
+            json.dumps([{"id": "t1", "name": "do something"}]),
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.WARNING):
+            validate_apply_branch(
+                {"branch_management": True}, spec_b, cwd=tmp_path,
+            )
+
+        assert get_current_branch(tmp_path) == "spex/b-feature"
+        tip = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        # Fell back to current HEAD (spex/a tip), so A's commit is present
+        assert tip == a_tip
+        assert "nonexistent-base" in caplog.text
 
 
 @pytest.mark.slow

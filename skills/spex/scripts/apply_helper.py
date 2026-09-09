@@ -203,6 +203,14 @@ def validate_apply_branch(
     spec_name = _extract_spec_name_for_branch(spec_dir, meta)
     short_name = strip_date_prefix(spec_name)
 
+    base = meta.branch or "main"
+    if not branch_exists(base, cwd):
+        logger.warning(
+            "Base branch '%s' does not exist; creating from current HEAD.",
+            base,
+        )
+        base = None
+
     candidates = [
         f"{DEFAULT_SPEX_BRANCH_PREFIX}{short_name}",
         f"{DEFAULT_SPEX_BRANCH_PREFIX}{spec_name}",
@@ -214,7 +222,7 @@ def validate_apply_branch(
             created_branch = candidate
             break
         try:
-            create_and_switch_branch(candidate, cwd)
+            create_and_switch_branch(candidate, cwd, base=base)
             created_branch = candidate
             break
         except subprocess.CalledProcessError:

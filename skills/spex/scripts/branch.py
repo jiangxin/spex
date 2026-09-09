@@ -63,17 +63,26 @@ def resolve_default_branch(
     return fallback
 
 
-def create_and_switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
+def create_and_switch_branch(
+    branch_name: str,
+    cwd: str | Path | None = None,
+    base: str | None = None,
+) -> None:
     """Create a new local branch and switch to it.
 
     Uses ``git switch -c`` instead of ``git branch`` so that it works on
     unborn branches (fresh ``git init`` repos with no commits) where
     ``git branch`` fails with "not a valid object name: 'master'".
+    When ``base`` is provided, the new branch starts from that ref
+    (``git switch -c <name> <base>``); otherwise from current HEAD.
     Raises subprocess.CalledProcessError on failure.
     """
     branch_name = _strip_refs_prefix(branch_name)
+    cmd = ["git", "switch", "-c", branch_name]
+    if base:
+        cmd.append(base)
     subprocess.run(
-        ["git", "switch", "-c", branch_name],
+        cmd,
         capture_output=True,
         text=True,
         check=True,
