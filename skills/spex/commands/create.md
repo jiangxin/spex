@@ -21,6 +21,8 @@ and test plan.
 ## Preconditions
 
 - `$input` ← `$user_prompt` (may be empty; Phase 2 asks if so)
+- Do not rename `$user_prompt` / `$input` / `$requirement` /
+  `$spex_skill_dir`
 - SCOPE / write whitelist: write **only** under `$spec_path`
   (`spec.md`, `todo.json`, `meta.json`, optional `assets/`). NO
   application code. NO existing project file modifications outside

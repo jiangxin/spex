@@ -14,6 +14,8 @@ Apply a specification to implement code step by step.
 
 ## Preconditions
 
+- Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
+  (never call the task prompt `$prompt`)
 - Bind from `$user_prompt`: `$spec_name` or `--all` (Usage token or
   whole prompt). Missing name and no `--all` -> Phase 1 lists
   candidates

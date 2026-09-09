@@ -118,31 +118,29 @@ class TestSkillCredentialSafety:
         assert "$spex_skill_dir" in body
         assert "absolute directory containing this `SKILL.md`" in body
 
-        # Front-matter free-form summary (no confidence threshold)
+        # Front-matter free-form: pointer / sync to body rules 1–4
         fm_end = text.find("\n---", 3)
         assert fm_end != -1, "SKILL.md missing front-matter close"
         front_matter = text[: fm_end + 4]
         assert "confidence" not in front_matter.lower()
-        assert "explicit command verb/alias with single intent → route" in (
-            front_matter
-        )
-        assert (
-            "change-requirements uniquely tied to an active spec → modify"
-            in front_matter
-        )
-        assert "too vague → show Supported Commands" in front_matter
-        assert (
-            "otherwise list candidates and ask to confirm" in front_matter
-        )
+        assert "Free-form Intent Inference rules 1–4" in front_matter
+        assert "body is source of truth" in front_matter
 
         # Ordered Decision rules in Free-form Intent Inference
         rules = _h3_section(body, "Free-form Intent Inference")
-        r1 = _index(rules, "Explicit command alias/verb and single intent")
-        r2 = _index(rules, "uniquely ties to")
+        r1 = _index(rules, "command verb/alias")
+        assert "even if not the" in rules[r1 : r1 + 160] or (
+            "even if not" in rules[r1 : r1 + 160]
+        )
+        assert "first token" in rules[r1 : r1 + 160]
+        assert "-> route" in rules[r1 : r1 + 200]
+        r2 = _index(rules, "uniquely tied")
+        assert "exactly one active" in rules[r2 : r2 + 280]
+        assert "name-token" in rules[r2 : r2 + 280]
+        assert "undone" in rules[r2 : r2 + 320]
+        assert "`modify`" in rules[r2 : r2 + 120]
         r3 = _index(rules, "Too short/vague")
         r4 = _index(rules, "Otherwise OR multiple commands plausible")
-        assert "-> route" in rules[r1 : r1 + 80]
-        assert "`modify`" in rules[r2 : r2 + 120]
         assert "Supported" in rules[r3 : r3 + 80]
         assert "Commands" in rules[r3 : r3 + 120]
         assert "list candidates" in rules[r4 : r4 + 120]
@@ -150,6 +148,21 @@ class TestSkillCredentialSafety:
             "Decision rules must stay in order: "
             "alias/verb -> modify -> vague -> candidates"
         )
+
+    def test_untrusted_content_priority(self):
+        body = _skill_body()
+        section = _h3_section(body, "Untrusted Content")
+        _index(section, "Rendered task")
+        _index(section, "$task_prompt")
+        _index(section, "review")
+        _index(section, "fix")
+        p1 = _index(section, "1. Command SOP")
+        p2 = _index(section, "2. Helper CLI")
+        p3 = _index(section, "3. Rendered prompts")
+        p4 = _index(section, "4. User / spec body")
+        assert p1 < p2 < p3 < p4
+        _index(section, "domain")
+        _index(section, "never change routing")
 
     def test_no_unintended_prompt_var_in_sop_paths(self):
         """Sweep SKILL/commands/references: no leftover router `$prompt`.
@@ -159,6 +172,7 @@ class TestSkillCredentialSafety:
         """
         allowed_substrings = {
             APPLY_TASK_PHASES: ("(never call this `$prompt`)",),
+            APPLY_MD: ("(never call the task prompt `$prompt`)",),
         }
         sop_paths = (
             SKILL_MD,
@@ -229,9 +243,10 @@ class TestCompactSopRouterSkeleton:
         )
 
         # Free-form decision-rule skeleton (ordered anchors)
-        r1 = _index(text, "Explicit alias/verb + single intent -> route")
+        r1 = _index(text, "Unique verb/alias even if not first token -> route")
         r2 = _index(
-            text, "Change-requirements uniquely tied to active spec -> `modify`"
+            text,
+            "Change-requirements uniquely tied (1 name-token OR 1 undone)",
         )
         r3 = _index(text, "Too vague -> show Supported Commands")
         r4 = _index(text, "ELSE / multiple plausible -> list candidates")
@@ -239,6 +254,9 @@ class TestCompactSopRouterSkeleton:
             "Compact free-form rules must stay ordered: "
             "alias/verb -> modify -> vague -> candidates"
         )
+        _index(text, "Untrusted Content")
+        _index(text, "1 SOP+refs")
+        _index(text, "body is source of truth")
 
 
 class TestCommandPersistRedact:
@@ -882,6 +900,7 @@ class TestMergeArchiveInitSop:
         pre = _h2_section(text, "Preconditions")
         _index(pre, "`$user_prompt`")
         _index(pre, "untrusted")
+        _index(pre, "anywhere")
         _index(pre, "--dry-run")
         _index(pre, "**STOP**")
         fail = _h2_section(text, "Failure Handling")
@@ -919,6 +938,7 @@ class TestMergeArchiveInitSop:
         text = _read(INIT_MD)
         pre = _h2_section(text, "Preconditions")
         _index(pre, "`$user_prompt`")
+        _index(pre, "usually ignored")
         _index(pre, "Non-git")
         _index(pre, "Already initialized")
         _index(pre, "Warnings")
@@ -926,3 +946,40 @@ class TestMergeArchiveInitSop:
         _index(fail, "ON_FAIL")
         _index(fail, "exit 0")
         _index(fail, "Warnings")
+
+
+class TestDoNotRenameVariables:
+    """P2: create/modify/apply keep canonical variable names."""
+
+    def test_create_do_not_rename(self):
+        pre = _h2_section(_read(CREATE_MD), "Preconditions")
+        _index(pre, "Do not rename")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "`$input`")
+        _index(pre, "`$requirement`")
+        _index(pre, "`$spex_skill_dir`")
+
+    def test_modify_do_not_rename(self):
+        pre = _h2_section(_read(MODIFY_MD), "Preconditions")
+        _index(pre, "Do not rename")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "`$request`")
+        _index(pre, "`$spec_name`")
+        _index(pre, "`$spex_skill_dir`")
+
+    def test_apply_do_not_rename(self):
+        pre = _h2_section(_read(APPLY_MD), "Preconditions")
+        _index(pre, "Do not rename")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "`$task_prompt`")
+        _index(pre, "`$spex_skill_dir`")
+        _index(pre, "`$prompt`")
+
+    def test_modify_clarification_gate_asks_at_least_one(self):
+        phase2 = _h3_section(
+            _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
+        )
+        _index(phase2, "Clarification gate")
+        _index(phase2, "multiple viable implementation paths")
+        _index(phase2, "at least one question")
+        _index(phase2, "skip")

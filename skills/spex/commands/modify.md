@@ -21,6 +21,8 @@ development plan.
 
 ## Preconditions
 
+- Do not rename `$user_prompt` / `$request` / `$spec_name` /
+  `$spex_skill_dir`
 - Bind from `$user_prompt` (may be empty). Parse `$spec_name` +
   `$request` with this priority (**before** Phase 1 `list`):
   1. Usage already split an explicit `$spec_name` token -> use it;
@@ -96,16 +98,16 @@ $spex_skill_dir/scripts/spex list --json "$spec_name"
 - `$request` is a modification/addition to the existing specification.
   Evaluate clarity:
 
-- Clarify IF any apply:
-  - Scope of change unclear (which sections affected; replace vs extend
-    existing steps)
-  - Multiple viable implementation paths affect design
-  - Relationship to completed work unclear (preserve vs redo completed
-    steps)
-  - Ambiguous terminology in context of existing specification
-- ELSE IF request already specific/unambiguous in current-spec context
-  -> skip clarification -> Phase 3. Do not ask just to be thorough;
-  only when answer would materially change the spec.
+- Clarification gate:
+  - IF multiple viable implementation paths affect design -> ask
+    at least one question (do not silently pick a path)
+  - ELSE IF request already specific/unambiguous in current-spec
+    context -> skip clarification -> Phase 3. Do not ask just to be
+    thorough; only when answer would materially change the spec
+  - Also clarify when any apply: scope of change unclear (which
+    sections affected; replace vs extend); relationship to completed
+    work unclear (preserve vs redo); ambiguous terminology in context
+    of existing specification
 
 - How to clarify:
   - Ask all questions in one message (not back-and-forth)
