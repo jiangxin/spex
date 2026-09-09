@@ -208,6 +208,58 @@ class TestCommandPersistRedact:
         )
 
 
+class TestCreatePlanOnlySop:
+    """Lock create.md PLAN-only binding, phases, and Load pointers."""
+
+    def test_binds_input_from_user_prompt(self):
+        pre = _h2_section(_read(CREATE_MD), "Preconditions")
+        _index(pre, "`$input` ← `$user_prompt`")
+
+    def test_plan_write_whitelist_only_spec_path(self):
+        text = _read(CREATE_MD)
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "write **only** under `$spec_path`")
+        _index(pre, "Glob")
+        _index(pre, "Grep")
+        _index(pre, "untrusted")
+        phase9 = _h3_section(text, "Phase 9: STOP — Do NOT Implement")
+        _index(phase9, "outside `$spec_path`")
+
+    def test_phase1_begin_session_precheck_title(self):
+        text = _read(CREATE_MD)
+        phase1 = _h3_section(text, "Phase 1: Begin Session + Precheck")
+        _index(phase1, "create-helper begin-session")
+        _index(phase1, "create-helper precheck")
+        assert "### Phase 1: Validate Branch" not in text
+
+    def test_phase3_requires_exactly_one_fenced_json(self):
+        phase3 = _h3_section(
+            _read(CREATE_MD), "Phase 3: Generate Name and Description"
+        )
+        _index(phase3, "exactly one")
+        _index(phase3, "fenced `json`")
+        _index(phase3, "Phase 8")
+        assert '"name"' in phase3 or "`name`" in phase3
+        assert '"description"' in phase3 or "`description`" in phase3
+
+    def test_phase5_6_load_shared_references(self):
+        text = _read(CREATE_MD)
+        phase5 = _h3_section(text, "Phase 5: Design Specification")
+        _index(phase5, "Load and follow `references/spec-assets.md`")
+        phase6 = _h3_section(text, "Phase 6: Plan Implementation Steps")
+        _index(
+            phase6,
+            "Load and follow `references/todo-helper-cookbook.md`",
+        )
+        _index(phase6, "Small batches")
+        _index(phase6, "skip_commit")
+
+    def test_has_failure_handling_section(self):
+        section = _h2_section(_read(CREATE_MD), "Failure Handling")
+        _index(section, "ON_FAIL")
+        _index(section, "`$spec_path`")
+
+
 SOP_STEP_REVIEW_PATHS = (
     APPLY_REVIEW_LOOP,
     APPLY_MD,
