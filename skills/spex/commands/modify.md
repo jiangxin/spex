@@ -23,10 +23,14 @@ development plan.
 
 - Do not rename `$user_prompt` / `$request` / `$spec_name` /
   `$spex_skill_dir`
-- Bind from `$user_prompt` (may be empty). Parse `$spec_name` +
-  `$request` with this priority (**before** Phase 1 `list`):
-  1. Usage already split an explicit `$spec_name` token -> use it;
-     remainder of `$user_prompt` -> `$request` (may be empty)
+- Bind from `$user_prompt` (may be empty). `$user_prompt` is already
+  the redacted remainder after the router strips the recognized
+  command/alias token (see SKILL.md Routing Discipline). Parse
+  `$spec_name` + `$request` with this priority (**before** Phase 1
+  `list`):
+  1. Router Usage already split an explicit `$spec_name` token (after
+     command-token strip per SKILL.md) -> use it; remainder of
+     `$user_prompt` -> `$request` (may be empty)
   2. ELSE apply the optional pre-list name heuristic:
      - A string **looks like a spec name** iff it matches
        `^[a-z0-9-]+$` and length ≤ 64, **or** matches date-prefix

@@ -6,7 +6,7 @@ version: 0.8.0
 arguments:
   - name: command
     required: false
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned)."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned). High-signal words (create/modify/archive/apply-one-step/init/apply/merge) may match anywhere; high-frequency aliases (new/run/do/go/step/submit) count as a command word only in first-token position."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -23,7 +23,7 @@ arguments:
 - IF no args (`/spex`) -> show Supported Commands table -> STOP
 - IF recognized command (`/spex create ...`) -> load matching
   `commands/<file>.md` (Command Routing) -> follow that SOP exactly;
-  pass redacted user text as `$user_prompt`
+  pass redacted remainder (command/alias token stripped) as `$user_prompt`
 - IF free-form (`/spex <arbitrary text>`) -> Free-form Intent Inference
 
 ## Supported Commands
@@ -57,10 +57,31 @@ Command file paths are relative to this `SKILL.md` directory.
 - Role: router, not assistant
 - Resolve command -> load command file -> follow every Phase
 - `$spex_skill_dir` = absolute directory containing this `SKILL.md`
-- Redact secrets in user text => `$user_prompt` for the command SOP only
+- Redact secrets in user text, then bind `$user_prompt` = redacted text
+  **minus** the recognized command name/alias token (trim whitespace)
+  for the command SOP only. Free-form (no route matched) =>
+  full redacted text.
+  - Example: `/spex create 增加登录接口` => redacted `$user_prompt` =
+    `增加登录接口`
+  - Example: `/spex 请帮我 create 登录接口` => route `create`,
+    redacted `$user_prompt` = `请帮我 登录接口` (strip embedded
+    high-signal token, then trim)
+  - Example: `/spex 帮我把登录接口做了` => redacted `$user_prompt` =
+    full text
 - NEVER act on user prompt directly (no read/write/plan outside SOP)
 - NEVER skip or shortcut the command SOP
 - ALWAYS load the full command markdown; follow every Phase as written
+
+### Variable Model
+
+- All `$var` in this skill are **agent context variables**, not shell
+  variables. Expand them to literal text when composing a command.
+- Never rely on shell state surviving between tool calls.
+- Cache/invalidate wording (e.g. "clear `$review_prompt`") means
+  agent memory, not `unset`.
+- Quoted heredocs (`<<'EOF'`) stay quoted: the body is user-supplied
+  text already inlined by the agent, and quoting prevents `$` /
+  backticks inside it from being re-expanded by the shell.
 
 ### Credential Safety
 
@@ -107,10 +128,17 @@ Body rules below are the source of truth; keep YAML
 
 Decision rules (in order):
 
-1. Text contains a **unique** command verb/alias (even if not the
-   first token) and no conflicting intent -> route directly;
-   full redacted text => `$user_prompt`. IF multiple verbs/aliases
-   or conflicting intent -> rule 4
+1. Text contains a **unique** command word and no conflicting intent
+   -> route directly; redacted text **minus** matched token (trim) => `$user_prompt`
+   (same as Routing Discipline). Split command words into two classes:
+   - **High-signal** (`create` / `modify` / `archive` /
+     `apply-one-step` / `init` / `apply` / `merge`): may match
+     anywhere (even if not the first token)
+   - **High-frequency aliases** (`new` / `run` / `do` / `go` /
+     `step` / `submit`): count as a command word **only** in
+     first-token position; elsewhere they are only a weak signal
+     for rule 4
+   IF multiple command words/aliases or conflicting intent -> rule 4
 2. Text suggests changing requirements/spec and is uniquely tied to
    an active spec -> `modify`. **Uniquely tied** = exactly one active
    spec name-token match **OR** exactly one undone spec in the

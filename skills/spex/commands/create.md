@@ -20,7 +20,10 @@ and test plan.
 
 ## Preconditions
 
-- `$input` ← `$user_prompt` (may be empty; Phase 2 asks if so)
+- `$input` ← `$user_prompt` (may be empty; Phase 2 asks if so).
+  `$user_prompt` is already the redacted remainder after the router
+  strips the recognized command/alias token (see SKILL.md Routing
+  Discipline) — it does not contain `create` / `new`
 - Do not rename `$user_prompt` / `$input` / `$requirement` /
   `$spex_skill_dir`
 - SCOPE / write whitelist: write **only** under `$spec_path`

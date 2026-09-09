@@ -99,9 +99,39 @@ class TestSkillCredentialSafety:
                 f"$user_prompt assignment must mention redact: {line!r}"
             )
         joined = "\n".join(assignment_lines)
-        assert "pass redacted user text as `$user_prompt`" in joined
-        assert "Redact secrets in user text => `$user_prompt`" in joined
-        assert "full redacted text => `$user_prompt`" in joined
+        assert "pass redacted remainder" in joined
+        assert "command/alias token stripped" in joined
+        routing = _h3_section(body, "Routing Discipline")
+        _index(routing, "redacted text")
+        _index(routing, "minus")
+        _index(routing, "recognized command name/alias token")
+        _index(routing, "full redacted text")
+
+    def test_variable_model_section(self):
+        body = _skill_body()
+        section = _h3_section(body, "Variable Model")
+        _index(section, "agent context variables")
+        _index(section, "not shell")
+        _index(section, "literal text")
+        _index(section, "Never rely on shell state")
+        _index(section, "agent memory")
+        _index(section, "not `unset`")
+        _index(section, "<<'EOF'")
+        _index(section, "inlined")
+
+    def test_user_prompt_stripping_rule_and_examples(self):
+        body = _skill_body()
+        section = _h3_section(body, "Routing Discipline")
+        _index(section, "minus")
+        _index(section, "recognized command name/alias token")
+        _index(section, "Free-form (no route matched)")
+        _index(section, "full redacted text")
+        _index(section, "/spex create 增加登录接口")
+        _index(section, "增加登录接口")
+        _index(section, "/spex 请帮我 create 登录接口")
+        _index(section, "请帮我 登录接口")
+        _index(section, "/spex 帮我把登录接口做了")
+        _index(section, "full text")
 
     def test_no_router_prompt_assignment_or_confidence(self):
         body = _skill_body()
@@ -125,15 +155,47 @@ class TestSkillCredentialSafety:
         assert "confidence" not in front_matter.lower()
         assert "Free-form Intent Inference rules 1–4" in front_matter
         assert "body is source of truth" in front_matter
+        assert "High-signal words" in front_matter
+        assert "high-frequency aliases" in front_matter
+        assert "first-token" in front_matter
 
         # Ordered Decision rules in Free-form Intent Inference
         rules = _h3_section(body, "Free-form Intent Inference")
-        r1 = _index(rules, "command verb/alias")
-        assert "even if not the" in rules[r1 : r1 + 160] or (
-            "even if not" in rules[r1 : r1 + 160]
+        r1 = _index(rules, "unique** command word")
+        _index(rules, "High-signal")
+        _index(rules, "High-frequency aliases")
+        assert "even if not the first token" in rules[r1 : r1 + 500]
+        assert "first-token position" in rules[r1 : r1 + 700] or (
+            "first-token" in rules[r1 : r1 + 700]
         )
-        assert "first token" in rules[r1 : r1 + 160]
+        assert "weak signal" in rules[r1 : r1 + 700]
         assert "-> route" in rules[r1 : r1 + 200]
+        # Strip matched token on free-form route (same as Routing Discipline)
+        r1_bind = rules[r1 : r1 + 350]
+        assert "minus" in r1_bind
+        assert "matched" in r1_bind and "token" in r1_bind
+        assert "full redacted text => `$user_prompt`" not in r1_bind
+        # High-signal tokens listed
+        for token in (
+            "`create`",
+            "`modify`",
+            "`archive`",
+            "`apply-one-step`",
+            "`init`",
+            "`apply`",
+            "`merge`",
+        ):
+            assert token in rules[r1 : r1 + 500], token
+        # High-frequency aliases listed
+        for token in (
+            "`new`",
+            "`run`",
+            "`do`",
+            "`go`",
+            "`step`",
+            "`submit`",
+        ):
+            assert token in rules[r1 : r1 + 700], token
         r2 = _index(rules, "uniquely tied")
         assert "exactly one active" in rules[r2 : r2 + 280]
         assert "name-token" in rules[r2 : r2 + 280]
@@ -243,7 +305,17 @@ class TestCompactSopRouterSkeleton:
         )
 
         # Free-form decision-rule skeleton (ordered anchors)
-        r1 = _index(text, "Unique verb/alias even if not first token -> route")
+        r1 = _index(
+            text,
+            "Unique high-signal word anywhere, or high-frequency alias as",
+        )
+        _index(text, "first token only")
+        r1_bind = text[r1 : r1 + 280]
+        assert "minus" in r1_bind
+        assert "matched" in r1_bind and "token" in r1_bind
+        assert "full redacted text => `$user_prompt`" not in r1_bind
+        _index(text, "Variable Model")
+        _index(text, "agent context variables")
         r2 = _index(
             text,
             "Change-requirements uniquely tied (1 name-token OR 1 undone)",

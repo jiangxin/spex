@@ -17,8 +17,11 @@ Apply a specification to implement code step by step.
 - Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
   (never call the task prompt `$prompt`)
 - Bind from `$user_prompt`: `$spec_name` or `--all` (Usage token or
-  whole prompt). Missing name and no `--all` -> Phase 1 lists
-  candidates
+  whole `$user_prompt`). `$user_prompt` is already the redacted
+  remainder after the router strips the recognized command/alias
+  token (see SKILL.md Routing Discipline) — it is never the bare
+  command word `apply` / `run` / `do` / `go`. Missing name and no
+  `--all` -> Phase 1 lists candidates
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
   stage/commit paths under `$spex_root/`. Phases 4–5 sub-agent may
   persist `commit_title` only — never `completed_at`
