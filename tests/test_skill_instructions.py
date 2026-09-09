@@ -746,10 +746,17 @@ class TestApplyStepReviewSop:
         _index(control, "re-run `list`")
         _index(control, "apply-task-phases.md")
         _index(control, "apply-subagent-handoff.md")
+        _index(control, "meta.branch")
+        _index(control, "must **not** switch branches by hand")
         phase1_apply = _h3_section(apply, "Phase 1: Resolve Spec")
         _index(phase1_apply, "--all")
         _index(phase1_apply, "do **not** re-run `list`")
         _index(phase1_apply, "next `$specs` item at Phase 2")
+        _index(phase1_apply, "meta.branch")
+        _index(phase1_apply, "must **not** switch branches by hand")
+        _index(phase1_apply, "--must-done")
+        _index(phase1_apply, "already")
+        _index(phase1_apply, "post-action")
         _index(_h3_section(apply, "Phase 8: Next Task"), "Phase 3")
         phase9 = _h3_section(apply, "Phase 9: Post Action")
         _index(phase9, "post-action")
@@ -757,20 +764,34 @@ class TestApplyStepReviewSop:
         assert "Phase 1 outer" not in apply
         assert "apply-subagent-handoff" not in one
 
-        # apply-one-step: no handoff; HARD STOP; ignore outcome=
+        # apply-one-step: differences table; HARD STOP; ignore outcome=
+        diffs = _h2_section(one, "Differences from `/spex apply`")
+        _index(diffs, "HARD STOP")
+        _index(diffs, "ignore `outcome=`")
+        _index(diffs, "Never return to Phase 3")
+        _index(diffs, "`$remaining` == 0")
+        _index(diffs, "Not supported")
         pre_one = _h2_section(one, "Preconditions")
-        _index(pre_one, "Unlike `/spex apply`")
-        _index(pre_one, "never return to Phase 3")
-        _index(pre_one, "no Phases 4–5 sub-agent handoff")
-        _index(pre_one, "ignore `outcome=`")
+        _index(pre_one, "Differences table")
         _index(pre_one, "apply-helper dirty --json")
+        _index(pre_one, "apply-task-phases.md")
+        _index(pre_one, "cli-contract.md")
+        phase1_one = _h3_section(one, "Phase 1: Resolve Spec")
+        _index(phase1_one, "--must-done")
+        _index(phase1_one, "already")
+        _index(phase1_one, "post-action")
         phase4 = _h3_section(one, "Phase 4: Execute Task")
         _index(phase4, "**Only** `$current_task_id`")
         phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
         _index(phase8, "HARD STOP")
-        _index(phase8, "idempotent")
+        _index(phase8, "todo-helper")
+        _index(phase8, "show --undone")
+        assert "todo.json" not in phase8
+        assert "null" not in phase8.lower()
         phase3_one = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
-        _index(phase3_one, "idempotent")
+        _index(phase3_one, "unreachable")
+        assert "Phase 8 interrupted" not in phase3_one
+        assert "idempotent" not in phase3_one
 
     def test_apply_skip_commit_semantics_in_shared_refs(self):
         """Regression anchors moved to references (no semantic loss)."""
@@ -1034,6 +1055,76 @@ class TestSharedSopReferences:
         _index(text, "apply-helper dirty --json")
         _index(text, "Do **not** rely on sub-agent")
         _index(text, "`$task_prompt`")
+
+
+class TestApplyOneStepCompletedSpecAndDedupe:
+    """R3-F5 / R3-F12 / R3-F17: completed-spec recovery + dedupe."""
+
+    def test_phase1_must_done_recheck_in_both_apply_commands(self):
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            text = _read(path)
+            pre = _h2_section(text, "Preconditions")
+            _index(pre, "Completed-spec recovery")
+            _index(pre, "do **not** default-STOP")
+            _index(pre, "empty / missing `$spec_name`")
+            _index(pre, "no undone work")
+            phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+            _index(phase1, "--must-done")
+            _index(phase1, '"$spec_name"')
+            _index(phase1, "Completed-spec recovery")
+            _index(phase1, "Empty `[]` recovery is defined in Preconditions")
+            _index(phase1, "do **not** default-STOP")
+            _index(phase1, "when `$spec_name` is non-empty")
+            _index(phase1, "already")
+            _index(phase1, "post-action")
+            _index(phase1, "empty / missing `$spec_name`")
+            _index(phase1, "no undone work")
+            _index(phase1, "**STOP**")
+            # Named recovery must not leave empty-name [] without STOP
+            assert phase1.index("empty / missing `$spec_name`") > phase1.index(
+                "--must-done"
+            )
+
+    def test_apply_one_step_differences_table_and_helper_remaining(self):
+        one = _read(APPLY_ONE_STEP_MD)
+        diffs = _h2_section(one, "Differences from `/spex apply`")
+        for needle in (
+            "HARD STOP",
+            "ignore `outcome=`",
+            "Never return to Phase 3",
+            "`$remaining` == 0",
+            "Not supported",
+            "Sub-agent",
+            "In-session",
+        ):
+            _index(diffs, needle)
+        phase8 = _h3_section(
+            one, "Phase 8: Summary and Conditional Post Action"
+        )
+        _index(phase8, "todo-helper --name \"$spec_name\" show --undone")
+        _index(phase8, "array length")
+        assert "todo.json" not in phase8
+        assert "empty/`null`" not in phase8
+        assert "null" not in phase8.lower()
+        phase3 = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
+        assert "Phase 8 interrupted" not in phase3
+        assert "idempotent" not in phase3
+        stop = _h2_section(one, "STOP / Outputs")
+        assert "all_done" not in stop
+        _index(stop, "`$remaining` == 0")
+
+    def test_apply_all_branch_base_note_and_list_once(self):
+        apply = _read(APPLY_MD)
+        control = _h2_section(apply, "Control flow")
+        _index(control, "`list` **once**")
+        _index(control, "meta.branch")
+        phase1 = _h3_section(apply, "Phase 1: Resolve Spec")
+        _index(phase1, "do **not** re-run `list`")
+        _index(phase1, "meta.branch")
+        _index(phase1, "must **not** switch branches by hand")
+        phase3 = _h3_section(apply, "Phase 3: Build Prompt / Resume Gate")
+        _index(phase3, '"all_done": true')
+        _index(phase3, "Phase 9")
 
 
 class TestPlanCommandCommonReference:

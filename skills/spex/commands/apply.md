@@ -36,13 +36,21 @@ Apply a specification to implement code step by step.
   anchors to `$spec_path/debug.log` automatically (task begin,
   committed, review begin/round, task done, post-action). Do not
   call `mark-phase`
+- Empty `[]` from Phase 1 `--must-undone` resolve:
+  - IF `$spec_name` is non-empty → **Completed-spec recovery**
+    (re-check with `--must-done` in Phase 1) — do **not** default-STOP
+    on the first `[]`
+  - ELSE (empty / missing `$spec_name`) → report no match /
+    no undone work → **STOP** (keep resolve-spec-list default
+    STOP)
 
 ## Control flow
 
 Three nested loops; abnormal Phase 6 STOP aborts all of them.
 `--all`: `list` **once** in Phase 1; iterate `$specs` only — never
 re-run `list` inside the loop. Next `$specs` item always resumes at
-Phase 2.
+Phase 2. Branch base is guaranteed by Phase 2 precheck
+(`meta.branch`); the loop must **not** switch branches by hand.
 
 ```text
 Phase 1: resolve once (--all -> $specs list | single resolve)
@@ -96,7 +104,9 @@ for outer loops; Phase bodies below do not restate the diagram.
   - Parse stdout as JSON array `$specs` of objects (`spec_name`,
     `spec_path`)
   - **Hard rule:** do **not** re-run `list` inside the `--all`
-    loop — only iterate this Phase 1 `$specs` array
+    loop — only iterate this Phase 1 `$specs` array. Branch base
+    is guaranteed by Phase 2 precheck (`meta.branch`); the loop
+    must **not** switch branches by hand between specs
   - For each entry in `$specs`: set `$spec_name` / `$spec_path` ->
     Phases 2–9 (Phase 9 when that spec's tasks all done)
   - After Phase 9 for one spec -> next `$specs` item at Phase 2.
@@ -108,7 +118,27 @@ for outer loops; Phase bodies below do not restate the diagram.
     $spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
     ```
 
-  - Load and follow `references/resolve-spec-list.md` exactly
+  - Load and follow `references/resolve-spec-list.md` exactly.
+    Empty `[]` recovery is defined in Preconditions — do **not** default-STOP
+    on the first `[]` when `$spec_name` is non-empty
+    (Completed-spec `--must-done` recheck below); empty / missing
+    name keeps resolve-spec-list default STOP. ON_FAIL (true
+    script error) -> STOP
+  - **Empty `[]` handling:** IF resolve yields `[]`:
+    - IF `$spec_name` is non-empty → **Completed-spec recovery**,
+      re-check:
+
+      ```bash
+      $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
+      ```
+
+      - IF hit (non-empty array) -> report that the spec is already
+        complete; offer
+        `$spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"`
+        to finish the tail -> **STOP**
+      - IF still `[]` -> report no match -> **STOP**
+    - ELSE (empty / missing `$spec_name`) → report no match /
+      no undone work → **STOP**
 
 ### Phase 2: Validate Branch
 
