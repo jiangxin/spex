@@ -390,50 +390,129 @@ class TestApplyStepReviewSop:
             _index(phase6, '"skipped": true')
             _index(phase6, "the loop continues to")
             _index(phase6, "Phase 7")
+            # No duplicated review-helper CLI tips in command Phase 6
             assert "config get" not in phase6.lower()
             assert "skip_review" not in phase6
+            assert "bump-round" not in phase6
+            assert "review-helper" not in phase6
 
-    def test_apply_commands_branch_on_skip_commit_and_did_commit(self):
-        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
-            text = _read(path)
-            phase2 = _h3_section(text, "Phase 2: Validate Branch")
-            _index(phase2, "`$spex_root`")
-            _index(phase2, "spex config")
+    def test_apply_commands_load_shared_phase_refs(self):
+        """Commands Load shared refs; skip_commit semantics live in refs."""
+        apply = _read(APPLY_MD)
+        one = _read(APPLY_ONE_STEP_MD)
+
+        for text in (apply, one):
+            pre = _h2_section(text, "Preconditions")
+            _index(pre, "`$user_prompt`")
+            _index(pre, "untrusted")
+            _index(pre, "SCOPE")
+            _index(pre, "`$spex_root`")
+            _index(_h2_section(text, "Failure Handling"), "ON_FAIL")
+            for phase, title in (
+                ("Phase 2: Validate Branch", "apply-task-phases.md"),
+                ("Phase 3: Build Prompt / Resume Gate", "apply-task-phases.md"),
+                ("Phase 4: Execute Task", "apply-task-phases.md"),
+                (
+                    "Phase 5: Commit (record commit_title only)",
+                    "apply-task-phases.md",
+                ),
+                ("Phase 7: Mark Task Complete", "apply-task-phases.md"),
+            ):
+                _index(
+                    _h3_section(text, phase),
+                    f"Load and follow `references/{title}`",
+                )
             phase3 = _h3_section(text, "Phase 3: Build Prompt / Resume Gate")
+            _index(phase3, "`$task_prompt`")
             _index(phase3, "`$skip_commit`")
-            phase4 = _h3_section(text, "Phase 4: Execute Task")
-            _index(phase4, "`$skip_commit`")
-            _index(phase4, "`$dirty`")
-            _index(phase4, "whole working tree")
-            _index(phase4, "`$did_commit=false`")
-            _index(phase4, "**FAIL/STOP**")
-            phase5 = _h3_section(text, "Phase 5: Commit (record commit_title only)")
-            _index(phase5, "`$did_commit`")
-            _index(phase5, "Recompute `$dirty`")
-            _index(phase5, "Leftover dirty paths poison")
-            _index(phase5, "do not\n  persist `commit_title`")
             phase6 = _h3_section(text, "Phase 6: Review Loop")
             _index(phase6, "`$did_commit`")
-            phase7 = _h3_section(text, "Phase 7: Mark Task Complete")
-            _index(phase7, "`$did_commit`")
-            _index(phase7, "Refresh `$commit_title` if needed")
-            if path == APPLY_MD:
-                # After Phases 4–5 sub-agent, main must re-bind
-                # $commit_title from durable todo before Phase 6,
-                # and must not treat empty commit_title alone as OK.
-                _index(phase3, '`$commit_title` ←')
-                _index(phase3, "task's `commit_title`")
-                _index(phase3, "outcome=skip_commit")
-                _index(phase3, "intentional STOP")
-                _index(phase3, "empty `commit_title` alone")
-                _index(phase3, "recompute `$dirty`")
-                _index(phase3, "tree dirty")
-                _index(phase4, "outcome=skip_commit")
-                _index(phase5, "outcome=committed")
-            _index(phase2, "Paths")
-            _index(phase2, "Do **not** use Config")
-            _index(phase4, "directory boundary")
-            _index(phase4, "bare string prefix")
+            phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+            _index(
+                phase1,
+                "Load and follow `references/resolve-spec-list.md`",
+            )
+
+        # apply.md: handoff + control-flow + --all / Phase 8–9
+        _index(
+            _h3_section(apply, "Phase 3: Build Prompt / Resume Gate"),
+            "`references/apply-subagent-handoff.md`",
+        )
+        phase3_apply = _h3_section(
+            apply, "Phase 3: Build Prompt / Resume Gate"
+        )
+        assert "Load and follow" in phase3_apply
+        assert "apply-subagent-handoff.md" in phase3_apply
+        control = _h2_section(apply, "Control flow")
+        _index(control, "```mermaid")
+        _index(control, "apply-task-phases.md")
+        _index(control, "apply-subagent-handoff.md")
+        _index(_h3_section(apply, "Phase 1: Resolve Spec"), "--all")
+        _index(_h3_section(apply, "Phase 8: Next Task"), "Phase 3")
+        _index(_h3_section(apply, "Phase 9: Post Action"), "post-action")
+        assert "apply-subagent-handoff" not in one
+
+        # apply-one-step: HARD STOP + only current task + post-action
+        phase4 = _h3_section(one, "Phase 4: Execute Task")
+        _index(phase4, "**Only** `$current_task_id`")
+        phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
+        _index(phase8, "HARD STOP")
+        _index(phase8, "idempotent")
+        phase3_one = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
+        _index(phase3_one, "idempotent")
+
+    def test_apply_skip_commit_semantics_in_shared_refs(self):
+        """Regression anchors moved to references (no semantic loss)."""
+        phases = _read(APPLY_TASK_PHASES)
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+
+        phase2 = _h2_section(phases, "Phase 2: Validate Branch")
+        _index(phase2, "`$spex_root`")
+        _index(phase2, "spex config")
+        _index(phase2, "Paths")
+        _index(phase2, "Do **not** use Config")
+
+        phase3 = _h2_section(phases, "Phase 3: Build Prompt / Resume Gate")
+        _index(phase3, "`$task_prompt`")
+        _index(phase3, "`$skip_commit`")
+        _index(phase3, "**FAIL**")
+
+        phase4 = _h2_section(phases, "Phase 4: Execute Task")
+        _index(phase4, "`$skip_commit`")
+        _index(phase4, "`$dirty`")
+        _index(phase4, "whole working tree")
+        _index(phase4, "apply-helper dirty --json")
+        _index(phase4, "`$did_commit=false`")
+        _index(phase4, "**FAIL/STOP**")
+        _index(phase4, "directory boundary")
+        _index(phase4, "bare string prefix")
+        _index(phase4, "outcome=skip_commit")
+
+        phase5 = _h2_section(phases, "Phase 5: Commit (record commit_title only)")
+        _index(phase5, "`$did_commit`")
+        _index(phase5, "Recompute `$dirty`")
+        _index(phase5, "Leftover dirty paths poison")
+        _index(phase5, "do not persist `commit_title`")
+        _index(phase5, "outcome=committed")
+
+        phase6 = _h2_section(phases, "Phase 6: Review Loop")
+        _index(phase6, "`$did_commit`")
+        _index(phase6, "`step_review=false`")
+        _index(phase6, "abnormal STOP")
+        _index(phase6, '"skipped": true')
+
+        phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
+        _index(phase7, "`$did_commit`")
+        _index(phase7, "Refresh `$commit_title` if needed")
+
+        # Handoff decision table (apply main session only)
+        _index(handoff, "outcome=skip_commit")
+        _index(handoff, "outcome=committed")
+        _index(handoff, "intentional STOP")
+        _index(handoff, "empty `commit_title` alone")
+        _index(handoff, "recompute `$dirty`")
+        _index(handoff, "tree dirty")
+        _index(handoff, "task's `commit_title`")
 
     def test_modify_todo_omit_skip_commit_on_coding_example(self):
         text = _read(MODIFY_TODO)
