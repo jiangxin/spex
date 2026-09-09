@@ -713,8 +713,11 @@ class TestSharedSopReferences:
         assert RESOLVE_SPEC_LIST.is_file()
         text = _read(RESOLVE_SPEC_LIST)
         _index(text, "list --json")
+        _index(text, "`[]` / zero elements")
+        _index(text, "not** a script error")
         _index(text, "Single element")
         _index(text, "Multiple")
+        _index(text, "True error")
         _index(text, "**STOP**")
 
     def test_apply_task_phases_exists_with_core_anchors(self):

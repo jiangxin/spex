@@ -15,12 +15,20 @@ passed).
 
 | Result | Action |
 |--------|--------|
+| `[]` / zero elements | Report no match; **default STOP**, unless the caller's Preconditions define recovery (e.g. modify: rebound `$request` then list again with empty name) |
 | Single element | Set `$spec_name` / `$spec_path` from that entry |
 | Multiple | Numbered `spec_name` list -> user chooses -> set `$spec_name` / `$spec_path` from selected entry |
-| Script exits error | Report stderr -> **STOP** |
+| Script exits error | True error (not an empty result) → report stderr → **STOP** |
 
 ## Notes
 
 - Empty / missing `$spec_name` behavior depends on CLI flags and
   whether the name arg is omitted — follow the caller's CMD
 - Do not invent a second match algorithm; trust `list` output
+- An empty result (`[]`) is **not** a script error. Never assume
+  that zero matches require exit 1; with `--json`, empty match
+  prints `[]` and exits 0. Only treat a non-zero exit (or
+  non-array stdout) as a true script failure
+- Without `--json`, empty match may still print
+  `No specs found.` on stderr and exit 1 — callers that need a
+  programmable empty result must use `--json`

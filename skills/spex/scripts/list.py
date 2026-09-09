@@ -245,13 +245,15 @@ def main(argv=None):
     elif args.must_undone:
         specs = [t for t in specs if not t.is_completed]
 
+    if args.json:
+        # Empty match is a valid result for callers parsing --json
+        # (e.g. resolve-spec-list); do not treat as a script error.
+        print(format_json_output(specs))
+        return
+
     if not specs:
         print("No specs found.", file=sys.stderr)
         sys.exit(1)
-
-    if args.json:
-        print(format_json_output(specs))
-        return
 
     verbosity = args.verbose
     if verbosity > 0:
