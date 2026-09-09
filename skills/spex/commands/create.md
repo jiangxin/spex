@@ -70,15 +70,15 @@ $spex_skill_dir/scripts/spex create-helper precheck
   implementation details, or modify any files (`/spex apply` handles
   that). Stay within Preconditions explore whitelist.
 
-- Clarify IF any apply:
-  - Multiple viable implementation paths affect design
-    (e.g. REST vs GraphQL, polling vs WebSocket)
-  - Scope/boundaries unclear (modules in/out, backward compat)
-  - Dependencies on other systems/features unspecified
-  - Ambiguous terminology with multiple interpretations
-- ELSE IF requirement already specific/unambiguous -> skip clarification.
-  Do not ask just to be thorough; only when answer would
-  materially change the spec.
+- Clarification gate:
+  - IF multiple viable implementation paths affect design -> ask
+    at least one question (do not silently pick a path)
+  - ELSE IF requirement already specific/unambiguous -> skip
+    clarification. Do not ask just to be thorough; only when the
+    answer would materially change the spec
+  - Also clarify when any apply: scope/boundaries unclear; dependencies
+    on other systems/features unspecified; ambiguous terminology with
+    multiple interpretations
 
 - How to clarify:
   - Ask all questions in one message (not back-and-forth)
@@ -89,20 +89,31 @@ $spex_skill_dir/scripts/spex create-helper precheck
 
 ### Phase 3: Generate Name and Description
 
-- From `$requirement`, emit **exactly one** fenced `json` block
-  (language tag `json`) with two fields only — no surrounding prose
-  that looks like JSON, and no other `json` fences in this phase
-  (Phase 8 trailing result JSON is separate and comes later):
-  - `name`: short English (<32 bytes), `[a-z0-9-]` only, spaces -> `-`.
-    Do NOT prepend date prefix.
+- From `$requirement`, propose `$name` and `$description` (agent
+  proposes fields; CLI validates — chat fence is **not** the sole
+  gate):
+  - `name`: short English (<32 bytes), `[a-z0-9-]` only, must start
+    with alphanumeric, spaces -> `-`. Do NOT prepend date prefix.
   - `description`: brief English summary (merge commit message + PR
     description). Single line — no embedded newlines; wrapping is
     automatic.
-- Example fence body:
-  `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`
-- Parse that sole fenced `json` -> `$name`, `$description`
-- ON_FAIL (missing fence, multiple fences, or invalid fields) ->
-  re-emit exactly one valid fence -> retry
+- Optional: at most one fenced `json` block in this phase (language
+  tag `json`) for human readability — e.g.
+  `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`.
+  Do not emit additional `json` fences while iterating; do not treat
+  chat fencing as sufficient without CLI success.
+- CMD (required gate before Phase 4):
+
+```bash
+$spex_skill_dir/scripts/spex create-helper validate-name \
+  --name "$name" --description "$description"
+```
+
+- IF exit 0 -> bind `$name` / `$description` from JSON stdout
+  (`name`, `description`); continue Phase 4
+- ON_FAIL (non-zero) -> stderr has reason; fix fields -> retry
+  `validate-name` until exit 0. Do **not** call `prepare-spec`
+  until validation succeeds.
 
 ### Phase 4: Prepare Spec Directory
 
@@ -148,21 +159,24 @@ EOF
   (`<!-- Replace this section with ... -->`) with analysis/design.
   Fill "User Clarification" from redacted `$requirement`. Keep Constraints as-is.
   Do not remove or modify `<!-- spex:begin:* -->` comment lines.
+- Assets timing CHECK (create):
+  1. Write `$spec_path/spec.md` first (discover/copy into `assets/`
+     may happen before or while writing)
+  2. Then register with `meta-helper --add-images` and embed
+     `![...](assets/...)` links in `spec.md`
 - Writes only under `$spec_path` (Preconditions whitelist)
 
 ### Phase 6: Plan Implementation Steps
 
 - From `$spec_path/spec.md`, break work into incremental steps.
   Each coding step independently committable + verifiable.
-- Principles (keep in-command):
-  - Small batches: minimal working increment per step
-  - Self-contained: production code + tests in same step — never split
-  - Ordered by dependency: each builds on previous; no forward refs
-  - `skip_commit`: coding steps keep default (`false`, omit the
-    flag). Non-coding / expected no-repo-change steps should use
-    `--skip-commit true` (or `auto` when a commit is only needed if
-    files change). No per-step review flag — review runs only when
-    a step produces a commit (and global `step_review` allows it)
+- Hard principles (keep in-command; examples in cookbook only):
+  - Small batches; self-contained (code + tests same step)
+  - Ordered by dependency; no forward refs
+  - Coding steps: omit `--skip-commit` (default `false`). Non-coding /
+    expected no-repo-change: `--skip-commit true` (or `auto`)
+  - No per-step review flag — review runs only when a step produces
+    a commit (and global `step_review` allows it)
 - Load and follow `references/todo-helper-cookbook.md` for
   `todo-helper` append/show/edit/remove examples, `details`
   formatting, and `skip_commit` conventions. Number sequentially:
@@ -193,10 +207,11 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 - Meta: `$spec_path/meta.json`
 ```
 
-- Append exactly one trailing fenced `json` block (fields
-  `spec_name` and `spec_path` only):
+- Append exactly one trailing fenced block with language tag
+  `json spex-result` (fields `spec_name` and `spec_path` only) —
+  distinct from Phase 3's optional `json` name/description fence:
 
-```json
+```json spex-result
 {
   "spec_name": "$spec_name",
   "spec_path": "$spec_path"
@@ -205,11 +220,11 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 
 - `spec_name` MUST include the `YYYY-MM-DD-HH-MM-` prefix (Phase 4
   directory name); `spec_path` MUST be the absolute spec directory
-- Do NOT add other Phase 8 `json` fences or extra JSON fields
+- Do NOT add other Phase 8 `json` / `json spex-result` fences or
+  extra JSON fields
 - Callers that need a machine result MUST parse the last fenced
-  `json` block in the create command's final output
-- This trailing result JSON is distinct from Phase 3's name/
-  description fence
+  `json` or `json spex-result` block in the create command's final
+  output
 
 ### Phase 9: STOP — Do NOT Implement
 
@@ -223,18 +238,21 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 ## Failure Handling
 
 - ON_FAIL Phase 1 precheck -> STOP (stderr)
-- ON_FAIL Phase 3 name/description fence -> re-emit one fence; retry
+- ON_FAIL Phase 3 `validate-name` -> fix `$name` / `$description` ->
+  retry until exit 0; do not call `prepare-spec` until OK
 - ON_FAIL Phase 4 `prepare-spec` -> session kept; return Phase 3 with
   different `$name`
 - ON_FAIL Phase 7 post-action -> fix `todo.json` -> re-run until OK
-- Any write outside `$spec_path` -> treat as FAIL; do not continue
-  implementation
+- Any Write / ApplyPatch / tree-changing shell **outside**
+  `$spec_path` -> **immediate STOP**; roll back those out-of-scope
+  changes if possible; do **not** continue later phases
 
 ## STOP / Outputs
 
 - Writes: `$spec_path/spec.md`, `$spec_path/todo.json`,
   `$spec_path/meta.json` (+ optional `assets/`) only — never outside
   `$spec_path`
-- Phase 8: human summary + trailing fenced `json` (`spec_name`,
-  `spec_path`); callers MUST parse the last fenced `json` block
+- Phase 8: human summary + trailing fenced `json spex-result`
+  (`spec_name`, `spec_path`); callers MUST parse the last fenced
+  `json` / `json spex-result` block
 - Phase 9 hard STOP — no application code

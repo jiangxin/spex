@@ -16,6 +16,7 @@ from create_helper import (
     cli_prepare_spec,
     create_spec,
     validate_create_branch,
+    validate_create_name,
 )
 from debug_log import (
     get_active_session_id,
@@ -149,6 +150,96 @@ class TestCreateTopic:
     def test_auto_prefix_false_no_prefix_fails(self, tmp_path):
         with pytest.raises(ValueError, match="invalid spec name"):
             create_spec("my-topic", tmp_path, auto_prefix=False)
+
+
+class TestValidateCreateName:
+    """Unit tests for create-helper validate-name rules."""
+
+    def test_valid_name_and_description(self):
+        result = validate_create_name(
+            "add-login-api",
+            "Add user login API with JWT authentication",
+        )
+        assert result == {
+            "name": "add-login-api",
+            "description": "Add user login API with JWT authentication",
+        }
+
+    def test_strips_whitespace(self):
+        result = validate_create_name(
+            "  add-login-api  ",
+            "  Brief summary  ",
+        )
+        assert result["name"] == "add-login-api"
+        assert result["description"] == "Brief summary"
+
+    def test_rejects_empty_name(self):
+        with pytest.raises(ValueError, match="name is required"):
+            validate_create_name("", "ok description")
+
+    def test_rejects_empty_description(self):
+        with pytest.raises(ValueError, match="description is required"):
+            validate_create_name("add-login-api", "   ")
+
+    def test_rejects_uppercase(self):
+        with pytest.raises(ValueError, match="invalid name"):
+            validate_create_name("Add-Login", "desc")
+
+    def test_rejects_spaces(self):
+        with pytest.raises(ValueError, match="invalid name"):
+            validate_create_name("add login", "desc")
+
+    def test_rejects_leading_hyphen(self):
+        with pytest.raises(ValueError, match="invalid name"):
+            validate_create_name("-add-login", "desc")
+
+    def test_rejects_date_prefix(self):
+        with pytest.raises(ValueError, match="date prefix"):
+            validate_create_name(
+                "2026-05-24-10-30-add-login",
+                "desc",
+            )
+
+    def test_rejects_name_too_long(self):
+        long_name = "a" * 32
+        with pytest.raises(ValueError, match="<32 bytes"):
+            validate_create_name(long_name, "desc")
+
+    def test_accepts_name_at_max_bytes(self):
+        name = "a" * 31
+        result = validate_create_name(name, "desc")
+        assert result["name"] == name
+
+    def test_rejects_multiline_description(self):
+        with pytest.raises(ValueError, match="single line"):
+            validate_create_name("add-login-api", "line1\nline2")
+
+    def test_cli_success_prints_json(self, capsys):
+        create_helper.main(
+            [
+                "validate-name",
+                "--name", "add-login-api",
+                "--description", "Add login API",
+            ]
+        )
+        out = json.loads(capsys.readouterr().out)
+        assert out["name"] == "add-login-api"
+        assert out["description"] == "Add login API"
+
+    def test_cli_failure_exits_nonzero(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            create_helper.main(
+                [
+                    "validate-name",
+                    "--name", "BAD Name",
+                    "--description", "desc",
+                ]
+            )
+        assert exc.value.code == 1
+        err = capsys.readouterr()
+        # logging goes to stderr via logger; message may be in caplog
+        # Ensure non-zero exit is the contract under test.
+        assert err.out == ""
 
 
 class TestWriteMeta:
@@ -311,19 +402,83 @@ class TestCliPrepareSpec:
             common, "get_specs_dir", return_value=str(tmp_path)
         ):
             with pytest.raises(SystemExit) as exc_info:
-                cli_prepare_spec(["--name", "INVALID"])
+                cli_prepare_spec(
+                    ["--name", "INVALID", "--description", "desc"],
+                )
             assert exc_info.value.code == 1
 
     def test_existing_topic_exits(self, monkeypatch, tmp_path):
         import common
         (tmp_path / "2026-05-20-14-30-existing").mkdir()
         monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with (
+            patch.object(
+                common, "get_specs_dir", return_value=str(tmp_path),
+            ),
+            patch.object(create_helper, "datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.strftime.return_value = (
+                "2026-05-20-14-30"
+            )
+            with pytest.raises(SystemExit) as exc_info:
+                cli_prepare_spec(
+                    ["--name", "existing", "--description", "desc"],
+                )
+            assert exc_info.value.code == 1
+
+    def test_rejects_name_too_long_for_validate_name(
+        self, monkeypatch, tmp_path,
+    ):
+        """prepare-spec must reject names validate-name would reject."""
+        import common
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
         with patch.object(
-            common, "get_specs_dir", return_value=str(tmp_path)
+            common, "get_specs_dir", return_value=str(tmp_path),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cli_prepare_spec(
-                    ["--name", "2026-05-20-14-30-existing"])
+                    ["--name", "a" * 40, "--description", "desc"],
+                )
+            assert exc_info.value.code == 1
+
+    def test_rejects_empty_description(self, monkeypatch, tmp_path):
+        import common
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with patch.object(
+            common, "get_specs_dir", return_value=str(tmp_path),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_prepare_spec(["--name", "add-login-api"])
+            assert exc_info.value.code == 1
+
+    def test_rejects_multiline_description(self, monkeypatch, tmp_path):
+        import common
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with patch.object(
+            common, "get_specs_dir", return_value=str(tmp_path),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_prepare_spec(
+                    [
+                        "--name", "add-login-api",
+                        "--description", "line1\nline2",
+                    ],
+                )
+            assert exc_info.value.code == 1
+
+    def test_rejects_date_prefixed_name(self, monkeypatch, tmp_path):
+        import common
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        with patch.object(
+            common, "get_specs_dir", return_value=str(tmp_path),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_prepare_spec(
+                    [
+                        "--name", "2026-05-20-14-30-new-topic",
+                        "--description", "Test desc",
+                    ],
+                )
             assert exc_info.value.code == 1
 
     def test_success_outputs_json(self, monkeypatch, tmp_path, capsys):
@@ -354,9 +509,13 @@ class TestCliPrepareSpec:
                 prompt_mod, "render_prompt",
                 return_value="# Rendered Template"),
             patch("hooks.run_pre_action"),
+            patch.object(create_helper, "datetime") as mock_dt,
         ):
+            mock_dt.now.return_value.strftime.return_value = (
+                "2026-05-20-14-30"
+            )
             cli_prepare_spec(
-                ["--name", "2026-05-20-14-30-new-topic",
+                ["--name", "new-topic",
                  "--description", "Test desc"])
 
         output = json.loads(capsys.readouterr().out.strip())
@@ -1102,7 +1261,7 @@ class TestPreparePostActionSession:
         self, tmp_path, monkeypatch, capsys,
     ):
         ctx = self._ctx(tmp_path, debug=True)
-        name = "2026-08-04-15-50-handoff"
+        name = "handoff"
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -1123,13 +1282,13 @@ class TestPreparePostActionSession:
 
         spec_dir = Path(out["spec_path"])
         debug_log = spec_dir / "debug.log"
-        assert out["spec_name"] == name
+        assert out["spec_name"].endswith("-handoff")
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_log.exists()
         assert not session_log.parent.exists()
         content = debug_log.read_text(encoding="utf-8")
         assert content.index("===== session history =====\n") < content.index(
-            f"===== CREATE prepare-spec ok name={name} =====\n"
+            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
         )
         assert not (spec_dir / "debug.session-pre.log").exists()
 
@@ -1137,7 +1296,7 @@ class TestPreparePostActionSession:
         self, tmp_path, monkeypatch, capsys,
     ):
         ctx = self._ctx(tmp_path, debug=False)
-        name = "2026-08-04-15-50-no-debug"
+        name = "no-debug"
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -1164,7 +1323,7 @@ class TestPreparePostActionSession:
     ):
         """Failed merge must not clear the active pointer (retryable handoff)."""
         ctx = self._ctx(tmp_path, debug=True)
-        name = "2026-08-04-15-50-merge-fail"
+        name = "merge-fail"
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -1188,14 +1347,17 @@ class TestPreparePostActionSession:
                     tmp_path, ctx, monkeypatch, capsys, name,
                 )
 
-        assert out["spec_name"] == name
+        assert out["spec_name"].endswith("-merge-fail")
         assert get_active_session_id(ctx.spex_root) == session_id
         assert session_log.is_file()
         # Prepare still succeeded; debug anchor may be written.
         content = (Path(out["spec_path"]) / "debug.log").read_text(
             encoding="utf-8",
         )
-        assert f"===== CREATE prepare-spec ok name={name} =====\n" in content
+        assert (
+            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
+            in content
+        )
 
     def test_append_create_debug_anchor_raises_oserror(
         self, tmp_path, monkeypatch,
@@ -1218,7 +1380,7 @@ class TestPreparePostActionSession:
     ):
         """CREATE anchor write must raise so handoff does not clear session."""
         ctx = self._ctx(tmp_path, debug=True)
-        name = "2026-08-04-15-50-anchor-fail"
+        name = "anchor-fail"
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -1252,7 +1414,7 @@ class TestPreparePostActionSession:
         spex_root = Path(ctx.spex_root)
         side_spec = spex_root / "specs" / "2026-08-04-15-50-side"
         side_spec.mkdir()
-        name = "2026-08-04-15-50-isolate"
+        name = "isolate"
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -1284,7 +1446,10 @@ class TestPreparePostActionSession:
         assert get_active_session_id(ctx.spex_root) is None
         content = (new_spec / "debug.log").read_text(encoding="utf-8")
         assert content.startswith("session-entry\n")
-        assert f"===== CREATE prepare-spec ok name={name} =====\n" in content
+        assert (
+            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
+            in content
+        )
         # Side-spec log was never the handoff target.
         assert (side_spec / "debug.log").read_text(encoding="utf-8") == (
             "spec-entry\n"
@@ -1298,7 +1463,7 @@ class TestPreparePostActionSession:
         import prompt as prompt_mod
 
         ctx = self._ctx(tmp_path, debug=True)
-        name = "2026-08-04-15-50-cli-path"
+        name = "cli-path"
         monkeypatch.chdir(tmp_path)
         specs_dir = Path(ctx.spex_root) / "specs"
 
@@ -1345,7 +1510,9 @@ class TestPreparePostActionSession:
         assert not session_log.parent.exists()
         content = debug_log.read_text(encoding="utf-8")
         history = "===== session history =====\n"
-        anchor = f"===== CREATE prepare-spec ok name={name} =====\n"
+        anchor = (
+            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
+        )
         assert content.index(history) < content.index(anchor)
         assert "argv: spex create-helper prepare-spec" in content
         assert content.index(anchor) < content.index(

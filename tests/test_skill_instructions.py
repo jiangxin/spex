@@ -293,13 +293,21 @@ class TestCreatePlanOnlySop:
         _index(phase1, "create-helper precheck")
         assert "### Phase 1: Validate Branch" not in text
 
-    def test_phase3_requires_exactly_one_fenced_json(self):
+    def test_phase2_clarification_gate(self):
+        phase2 = _h3_section(_read(CREATE_MD), "Phase 2: Clarify Requirement")
+        _index(phase2, "Clarification gate")
+        _index(phase2, "multiple viable implementation paths")
+        _index(phase2, "at least one question")
+        _index(phase2, "skip")
+
+    def test_phase3_validate_name_cli_gate(self):
         phase3 = _h3_section(
             _read(CREATE_MD), "Phase 3: Generate Name and Description"
         )
-        _index(phase3, "exactly one")
-        _index(phase3, "fenced `json`")
-        _index(phase3, "Phase 8")
+        _index(phase3, "create-helper validate-name")
+        _index(phase3, "not** the sole")
+        _index(phase3, "Do **not** call `prepare-spec`")
+        _index(phase3, "at most one fenced `json`")
         assert '"name"' in phase3 or "`name`" in phase3
         assert '"description"' in phase3 or "`description`" in phase3
 
@@ -307,6 +315,9 @@ class TestCreatePlanOnlySop:
         text = _read(CREATE_MD)
         phase5 = _h3_section(text, "Phase 5: Design Specification")
         _index(phase5, "Load and follow `references/spec-assets.md`")
+        _index(phase5, "Assets timing CHECK")
+        _index(phase5, "Write `$spec_path/spec.md` first")
+        _index(phase5, "meta-helper --add-images")
         phase6 = _h3_section(text, "Phase 6: Plan Implementation Steps")
         _index(
             phase6,
@@ -314,11 +325,15 @@ class TestCreatePlanOnlySop:
         )
         _index(phase6, "Small batches")
         _index(phase6, "skip_commit")
+        _index(phase6, "examples in cookbook")
 
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")
+        _index(section, "validate-name")
         _index(section, "`$spec_path`")
+        _index(section, "immediate STOP")
+        _index(section, "roll back")
 
 
 class TestModifyPlanOnlySop:
@@ -698,14 +713,15 @@ class TestCreatePhase8JsonResult:
 
     def test_phase8_has_fenced_json_with_required_keys(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
-        assert "```json" in phase8
+        assert "```json spex-result" in phase8
         assert '"spec_name"' in phase8
         assert '"spec_path"' in phase8
+        _index(phase8, "Phase 3")
 
     def test_phase8_instructs_parsing_last_fenced_json(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
         _index(phase8, "parse the last fenced")
-        _index(phase8, "json")
+        _index(phase8, "json spex-result")
         _index(phase8, "block")
 
 
