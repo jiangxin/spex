@@ -49,7 +49,9 @@ Do NOT regenerate or duplicate them. Use them to:
    or conflict with the updated specification, add corrective steps
    to fix the divergence.
 3. **Small batches**: Each step delivers a minimal, working increment
-   that can be independently committed and verified.
+   that can be independently verified. Coding steps should be
+   independently committed (default `skip_commit=false`). Non-coding
+   / no-repo-change steps may use `--skip-commit true` or `auto`.
 4. **Self-contained**: Group production code and its tests in the same
    step — never split them into separate steps.
 5. **Ordered by dependency**: List steps so that each builds on the
@@ -57,6 +59,11 @@ Do NOT regenerate or duplicate them. Use them to:
 6. **Sequential IDs**: Number steps starting from the next available ID
    after the last completed step (e.g., if step-2 is completed, start
    from `step-3`).
+7. **skip_commit**: Prefer default (omit / `false`) for code changes.
+   Set `true` when the step must not touch the repo; set `auto` when
+   a commit is only needed if files change. Do not invent a per-step
+   review flag — review follows whether a commit was created and the
+   global `step_review` setting.
 
 ## Instructions
 

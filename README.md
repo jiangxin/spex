@@ -293,7 +293,31 @@ Comparing two development processes (same 1500 lines of changes):
 
 When using coding agents, models rarely follow the "one commit per step" practice on their own. Even when explicitly instructed to do so, they still tend to produce a single massive commit with hundreds or thousands of lines of changes.
 
-Spex's solution: each development step in `todo.json` has two required fields — `completed_at` (completion timestamp) and `commit_title` (commit message title). The commit title can only be filled in after a git commit is created, marking the step as complete. Example `todo.json` content:
+Spex's solution: each development step in `todo.json` has two required
+fields — `completed_at` (completion timestamp) and `commit_title`
+(commit message title). For coding steps (default), the commit title is
+filled in after a git commit is created, then the step is marked
+complete after optional code review.
+
+Optional per-step field `skip_commit` (`false` | `auto` | `true`;
+default `false` / omit) covers non-coding work:
+
+| `skip_commit` | Behavior |
+|---------------|----------|
+| `false` (default) | Must change the repo and commit; then review if `step_review` allows |
+| `auto` | Commit only if the tree is dirty (excluding `$spex_root`); review only if a commit was created |
+| `true` | Must leave the tree clean; no commit, empty `commit_title`, skip review; only set `completed_at` |
+
+There is no per-step review flag. Global `step_review` in `.spex.toml`
+still skips review for steps that did create a commit. Dirty checks use
+the **whole working tree** (`git status --porcelain`), excluding paths
+under `$spex_root` — not only files touched in the step. Start
+`skip_commit=true` steps with a clean tree (excluding `$spex_root`).
+After a coding-step commit, the tree (excluding `$spex_root`) must be
+clean — leftover unstaged files poison later `true`/`auto` steps, so
+apply SOPs STOP if residue remains. Values accept JSON bool
+`true`/`false` or lowercase strings `"false"` | `"auto"` | `"true"`
+(not `"True"` / `"AUTO"`). Example `todo.json` content:
 
 ```json
 [
@@ -303,6 +327,14 @@ Spex's solution: each development step in `todo.json` has two required fields �
     "details": "Update SKILL.md to make `merge` the primary command...",
     "completed_at": "2026-06-17T12:08:42+08:00",
     "commit_title": "fae3c7c: docs: make merge the primary command..."
+  },
+  {
+    "id": "step-2",
+    "name": "Confirm docs-only checklist",
+    "details": "Verify README wording without touching the repo.",
+    "completed_at": "2026-06-17T12:20:00+08:00",
+    "commit_title": "",
+    "skip_commit": "true"
   }
 ]
 ```

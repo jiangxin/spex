@@ -195,6 +195,9 @@ class TestApplyStepReviewSop:
             _index(phase4, "**FAIL/STOP**")
             phase5 = _h3_section(text, "Phase 5: Commit (record commit_title only)")
             _index(phase5, "`$did_commit`")
+            _index(phase5, "Recompute `$dirty`")
+            _index(phase5, "Leftover dirty paths poison")
+            _index(phase5, "do not\n  persist `commit_title`")
             phase6 = _h3_section(text, "Phase 6: Review Loop")
             _index(phase6, "`$did_commit`")
             phase7 = _h3_section(text, "Phase 7: Mark Task Complete")
@@ -209,8 +212,28 @@ class TestApplyStepReviewSop:
                 _index(phase3, "outcome=skip_commit")
                 _index(phase3, "intentional STOP")
                 _index(phase3, "empty `commit_title` alone")
+                _index(phase3, "recompute `$dirty`")
+                _index(phase3, "tree dirty")
                 _index(phase4, "outcome=skip_commit")
                 _index(phase5, "outcome=committed")
+            _index(phase2, "Paths")
+            _index(phase2, "Do **not** use Config")
+            _index(phase4, "directory boundary")
+            _index(phase4, "bare string prefix")
+
+    def test_modify_todo_omit_skip_commit_on_coding_example(self):
+        text = _read(
+            REPO_ROOT / "skills" / "spex" / "templates" / "modify-todo.md"
+        )
+        # Coding append bash block must not pass --skip-commit
+        coding = text.split("**Append** a coding step", 1)[1]
+        coding = coding.split("**Append** a non-coding", 1)[0]
+        bash = coding.split("```bash", 1)[1].split("```", 1)[0]
+        assert "--skip-commit" not in bash
+        non_coding = text.split("**Append** a non-coding", 1)[1]
+        non_coding = non_coding.split("**Show**", 1)[0]
+        assert "--skip-commit true" in non_coding
+        assert "Do **not** put `--skip-commit true` on coding steps" in text
 
     def test_review_loop_requires_did_commit_precondition(self):
         text = _read(APPLY_REVIEW_LOOP)
@@ -234,6 +257,24 @@ class TestApplyStepReviewSop:
             )
             assert "skip_review" not in text
 
+    def test_readme_documents_skip_commit(self):
+        for path in (README_MD, README_ZH):
+            text = _read(path)
+            assert "skip_commit" in text, (
+                f"{path.name} must document skip_commit"
+            )
+            assert "step_review" in text, (
+                f"{path.name} must relate skip_commit to step_review"
+            )
+            assert "whole working tree" in text or "整棵工作区" in text, (
+                f"{path.name} must document whole-tree dirty checks"
+            )
+            assert (
+                "leftover" in text.lower()
+                or "残留" in text
+            ), (
+                f"{path.name} must document post-commit residue risk"
+            )
 
 class TestApplyReviewNoCheckout:
     def test_review_loop_reattaches_after_review(self):
