@@ -21,6 +21,7 @@ Archive completed specs.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Bind from `$user_prompt`: recognize known Usage flags **anywhere** in
   the free-form text; the remainder is the name (`--name` /
   `$spec_name`). Do not require flags before the name token.
@@ -28,8 +29,7 @@ Archive completed specs.
 - Forward Usage flags unchanged; trust the script for completion /
   branch / restore matching rules (do not pre-check git or todos
   to decide whether to call)
-- Always pass `--json` so Phase 2 can parse stdout (do not branch on
-  stderr human logs)
+- Always pass `--json` so Phase 2 can parse stdout
 - After success, update `$spec_path` from Phase 2 JSON (not the
   pre-move `specs/...` path)
 - Follow phases in order. Do not skip or reorder
@@ -52,7 +52,8 @@ $spex_skill_dir/scripts/spex archive --json [--name <name>] [-n|--dry-run] [-f|-
 
 ### Phase 2: Report Results
 
-- Parse `--json` stdout (ignore stderr human logs):
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse `--json` stdout:
 
 ```json
 {
@@ -80,13 +81,11 @@ $spex_skill_dir/scripts/spex archive --json [--name <name>] [-n|--dry-run] [-f|-
       pre-move `specs/...` path
   - IF `action` is `skipped` or `noop` -> report (incl. `detail` if
     present); do not invent a move
-- IF script exits non-zero -> surface stderr -> STOP (Phase 1 failure)
-- Do **not** match stderr strings such as `Archived:` / `Restored:` /
-  `Would archive` — human logs are informational only
 
 ## Failure Handling
 
-- ON_FAIL Phase 1 script non-zero -> STOP (stderr)
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
+- ON_FAIL Phase 1 script non-zero -> STOP
 - `--dry-run` complete (`dry_run: true`) -> STOP (re-invoke for real
   archive/restore)
 - Do not hand-move files on script failure

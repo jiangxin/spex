@@ -14,6 +14,7 @@ Apply a single step from a specification's todo list.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Bind from `$user_prompt`: `$spec_name` (Usage token or whole
   prompt). Missing name -> Phase 1 lists candidates
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
@@ -54,23 +55,23 @@ $spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
 ```
 
-- Parse JSON stdout:
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse JSON stdout:
   - IF `"all_done": true` -> report completion -> run post-action
     (covers last step finished but Phase 8 interrupted) and
     **STOP**:
 
     ```bash
-    $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
+    $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
     ```
 
     Display output to user. Do not implement further steps.
     `post-action` is assumed idempotent — at most once per fully
     completed spec in a given invocation path (Phase 3 `all_done`
     **or** Phase 8 `$remaining` == 0, never both in one run)
-  - IF non-zero exit -> report stderr -> STOP
   - ELSE -> Load and follow `references/apply-task-phases.md`
     Phase 3 exactly (bind `$task_prompt` / `$current_task_id` /
     `$resume_phase` / `$commit_title` / `$skip_commit`; shared
@@ -120,7 +121,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
   invocation):
 
   ```bash
-  $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
+  $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
   ```
 
   Display output to user
@@ -134,9 +135,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
 
 - Phase 4 intentional STOP (`false`+clean, `true`+dirty) is **not**
   retryable — FAIL; no Phase 7; leave `completed_at` unset
-- ON_FAIL Phase 1 list / resolve -> STOP (stderr)
-- ON_FAIL Phase 2 precheck -> STOP (stderr)
-- ON_FAIL Phase 3 prompt -> STOP (stderr)
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - Residual dirty after commit -> STOP; do not persist
   `commit_title`; no Phase 6/7
 - Phase 6 abnormal STOP -> end invocation per

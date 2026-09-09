@@ -21,6 +21,7 @@ development plan.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Do not rename `$user_prompt` / `$request` / `$spec_name` /
   `$spex_skill_dir`
 - Bind from `$user_prompt` (may be empty). `$user_prompt` is already
@@ -125,7 +126,7 @@ $spex_skill_dir/scripts/spex list --json "$spec_name"
 - Record modification request in `meta.json`:
 
 ```bash
-$spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
+$spex_skill_dir/scripts/spex meta-helper "$spec_name" prompts \
   --stdin --pre-action modify <<'EOF'
 $request
 EOF
@@ -142,14 +143,13 @@ EOF
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
-  --json --name $spec_name --stdin --remove-undone <<'EOF'
+  --json --name "$spec_name" --stdin --remove-undone <<'EOF'
 $request
 EOF
 ```
 
-- Parse JSON stdout:
-  - IF non-zero exit -> report stderr -> STOP
-  - ELSE -> `$modify_prompt` ← `"prompt"` field
+- IF non-zero exit -> report stderr -> STOP
+- ELSE `$modify_prompt` ← `"prompt"` field from JSON stdout
 - `--remove-undone` removes incomplete `todo.json` steps before
   render so prompt includes completed-step context only. After this
   runs, a mid-flight FAIL (before Phase 7 append succeeds) can leave
@@ -174,12 +174,11 @@ EOF
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
+$spex_skill_dir/scripts/spex prompt modify-todo --json --name "$spec_name"
 ```
 
-- Parse JSON stdout:
-  - IF non-zero exit -> report stderr -> STOP
-  - ELSE -> `$todo_prompt` ← `"prompt"` field
+- IF non-zero exit -> report stderr -> STOP
+- ELSE `$todo_prompt` ← `"prompt"` field from JSON stdout
 
 ### Phase 7: Regenerate Development Steps
 
@@ -209,7 +208,7 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper post-action \
-  --name $spec_name --event-type modify
+  --name "$spec_name" --event-type modify
 ```
 
 - ON_FAIL: fix JSON format in `todo.json` -> re-run until validation OK
@@ -226,10 +225,10 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 - Meta: `$spec_path/meta.json`
 ```
 
-- Append exactly one trailing fenced `json` block (fields
-  `spec_name` and `spec_path` only):
+- Append exactly one trailing fenced block with language tag
+  `json spex-result` (fields `spec_name` and `spec_path` only):
 
-```json
+```json spex-result
 {
   "spec_name": "$spec_name",
   "spec_path": "$spec_path"
@@ -239,9 +238,10 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 - `spec_name` MUST be the resolved directory name (with
   `YYYY-MM-DD-HH-MM-` prefix when present); `spec_path` MUST be the
   absolute spec directory
-- Do NOT add other Phase 9 `json` fences or extra JSON fields
+- Do NOT add other Phase 9 `json` / `json spex-result` fences or
+  extra JSON fields
 - Callers that need a machine result MUST parse the last fenced
-  `json` block in the modify command's final output
+  `json spex-result` block in the modify command's final output
 
 ### Phase 10: STOP — Do NOT Implement
 
@@ -254,15 +254,16 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 
 ## Failure Handling
 
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - ON_FAIL Phase 1 `list` / resolve (true script error or user abort)
   -> STOP. Empty `[]` alone is not a script error — follow
   Preconditions priority 3 recovery when applicable
-- ON_FAIL Phase 4 `modify-spec` prompt -> STOP (stderr). IF
+- ON_FAIL Phase 4 `modify-spec` prompt -> STOP. IF
   `--remove-undone` already deleted incomplete todos -> recover
   before any retry (below); do **not** continue half-done
 - ON_FAIL Phase 5 (spec.md write) -> **immediate STOP**; do not
   enter Phase 6/7. Prefer `--remove-undone` recovery below
-- ON_FAIL Phase 6 `modify-todo` prompt -> STOP (stderr)
+- ON_FAIL Phase 6 `modify-todo` prompt -> STOP
 - ON_FAIL Phase 7 (todo append/edit) -> **immediate STOP**; do not
   enter Phase 8 half-done. Prefer `--remove-undone` recovery below
 - ON_FAIL Phase 8 post-action -> fix `todo.json` -> re-run until OK
@@ -283,6 +284,7 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 - Writes: updated `$spec_path/spec.md`, `$spec_path/todo.json`,
   `$spec_path/meta.json` (+ optional `assets/`) only — never outside
   `$spec_path`
-- Phase 9: human summary + trailing fenced `json` (`spec_name`,
-  `spec_path`); callers MUST parse the last fenced `json` block
+- Phase 9: human summary + trailing fenced `json spex-result`
+  (`spec_name`, `spec_path`); callers MUST parse the last fenced
+  `json spex-result` block
 - Phase 10 hard STOP — no application code

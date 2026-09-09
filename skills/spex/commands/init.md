@@ -10,6 +10,7 @@ Initialize the spex environment for the current project.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Usually ignores `$user_prompt` body (no flags to bind). Unexpected
   flags in free-form text are usually ignored (not an error)
 - Follow phases in order. Do not skip or reorder
@@ -38,7 +39,8 @@ $spex_skill_dir/scripts/spex init
 
 ## Failure Handling
 
-- ON_FAIL Phase 1 init non-zero -> STOP (stderr)
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
+- ON_FAIL Phase 1 init non-zero -> STOP
 - Warnings with exit 0 -> complete (suggest manual fix; do not FAIL)
 
 ## STOP / Outputs

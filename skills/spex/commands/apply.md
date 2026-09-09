@@ -14,6 +14,7 @@ Apply a specification to implement code step by step.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
   (never call the task prompt `$prompt`)
 - Bind from `$user_prompt`: `$spec_name` or `--all` (Usage token or
@@ -119,14 +120,14 @@ for outer loops; Phase bodies below do not restate the diagram.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
+$spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
 ```
 
-- Parse JSON stdout:
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse JSON stdout:
   - IF `"all_done": true` -> Phase 9 (skip Phase 8). In `--all`
     mode, after Phase 9 continue to next `$specs` item at Phase 2,
     or **STOP** if none remain
-  - IF non-zero exit -> report stderr -> STOP
   - ELSE -> Load and follow `references/apply-task-phases.md`
     Phase 3 exactly (bind `$task_prompt` / `$current_task_id` /
     `$resume_phase` / `$commit_title` / `$skip_commit`; shared
@@ -170,7 +171,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name $spec_name
   including each `--all` entry):
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
+$spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
 ```
 
 - Display output to user
@@ -184,9 +185,7 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name $spec_name
 - Phase 4 intentional STOP (`false`+clean, `true`+dirty) is **not**
   retryable — FAIL; no Phase 7; leave `completed_at` unset; do **not**
   treat as `outcome=skip_commit`
-- ON_FAIL Phase 1 list / resolve -> STOP (stderr)
-- ON_FAIL Phase 2 precheck -> STOP (stderr)
-- ON_FAIL Phase 3 prompt -> STOP (stderr)
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - ON_FAIL Phases 4–5 execution (not intentional STOP) -> report +
   retry once; still fails -> STOP
 - Unexpected handoff / residual dirty after commit -> STOP; no

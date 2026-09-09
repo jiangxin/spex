@@ -20,6 +20,7 @@ and test plan.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - `$input` ← `$user_prompt` (may be empty; Phase 2 asks if so).
   `$user_prompt` is already the redacted remainder after the router
   strips the recognized command/alias token (see SKILL.md Routing
@@ -134,13 +135,14 @@ EOF
   `description` = description). On success it merges any active
   session log into `$spec_path/debug.log`, deletes the session file,
   and clears the active pointer (merge-then-delete; no dual-write).
-  Parse JSON stdout:
+- IF non-zero exit -> report stderr; session left intact; this phase
+  **overrides** generic cli-contract STOP: return to Phase 3 and
+  retry with a different `$name`
+- ELSE parse JSON stdout:
   - `$spec_name` ← `spec_name` (with date prefix,
     e.g. `2026-05-24-10-30-add-login-api`)
   - `$spec_path` ← `spec_path`
   - `$spec_template` ← `spec_template`
-- ON_FAIL: session is left intact for retry; return to Phase 3 ->
-  retry with different name
 - Example JSON output:
 
 ```json
@@ -193,7 +195,7 @@ EOF
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
+$spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
 ```
 
 - With debug enabled, appends a post-action anchor to
@@ -242,7 +244,7 @@ $spex_skill_dir/scripts/spex create-helper post-action --name $spec_name
 
 ## Failure Handling
 
-- ON_FAIL Phase 1 precheck -> STOP (stderr)
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - ON_FAIL Phase 3 `validate-name` -> fix `$name` / `$description` ->
   retry until exit 0; do not call `prepare-spec` until OK
 - ON_FAIL Phase 4 `prepare-spec` -> session kept; return Phase 3 with

@@ -16,6 +16,7 @@ Submit completed work by merging the feature branch or creating a PR.
 
 ## Preconditions
 
+- Load and follow `references/cli-contract.md` exactly
 - Bind from `$user_prompt`: recognize known Usage flags **anywhere** in
   the free-form text; the remainder is `$spec_name`. `$user_prompt` is
   already the redacted remainder after the router strips the
@@ -41,23 +42,26 @@ $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
 
 - Load and follow `references/resolve-spec-list.md` exactly
 
-### Phase 2: Validate
+### Phase 2: Validate (optional)
 
-- Read `$spec_path/meta.json`
-- IF `spex_branch` not set -> report branch management inactive -> STOP
-  (agent-side fast-fail before calling merge; `spex merge` also
-  validates)
+- Optional agent-side fast-fail: read `$spec_path/meta.json` and IF
+  `spex_branch` not set -> report branch management inactive -> STOP.
+  Prefer trusting the script (same as archive) — `spex merge` also
+  validates; skip this phase when unsure and let Phase 3 surface the
+  error.
 
 ### Phase 3: Submit
 
 - Forward any agent-supplied Usage flags unchanged.
+- Note: `spex merge` has **no** `--json` flag; stdout is always JSON.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex merge $spec_name [-n|--dry-run] [--no-archive]
+$spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
 ```
 
-- Parse JSON stdout:
+- IF non-zero exit or stdout is not JSON -> report stderr -> STOP
+- ELSE parse JSON stdout:
   - IF `errors` non-empty -> report errors -> STOP
   - ELSE -> note `action`, `source`, `target`
   - IF `--dry-run` / `-n` was used -> report preview -> **STOP** (no
@@ -80,9 +84,11 @@ $spex_skill_dir/scripts/spex merge $spec_name [-n|--dry-run] [--no-archive]
 
 ## Failure Handling
 
-- ON_FAIL Phase 1 list / resolve -> STOP (stderr)
-- ON_FAIL Phase 2 no `spex_branch` -> STOP
-- ON_FAIL Phase 3 merge (`errors` non-empty) -> STOP
+- CLI exit / stdout / stderr: follow `references/cli-contract.md`
+- ON_FAIL Phase 1 list / resolve -> STOP
+- ON_FAIL Phase 2 no `spex_branch` (when optional check runs) -> STOP
+- ON_FAIL Phase 3 merge (non-zero, non-JSON, or `errors` non-empty)
+  -> STOP
 - `--dry-run` complete -> STOP (re-invoke for real submit)
 
 ## STOP / Outputs

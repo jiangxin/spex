@@ -5,6 +5,9 @@ Shared orchestration core for `/spex apply` and
 2–7 unless the command wraps a phase (e.g. apply Phase 3
 sub-agent handoff — see `apply-subagent-handoff.md`).
 
+Load and follow `references/cli-contract.md` exactly for helper
+exit codes, stdout/stderr, quoting, and one-helper-per-shell.
+
 **Semantic conservation:** preserve full `skip_commit` /
 `$did_commit` / `outcome=` behavior. Do not weaken intentional
 FAIL/STOP, residual-dirty STOP, or `commit_title` before
@@ -19,10 +22,10 @@ apply-one-step single-step STOP + conditional post-action.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper precheck --name $spec_name
+$spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name"
 ```
 
-- IF non-zero exit -> error already on stderr -> STOP
+- IF non-zero exit -> STOP (cli-contract)
 - ELSE -> continue
 - Bind `$spex_root`:
 
@@ -94,9 +97,9 @@ route as below.
 $spex_skill_dir/scripts/spex apply-helper dirty --json
 ```
 
-- Parse stdout JSON: `$dirty` ← `"dirty"` (bool). Optional:
-  `"paths"`, `"spex_root"` (absolute). IF non-zero exit -> report
-  stderr -> STOP
+- IF non-zero exit -> STOP (cli-contract)
+- ELSE parse stdout JSON: `$dirty` ← `"dirty"` (bool). Optional:
+  `"paths"`, `"spex_root"` (absolute)
 - Prefer `--spex-root "$spex_root"` when the Paths bind must be
   forced; otherwise CLI uses Paths absolute `spex_root`
 - Clean skip (`auto`/`true` + not `$dirty`) still must satisfy
@@ -149,7 +152,7 @@ OK skip paths.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit --name $spec_name
+$spex_skill_dir/scripts/spex prompt apply-commit --name "$spec_name"
 ```
 
 - **Single render:** Call `prompt apply-commit` **once** per commit.
@@ -192,7 +195,7 @@ git rev-parse --short HEAD
   (review/fix may still be pending; enables interrupt resume):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
   --id "$current_task_id" --commit-title "$commit_title"
 ```
 
@@ -212,7 +215,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
     sub-agent
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
   --id "$current_task_id" --completed-at now \
   --commit-title "$commit_title"
 ```
@@ -220,7 +223,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
 - ELSE (`$did_commit` false — keep `commit_title` empty):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
   --id "$current_task_id" --completed-at now
 ```
 

@@ -974,6 +974,64 @@ class TestSharedSopReferences:
         _index(text, "`$task_prompt`")
 
 
+class TestCliContractReference:
+    """R3-F8 / S1: shared CLI contract + Load pointers."""
+
+    CLI_CONTRACT = (
+        REPO_ROOT / "skills" / "spex" / "references" / "cli-contract.md"
+    )
+    COMMAND_MDS = (
+        CREATE_MD,
+        MODIFY_MD,
+        APPLY_MD,
+        APPLY_ONE_STEP_MD,
+        MERGE_MD,
+        ARCHIVE_MD,
+        INIT_MD,
+    )
+
+    def test_cli_contract_exists_with_core_rules(self):
+        assert self.CLI_CONTRACT.is_file()
+        text = _read(self.CLI_CONTRACT)
+        assert len(text.splitlines()) <= 60
+        _index(text, "Exit code first")
+        _index(text, "stdout")
+        _index(text, "stderr")
+        _index(text, "Never branch on stderr")
+        _index(text, "[]")
+        _index(text, '"$spec_name"')
+        _index(text, "json spex-result")
+        _index(text, "last")
+        _index(text, "own shell")
+
+    def test_commands_and_apply_refs_load_cli_contract(self):
+        needle = "Load and follow `references/cli-contract.md`"
+        for path in self.COMMAND_MDS:
+            _index(_read(path), needle)
+        _index(_read(APPLY_TASK_PHASES), needle)
+        _index(_read(APPLY_REVIEW_LOOP), needle)
+
+    def test_modify_phase9_uses_json_spex_result_fence(self):
+        phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
+        assert "```json spex-result" in phase9
+        _index(phase9, "parse the last fenced")
+        _index(phase9, "json spex-result")
+        assert "```json\n" not in phase9.replace("```json spex-result", "")
+
+    def test_merge_documents_nonzero_exit_and_no_json_flag(self):
+        text = _read(MERGE_MD)
+        phase2 = _h3_section(text, "Phase 2: Validate")
+        _index(phase2, "optional")
+        _index(phase2, "spex_branch")
+        _index(phase2, "fast-fail")
+        _index(phase2, "trusting the script")
+        phase3 = _h3_section(text, "Phase 3: Submit")
+        _index(phase3, "non-zero")
+        _index(phase3, "not JSON")
+        _index(phase3, "**no** `--json`")
+        _index(phase3, "always JSON")
+
+
 class TestMergeArchiveInitSop:
     """§6–8 polish: Inputs vs Phase 1, dry-run STOP, slim archive,
     init edges, Failure Handling / `$user_prompt` binding."""
@@ -1000,8 +1058,10 @@ class TestMergeArchiveInitSop:
         _index(fail, "ON_FAIL")
         _index(fail, "dry-run")
         phase2 = _h3_section(text, "Phase 2: Validate")
+        _index(phase2, "optional")
         _index(phase2, "spex_branch")
         _index(phase2, "fast-fail")
+        _index(phase2, "trusting the script")
 
     def test_archive_preconditions_slim_cli_only(self):
         text = _read(ARCHIVE_MD)

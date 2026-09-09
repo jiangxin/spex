@@ -5,6 +5,9 @@ Load and follow this document exactly for Phase 6. **SSOT** for
 STOP / 6c rules — commands and `apply-task-phases.md` only Load
 this file.
 
+Load and follow `references/cli-contract.md` exactly for helper
+exit codes, stdout/stderr, quoting, and one-helper-per-shell.
+
 ## Invariants (do not weaken)
 
 1. **Durable entry:** `$did_commit` true **or** non-empty
@@ -79,10 +82,6 @@ round.
 - Debug timeline: with debug enabled, `prompt apply-review` and
   `review-helper bump-round` append APPLY anchors to
   `$spec_path/debug.log` automatically. Do not call `mark-phase`.
-- Run each `review-helper` / `prompt` command as its **own** shell
-  invocation. Do not chain init + prompt + python one-liners.
-- Parse JSON from **stdout** yourself (tool output). Status/info
-  lines on stderr (e.g. template sync) must be ignored.
 - Shell variables such as `$commit_sha` are not Python names — never
   reference them inside `python3 -c` unless you expand them in the
   shell string first.
@@ -90,9 +89,10 @@ round.
   if it still fails, stop and report.
 - **Single prompt render (required):** Run each `prompt …` at most once
   per scope — `$review_prompt` once per review round in **6a**, and
-  `$fix_prompt` once per `$finding_id` in **6c-ii**. Parse the `"prompt"`
-  field from stdout JSON (or plain stdout for `apply-commit`) into a
-  shell variable and reuse it for sub-agent launch and relaunch. Do
+  `$fix_prompt` once per `$finding_id` in **6c-ii**. After a zero exit,
+  parse the `"prompt"` field from stdout JSON (or plain stdout for
+  `apply-commit`) into a shell variable and reuse it for sub-agent
+  launch and relaunch. Do
   **not** re-run the same `prompt apply-review` for the same round or
   `prompt apply-fix` for the same finding because verification failed,
   a sub-agent returned incomplete work, or you are double-checking —
@@ -143,9 +143,12 @@ round.
 Resolve `$commit_sha`, then branch on status (**once**):
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
   status --step "$current_task_id" --json
 ```
+
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse JSON stdout; keep that object for the decisions below.
 
 Also resolve the current tip:
 
@@ -162,7 +165,7 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
    `$head_sha`, then heal the file (only when `exists` is true):
 
    ```bash
-   $spex_skill_dir/scripts/spex review-helper --name $spec_name \
+   $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
      set-commit --step "$current_task_id" --commit "$commit_sha"
    ```
 
@@ -177,17 +180,19 @@ Then:
 
   ```bash
   $spex_skill_dir/scripts/spex prompt apply-review --json \
-    --name $spec_name --commit "$commit_sha"
+    --name "$spec_name" --commit "$commit_sha"
   ```
 
-  - If stdout JSON has `"skipped": true`: do **not** enter **6c**.
-    Refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
-    proceed to Phase 7. Do **not** cache this response as
-    `$review_prompt` (no 6a this invocation).
-  - ELSE (not skipped): open findings remain — go to **6c** (fix
-    loop). Do not start a new review first. Do **not** cache the
-    probe `"prompt"` as `$review_prompt`. (Allowed at any `round`,
-    including 3, so resume can finish leftover findings.)
+  - IF non-zero exit -> report stderr -> STOP
+  - ELSE parse JSON stdout:
+    - If `"skipped": true`: do **not** enter **6c**.
+      Refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
+      proceed to Phase 7. Do **not** cache this response as
+      `$review_prompt` (no 6a this invocation).
+    - ELSE (not skipped): open findings remain — go to **6c** (fix
+      loop). Do not start a new review first. Do **not** cache the
+      probe `"prompt"` as `$review_prompt`. (Allowed at any `round`,
+      including 3, so resume can finish leftover findings.)
 - Otherwise: go to **6a** (start or continue review).
 
 ## 6a. Review sub-agent
@@ -200,38 +205,38 @@ Run (alone — do not pipe through ad-hoc scripts):
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name $spec_name --commit "$commit_sha"
+  --name "$spec_name" --commit "$commit_sha"
 ```
 
-Parse the JSON object from stdout.
-
-- If `"skipped": true`: do **not** launch a review sub-agent and
-  do **not** pass an empty `"prompt"` to one. This is **not** a
-  loop STOP. Refresh `$commit_title` with
-  `git log -1 --pretty="%h: %s"` and proceed to Phase 7.
-  Orchestration keys off `"skipped": true`.
-- ELSE: Save `$review_prompt` from the `"prompt"` field and set
-  `$review_prompt_round` from `"review_round"` in the same JSON
-  (or from review `status --json` `"round"` if absent).
-  If `$review_prompt` is already set **and**
-  `$review_prompt_round` equals the current review round, reuse
-  it — do **not** run `prompt apply-review` again. Otherwise
-  clear `$review_prompt` and run the command above. Pass
-  `$review_prompt` directly to a **review sub-agent** as its
-  instructions — do not rewrite it via shell helpers. The review
-  sub-agent must only record findings via
-  `review-helper append` (with `--commit`) — it must not modify
-  source code, must not call `init`, must not call
-  `bump-round`, and must **not** run `git checkout` /
-  `git switch` / `git reset` / `git stash` (checkout-by-SHA
-  leaves detached HEAD even when the SHA is the branch tip).
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse the JSON object from stdout:
+  - If `"skipped": true`: do **not** launch a review sub-agent and
+    do **not** pass an empty `"prompt"` to one. This is **not** a
+    loop STOP. Refresh `$commit_title` with
+    `git log -1 --pretty="%h: %s"` and proceed to Phase 7.
+    Orchestration keys off `"skipped": true`.
+  - ELSE: Save `$review_prompt` from the `"prompt"` field and set
+    `$review_prompt_round` from `"review_round"` in the same JSON
+    (or from review `status --json` `"round"` if absent).
+    If `$review_prompt` is already set **and**
+    `$review_prompt_round` equals the current review round, reuse
+    it — do **not** run `prompt apply-review` again. Otherwise
+    clear `$review_prompt` and run the command above. Pass
+    `$review_prompt` directly to a **review sub-agent** as its
+    instructions — do not rewrite it via shell helpers. The review
+    sub-agent must only record findings via
+    `review-helper append` (with `--commit`) — it must not modify
+    source code, must not call `init`, must not call
+    `bump-round`, and must **not** run `git checkout` /
+    `git switch` / `git reset` / `git stash` (checkout-by-SHA
+    leaves detached HEAD even when the SHA is the branch tip).
 
 After the review sub-agent returns, re-attach if it left detached
 HEAD (no apply hooks — safe mid-loop):
 
 ```bash
 $spex_skill_dir/scripts/spex apply-helper ensure-branch \
-  --name $spec_name
+  --name "$spec_name"
 ```
 
 `ensure-branch` may fail when detached HEAD carries commits that
@@ -247,16 +252,17 @@ Then continue to **6b**.
 Run status **once**:
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
   status --step "$current_task_id" --json
 ```
 
-Parse that JSON and decide — do **not** re-run status before
-entering 6c or Phase 7. Match **in order** (do not skip steps).
-Decide from `needs_fix`, `open_major`, and `round` — **do not**
-use `ready_to_complete` alone to enter Phase 7 (it is false while
-open minors remain in rounds 1–2, and true at max round when only
-minors remain).
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse that JSON and decide — do **not** re-run status before
+  entering 6c or Phase 7. Match **in order** (do not skip steps).
+  Decide from `needs_fix`, `open_major`, and `round` — **do not**
+  use `ready_to_complete` alone to enter Phase 7 (it is false while
+  open minors remain in rounds 1–2, and true at max round when only
+  minors remain).
 
 1. If `"needs_fix": false` (no open findings — including when no
    review file was created because the review found nothing):
@@ -287,36 +293,37 @@ every single finding.**
 Use `next` only — do **not** call `status` here:
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
   next --step "$current_task_id"
 ```
 
-Parse JSON from stdout:
-
-- If `"id"` is `null` / empty: all findings for this round are
-  marked complete — go to **6c-iii**.
-- Otherwise set `$finding_id` from `"id"`. If `$finding_id` differs
-  from `$fix_prompt_finding_id`, clear the fix prompt cache
-  (`unset $fix_prompt $fix_prompt_finding_id` or equivalent) before
-  continuing to **6c-ii**.
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse JSON from stdout:
+  - If `"id"` is `null` / empty: all findings for this round are
+    marked complete — go to **6c-iii**.
+  - Otherwise set `$finding_id` from `"id"`. If `$finding_id` differs
+    from `$fix_prompt_finding_id`, clear the fix prompt cache
+    (`unset $fix_prompt $fix_prompt_finding_id` or equivalent) before
+    continuing to **6c-ii**.
 
 ### 6c-ii. Fix + amend one finding
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
-  --name $spec_name --commit "$commit_sha" \
+  --name "$spec_name" --commit "$commit_sha" \
   --finding-id "$finding_id"
 ```
 
-Parse `"prompt"` into `$fix_prompt` and set
-`$fix_prompt_finding_id="$finding_id"`. If `$fix_prompt` is already
-set **and** `$fix_prompt_finding_id` equals `$finding_id`, reuse it —
-do **not** run `prompt apply-fix` again for the same finding.
-Otherwise clear `$fix_prompt` and run the command above. Launch a **fresh
-fix sub-agent** with `$fix_prompt`. That sub-agent must:
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse `"prompt"` from JSON stdout into `$fix_prompt` and set
+  `$fix_prompt_finding_id="$finding_id"`. If `$fix_prompt` is already
+  set **and** `$fix_prompt_finding_id` equals `$finding_id`, reuse it —
+  do **not** run `prompt apply-fix` again for the same finding.
+  Otherwise clear `$fix_prompt` and run the command above. Launch a
+  **fresh fix sub-agent** with `$fix_prompt`. That sub-agent must:
 
 - Fix **only** `$finding_id`
-- Call `review-helper edit --id $finding_id --completed-at now`
+- Call `review-helper edit --id "$finding_id" --completed-at now`
   after that single fix (not before, not for other ids)
 - **Amend immediately** after marking that finding complete
 - **Not** mark other findings complete
@@ -336,17 +343,19 @@ After the fix sub-agent returns:
 - Verify `$finding_id` has a non-empty `completed_at`:
 
   ```bash
-  $spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
     show --step "$current_task_id" --id "$finding_id" --json
   ```
 
-  If not, relaunch the fix sub-agent once with the same `$fix_prompt`;
-  if it still fails, stop and report.
+  IF non-zero exit -> report stderr -> STOP. ELSE require a
+  non-empty `completed_at` in the JSON. If not, relaunch the fix
+  sub-agent once with the same `$fix_prompt`; if it still fails,
+  stop and report.
 - Re-attach if the fix agent left detached HEAD:
 
   ```bash
   $spex_skill_dir/scripts/spex apply-helper ensure-branch \
-    --name $spec_name
+    --name "$spec_name"
   ```
 
   `ensure-branch` may fail when detached HEAD carries commits that
@@ -362,7 +371,7 @@ After the fix sub-agent returns:
   a stale SHA:
 
   ```bash
-  $spex_skill_dir/scripts/spex review-helper --name $spec_name \
+  $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
     set-commit --step "$current_task_id" --commit "$commit_sha"
   ```
 
@@ -374,31 +383,34 @@ When `next` reports no open findings, run status **once** to decide
 whether to re-review (do not status again after this decision):
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name $spec_name \
+$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
   status --step "$current_task_id" --json
 ```
 
-- If `"round"` < 3: bump round and sync `commit_sha` (findings
-  preserved), then go back to **6a**:
+- IF non-zero exit -> report stderr -> STOP
+- ELSE parse JSON stdout:
+  - If `"round"` < 3: bump round and sync `commit_sha` (findings
+    preserved), then go back to **6a**:
 
-  ```bash
-  $spex_skill_dir/scripts/spex review-helper --name $spec_name \
-    bump-round --step "$current_task_id" --commit "$commit_sha"
-  ```
+    ```bash
+    $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
+      bump-round --step "$current_task_id" --commit "$commit_sha"
+    ```
 
-  Confirm stdout JSON shows the new `round` and `commit_sha` — that
-  is enough; do **not** re-run `status` after a successful bump.
-  Clear the review prompt cache
-  (`unset $review_prompt $review_prompt_round` or equivalent) so
-  **6a** renders a fresh `prompt apply-review` for the new round.
-  Then go back to **6a** (fresh review sub-agent on the latest
-  amended commit).
+    IF non-zero exit (and not the round-cap case below) -> report
+    stderr -> STOP. ELSE confirm stdout JSON shows the new `round`
+    and `commit_sha` — that is enough; do **not** re-run `status`
+    after a successful bump. Clear the review prompt cache
+    (`unset $review_prompt $review_prompt_round` or equivalent) so
+    **6a** renders a fresh `prompt apply-review` for the new round.
+    Then go back to **6a** (fresh review sub-agent on the latest
+    amended commit).
 
-- If `"round"` >= 3: **do not bump** and **do not re-review**.
-  Refresh `$commit_title` and proceed to Phase 7. (After a
-  successful fix loop, `open_major` should be 0. If fix/amend
-  verification failed earlier, that path already stopped and
-  reported.)
+  - If `"round"` >= 3: **do not bump** and **do not re-review**.
+    Refresh `$commit_title` and proceed to Phase 7. (After a
+    successful fix loop, `open_major` should be 0. If fix/amend
+    verification failed earlier, that path already stopped and
+    reported.)
 
 If `bump-round` exits non-zero because the round cap was reached,
 treat it the same as the `round >= 3` case (never force a fourth
