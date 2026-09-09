@@ -151,6 +151,54 @@ class TestSkillCredentialSafety:
             "alias/verb -> modify -> vague -> candidates"
         )
 
+    def test_no_unintended_prompt_var_in_sop_paths(self):
+        """Sweep SKILL/commands/references: no leftover router `$prompt`.
+
+        Only the pedagogical forbid in apply-task-phases Phase 3 bind
+        rules may mention `$prompt` (JSON field remains `"prompt"`).
+        """
+        allowed_substrings = {
+            APPLY_TASK_PHASES: ("(never call this `$prompt`)",),
+        }
+        sop_paths = (
+            SKILL_MD,
+            COMPACT_SOP,
+            CREATE_MD,
+            MODIFY_MD,
+            APPLY_MD,
+            APPLY_ONE_STEP_MD,
+            MERGE_MD,
+            ARCHIVE_MD,
+            INIT_MD,
+            APPLY_TASK_PHASES,
+            APPLY_SUBAGENT_HANDOFF,
+            APPLY_REVIEW_LOOP,
+            SPEC_ASSETS,
+            TODO_HELPER_COOKBOOK,
+            RESOLVE_SPEC_LIST,
+        )
+        leftovers: list[str] = []
+        for path in sop_paths:
+            allow = allowed_substrings.get(path, ())
+            for lineno, line in enumerate(
+                _read(path).splitlines(), start=1
+            ):
+                if "$prompt" not in line:
+                    continue
+                if any(token in line for token in allow):
+                    continue
+                leftovers.append(f"{path.name}:{lineno}: {line.strip()}")
+        assert not leftovers, (
+            "unintended router $prompt in SOP paths "
+            "(use $user_prompt / $task_prompt): " + repr(leftovers)
+        )
+        # Keep the explicit rename forbid so `$task_prompt` cannot drift
+        phase3 = _h2_section(
+            _read(APPLY_TASK_PHASES), "Phase 3: Build Prompt / Resume Gate"
+        )
+        _index(phase3, '`$task_prompt` ← `"prompt"`')
+        _index(phase3, "(never call this `$prompt`)")
+
 
 class TestForbiddenForwardingLanguage:
     def test_skill_md_forbids_verbatim_forwarding(self):
@@ -175,6 +223,10 @@ class TestCompactSopRouterSkeleton:
         assert "BEFORE assigning `$user_prompt`" in text
         assert "confidence >= 90%" not in text
         assert "confidence ≥ 90%" not in text
+        assert "$prompt" not in text, (
+            "compact-sop-style must not use router $prompt; "
+            "use $user_prompt / $task_prompt"
+        )
 
         # Free-form decision-rule skeleton (ordered anchors)
         r1 = _index(text, "Explicit alias/verb + single intent -> route")
