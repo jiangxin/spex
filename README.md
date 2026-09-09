@@ -206,7 +206,7 @@ spex list -v                 # Include spec descriptions
 spex list -vv                # Include step completion details
 spex list --archives         # Archived specs
 spex list --all-projects     # Specs from all projects
-spex list --json             # JSON format output
+spex list --json             # JSON array on stdout (no matches → [] + exit 0)
 ```
 
 ### spex show
@@ -232,7 +232,16 @@ spex open [spec-name] --run "ls -la"
 
 ### spex archive
 
-Archive a completed spec.
+Archive completed specs (or restore from archives). Prefer `--json` for
+machine-readable stdout (`dry_run` + `results[]`); human logs stay on
+stderr.
+
+```bash
+spex archive --json                     # Archive completed specs
+spex archive --json --name <spec>       # Archive one spec by name
+spex archive --json --dry-run           # Preview without moving
+spex archive --json --restore --name <spec>
+```
 
 ### spex merge
 

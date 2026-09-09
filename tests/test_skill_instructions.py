@@ -762,6 +762,27 @@ class TestApplyStepReviewSop:
                 f"{path.name} must document post-commit residue risk"
             )
 
+    def test_readme_documents_round2_user_cli(self):
+        """R2 leftover: list empty JSON + archive --json in bilingual README."""
+        for path in (README_MD, README_ZH):
+            text = _read(path)
+            assert "spex list --json" in text, (
+                f"{path.name} must document list --json"
+            )
+            assert (
+                "no matches → [] + exit 0" in text
+                or "无匹配 → [] 且 exit 0" in text
+            ), (
+                f"{path.name} must document list --json empty → [] + exit 0"
+            )
+            assert "spex archive --json" in text, (
+                f"{path.name} must document archive --json"
+            )
+            assert "dry_run" in text and "results[]" in text, (
+                f"{path.name} must mention archive --json stdout shape"
+            )
+
+
 class TestApplyReviewNoCheckout:
     def test_review_loop_reattaches_after_review(self):
         section = _h2_section(_read(APPLY_REVIEW_LOOP), "6a. Review sub-agent")

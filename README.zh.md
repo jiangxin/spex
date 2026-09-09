@@ -206,7 +206,7 @@ spex list -v                 # 增加规格描述
 spex list -vv                # 增加各步骤完成状态详情
 spex list --archives         # 已归档的 specs
 spex list --all-projects     # 所有项目的 specs
-spex list --json             # JSON 格式输出
+spex list --json             # stdout 输出 JSON 数组（无匹配 → [] 且 exit 0）
 ```
 
 ### spex show
@@ -232,7 +232,15 @@ spex open [spec-name] --run "ls -la"
 
 ### spex archive
 
-归档开发完成的 spec。
+归档已完成的 specs（或从 archives 恢复）。机器可读结果请用 `--json`
+（stdout：`dry_run` + `results[]`）；人类可读日志仍走 stderr。
+
+```bash
+spex archive --json                     # 归档已完成的 specs
+spex archive --json --name <spec>       # 按名称归档单个 spec
+spex archive --json --dry-run           # 仅预览，不移动
+spex archive --json --restore --name <spec>
+```
 
 ### spex merge
 
