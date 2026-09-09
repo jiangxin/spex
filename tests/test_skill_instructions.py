@@ -260,6 +260,85 @@ class TestCreatePlanOnlySop:
         _index(section, "`$spec_path`")
 
 
+class TestModifyPlanOnlySop:
+    """Lock modify.md binding, PLAN whitelist, and Load pointers."""
+
+    def test_binds_spec_name_and_request_from_user_prompt(self):
+        pre = _h2_section(_read(MODIFY_MD), "Preconditions")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "`$spec_name`")
+        _index(pre, "`$request`")
+        _index(pre, "priority")
+        _index(pre, "untrusted")
+
+    def test_plan_write_whitelist_only_spec_path(self):
+        text = _read(MODIFY_MD)
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "write **only** under `$spec_path`")
+        _index(pre, "Glob")
+        _index(pre, "Grep")
+        phase10 = _h3_section(text, "Phase 10: STOP — Do NOT Implement")
+        _index(phase10, "outside `$spec_path`")
+
+    def test_phase1_loads_resolve_spec_list(self):
+        phase1 = _h3_section(_read(MODIFY_MD), "Phase 1: Resolve Spec")
+        _index(
+            phase1,
+            "Load and follow `references/resolve-spec-list.md`",
+        )
+
+    def test_phase3_loads_spec_assets(self):
+        phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
+        _index(phase3, "Load and follow `references/spec-assets.md`")
+
+    def test_phase5_readonly_updates_spec_md_only(self):
+        phase5 = _h3_section(_read(MODIFY_MD), "Phase 5: Modify spec.md")
+        _index(phase5, "update **only** `$spec_path/spec.md`")
+        _index(phase5, "Read-only explore")
+        lower = phase5.lower()
+        assert "integrates with existing code" not in lower
+        assert "review current codebase structure" not in lower
+
+    def test_phase7_keeps_hard_planning_principles(self):
+        phase7 = _h3_section(
+            _read(MODIFY_MD), "Phase 7: Regenerate Development Steps"
+        )
+        _index(phase7, "`$todo_prompt`")
+        _index(phase7, "Preserve completed work")
+        _index(phase7, "Small batches")
+        _index(phase7, "Self-contained")
+        _index(phase7, "skip_commit")
+        _index(
+            phase7,
+            "Load and follow `references/todo-helper-cookbook.md`",
+        )
+
+    def test_has_failure_handling_section(self):
+        section = _h2_section(_read(MODIFY_MD), "Failure Handling")
+        _index(section, "ON_FAIL")
+        _index(section, "`$spec_path`")
+
+
+class TestModifyPhase9JsonResult:
+    """Lock modify.md Phase 9 human summary + machine-result JSON."""
+
+    def test_phase9_has_human_summary_spec_line(self):
+        phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
+        assert "**Spec**:" in phase9
+
+    def test_phase9_has_fenced_json_with_required_keys(self):
+        phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
+        assert "```json" in phase9
+        assert '"spec_name"' in phase9
+        assert '"spec_path"' in phase9
+
+    def test_phase9_instructs_parsing_last_fenced_json(self):
+        phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
+        _index(phase9, "parse the last fenced")
+        _index(phase9, "json")
+        _index(phase9, "block")
+
+
 SOP_STEP_REVIEW_PATHS = (
     APPLY_REVIEW_LOOP,
     APPLY_MD,
