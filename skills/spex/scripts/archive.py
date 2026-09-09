@@ -269,7 +269,8 @@ def restore_single_spec(
     return item.spec_path
 
 
-def main(argv=None):
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex archive``."""
     parser = ArgumentParser(
         prog="spex archive",
         description="Archive completed specs.",
@@ -289,6 +290,11 @@ def main(argv=None):
         "--json", action="store_true", dest="json_mode",
         help="Emit machine-readable JSON on stdout",
     )
+    return parser
+
+
+def main(argv=None):
+    parser = _build_parser()
     args = parser.parse(argv)
 
     specs_dir = get_specs_dir()
