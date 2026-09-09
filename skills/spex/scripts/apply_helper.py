@@ -285,13 +285,62 @@ def _do_ensure_branch(args):
 
     Used after review/fix sub-agents that may have left detached HEAD
     via ``git checkout <sha>``.
+
+    Before switching, refuse re-attach when detached HEAD is not an
+    ancestor of ``spex_branch`` (would silently discard an amend).
     """
     import common
     import config as cfg
+    from branch import branch_exists, get_current_branch
 
     ctx = cfg.get_project_context()
     spec_dir = common.resolve_spec_dir(args.name)
-    validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
+    cwd = ctx.top_workdir
+
+    # Guard only for ensure-branch (not precheck): refuse discarding
+    # detached commits that are not ancestors of spex_branch.
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    if head.returncode == 0:
+        pre = head.stdout.strip()
+        try:
+            get_current_branch(cwd)
+            detached = False
+        except RuntimeError:
+            detached = True
+        if detached:
+            meta = common.load_meta(spec_dir) or SpecMeta()
+            spex_branch = meta.spex_branch
+            if spex_branch and branch_exists(spex_branch, cwd):
+                ancestor = subprocess.run(
+                    [
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        pre,
+                        spex_branch,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                )
+                if ancestor.returncode != 0:
+                    logger.error(
+                        "Detached HEAD %s is not an ancestor of '%s'; "
+                        "re-attaching would discard it. Recover with: "
+                        "git branch -f %s %s",
+                        pre,
+                        spex_branch,
+                        spex_branch,
+                        pre,
+                    )
+                    sys.exit(1)
+
+    validate_apply_branch(ctx.config, spec_dir, cwd=cwd)
 
 
 def cli_ensure_branch(argv=None):

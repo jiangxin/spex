@@ -525,18 +525,153 @@ class TestCliPrecheck:
 class TestCliEnsureBranch:
     @patch("apply_helper.validate_apply_branch")
     @patch("common.resolve_spec_dir")
-    @patch("config.get_project_context", return_value=_fake_context(
-        config={"branch_management": True}, top_workdir="/repo"))
     def test_ensure_branch_calls_validate_only(
-        self, _ctx, mock_resolve, mock_validate, tmp_path,
+        self, mock_resolve, mock_validate, tmp_path,
     ):
         """ensure-branch re-attaches without firing apply hooks."""
         mock_resolve.return_value = tmp_path
-        cli_ensure_branch(["--name", "test-topic"])
+        # Real dir so rev-parse fails cleanly (not a git repo) and
+        # the ancestor guard is skipped before validate_apply_branch.
+        with patch(
+            "config.get_project_context",
+            return_value=_fake_context(
+                config={"branch_management": True},
+                top_workdir=tmp_path,
+            ),
+        ):
+            cli_ensure_branch(["--name", "test-topic"])
         mock_validate.assert_called_once_with(
-            {"branch_management": True}, tmp_path, cwd="/repo",
+            {"branch_management": True}, tmp_path, cwd=tmp_path,
         )
 
+
+@pytest.mark.slow
+class TestEnsureBranchAncestorGuard:
+    """Integration: ensure-branch refuses discarding detached amends."""
+
+    def _setup_spex_branch(self, tmp_path):
+        _git_init_with_commit(tmp_path, "master")
+        create_and_switch_branch("spex/feat", cwd=tmp_path, base="master")
+        tip = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        spec_dir = tmp_path / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text(
+            json.dumps({
+                "name": "feat",
+                "spex_branch": "spex/feat",
+                "branch": "master",
+            }),
+            encoding="utf-8",
+        )
+        (spec_dir / "todo.json").write_text(
+            json.dumps([{"id": "t1", "name": "work"}]),
+            encoding="utf-8",
+        )
+        return tip, spec_dir
+
+    def test_detached_with_new_commit_refuses(self, tmp_path, caplog):
+        """Detached amend → non-zero, recovery hint, branch unchanged."""
+        import logging
+
+        tip, spec_dir = self._setup_spex_branch(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "--detach", "HEAD"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+        (tmp_path / "fix.txt").write_text("amend\n")
+        subprocess.run(
+            ["git", "add", "."], cwd=tmp_path, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "detached amend"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+        dangling = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert dangling != tip
+
+        with patch(
+            "config.get_project_context",
+            return_value=_fake_context(
+                config={"branch_management": True},
+                top_workdir=tmp_path,
+            ),
+        ), patch(
+            "common.resolve_spec_dir", return_value=spec_dir,
+        ), caplog.at_level(logging.ERROR):
+            try:
+                cli_ensure_branch(["--name", "feat"])
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
+
+        assert "git branch -f" in caplog.text
+        assert dangling in caplog.text
+        # Still detached at the dangling commit; branch tip unchanged
+        with pytest.raises(RuntimeError):
+            get_current_branch(tmp_path)
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert head == dangling
+        branch_tip = subprocess.run(
+            ["git", "rev-parse", "spex/feat"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert branch_tip == tip
+
+    def test_detached_at_tip_reattaches(self, tmp_path):
+        """Detached HEAD exactly at branch tip → normal re-attach."""
+        tip, spec_dir = self._setup_spex_branch(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "--detach", "HEAD"],
+            cwd=tmp_path, capture_output=True, check=True,
+        )
+        with pytest.raises(RuntimeError):
+            get_current_branch(tmp_path)
+
+        with patch(
+            "config.get_project_context",
+            return_value=_fake_context(
+                config={"branch_management": True},
+                top_workdir=tmp_path,
+            ),
+        ), patch("common.resolve_spec_dir", return_value=spec_dir):
+            cli_ensure_branch(["--name", "feat"])
+
+        assert get_current_branch(tmp_path) == "spex/feat"
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert head == tip
+
+    def test_on_branch_unchanged(self, tmp_path):
+        """Normal on-branch ensure-branch → exit 0, stay on branch."""
+        tip, spec_dir = self._setup_spex_branch(tmp_path)
+        assert get_current_branch(tmp_path) == "spex/feat"
+
+        with patch(
+            "config.get_project_context",
+            return_value=_fake_context(
+                config={"branch_management": True},
+                top_workdir=tmp_path,
+            ),
+        ), patch("common.resolve_spec_dir", return_value=spec_dir):
+            cli_ensure_branch(["--name", "feat"])
+
+        assert get_current_branch(tmp_path) == "spex/feat"
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert head == tip
 
 class TestCliPostAction:
     @patch("config.get_project_context", return_value=_fake_context())

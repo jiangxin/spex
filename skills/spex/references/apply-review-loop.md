@@ -234,6 +234,12 @@ $spex_skill_dir/scripts/spex apply-helper ensure-branch \
   --name $spec_name
 ```
 
+`ensure-branch` may fail when detached HEAD carries commits that
+are not ancestors of `spex_branch` (re-attaching would discard
+them). Treat non-zero exit as abnormal STOP: report the recovery
+command from stderr (typically `git branch -f <branch> <sha>`) to
+the user and do not continue.
+
 Then continue to **6b**.
 
 ## 6b. Check status (after a review pass)
@@ -342,6 +348,12 @@ After the fix sub-agent returns:
   $spex_skill_dir/scripts/spex apply-helper ensure-branch \
     --name $spec_name
   ```
+
+  `ensure-branch` may fail when detached HEAD carries commits that
+  are not ancestors of `spex_branch` (re-attaching would discard
+  them). Treat non-zero exit as abnormal STOP: report the recovery
+  command from stderr (typically `git branch -f <branch> <sha>`) to
+  the user and do not continue.
 
 - Refresh the SHA after this amend with
   `git rev-parse --short HEAD`. Save to `$commit_sha` (required —
