@@ -25,6 +25,11 @@ passed).
 - Empty / missing `$spec_name` behavior depends on CLI flags and
   whether the name arg is omitted — follow the caller's CMD
 - Do not invent a second match algorithm; trust `list` output
+- `list` patterns are **substring** matches (`pattern in name`).
+  A leading `^` triggers regex; `*`/`?` trigger glob. A
+  single-element result is **not** proof of an exact match —
+  callers that need exact semantics must compare `spec_name`
+  themselves
 - An empty result (`[]`) is **not** a script error. Never assume
   that zero matches require exit 1; with `--json`, empty match
   prints `[]` and exits 0. Only treat a non-zero exit (or

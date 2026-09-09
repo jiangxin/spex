@@ -37,10 +37,12 @@ development plan.
      `$user_prompt` -> `$request` (may be empty)
   2. ELSE apply the optional pre-list name heuristic:
      - A string **looks like a spec name** iff it matches
-       `^[a-z0-9-]+$` and length ≤ 64, **or** matches date-prefix
-       `^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$` (full
-       string; no whitespace — never treat a multi-word prompt as
-       a single name via prefix alone)
+       date-prefix
+       `^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`
+       **or** `^[a-z0-9]+(-[a-z0-9]+)+$` (must contain a hyphen,
+       so bare words like `add` / `fix` / `login` do not qualify),
+       length ≤ 64 (full string; no whitespace — never treat a
+       multi-word prompt as a single name via prefix alone)
      - Prefer the whole `$user_prompt` when it looks like a name;
        otherwise the first whitespace-separated token when **that**
        token looks like a name (name candidate)
@@ -82,9 +84,12 @@ $spex_skill_dir/scripts/spex list --json "$spec_name"
   stdout into `$spec_name` / `$spec_path` (single / multiple /
   empty / error). Empty `[]` recovery is defined in Preconditions
   priority 3 — do **not** assume empty match is exit 1. ON_FAIL
-  (true script error) -> STOP. Selecting a numbered spec sets
-  `$spec_name` / `$spec_path` only; it does **not** confirm
-  `$request`
+  (true script error) -> STOP
+- After a single match (or after the user picks from multiple),
+  echo once `spec=<X> / request=<Y>` and wait for confirmation
+  before Phase 2. Merge this with the existing rule that
+  selecting a spec does **not** confirm `$request` into one
+  round trip (do not ask separately for spec lock and request)
 
 ### Phase 2: Understand Context and Clarify
 

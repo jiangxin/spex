@@ -466,7 +466,11 @@ class TestModifyPlanOnlySop:
         _index(pre, "priority")
         _index(pre, "untrusted")
         _index(pre, "looks like a spec name")
-        _index(pre, "`^[a-z0-9-]+$`")
+        # R3-F7 / P1-7: must contain a hyphen (exclude bare words)
+        _index(pre, "`^[a-z0-9]+(-[a-z0-9]+)+$`")
+        _index(pre, "must contain a hyphen")
+        _index(pre, "`add`")
+        _index(pre, "`fix`")
         _index(pre, "≤ 64")
         _index(pre, r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`")
         _index(pre, "no whitespace")
@@ -500,8 +504,21 @@ class TestModifyPlanOnlySop:
             "Load and follow `references/resolve-spec-list.md`",
         )
         _index(phase1, "`[]`")
+        # R3-F7 / P1-7: echo-confirm after single match
+        _index(phase1, "spec=<X> / request=<Y>")
+        _index(phase1, "wait for confirmation")
+        _index(phase1, "round trip")
         _index(phase1, "not** confirm")
         _index(phase1, "`$request`")
+
+    def test_resolve_spec_list_documents_substring_matching(self):
+        """R3-F7 / P1-7: list patterns are substring, not exact."""
+        notes = _h2_section(_read(RESOLVE_SPEC_LIST), "Notes")
+        _index(notes, "**substring**")
+        _index(notes, "exact match")
+        _index(notes, "compare `spec_name`")
+        _index(notes, "regex")
+        _index(notes, "glob")
 
     def test_phase2_selecting_spec_does_not_confirm_request(self):
         phase2 = _h3_section(
