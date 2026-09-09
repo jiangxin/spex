@@ -677,7 +677,7 @@ def _build_parser():
         default=None,
         help=(
             "Skip commit mode: false (default, omit key),"
-            " auto, or true"
+            " auto, or true (lowercase strings only)"
         ),
     )
 
@@ -714,7 +714,7 @@ def _build_parser():
         default=None,
         help=(
             "Skip commit mode: false (clears key),"
-            " auto, or true"
+            " auto, or true (lowercase strings only)"
         ),
     )
 

@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content
   - spec_name
@@ -69,12 +69,12 @@ final plan is coherent and complete.
 
 ### Using spex todo-helper
 
-**Append** a new step — use `--details-from-stdin` with a heredoc for
-multi-line Markdown details:
+**Append** a coding step (default — omit `--skip-commit`):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
-  --id step-N --step-name "Short name" --details-from-stdin <<'DETAILS'
+  --id step-N --step-name "Short name" \
+  --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -82,6 +82,25 @@ including file changes, logic, and acceptance criteria.
 - Do not use headings (`#`, `##`, etc.)
 DETAILS
 ```
+
+**Append** a non-coding / no-repo-change step — set
+`--skip-commit true` (or `auto` when a commit is only needed if
+files change):
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper --name {{ spec_name }} append \
+  --id step-N --step-name "Confirm checklist without repo edits" \
+  --skip-commit true \
+  --details-from-stdin <<'DETAILS'
+Verify acceptance criteria without changing tracked files.
+
+**Acceptance criteria**: working tree stays clean (excl. spex_root)
+DETAILS
+```
+
+Do **not** put `--skip-commit true` on coding steps. Values:
+`true` | `auto` | `false` (default omit / `false`). JSON bool
+`true`/`false` and lowercase strings only — not `"True"` / `"AUTO"`.
 
 **Show** current steps (to review before adding more):
 

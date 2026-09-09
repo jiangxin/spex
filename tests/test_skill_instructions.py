@@ -179,6 +179,46 @@ class TestApplyStepReviewSop:
             assert "config get" not in phase6.lower()
             assert "skip_review" not in phase6
 
+    def test_apply_commands_branch_on_skip_commit_and_did_commit(self):
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            text = _read(path)
+            phase2 = _h3_section(text, "Phase 2: Validate Branch")
+            _index(phase2, "`$spex_root`")
+            _index(phase2, "spex config")
+            phase3 = _h3_section(text, "Phase 3: Build Prompt / Resume Gate")
+            _index(phase3, "`$skip_commit`")
+            phase4 = _h3_section(text, "Phase 4: Execute Task")
+            _index(phase4, "`$skip_commit`")
+            _index(phase4, "`$dirty`")
+            _index(phase4, "whole working tree")
+            _index(phase4, "`$did_commit=false`")
+            _index(phase4, "**FAIL/STOP**")
+            phase5 = _h3_section(text, "Phase 5: Commit (record commit_title only)")
+            _index(phase5, "`$did_commit`")
+            phase6 = _h3_section(text, "Phase 6: Review Loop")
+            _index(phase6, "`$did_commit`")
+            phase7 = _h3_section(text, "Phase 7: Mark Task Complete")
+            _index(phase7, "`$did_commit`")
+            _index(phase7, "Refresh `$commit_title` if needed")
+            if path == APPLY_MD:
+                # After Phases 4–5 sub-agent, main must re-bind
+                # $commit_title from durable todo before Phase 6,
+                # and must not treat empty commit_title alone as OK.
+                _index(phase3, '`$commit_title` ←')
+                _index(phase3, "task's `commit_title`")
+                _index(phase3, "outcome=skip_commit")
+                _index(phase3, "intentional STOP")
+                _index(phase3, "empty `commit_title` alone")
+                _index(phase4, "outcome=skip_commit")
+                _index(phase5, "outcome=committed")
+
+    def test_review_loop_requires_did_commit_precondition(self):
+        text = _read(APPLY_REVIEW_LOOP)
+        assert "produced a git commit" in text
+        assert "`$did_commit`" in text
+        assert "skip_commit" in text
+        assert "Orthogonal to global `step_review`" in text
+
     def test_docs_name_step_review_not_skip_review(self):
         for path in SOP_STEP_REVIEW_PATHS:
             text = _read(path)

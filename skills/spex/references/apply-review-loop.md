@@ -3,6 +3,12 @@
 Shared orchestration for `/spex apply` and `/spex apply-one-step`.
 Load and follow this document exactly for Phase 6.
 
+**Caller precondition:** enter this loop only when the current step
+**produced a git commit** (`$did_commit` true). Steps with
+`skip_commit` that skipped commit must go to Phase 7 without
+loading this file. Orthogonal to global `step_review` (that switch
+short-circuits inside this loop via `"skipped": true`).
+
 ## Flow Overview
 
 ```mermaid
