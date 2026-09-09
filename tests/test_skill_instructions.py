@@ -1385,11 +1385,33 @@ class TestMergeArchiveInitSop:
         _index(phase2, "results")
         assert "Archived: <name> -> <dest>" not in phase2
 
+    def test_archive_confirmation_gate_for_batch_and_force(self):
+        """R3-F11 / P2-11: dry-run confirm when no --name; --force confirms."""
+        pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
+        _index(pre, "Confirmation gate")
+        _index(pre, "no `--name`")
+        _index(pre, "--dry-run --json")
+        _index(pre, "results[]")
+        _index(pre, "explicit user confirmation")
+        _index(pre, "--force")
+        _index(pre, "spex_branch")
+        # Gate must not apply when user already bound --dry-run / -n
+        _index(pre, "did **not** bind `--dry-run` / `-n`")
+        _index(pre, "pre-Phase-1 probe")
+        _index(pre, "not** the user dry-run STOP path")
+        # Round 2 dry-run STOP semantics unchanged
+        _index(pre, "--dry-run` / `-n` success")
+        _index(pre, "**STOP** this invocation")
+        _index(pre, "invoke `/spex archive` again")
+
     def test_init_edge_notes_and_failure_handling(self):
         text = _read(INIT_MD)
         pre = _h2_section(text, "Preconditions")
         _index(pre, "`$user_prompt`")
-        _index(pre, "usually ignored")
+        # R3-F15 / P2-20: definitive wording — no "usually"
+        _index(pre, "Ignore all tokens")
+        _index(pre, "accepts no")
+        assert "usually" not in pre.lower()
         _index(pre, "Non-git")
         _index(pre, "Already initialized")
         _index(pre, "Warnings")
@@ -1397,6 +1419,32 @@ class TestMergeArchiveInitSop:
         _index(fail, "ON_FAIL")
         _index(fail, "exit 0")
         _index(fail, "Warnings")
+
+    def test_no_mark_phase_under_skills_spex(self):
+        """R3-F13 / P2-14: mark-phase is not a real subcommand — drop it."""
+        spex_root = REPO_ROOT / "skills" / "spex"
+        offenders = []
+        for path in spex_root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".md", ".py", ".toml", ".txt"}:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "mark-phase" in text:
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+        assert offenders == [], (
+            "mark-phase must not appear under skills/spex/: "
+            + ", ".join(offenders)
+        )
+        for path in (CREATE_MD, APPLY_MD, APPLY_REVIEW_LOOP):
+            text = _read(path)
+            _index(text, "debug.log")
+            assert "automatically" in text.lower() or "automatic" in text.lower()
+            assert (
+                "need not intervene" in text.lower()
+                or "does not need to intervene" in text.lower()
+                or "need no agent" in text.lower()
+            )
 
 
 class TestDoNotRenameVariables:

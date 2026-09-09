@@ -34,8 +34,9 @@ Apply a specification to implement code step by step.
   this SOP
 - Debug timeline: when debug is enabled, scripts append APPLY
   anchors to `$spec_path/debug.log` automatically (task begin,
-  committed, review begin/round, task done, post-action). Do not
-  call `mark-phase`
+  committed, review begin/round, task done, post-action); the
+  agent need not intervene
+
 - Empty `[]` from Phase 1 `--must-undone` resolve:
   - IF `$spec_name` is non-empty → **Completed-spec recovery**
     (re-check with `--must-done` in Phase 1) — do **not** default-STOP
