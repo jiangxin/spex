@@ -992,6 +992,31 @@ class TestApplyStepReviewSop:
                 f"{path.name} must mention archive --json stdout shape"
             )
 
+    def test_readme_documents_round3_branch_behavior(self):
+        """R3-F20: bilingual docs for meta.branch base + ensure-branch fail."""
+        for path in (README_MD, README_ZH):
+            text = _read(path)
+            assert "meta.branch" in text, (
+                f"{path.name} must document meta.branch as branch base"
+            )
+            assert "ensure-branch" in text, (
+                f"{path.name} must document ensure-branch"
+            )
+            assert "git branch -f" in text, (
+                f"{path.name} must document git branch -f recovery"
+            )
+            # Strip Markdown bold so wording-preserving edits still match.
+            # Needles target Branch Management + FAQ sentences in both READMEs.
+            plain = text.replace("**", "")
+            assert (
+                "not an ancestor of that branch" in plain
+                or "not an ancestor of the spec branch" in plain
+                or "不是目标分支的祖先" in plain
+                or "不是 spec 分支祖先" in plain
+            ), (
+                f"{path.name} must explain non-ancestor detached refusal"
+            )
+
 
 class TestApplyReviewNoCheckout:
     def test_review_loop_reattaches_after_review(self):
@@ -1488,3 +1513,83 @@ class TestDoNotRenameVariables:
         _index(shared, "at least one question")
         _index(shared, "Also clarify when any apply")
         _index(shared, "2–4 questions")
+
+
+class TestRound3RegressionGate:
+    """R3-F20: structural anchors + Round 1/2 no-regression smoke list."""
+
+    def test_round3_shared_refs_and_command_loads(self):
+        assert PLAN_COMMAND_COMMON.is_file()
+        assert (
+            REPO_ROOT / "skills" / "spex" / "references" / "cli-contract.md"
+        ).is_file()
+        assert (
+            REPO_ROOT / "tests" / "test_sop_cli_contract.py"
+        ).is_file()
+        needle_cli = "Load and follow `references/cli-contract.md`"
+        needle_plan = "Load and follow `references/plan-command-common.md`"
+        for path in (
+            CREATE_MD,
+            MODIFY_MD,
+            APPLY_MD,
+            APPLY_ONE_STEP_MD,
+            MERGE_MD,
+            ARCHIVE_MD,
+            INIT_MD,
+        ):
+            _index(_read(path), needle_cli)
+        _index(_read(CREATE_MD), needle_plan)
+        _index(_read(MODIFY_MD), needle_plan)
+
+    def test_round3_skill_and_apply_structure_anchors(self):
+        body = _skill_body()
+        _index(_h3_section(body, "Variable Model"), "agent context variables")
+        routing = _h3_section(body, "Routing Discipline")
+        _index(routing, "recognized command name/alias token")
+        free = _h3_section(body, "Free-form Intent Inference")
+        _index(free, "first token")
+        apply = _read(APPLY_MD)
+        _index(apply, "meta.branch")
+        _index(_h3_section(apply, "Phase 1: Resolve Spec"), "--must-done")
+        one = _read(APPLY_ONE_STEP_MD)
+        _index(_h2_section(one, "Differences from `/spex apply`"), "HARD STOP")
+        _index(
+            _h3_section(one, "Phase 8: Summary and Conditional Post Action"),
+            "todo-helper --name \"$spec_name\" show --undone",
+        )
+        loop = _read(APPLY_REVIEW_LOOP)
+        assert "## Round Model" not in loop
+        _index(loop, "apply-helper ensure-branch")
+        _index(loop, "may fail")
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+        _index(handoff, "outcome=committed")
+        _index(handoff, "apply-helper dirty --json")
+
+    def test_round1_round2_no_regression_smoke(self):
+        """Keep Round 1/2 hard gates green after Round 3 edits."""
+        phases = _read(APPLY_TASK_PHASES)
+        _index(phases, "skip_commit six-arm")
+        _index(phases, "outcome=committed")
+        _index(phases, "outcome=skip_commit")
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+        _index(handoff, "commit_title")
+        _index(handoff, "completed_at")
+        create_p8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
+        _index(create_p8, "json spex-result")
+        loop = _read(APPLY_REVIEW_LOOP)
+        _index(loop, "apply-helper ensure-branch")
+        review_tpl = _read(
+            REPO_ROOT / "skills" / "spex" / "templates" / "apply-review.md"
+        )
+        _index(review_tpl, "git checkout")
+        invariants = _h2_section(loop, "Invariants (do not weaken)")
+        _index(invariants, "At most **3** review passes")
+        resolve = _read(RESOLVE_SPEC_LIST)
+        _index(resolve, "[]")
+        archive = _read(ARCHIVE_MD)
+        _index(archive, "--json")
+        create = _read(CREATE_MD)
+        _index(create, "validate-name")
+        assert "mark-phase" not in create
+        assert "mark-phase" not in _read(APPLY_MD)
+        assert "mark-phase" not in loop

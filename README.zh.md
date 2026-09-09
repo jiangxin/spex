@@ -141,7 +141,7 @@ disable-model-invocation: true
 
 - **`/spex modify [spec-name] [变更]`** - 修改已创建的 spec。更新 `todo.json` 开发步骤，保留已完成步骤，重新生成未完成的任务。
 
-- **`/spex apply [spec-name]`** - 开始按步骤实施开发。默认创建以 `spex/` 为前缀的本地分支。开发过程中可以用 `spex list` 命令行查看进度。
+- **`/spex apply [spec-name]`** - 开始按步骤实施开发。默认以 `meta.branch`（创建 spec 时记录的项目主干）为起点创建 `spex/` 本地分支，而不是当前 HEAD。开发过程中可以用 `spex list` 命令行查看进度。
 
 - **`/spex apply-one-step [spec-name]`** - 与 `/spex apply` 相同，但每次只执行一个步骤。适合需要逐步精细控制的场景。
 
@@ -392,6 +392,10 @@ SOP 在发现残留时会 STOP。取值只接受 JSON 布尔 `true`/`false` 或�
 
 同时开发多个需求时，分支管理是个头疼的问题。Spex 默认自动处理：每个 spec 自动创建以 `spex/` 为前缀的独立开发分支，合并时自动归档。同时为分支添加描述（通过 `git config branch.<name>.description`），使合并提交说明中包含需求概述。
 
+新建 spex 分支时以 `meta.branch`（创建 spec 时记录的主干，通常是 `main` / `master`）为起点，而不是当前 HEAD。这样 `/spex apply --all` 或连续 apply 多个 spec 时，不会把上一个 spec 的提交带进下一个分支。若本地缺少该基线分支，Spex 会回退到当前 HEAD 并打出 warning。
+
+在 apply 的 review 循环中，`apply-helper ensure-branch` 会在 review/fix 子 agent 之后重新挂回 spec 分支。若此时处于 detached HEAD，且该提交**不是**目标分支的祖先，ensure-branch 会报错退出并打印 `git branch -f` 恢复提示，而不会静默丢掉 detached 提交。
+
 Spex 本身即使用 spex skill 开发。以下 `git log --merges` 输出展示了分支描述在合并提交中的呈现方式：
 
 ```
@@ -501,6 +505,10 @@ export PATH="$HOME/.local/bin:$PATH"
 1. 用 `spex show` 查看该 spec 的当前状态。
 2. 用 `/spex apply` 继续开发。
 3. 如果不需要旧分支，可以先用 `git branch -D <branch-name>` 删除。
+
+### ensure-branch 拒绝重新挂接怎么办
+
+若 apply 因 `apply-helper ensure-branch` 在 detached HEAD 上失败而停止，说明 Spex 在保护一个还不是 spec 分支祖先的提交（例如在 detached 状态下 amend）。请按报错中的 `git branch -f <spex-branch> <sha>` 提示恢复（或把修复 cherry-pick / 重建到分支上），然后重新运行 `/spex apply`。
 
 ### 如何中断和恢复开发
 
