@@ -331,6 +331,21 @@ class TestModifyPlanOnlySop:
         _index(pre, "`$request`")
         _index(pre, "priority")
         _index(pre, "untrusted")
+        _index(pre, "looks like a spec name")
+        _index(pre, "`^[a-z0-9-]+$`")
+        _index(pre, "≤ 64")
+        _index(pre, r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`")
+        _index(pre, "no whitespace")
+        _index(pre, "multi-word")
+        _index(pre, "name candidate")
+        _index(pre, "`$spec_name` ← the candidate")
+        _index(pre, "`[]`")
+        _index(pre, "unlike a name")
+        _index(pre, "whole `$user_prompt`")
+        _index(pre, "rebind")
+        _index(pre, "re-run Phase 1 with empty name")
+        _index(pre, "not** confirming")
+        _index(pre, "`$request`")
 
     def test_plan_write_whitelist_only_spec_path(self):
         text = _read(MODIFY_MD)
@@ -347,6 +362,16 @@ class TestModifyPlanOnlySop:
             phase1,
             "Load and follow `references/resolve-spec-list.md`",
         )
+        _index(phase1, "`[]`")
+        _index(phase1, "not** confirm")
+        _index(phase1, "`$request`")
+
+    def test_phase2_selecting_spec_does_not_confirm_request(self):
+        phase2 = _h3_section(
+            _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
+        )
+        _index(phase2, "never")
+        _index(phase2, "confirms `$request`")
 
     def test_phase3_loads_spec_assets(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
@@ -356,6 +381,7 @@ class TestModifyPlanOnlySop:
         phase5 = _h3_section(_read(MODIFY_MD), "Phase 5: Modify spec.md")
         _index(phase5, "update **only** `$spec_path/spec.md`")
         _index(phase5, "Read-only explore")
+        _index(phase5, "ON_FAIL")
         lower = phase5.lower()
         assert "integrates with existing code" not in lower
         assert "review current codebase structure" not in lower
@@ -369,6 +395,7 @@ class TestModifyPlanOnlySop:
         _index(phase7, "Small batches")
         _index(phase7, "Self-contained")
         _index(phase7, "skip_commit")
+        _index(phase7, "ON_FAIL")
         _index(
             phase7,
             "Load and follow `references/todo-helper-cookbook.md`",
@@ -378,6 +405,14 @@ class TestModifyPlanOnlySop:
         section = _h2_section(_read(MODIFY_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "`$spec_path`")
+        _index(section, "Phase 5")
+        _index(section, "Phase 7")
+        _index(section, "immediate STOP")
+        _index(section, "roll back")
+        _index(section, "`--remove-undone` recovery")
+        _index(section, "Phase 4")
+        _index(section, "git restore")
+        _index(section, "half-done")
 
 
 class TestModifyPhase9JsonResult:

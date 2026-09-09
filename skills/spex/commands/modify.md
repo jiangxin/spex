@@ -22,14 +22,35 @@ development plan.
 ## Preconditions
 
 - Bind from `$user_prompt` (may be empty). Parse `$spec_name` +
-  `$request` with this priority:
+  `$request` with this priority (**before** Phase 1 `list`):
   1. Usage already split an explicit `$spec_name` token -> use it;
      remainder of `$user_prompt` -> `$request` (may be empty)
-  2. ELSE treat the whole `$user_prompt` as a name candidate:
-     run Phase 1 `list --json`; single match -> select; multiple ->
-     numbered choice; zero matches and text does not look like a
-     spec name -> `$spec_name` empty, whole text -> `$request`
-  3. IF `$request` still empty after binding -> Phase 2 asks the user
+  2. ELSE apply the optional pre-list name heuristic:
+     - A string **looks like a spec name** iff it matches
+       `^[a-z0-9-]+$` and length ≤ 64, **or** matches date-prefix
+       `^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$` (full
+       string; no whitespace — never treat a multi-word prompt as
+       a single name via prefix alone)
+     - Prefer the whole `$user_prompt` when it looks like a name;
+       otherwise the first whitespace-separated token when **that**
+       token looks like a name (name candidate)
+     - IF a name candidate exists -> `$spec_name` ← the candidate
+       (whole `$user_prompt` or first token); keep the remainder of
+       `$user_prompt` after the candidate token as `$request` when
+       the candidate was only the first token (may be empty); then
+       Phase 1 `list --json` with `$spec_name`
+     - ELSE (unlike a name) -> `$spec_name` empty, whole
+       `$user_prompt` -> `$request`; Phase 1 `list --json` with
+       empty name (all candidates)
+  3. IF Phase 1 returns `[]` and the text **was** a name candidate:
+     - IF the whole `$user_prompt` does **not** look like a name ->
+       rebind: `$spec_name` empty, whole `$user_prompt` ->
+       `$request`, re-run Phase 1 with empty name
+     - ELSE (whole prompt still looks like a name, no match) ->
+       STOP or ask the user to pick/clarify the spec name
+  4. IF `$request` still empty after binding -> Phase 2 asks the
+     user. Selecting a spec in Phase 1 is **not** confirming
+     `$request`
 - SCOPE / write whitelist: write **only** under `$spec_path`
   (`spec.md`, `todo.json`, `meta.json`, optional `assets/`). NO
   application code. NO existing project file modifications outside
@@ -46,9 +67,9 @@ development plan.
 
 ### Phase 1: Resolve Spec
 
-- IF `$spec_name` still unbound after Preconditions priority 1–2,
-  pass an empty name (list all candidates) or the candidate text
-  from priority 2
+- Pass `$spec_name` from Preconditions (empty string when unbound
+  or after unlike-name / `[]` rebound). Empty name lists all
+  candidates
 - CMD:
 
 ```bash
@@ -57,12 +78,17 @@ $spex_skill_dir/scripts/spex list --json "$spec_name"
 
 - Load and follow `references/resolve-spec-list.md` to parse
   stdout into `$spec_name` / `$spec_path` (single / multiple /
-  error). ON_FAIL (script error) -> STOP
+  empty / error). Empty `[]` recovery is defined in Preconditions
+  priority 3 — do **not** assume empty match is exit 1. ON_FAIL
+  (true script error) -> STOP. Selecting a numbered spec sets
+  `$spec_name` / `$spec_path` only; it does **not** confirm
+  `$request`
 
 ### Phase 2: Understand Context and Clarify
 
 - IF `$request` missing/empty -> ask user what changes they want;
-  full input becomes `$request`
+  full input becomes `$request` (Phase 1 selection alone never
+  confirms `$request`)
 - Read `$spec_path/spec.md` for existing requirements/design. Explore
   workspace only enough to locate relevant code + patterns referenced
   in the spec (Preconditions explore whitelist). Do NOT dig into full
@@ -118,8 +144,11 @@ EOF
 - Parse JSON stdout:
   - IF non-zero exit -> report stderr -> STOP
   - ELSE -> `$modify_prompt` ← `"prompt"` field
-- `--remove-undone` removes incomplete `todo.json` steps before render
-  so prompt includes completed-step context only
+- `--remove-undone` removes incomplete `todo.json` steps before
+  render so prompt includes completed-step context only. After this
+  runs, a mid-flight FAIL (before Phase 7 append succeeds) can leave
+  only completed steps plus a partially updated `spec.md` — see
+  Failure Handling recovery
 
 ### Phase 5: Modify spec.md
 
@@ -130,6 +159,9 @@ EOF
   implementation details, and do NOT modify any file outside
   `$spec_path`
 - Writes only under `$spec_path` (Preconditions whitelist)
+- ON_FAIL (cannot apply prompt / write fails) -> STOP; do not
+  continue to Phase 6/7 half-done. Prefer Failure Handling
+  `--remove-undone` recovery if undo steps were already removed
 
 ### Phase 6: Build Todo Prompt
 
@@ -162,6 +194,8 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json --name $spec_name
   formatting, and `skip_commit` conventions. Continue IDs after the
   last completed step (`step-N+1`, …)
 - Writes only under `$spec_path` (`todo.json` via todo-helper)
+- ON_FAIL (append/edit fails) -> STOP; do not continue half-done.
+  Use Failure Handling `--remove-undone` recovery before retrying
 
 ### Phase 8: Post-Action
 
@@ -214,12 +248,29 @@ $spex_skill_dir/scripts/spex create-helper post-action \
 
 ## Failure Handling
 
-- ON_FAIL Phase 1 `list` / resolve -> STOP (stderr or user abort)
-- ON_FAIL Phase 4 `modify-spec` prompt -> STOP (stderr)
+- ON_FAIL Phase 1 `list` / resolve (true script error or user abort)
+  -> STOP. Empty `[]` alone is not a script error — follow
+  Preconditions priority 3 recovery when applicable
+- ON_FAIL Phase 4 `modify-spec` prompt -> STOP (stderr). IF
+  `--remove-undone` already deleted incomplete todos -> recover
+  before any retry (below); do **not** continue half-done
+- ON_FAIL Phase 5 (spec.md write) -> **immediate STOP**; do not
+  enter Phase 6/7. Prefer `--remove-undone` recovery below
 - ON_FAIL Phase 6 `modify-todo` prompt -> STOP (stderr)
+- ON_FAIL Phase 7 (todo append/edit) -> **immediate STOP**; do not
+  enter Phase 8 half-done. Prefer `--remove-undone` recovery below
 - ON_FAIL Phase 8 post-action -> fix `todo.json` -> re-run until OK
-- Any write outside `$spec_path` -> treat as FAIL; do not continue
-  implementation
+- Any Write / ApplyPatch / tree-changing shell **outside**
+  `$spec_path` -> **immediate STOP**; roll back those out-of-scope
+  changes if possible; do **not** continue later phases
+- `--remove-undone` recovery: after Phase 4 has removed incomplete
+  todos, a FAIL before successful Phase 7 append must **not** leave
+  the agent continuing in a half-done state. Recover by either
+  (1) re-running `/spex modify` from Phase 4 with the same
+  `$spec_name` / `$request`, or (2) `git restore --source=HEAD --`
+  `$spec_path/todo.json` (and `spec.md` if needed) when specs are
+  git-tracked — then restart from Phase 4. Do not invent partial
+  todo steps on top of a stripped list
 
 ## STOP / Outputs
 
