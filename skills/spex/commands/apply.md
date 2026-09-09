@@ -217,7 +217,13 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
   treat as `outcome=skip_commit`
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - ON_FAIL Phases 4–5 execution (not intentional STOP) -> report +
-  retry once; still fails -> STOP
+  retry once with retry preconditions:
+  1. Run `apply-helper dirty --json` to capture current state
+  2. Choose explicitly: **(a) default** keep dirty changes and hand
+     "partial implementation + dirty paths" to the fresh sub-agent
+     as context; **(b)** `git restore` to a clean tree, then re-run
+  3. The report **must** state which option was taken
+  4. Still fails -> STOP
 - Unexpected handoff / residual dirty after commit -> STOP; no
   Phase 7
 - Phase 6 abnormal STOP -> end entire `/spex apply` per

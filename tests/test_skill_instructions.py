@@ -1127,6 +1127,53 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         _index(phase3, "Phase 9")
 
 
+class TestHandoffChecklistAndRetryPreconditions:
+    """R3-F6 / R3-F10 (P1-6 / P1-10): checklist ↔ decision table + retry."""
+
+    def test_checklist_step2_requires_outcome_or_review_path(self):
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+        checklist = _h2_section(
+            handoff, "Main-session checklist (after Phases 4–5)"
+        )
+        _index(checklist, "outcome=committed")
+        _index(checklist, "resume_phase=review")
+        _index(checklist, "no sub-agent")
+        # Step 2 must gate Phase 6 on outcome/review, not title alone
+        step2_start = checklist.lower().index("2. if")
+        step3_start = checklist.lower().index("3. else if")
+        step2 = checklist[step2_start:step3_start]
+        assert "outcome=committed" in step2.lower()
+        assert "resume_phase=review" in step2.lower()
+        _index(step2, "Phase 6")
+        # Fall-through to unexpected STOP when title alone
+        _index(checklist, "step 4 unexpected handoff STOP")
+
+    def test_retry_preconditions_dirty_json_in_handoff_and_apply(self):
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+        launch = _h2_section(handoff, "Sub-agent launch (implement path)")
+        _index(launch, "apply-helper dirty --json")
+        _index(launch, "partial implementation")
+        _index(launch, "dirty paths")
+        _index(launch, "git restore")
+        _index(launch, "(a) default")
+        _index(launch, "must** state which option")
+        _index(launch, "still fails")
+        # Intentional STOP remains non-retryable (trust boundary intact)
+        _index(handoff, "Do **not** retry")
+        _index(handoff, "intentional STOP")
+
+        apply_fh = _h2_section(_read(APPLY_MD), "Failure Handling")
+        _index(apply_fh, "apply-helper dirty --json")
+        _index(apply_fh, "partial implementation")
+        _index(apply_fh, "dirty paths")
+        _index(apply_fh, "git restore")
+        _index(apply_fh, "(a) default")
+        _index(apply_fh, "must** state which option")
+        _index(apply_fh, "not**")
+        _index(apply_fh, "retryable")
+        _index(apply_fh, "intentional STOP")
+
+
 class TestPlanCommandCommonReference:
     """R3-F16 / S2: shared PLAN rules for create + modify."""
 

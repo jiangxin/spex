@@ -25,8 +25,15 @@ is required, sub-agent runs Phase 5 (`apply-commit`) after
 implementation.
 
 ON_FAIL (implement/commit **execution** errors only — not
-intentional STOP): report + retry **once**; IF still fails ->
-STOP.
+intentional STOP): report + retry **once**, with retry
+preconditions:
+
+1. Run `apply-helper dirty --json` to capture current state
+2. Choose explicitly between:
+   - **(a) default**: keep dirty changes; hand "partial implementation + dirty paths" to the fresh sub-agent as context
+   - **(b)**: `git restore` to a clean tree, then re-run
+3. The report **must** state which option was taken
+4. IF still fails -> STOP
 
 Phase 4/5 still set `$did_commit` inside the sub-agent for
 **local** routing only.
@@ -67,9 +74,14 @@ Numbered steps — follow in order; do not skip:
 
 1. Re-read the current task in **main** (e.g.
    `todo-helper show --id "$current_task_id"`).
-2. IF non-empty `commit_title` AND empty `completed_at` ->
+2. IF non-empty `commit_title` AND empty `completed_at`
+   AND (sub-agent reported `outcome=committed` OR this is the
+   `resume_phase=review` path with no sub-agent) ->
    `$did_commit` ← `true`; `$commit_title` ← task's
    `commit_title` -> Phase 6. **Done.**
+   (Matching durable fields without `outcome=committed` and
+   without the review path fall through — step 3 will not match
+   either → step 4 unexpected handoff STOP.)
 3. ELSE IF sub-agent reported `outcome=skip_commit` AND empty
    `commit_title` AND empty `completed_at` -> recompute `$dirty`
    in **main** via:
