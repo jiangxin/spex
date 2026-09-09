@@ -13,7 +13,7 @@ short-circuits inside this loop via `"skipped": true`).
 
 ```mermaid
 flowchart TD
-    entry[6-entry status gate] -->|needs_fix and step_review false| phase7[Phase 7]
+    entry[6-entry status gate] -->|needs_fix and skipped| phase7[Phase 7]
     entry -->|needs_fix| fix[6c fix loop]
     entry -->|else| review[6a review sub-agent]
     review -->|skipped| phase7
@@ -49,8 +49,9 @@ flowchart TD
    earlier invocation was interrupted while `needs_fix` is still
    true, a later `/spex apply` or `/spex apply-one-step` resumes
    via Phase 3 with `resume_phase=review`, then **6-entry** routes
-   to **6c** (even at `round == 3`) unless `step_review` is false
-   (then Phase 7). Never bump or re-review past round 3.
+   to **6c** (even at `round == 3`) unless `prompt apply-review
+   --json` returns `"skipped": true` (then Phase 7). Never bump or
+   re-review past round 3.
 
 ## Orchestration Rules (required)
 
@@ -153,14 +154,23 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
 
 Then:
 
-- If `"needs_fix": true` **and** `step_review` is false (read
-  config, or probe `prompt apply-review --json` and parse
-  `"skipped": true`): do **not** enter **6c**. Refresh
-  `$commit_title` with `git log -1 --pretty="%h: %s"` and proceed
-  to Phase 7.
-- If `"needs_fix": true`: open findings remain — go to **6c**
-  (fix loop). Do not start a new review first. (Allowed at any
-  `round`, including 3, so resume can finish leftover findings.)
+- If `"needs_fix": true`: detect disabled step review **only** via
+  this probe (do **not** read `.spex.toml` / config for the
+  decision):
+
+  ```bash
+  $spex_skill_dir/scripts/spex prompt apply-review --json \
+    --name $spec_name --commit "$commit_sha"
+  ```
+
+  - If stdout JSON has `"skipped": true`: do **not** enter **6c**.
+    Refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
+    proceed to Phase 7. Do **not** cache this response as
+    `$review_prompt` (no 6a this invocation).
+  - ELSE (not skipped): open findings remain — go to **6c** (fix
+    loop). Do not start a new review first. Do **not** cache the
+    probe `"prompt"` as `$review_prompt`. (Allowed at any `round`,
+    including 3, so resume can finish leftover findings.)
 - Otherwise: go to **6a** (start or continue review).
 
 ## 6a. Review sub-agent

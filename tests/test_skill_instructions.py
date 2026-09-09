@@ -25,6 +25,9 @@ APPLY_TASK_PHASES = (
 APPLY_SUBAGENT_HANDOFF = (
     REPO_ROOT / "skills" / "spex" / "references" / "apply-subagent-handoff.md"
 )
+MERGE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "merge.md"
+ARCHIVE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "archive.md"
+INIT_MD = REPO_ROOT / "skills" / "spex" / "commands" / "init.md"
 MODIFY_TODO = REPO_ROOT / "skills" / "spex" / "templates" / "modify-todo.md"
 README_MD = REPO_ROOT / "README.md"
 README_ZH = REPO_ROOT / "README.zh.md"
@@ -368,10 +371,16 @@ class TestApplyStepReviewSop:
         section = _h2_section(
             _read(APPLY_REVIEW_LOOP), "6-entry. Resume / continue gate"
         )
-        _index(section, "`step_review` is false")
-        _index(section, "do **not** enter **6c**")
-        _index(section, "to Phase 7")
-        _index(section, '"skipped": true')
+        probe_at = _index(section, "prompt apply-review --json")
+        skipped_at = _index(section, '"skipped": true')
+        no_6c_at = _index(section, "do **not** enter **6c**")
+        phase7_at = _index(section, "to Phase 7")
+        assert probe_at < skipped_at < no_6c_at < phase7_at
+        # Single detection path — no “read config or probe” dual path
+        assert "read config, or" not in section.lower()
+        assert "or probe" not in section.lower()
+        _index(section, "do **not** read")
+        _index(section, ".spex.toml")
 
     def test_loop_stop_is_abnormal_only(self):
         text = _read(APPLY_REVIEW_LOOP)
@@ -680,3 +689,63 @@ class TestSharedSopReferences:
         _index(text, "apply-helper dirty --json")
         _index(text, "Do **not** rely on sub-agent")
         _index(text, "`$task_prompt`")
+
+
+class TestMergeArchiveInitSop:
+    """§6–8 polish: Inputs vs Phase 1, dry-run STOP, slim archive,
+    init edges, Failure Handling / `$user_prompt` binding."""
+
+    def test_merge_inputs_flags_only_selection_in_phase1(self):
+        text = _read(MERGE_MD)
+        inputs = _h2_section(text, "Inputs")
+        _index(inputs, "`$spec_name`")
+        _index(inputs, "--dry-run")
+        assert "CLI searches" not in inputs
+        assert "auto-select" not in inputs
+        phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+        _index(
+            phase1,
+            "Load and follow `references/resolve-spec-list.md`",
+        )
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "untrusted")
+        _index(pre, "--dry-run")
+        _index(pre, "**STOP**")
+        fail = _h2_section(text, "Failure Handling")
+        _index(fail, "ON_FAIL")
+        _index(fail, "dry-run")
+        phase2 = _h3_section(text, "Phase 2: Validate")
+        _index(phase2, "spex_branch")
+        _index(phase2, "fast-fail")
+
+    def test_archive_preconditions_slim_cli_only(self):
+        text = _read(ARCHIVE_MD)
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "Do **not** move")
+        _index(pre, "only run the CLI")
+        _index(pre, "`$spec_path`")
+        _index(pre, "--dry-run")
+        _index(pre, "**STOP**")
+        # Script-enforced rules must not be re-taught in Preconditions
+        assert "todo.json" not in pre
+        assert "fuzzy" not in pre.lower()
+        fail = _h2_section(text, "Failure Handling")
+        _index(fail, "ON_FAIL")
+        _index(fail, "dry-run")
+        phase2 = _h3_section(text, "Phase 2: Report Results")
+        _index(phase2, "$spec_path")
+        _index(phase2, "Archived: <name> -> <dest>")
+
+    def test_init_edge_notes_and_failure_handling(self):
+        text = _read(INIT_MD)
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "`$user_prompt`")
+        _index(pre, "Non-git")
+        _index(pre, "Already initialized")
+        _index(pre, "Warnings")
+        fail = _h2_section(text, "Failure Handling")
+        _index(fail, "ON_FAIL")
+        _index(fail, "exit 0")
+        _index(fail, "Warnings")
