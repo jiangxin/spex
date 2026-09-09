@@ -15,7 +15,8 @@ exit codes, stdout/stderr, quoting, and one-helper-per-shell.
    else skip to Phase 7 (no load for skip-commit without commit).
 2. **STOP** only for abnormal failures (fix/amend verify fails
    after relaunch) — not for round-3 open majors.
-3. Round-3 open majors → **6c** same invocation; never bump past 3.
+3. At most **3** review passes. Round-3 open majors → **6c**
+   same invocation; never bump or re-review past 3.
 4. `"skipped": true` (`step_review=false`) is **not** STOP → Phase 7.
 5. Abnormal STOP ends whole invocation (apply: no 7/8/9 / next
    task/`$specs`; one-step: no Phase 7/8); step stays incomplete.
@@ -50,94 +51,6 @@ flowchart TD
     bumpOrDone -->|round ge 3| phase7
 ```
 
-## Round Model
-
-1. At most **3** review passes (`round` is 1, 2, or 3). `round`
-   never exceeds 3 (`review-helper bump-round` enforces this).
-2. Round N means the N-th review sub-agent pass on the step commit.
-3. After a review in rounds 1–2 with open findings (major **or**
-   minor): run the fix loop, then bump and re-review.
-4. After a review in round 3:
-   - no open majors → proceed to Phase 7 (open minors may remain);
-   - open majors remain → enter **6c** and fix them in this same
-     invocation. Do **not** bump or re-review past round 3. After
-     fixes, if `open_major == 0`, proceed to Phase 7.
-5. **STOP** is only for abnormal failures (e.g. fix/amend
-   verification fails after relaunch). Do not STOP merely because
-   round 3 found majors. `"skipped": true` from `prompt
-   apply-review` is **not** a STOP — proceed to Phase 7. If an
-   earlier invocation was interrupted while `needs_fix` is still
-   true, a later `/spex apply` or `/spex apply-one-step` resumes
-   via Phase 3 with `resume_phase=review`, then **6-entry** routes
-   to **6c** (even at `round == 3`) unless `prompt apply-review
-   --json` returns `"skipped": true` (then Phase 7). Never bump or
-   re-review past round 3.
-
-## Orchestration Rules (required)
-
-The main agent orchestrates this phase. Launch a fresh **review
-sub-agent** and (when needed) a fresh **fix sub-agent** each
-round.
-
-- Debug timeline: with debug enabled, `prompt apply-review` and
-  `review-helper bump-round` append APPLY anchors to
-  `$spec_path/debug.log` automatically. Do not call `mark-phase`.
-- Shell variables such as `$commit_sha` are not Python names — never
-  reference them inside `python3 -c` unless you expand them in the
-  shell string first.
-- Sub-agent / amend verification failures: relaunch **at most once**;
-  if it still fails, stop and report.
-- **Single prompt render (required):** Run each `prompt …` at most once
-  per scope — `$review_prompt` once per review round in **6a**, and
-  `$fix_prompt` once per `$finding_id` in **6c-ii**. After a zero exit,
-  parse the `"prompt"` field from stdout JSON (or plain stdout for
-  `apply-commit`) into a shell variable and reuse it for sub-agent
-  launch and relaunch. Do
-  **not** re-run the same `prompt apply-review` for the same round or
-  `prompt apply-fix` for the same finding because verification failed,
-  a sub-agent returned incomplete work, or you are double-checking —
-  unless the variable was lost (e.g. new session with no prior context).
-  Track scope with companion variables so stale shell state cannot
-  skip a render:
-  - `$review_prompt` + `$review_prompt_round` (current review round)
-  - `$fix_prompt` + `$fix_prompt_finding_id` (current finding id)
-  Reuse a cached prompt **only** when its companion matches the current
-  scope; otherwise treat the cache as empty and run the prompt command.
-- **review-helper CLI (required):**
-
-  ```text
-  REQUIRED: --name <spec> on every invocation
-  REQUIRED: --step <id> for most subcommands (status, next, show,
-            append, edit, bump-round, set-commit, list, get)
-  USE:      status --json | next | show --step S [--id ID]
-  ALIASES:  list → show summary; get → show --id
-  ```
-
-  `--name` is always required. Prefer `status` / `next` / `show` at
-  the steps below. `list` and `get` are supported aliases of `show`
-  (compat); use them only with `--name` and `--step` as needed.
-  To inspect one finding (e.g. verify `completed_at`), use
-  `show --step "$current_task_id" --id "$finding_id" --json`
-  (or `get --step … --id …`).
-
-- **Avoid redundant status / next / show (required):** Call each
-  helper only at the step that needs it. Reuse the last parsed JSON
-  in shell/context — there is no process-level status cache.
-
-  | Step | Required call | Do not |
-  |------|---------------|--------|
-  | 6-entry | `status --json` once | re-status before routing |
-  | 6b (after review) | `status --json` once | re-status before 6c / Phase 7 |
-  | 6c-i (pick finding) | `next` only | `status` (reuse prior JSON) |
-  | 6c-ii (verify fix) | `show --id` once | `status` |
-  | 6c-iii (`next` null) | `status --json` once | re-status after bump-round |
-
-  Never re-run `status --json` immediately after an unchanged status
-  result (same step, same argv, seconds apart). After 6b routes to
-  6c, start at **6c-i** with `next` — do not status again first.
-  After `bump-round` stdout confirms the new `round`, go to **6a**
-  without another status.
-
 ## 6-entry. Resume / continue gate
 
 Resolve `$commit_sha`, then branch on status (**once**):
@@ -161,8 +74,9 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
 1. If status JSON `"commit_sha"` is non-empty **and** equals
    `$head_sha`, use that value.
 2. If status JSON `"commit_sha"` is non-empty **but differs** from
-   `$head_sha`: the review file is stale after an amend — use
-   `$head_sha`, then heal the file (only when `exists` is true):
+   `$head_sha`: the review file is stale after an amend — set
+   `$commit_sha` ← `$head_sha` **first**, then heal the file with
+   that value (only when `exists` is true):
 
    ```bash
    $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
@@ -191,15 +105,31 @@ Then:
       `$review_prompt` (no 6a this invocation).
     - ELSE (not skipped): open findings remain — go to **6c** (fix
       loop). Do not start a new review first. Do **not** cache the
-      probe `"prompt"` as `$review_prompt`. (Allowed at any `round`,
-      including 3, so resume can finish leftover findings.)
+      probe `"prompt"` as `$review_prompt`. (Interrupted earlier
+      invocations with `needs_fix` still true resume via Phase 3
+      `resume_phase=review` into this gate → **6c** at any `round`,
+      including 3, unless the probe returned `"skipped": true`.)
 - Otherwise: go to **6a** (start or continue review).
+
+`$var` names here are agent context variables (see SKILL Variable
+Model). Expand to literals when composing commands; do not rely on
+shell state between tool calls.
 
 ## 6a. Review sub-agent
 
 Do **not** run `review-helper init`. The review file is created
 lazily on the first `append`. If the review finds nothing, do not
 create any `review-step-*.json` file.
+
+**Single prompt render:** run `prompt apply-review` at most once per
+review round. After a zero exit, parse `"prompt"` from stdout JSON
+into agent memory as `$review_prompt` and reuse it for launch and
+relaunch. Do **not** re-run for the same round because verification
+failed or a sub-agent returned incomplete work — unless the cache
+was lost (e.g. new session). Track scope with
+`$review_prompt_round` (current review round). Reuse a cached
+prompt **only** when `$review_prompt_round` matches the current
+round; otherwise treat the cache as empty and render again.
 
 Run (alone — do not pipe through ad-hoc scripts):
 
@@ -221,15 +151,13 @@ $spex_skill_dir/scripts/spex prompt apply-review --json \
     If `$review_prompt` is already set **and**
     `$review_prompt_round` equals the current review round, reuse
     it — do **not** run `prompt apply-review` again. Otherwise
-    clear `$review_prompt` and run the command above. Pass
-    `$review_prompt` directly to a **review sub-agent** as its
-    instructions — do not rewrite it via shell helpers. The review
-    sub-agent must only record findings via
-    `review-helper append` (with `--commit`) — it must not modify
-    source code, must not call `init`, must not call
-    `bump-round`, and must **not** run `git checkout` /
-    `git switch` / `git reset` / `git stash` (checkout-by-SHA
-    leaves detached HEAD even when the SHA is the branch tip).
+    clear the cached review prompt and its round marker, then run
+    the command above. Pass `$review_prompt` directly to a
+    **review sub-agent** as its instructions — do not rewrite it
+    via shell helpers. Full constraints: Appendix B. In short: the
+    review sub-agent must only `append` findings (with `--commit`);
+    must not modify source, call `init` / `bump-round`, or run
+    `git checkout` / `git switch` / `git reset` / `git stash`.
 
 After the review sub-agent returns, re-attach if it left detached
 HEAD (no apply hooks — safe mid-loop):
@@ -272,7 +200,9 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
    `$commit_title` and proceed to Phase 7 (remaining open minors
    may stay unfinished). At max round this matches
    `"ready_to_complete": true`, but earlier rounds must still fix
-   minors via rule 3.
+   minors via rule 3. Round N is the N-th review sub-agent pass on
+   the step commit; after rounds 1–2 with any open findings
+   (major or minor), the path is fix → bump → re-review.
 3. **Otherwise** (`needs_fix` is true — including when
    `"round"` >= 3 and `"open_major"` > 0): you **MUST** continue
    to 6c and launch the fix loop. Never proceed to Phase 7 while
@@ -302,11 +232,17 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
   - If `"id"` is `null` / empty: all findings for this round are
     marked complete — go to **6c-iii**.
   - Otherwise set `$finding_id` from `"id"`. If `$finding_id` differs
-    from `$fix_prompt_finding_id`, clear the fix prompt cache
-    (`unset $fix_prompt $fix_prompt_finding_id` or equivalent) before
-    continuing to **6c-ii**.
+    from `$fix_prompt_finding_id`, clear the cached fix prompt and
+    its finding-id marker before continuing to **6c-ii**.
 
 ### 6c-ii. Fix + amend one finding
+
+**Single prompt render:** run `prompt apply-fix` at most once per
+`$finding_id`. After a zero exit, parse `"prompt"` into agent
+memory as `$fix_prompt` and reuse for launch/relaunch. Do **not**
+re-run for the same finding unless the cache was lost. Track scope
+with `$fix_prompt_finding_id`. Reuse only when the companion
+matches `$finding_id`; otherwise treat the cache as empty.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
@@ -319,8 +255,9 @@ $spex_skill_dir/scripts/spex prompt apply-fix --json \
   `$fix_prompt_finding_id="$finding_id"`. If `$fix_prompt` is already
   set **and** `$fix_prompt_finding_id` equals `$finding_id`, reuse it —
   do **not** run `prompt apply-fix` again for the same finding.
-  Otherwise clear `$fix_prompt` and run the command above. Launch a
-  **fresh fix sub-agent** with `$fix_prompt`. That sub-agent must:
+  Otherwise clear the cached fix prompt and its finding-id marker,
+  then run the command above. Launch a **fresh fix sub-agent** with
+  `$fix_prompt`. That sub-agent must:
 
 - Fix **only** `$finding_id`
 - Call `review-helper edit --id "$finding_id" --completed-at now`
@@ -400,18 +337,77 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
     IF non-zero exit (and not the round-cap case below) -> report
     stderr -> STOP. ELSE confirm stdout JSON shows the new `round`
     and `commit_sha` — that is enough; do **not** re-run `status`
-    after a successful bump. Clear the review prompt cache
-    (`unset $review_prompt $review_prompt_round` or equivalent) so
-    **6a** renders a fresh `prompt apply-review` for the new round.
-    Then go back to **6a** (fresh review sub-agent on the latest
-    amended commit).
+    after a successful bump. Clear the cached review prompt and its
+    round marker so **6a** renders a fresh `prompt apply-review` for
+    the new round. Then go back to **6a** (fresh review sub-agent on
+    the latest amended commit).
 
   - If `"round"` >= 3: **do not bump** and **do not re-review**.
     Refresh `$commit_title` and proceed to Phase 7. (After a
     successful fix loop, `open_major` should be 0. If fix/amend
     verification failed earlier, that path already stopped and
-    reported.)
+    reported.) Round 3 is the last review pass: open majors must
+    already have been fixed in **6c** this same invocation; open
+    minors may remain. Never force a fourth review.
 
 If `bump-round` exits non-zero because the round cap was reached,
 treat it the same as the `round >= 3` case (never force a fourth
 review).
+
+## Appendix A: Call-frequency optimisation
+
+**Avoid redundant status / next / show.** Call each helper only at
+the step that needs it. Reuse the last parsed JSON in agent memory
+— there is no process-level status cache.
+
+| Step | Required call | Do not |
+|------|---------------|--------|
+| 6-entry | `status --json` once | re-status before routing |
+| 6b (after review) | `status --json` once | re-status before 6c / Phase 7 |
+| 6c-i (pick finding) | `next` only | `status` (reuse prior JSON) |
+| 6c-ii (verify fix) | `show --id` once | `status` |
+| 6c-iii (`next` null) | `status --json` once | re-status after bump-round |
+
+Never re-run `status --json` immediately after an unchanged status
+result (same step, same argv, seconds apart). After 6b routes to
+6c, start at **6c-i** with `next` — do not status again first.
+After `bump-round` stdout confirms the new `round`, go to **6a**
+without another status.
+
+**review-helper CLI:**
+
+```text
+REQUIRED: --name <spec> on every invocation
+REQUIRED: --step <id> for most subcommands (status, next, show,
+          append, edit, bump-round, set-commit, list, get)
+USE:      status --json | next | show --step S [--id ID]
+ALIASES:  list → show summary; get → show --id
+```
+
+`--name` is always required. Prefer `status` / `next` / `show`.
+`list` and `get` are supported aliases of `show` (compat); use them
+only with `--name` and `--step` as needed. To inspect one finding
+(e.g. verify `completed_at`), use
+`show --step "$current_task_id" --id "$finding_id" --json`
+(or `get --step … --id …`).
+
+## Appendix B: Sub-agent constraints
+
+- **Review sub-agent:** record findings only via `review-helper
+  append` (with `--commit`). Must not modify source code, must not
+  call `init`, must not call `bump-round`, and must **not** run
+  `git checkout` / `git switch` / `git reset` / `git stash`
+  (checkout-by-SHA leaves detached HEAD even when the SHA is the
+  branch tip).
+- **Fix sub-agent:** fix only `$finding_id`; mark that finding
+  complete then **amend immediately**; do not mark other findings;
+  do not call `bump-round`; do not run `git checkout` /
+  `git switch` / `git reset`.
+- Sub-agent / amend verification failures: relaunch **at most once**;
+  if it still fails, stop and report (abnormal STOP).
+- Debug timeline: with debug enabled, `prompt apply-review` and
+  `review-helper bump-round` append APPLY anchors to
+  `$spec_path/debug.log` automatically. Agent need not intervene.
+- Never reference `$commit_sha` (or other `$var`) inside
+  `python3 -c` unless already expanded to a literal in the command
+  text.

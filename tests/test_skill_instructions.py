@@ -633,11 +633,71 @@ class TestApplyStepReviewSop:
 
     def test_loop_stop_is_abnormal_only(self):
         text = _read(APPLY_REVIEW_LOOP)
-        round_model = _h2_section(text, "Round Model")
-        _index(round_model, "STOP** is only for abnormal failures")
-        _index(round_model, '"skipped": true')
-        _index(round_model, "is **not** a STOP")
-        _index(round_model, "proceed to Phase 7")
+        invariants = _h2_section(text, "Invariants (do not weaken)")
+        _index(invariants, "STOP** only for abnormal failures")
+        _index(invariants, '"skipped": true')
+        _index(invariants, "is **not** STOP")
+        _index(invariants, "Phase 7")
+        # Round Model folded into Invariants + 6b / 6c-iii
+        assert "## Round Model" not in text
+        six_b = _h2_section(text, "6b. Check status (after a review pass)")
+        _index(six_b, "round-3 majors")
+        _index(six_b, "rounds 1–2")
+        six_c_iii = _h3_section(text, "6c-iii. Bump round or finish (hard cap)")
+        _index(six_c_iii, "do not bump")
+        _index(six_c_iii, "do not re-review")
+        _index(six_c_iii, "Never force a fourth review")
+
+    def test_review_loop_layered_structure_and_agent_memory(self):
+        """R3-F18 / S4: layered review-loop + P0-1 agent-memory wording."""
+        text = _read(APPLY_REVIEW_LOOP)
+        invariants = _h2_section(text, "Invariants (do not weaken)")
+        inv_lines = []
+        for ln in invariants.splitlines()[1:]:
+            if ln.strip().startswith("**Caller"):
+                break
+            if ln.strip():
+                inv_lines.append(ln)
+        assert len(inv_lines) <= 15, (
+            f"Invariants checklist too long: {len(inv_lines)} lines"
+        )
+        assert "## Round Model" not in text
+        assert "## Orchestration Rules" not in text
+        appendix_a = _h2_section(text, "Appendix A: Call-frequency optimisation")
+        _index(appendix_a, "Avoid redundant status / next / show")
+        _index(appendix_a, "status --json")
+        _index(appendix_a, "6c-i")
+        _index(appendix_a, "bump-round")
+        _index(appendix_a, "Never re-run `status --json`")
+        appendix_b = _h2_section(text, "Appendix B: Sub-agent constraints")
+        _index(appendix_b, "bump-round")
+        _index(appendix_b, "git checkout")
+        _index(appendix_b, "amend")
+        # P0-1: agent-memory wording, no shell unset
+        assert "unset " not in text
+        _index(text, "clear the cached review prompt and its round marker")
+        _index(text, "clear the cached fix prompt and its finding-id marker")
+        _index(text, "agent memory")
+        # P0-4 SOP: ensure-branch failure note at both call sites
+        for title in (
+            "6a. Review sub-agent",
+            "6c-ii. Fix + amend one finding",
+        ):
+            section = (
+                _h2_section(text, title)
+                if title.startswith("6a")
+                else _h3_section(text, title)
+            )
+            ensure_at = _index(section, "apply-helper ensure-branch")
+            fail_at = _index(section, "may fail")
+            stop_at = _index(section, "abnormal STOP")
+            recover_at = _index(section, "git branch -f")
+            assert ensure_at < fail_at < stop_at < recover_at, title
+        # 6-entry heal: assign $commit_sha ← $head_sha before set-commit
+        entry = _h2_section(text, "6-entry. Resume / continue gate")
+        assign_at = _index(entry, "$commit_sha` ← `$head_sha` **first**")
+        set_commit_at = _index(entry, "set-commit")
+        assert assign_at < set_commit_at
 
     def test_apply_commands_exclude_step_review_false_from_stop(self):
         """Phase 6 in commands is Load-only; STOP/6c SSOT is review-loop."""
