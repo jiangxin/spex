@@ -12,6 +12,14 @@ APPLY_ONE_STEP_MD = REPO_ROOT / "skills" / "spex" / "commands" / "apply-one-step
 APPLY_REVIEW_LOOP = (
     REPO_ROOT / "skills" / "spex" / "references" / "apply-review-loop.md"
 )
+SPEC_ASSETS = REPO_ROOT / "skills" / "spex" / "references" / "spec-assets.md"
+TODO_HELPER_COOKBOOK = (
+    REPO_ROOT / "skills" / "spex" / "references" / "todo-helper-cookbook.md"
+)
+RESOLVE_SPEC_LIST = (
+    REPO_ROOT / "skills" / "spex" / "references" / "resolve-spec-list.md"
+)
+MODIFY_TODO = REPO_ROOT / "skills" / "spex" / "templates" / "modify-todo.md"
 README_MD = REPO_ROOT / "README.md"
 README_ZH = REPO_ROOT / "README.zh.md"
 
@@ -291,9 +299,7 @@ class TestApplyStepReviewSop:
             _index(phase4, "bare string prefix")
 
     def test_modify_todo_omit_skip_commit_on_coding_example(self):
-        text = _read(
-            REPO_ROOT / "skills" / "spex" / "templates" / "modify-todo.md"
-        )
+        text = _read(MODIFY_TODO)
         # Coding append bash block must not pass --skip-commit
         coding = text.split("**Append** a coding step", 1)[1]
         coding = coding.split("**Append** a non-coding", 1)[0]
@@ -389,3 +395,47 @@ class TestCreatePhase8JsonResult:
         _index(phase8, "parse the last fenced")
         _index(phase8, "json")
         _index(phase8, "block")
+
+
+class TestSharedSopReferences:
+    """Existence + marker locks for shared create/modify references."""
+
+    def test_spec_assets_exists_with_image_markers(self):
+        assert SPEC_ASSETS.is_file()
+        text = _read(SPEC_ASSETS)
+        _index(text, "--add-images")
+        _index(text, "assets/")
+        _index(text, "![description](assets/filename.png)")
+        _index(text, "meta-helper")
+
+    def test_todo_helper_cookbook_skip_commit_matches_modify_todo(self):
+        assert TODO_HELPER_COOKBOOK.is_file()
+        cookbook = _read(TODO_HELPER_COOKBOOK)
+        modify_todo = _read(MODIFY_TODO)
+
+        # Coding append: omit --skip-commit (same rule as modify-todo)
+        coding = cookbook.split("**Coding step**", 1)[1]
+        coding = coding.split("**Non-coding", 1)[0]
+        bash = coding.split("```bash", 1)[1].split("```", 1)[0]
+        assert "--skip-commit" not in bash
+
+        non_coding = cookbook.split("**Non-coding", 1)[1]
+        non_coding = non_coding.split("## Show", 1)[0]
+        assert "--skip-commit true" in non_coding
+        assert "Do **not** put `--skip-commit true` on coding steps" in cookbook
+
+        # Shared guidance must stay consistent with modify-todo template
+        assert "Do **not** put `--skip-commit true` on coding steps" in (
+            modify_todo
+        )
+        _index(cookbook, "omit")
+        _index(cookbook, "`auto`")
+        _index(cookbook, "Do **not** use headings")
+
+    def test_resolve_spec_list_exists_with_branch_markers(self):
+        assert RESOLVE_SPEC_LIST.is_file()
+        text = _read(RESOLVE_SPEC_LIST)
+        _index(text, "list --json")
+        _index(text, "Single element")
+        _index(text, "Multiple")
+        _index(text, "**STOP**")
