@@ -132,7 +132,8 @@ class TestSkillCredentialSafety:
         _index(section, "/spex create 增加登录接口")
         _index(section, "增加登录接口")
         _index(section, "/spex 请帮我 create 登录接口")
-        _index(section, "请帮我 登录接口")
+        _index(section, "请帮我 create 登录接口")
+        _index(section, "first token")
         _index(section, "/spex 帮我把登录接口做了")
         _index(section, "full text")
 

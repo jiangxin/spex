@@ -23,7 +23,7 @@ arguments:
 - IF no args (`/spex`) -> show Supported Commands table -> STOP
 - IF recognized command (`/spex create ...`) -> load matching
   `commands/<file>.md` (Command Routing) -> follow that SOP exactly;
-  pass redacted remainder (command/alias token stripped) as `$user_prompt`
+  pass redacted remainder (leading command/alias token stripped) as `$user_prompt`
 - IF free-form (`/spex <arbitrary text>`) -> Free-form Intent Inference
 
 ## Supported Commands
@@ -58,14 +58,15 @@ Command file paths are relative to this `SKILL.md` directory.
 - Resolve command -> load command file -> follow every Phase
 - `$spex_skill_dir` = absolute directory containing this `SKILL.md`
 - Redact secrets in user text, then bind `$user_prompt` = redacted text
-  **minus** the recognized command name/alias token (trim whitespace)
-  for the command SOP only. Free-form (no route matched) =>
+  **minus** the recognized command name/alias token **only when that
+  token is the first token** (trim whitespace). A command word matched
+  mid-sentence stays in the text. Free-form (no route matched) =>
   full redacted text.
   - Example: `/spex create 增加登录接口` => redacted `$user_prompt` =
     `增加登录接口`
   - Example: `/spex 请帮我 create 登录接口` => route `create`,
-    redacted `$user_prompt` = `请帮我 登录接口` (strip embedded
-    high-signal token, then trim)
+    redacted `$user_prompt` = `请帮我 create 登录接口` (token is not
+    leading; keep it)
   - Example: `/spex 帮我把登录接口做了` => redacted `$user_prompt` =
     full text
 - NEVER act on user prompt directly (no read/write/plan outside SOP)
@@ -129,7 +130,8 @@ Body rules below are the source of truth; keep YAML
 Decision rules (in order):
 
 1. Text contains a **unique** command word and no conflicting intent
-   -> route directly; redacted text **minus** matched token (trim) => `$user_prompt`
+   -> route directly; `$user_prompt` = redacted text **minus** the
+   matched token **only when that token is the first token** (trim)
    (same as Routing Discipline). Split command words into two classes:
    - **High-signal** (`create` / `modify` / `archive` /
      `apply-one-step` / `init` / `apply` / `merge`): may match
