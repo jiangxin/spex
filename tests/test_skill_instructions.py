@@ -818,6 +818,8 @@ class TestMergeArchiveInitSop:
         _index(pre, "`$spec_path`")
         _index(pre, "--dry-run")
         _index(pre, "**STOP**")
+        _index(pre, "anywhere")
+        _index(pre, "--json")
         # Script-enforced rules must not be re-taught in Preconditions
         assert "todo.json" not in pre
         assert "fuzzy" not in pre.lower()
@@ -826,7 +828,10 @@ class TestMergeArchiveInitSop:
         _index(fail, "dry-run")
         phase2 = _h3_section(text, "Phase 2: Report Results")
         _index(phase2, "$spec_path")
-        _index(phase2, "Archived: <name> -> <dest>")
+        _index(phase2, "--json")
+        _index(phase2, "dry_run")
+        _index(phase2, "results")
+        assert "Archived: <name> -> <dest>" not in phase2
 
     def test_init_edge_notes_and_failure_handling(self):
         text = _read(INIT_MD)
