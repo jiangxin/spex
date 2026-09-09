@@ -25,6 +25,9 @@ APPLY_TASK_PHASES = (
 APPLY_SUBAGENT_HANDOFF = (
     REPO_ROOT / "skills" / "spex" / "references" / "apply-subagent-handoff.md"
 )
+PLAN_COMMAND_COMMON = (
+    REPO_ROOT / "skills" / "spex" / "references" / "plan-command-common.md"
+)
 MERGE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "merge.md"
 ARCHIVE_MD = REPO_ROOT / "skills" / "spex" / "commands" / "archive.md"
 INIT_MD = REPO_ROOT / "skills" / "spex" / "commands" / "init.md"
@@ -369,12 +372,15 @@ class TestCreatePlanOnlySop:
     def test_plan_write_whitelist_only_spec_path(self):
         text = _read(CREATE_MD)
         pre = _h2_section(text, "Preconditions")
-        _index(pre, "write **only** under `$spec_path`")
-        _index(pre, "Glob")
-        _index(pre, "Grep")
+        _index(pre, "Load and follow `references/plan-command-common.md`")
         _index(pre, "untrusted")
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "write **only** under `$spec_path`")
+        _index(shared, "Glob")
+        _index(shared, "Grep")
         phase9 = _h3_section(text, "Phase 9: STOP — Do NOT Implement")
         _index(phase9, "outside `$spec_path`")
+        _index(phase9, "plan-command-common.md")
 
     def test_phase1_begin_session_precheck_title(self):
         text = _read(CREATE_MD)
@@ -386,9 +392,16 @@ class TestCreatePlanOnlySop:
     def test_phase2_clarification_gate(self):
         phase2 = _h3_section(_read(CREATE_MD), "Phase 2: Clarify Requirement")
         _index(phase2, "Clarification gate")
-        _index(phase2, "multiple viable implementation paths")
-        _index(phase2, "at least one question")
-        _index(phase2, "skip")
+        _index(phase2, "plan-command-common.md")
+        _index(phase2, "exactly")
+        assert "materially change the spec" not in phase2
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "Clarification gate")
+        _index(shared, "multiple viable implementation paths")
+        _index(shared, "at least one question")
+        _index(shared, "Also clarify when any apply")
+        _index(shared, "2–4 questions")
+        _index(shared, "materially change the spec")
 
     def test_phase3_validate_name_cli_gate(self):
         phase3 = _h3_section(
@@ -421,9 +434,14 @@ class TestCreatePlanOnlySop:
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "validate-name")
-        _index(section, "`$spec_path`")
+        _index(section, "plan-command-common.md")
         _index(section, "immediate STOP")
-        _index(section, "roll back")
+        _index(section, "roll")
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "outside")
+        _index(shared, "`$spec_path`")
+        _index(shared, "immediate STOP")
+        _index(shared, "roll back")
 
 
 class TestModifyPlanOnlySop:
@@ -455,11 +473,14 @@ class TestModifyPlanOnlySop:
     def test_plan_write_whitelist_only_spec_path(self):
         text = _read(MODIFY_MD)
         pre = _h2_section(text, "Preconditions")
-        _index(pre, "write **only** under `$spec_path`")
-        _index(pre, "Glob")
-        _index(pre, "Grep")
+        _index(pre, "Load and follow `references/plan-command-common.md`")
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "write **only** under `$spec_path`")
+        _index(shared, "Glob")
+        _index(shared, "Grep")
         phase10 = _h3_section(text, "Phase 10: STOP — Do NOT Implement")
         _index(phase10, "outside `$spec_path`")
+        _index(phase10, "plan-command-common.md")
 
     def test_phase1_loads_resolve_spec_list(self):
         phase1 = _h3_section(_read(MODIFY_MD), "Phase 1: Resolve Spec")
@@ -509,15 +530,18 @@ class TestModifyPlanOnlySop:
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(MODIFY_MD), "Failure Handling")
         _index(section, "ON_FAIL")
-        _index(section, "`$spec_path`")
+        _index(section, "plan-command-common.md")
         _index(section, "Phase 5")
         _index(section, "Phase 7")
         _index(section, "immediate STOP")
-        _index(section, "roll back")
+        _index(section, "roll")
         _index(section, "`--remove-undone` recovery")
         _index(section, "Phase 4")
         _index(section, "git restore")
         _index(section, "half-done")
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "roll back")
+        _index(shared, "`$spec_path`")
 
 
 class TestModifyPhase9JsonResult:
@@ -525,18 +549,23 @@ class TestModifyPhase9JsonResult:
 
     def test_phase9_has_human_summary_spec_line(self):
         phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
-        assert "**Spec**:" in phase9
+        _index(phase9, "plan-command-common.md")
+        _index(phase9, "output format")
+        shared = _read(PLAN_COMMAND_COMMON)
+        assert "**Spec**:" in shared
 
     def test_phase9_has_fenced_json_with_required_keys(self):
         phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
-        assert "```json" in phase9
-        assert '"spec_name"' in phase9
-        assert '"spec_path"' in phase9
+        _index(phase9, "json spex-result")
+        shared = _read(PLAN_COMMAND_COMMON)
+        assert "```json spex-result" in shared
+        assert '"spec_name"' in shared
+        assert '"spec_path"' in shared
 
     def test_phase9_instructs_parsing_last_fenced_json(self):
         phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
         _index(phase9, "parse the last fenced")
-        _index(phase9, "json")
+        _index(phase9, "json spex-result")
         _index(phase9, "block")
 
 
@@ -886,14 +915,19 @@ class TestCreatePhase8JsonResult:
 
     def test_phase8_has_human_summary_spec_line(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
-        assert "**Spec**:" in phase8
+        _index(phase8, "plan-command-common.md")
+        _index(phase8, "output format")
+        shared = _read(PLAN_COMMAND_COMMON)
+        assert "**Spec**:" in shared
 
     def test_phase8_has_fenced_json_with_required_keys(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
-        assert "```json spex-result" in phase8
-        assert '"spec_name"' in phase8
-        assert '"spec_path"' in phase8
+        _index(phase8, "json spex-result")
         _index(phase8, "Phase 3")
+        shared = _read(PLAN_COMMAND_COMMON)
+        assert "```json spex-result" in shared
+        assert '"spec_name"' in shared
+        assert '"spec_path"' in shared
 
     def test_phase8_instructs_parsing_last_fenced_json(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
@@ -974,6 +1008,42 @@ class TestSharedSopReferences:
         _index(text, "`$task_prompt`")
 
 
+class TestPlanCommandCommonReference:
+    """R3-F16 / S2: shared PLAN rules for create + modify."""
+
+    def test_plan_command_common_exists_with_core_rules(self):
+        assert PLAN_COMMAND_COMMON.is_file()
+        text = _read(PLAN_COMMAND_COMMON)
+        _index(text, "Write whitelist")
+        _index(text, "write **only** under `$spec_path`")
+        _index(text, "Explore whitelist")
+        _index(text, "Glob")
+        _index(text, "Grep")
+        _index(text, "Clarification gate")
+        _index(text, "multiple viable implementation paths")
+        _index(text, "Also clarify when any apply")
+        _index(text, "sections affected")
+        _index(text, "replace vs extend")
+        _index(text, "preserve vs")
+        _index(text, "existing specification")
+        _index(text, "How to clarify")
+        _index(text, "Ask all questions in one message")
+        _index(text, "2–4 questions")
+        _index(text, "materially change the spec")
+        _index(text, "Out-of-whitelist")
+        _index(text, "immediate STOP")
+        _index(text, "roll back")
+        _index(text, "Output format")
+        assert "```json spex-result" in text
+        _index(text, "Hard STOP")
+        _index(text, "application code")
+
+    def test_create_and_modify_load_plan_command_common(self):
+        needle = "Load and follow `references/plan-command-common.md`"
+        _index(_read(CREATE_MD), needle)
+        _index(_read(MODIFY_MD), needle)
+
+
 class TestCliContractReference:
     """R3-F8 / S1: shared CLI contract + Load pointers."""
 
@@ -1013,10 +1083,12 @@ class TestCliContractReference:
 
     def test_modify_phase9_uses_json_spex_result_fence(self):
         phase9 = _h3_section(_read(MODIFY_MD), "Phase 9: Output")
-        assert "```json spex-result" in phase9
+        _index(phase9, "plan-command-common.md")
         _index(phase9, "parse the last fenced")
         _index(phase9, "json spex-result")
-        assert "```json\n" not in phase9.replace("```json spex-result", "")
+        shared = _read(PLAN_COMMAND_COMMON)
+        assert "```json spex-result" in shared
+        assert "```json\n" not in shared.replace("```json spex-result", "")
 
     def test_merge_documents_nonzero_exit_and_no_json_flag(self):
         text = _read(MERGE_MD)
@@ -1133,6 +1205,12 @@ class TestDoNotRenameVariables:
             _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
         )
         _index(phase2, "Clarification gate")
-        _index(phase2, "multiple viable implementation paths")
-        _index(phase2, "at least one question")
-        _index(phase2, "skip")
+        _index(phase2, "plan-command-common.md")
+        _index(phase2, "exactly")
+        assert "materially change the spec" not in phase2
+        shared = _read(PLAN_COMMAND_COMMON)
+        _index(shared, "Clarification gate")
+        _index(shared, "multiple viable implementation paths")
+        _index(shared, "at least one question")
+        _index(shared, "Also clarify when any apply")
+        _index(shared, "2–4 questions")
