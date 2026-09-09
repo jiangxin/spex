@@ -23,7 +23,7 @@ from common import (
 
 SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
-# Short create name (no date prefix): [a-z0-9][a-z0-9-]* and <32 bytes.
+# Short create name (no date prefix): [a-z0-9][a-z0-9-]* and ≤31 bytes.
 CREATE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MAX_CREATE_NAME_BYTES = 31
 MAX_SPEC_NAME_BYTES = 64
@@ -54,8 +54,8 @@ def validate_create_name(name: str, description: str) -> dict:
     name_bytes = len(name.encode("utf-8"))
     if name_bytes > MAX_CREATE_NAME_BYTES:
         raise ValueError(
-            f"name '{name}' is {name_bytes} bytes; must be "
-            f"<32 bytes (max {MAX_CREATE_NAME_BYTES})."
+            f"name '{name}' is {name_bytes} bytes; must be at most "
+            f"{MAX_CREATE_NAME_BYTES} bytes."
         )
 
     if description is None:

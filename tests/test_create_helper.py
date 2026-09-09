@@ -202,13 +202,31 @@ class TestValidateCreateName:
 
     def test_rejects_name_too_long(self):
         long_name = "a" * 32
-        with pytest.raises(ValueError, match="<32 bytes"):
+        with pytest.raises(ValueError, match="at most 31 bytes"):
             validate_create_name(long_name, "desc")
 
     def test_accepts_name_at_max_bytes(self):
         name = "a" * 31
         result = validate_create_name(name, "desc")
         assert result["name"] == name
+
+    def test_rejects_name_32_bytes_message(self, caplog):
+        """32-byte name fails with the ≤31 wording (not '<32 bytes')."""
+        import logging
+
+        long_name = "a" * 32
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc:
+                create_helper.main(
+                    [
+                        "validate-name",
+                        "--name", long_name,
+                        "--description", "desc",
+                    ]
+                )
+        assert exc.value.code == 1
+        assert "at most 31 bytes" in caplog.text
+        assert "<32 bytes" not in caplog.text
 
     def test_rejects_multiline_description(self):
         with pytest.raises(ValueError, match="single line"):

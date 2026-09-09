@@ -382,12 +382,17 @@ class TestCreatePlanOnlySop:
         _index(phase9, "outside `$spec_path`")
         _index(phase9, "plan-command-common.md")
 
-    def test_phase1_begin_session_precheck_title(self):
+    def test_phase1_precheck_before_begin_session(self):
         text = _read(CREATE_MD)
-        phase1 = _h3_section(text, "Phase 1: Begin Session + Precheck")
-        _index(phase1, "create-helper begin-session")
-        _index(phase1, "create-helper precheck")
+        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Session")
+        pre_i = _index(phase1, "create-helper precheck")
+        begin_i = _index(phase1, "create-helper begin-session")
+        assert pre_i < begin_i
+        assert "### Phase 1: Begin Session + Precheck" not in text
         assert "### Phase 1: Validate Branch" not in text
+        pre = _h2_section(text, "Preconditions")
+        _index(pre, "begin-session` **after** Phase 1")
+        _index(pre, "precheck")
 
     def test_phase2_clarification_gate(self):
         phase2 = _h3_section(_read(CREATE_MD), "Phase 2: Clarify Requirement")
@@ -409,6 +414,10 @@ class TestCreatePlanOnlySop:
         )
         _index(phase3, "create-helper validate-name")
         _index(phase3, "not** the sole")
+        _index(phase3, "side-effect-free")
+        _index(phase3, "prepare-spec` re-validates")
+        _index(phase3, "≤31 bytes")
+        assert "<32 bytes" not in phase3
         _index(phase3, "Do **not** call `prepare-spec`")
         _index(phase3, "at most one fenced `json`")
         assert '"name"' in phase3 or "`name`" in phase3
@@ -434,6 +443,8 @@ class TestCreatePlanOnlySop:
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "validate-name")
+        _index(section, "precheck")
+        _index(section, "end-session")
         _index(section, "plan-command-common.md")
         _index(section, "immediate STOP")
         _index(section, "roll")
