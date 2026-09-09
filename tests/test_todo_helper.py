@@ -214,6 +214,68 @@ class TestValidate:
             ])
         assert "OK" in caplog.text
 
+    def test_skip_commit_valid_values(self, todo_file, caplog):
+        for value in (False, "false", "auto", True, "true"):
+            data = [{
+                "id": "s1", "name": "A", "details": "",
+                "completed_at": "", "commit_title": "",
+                "skip_commit": value,
+            }]
+            _write(todo_file, data)
+            with caplog.at_level(logging.INFO):
+                todo_helper.main([
+                    "--todo-file", str(todo_file), "validate",
+                ])
+            assert "OK" in caplog.text
+
+    def test_skip_commit_invalid_value_fails(self, todo_file):
+        data = [{
+            "id": "s1", "name": "A", "details": "",
+            "completed_at": "", "commit_title": "",
+            "skip_commit": "yes",
+        }]
+        _write(todo_file, data)
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert exc.value.code == 1
+
+    def test_skip_commit_absent_ok(self, todo_file, caplog):
+        _write(todo_file, SAMPLE_DATA)
+        with caplog.at_level(logging.INFO):
+            todo_helper.main([
+                "--todo-file", str(todo_file), "validate",
+            ])
+        assert "OK" in caplog.text
+
+
+# -----------------------------------------------------------------------
+# normalize_skip_commit
+# -----------------------------------------------------------------------
+class TestNormalizeSkipCommit:
+    def test_missing_and_false(self):
+        assert todo_helper.normalize_skip_commit() == "false"
+        assert todo_helper.normalize_skip_commit(None) == "false"
+        assert todo_helper.normalize_skip_commit(False) == "false"
+        assert todo_helper.normalize_skip_commit("false") == "false"
+
+    def test_auto(self):
+        assert todo_helper.normalize_skip_commit("auto") == "auto"
+
+    def test_true(self):
+        assert todo_helper.normalize_skip_commit(True) == "true"
+        assert todo_helper.normalize_skip_commit("true") == "true"
+
+    def test_invalid(self):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.normalize_skip_commit("yes")
+        assert exc.value.code == 1
+        with pytest.raises(SystemExit):
+            todo_helper.normalize_skip_commit("False")
+        with pytest.raises(SystemExit):
+            todo_helper.normalize_skip_commit(1)
+
 
 # -----------------------------------------------------------------------
 # append
@@ -294,6 +356,53 @@ class TestAppend:
                 "--id", "s1", "--step-name", "No details",
             ])
 
+    def test_append_omits_skip_commit_by_default(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--step-name", "Default skip",
+            "--details", "No flag",
+        ])
+        result = _read(todo_file)
+        assert "skip_commit" not in result[0]
+
+    def test_append_skip_commit_false_omits_key(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--step-name", "Explicit false",
+            "--details", "Details",
+            "--skip-commit", "false",
+        ])
+        result = _read(todo_file)
+        assert "skip_commit" not in result[0]
+
+    def test_append_skip_commit_auto(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--step-name", "Auto skip",
+            "--details", "Details",
+            "--skip-commit", "auto",
+        ])
+        result = _read(todo_file)
+        assert result[0]["skip_commit"] == "auto"
+
+    def test_append_skip_commit_true(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--id", "s1",
+            "--step-name", "True skip",
+            "--details", "Details",
+            "--skip-commit", "true",
+        ])
+        result = _read(todo_file)
+        assert result[0]["skip_commit"] == "true"
+
 
 # -----------------------------------------------------------------------
 # edit
@@ -353,6 +462,40 @@ class TestEdit:
                 "--step-name", "X",
             ])
         assert exc.value.code == 1
+
+    def test_edit_skip_commit_auto(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--skip-commit", "auto",
+        ])
+        result = _read(todo_file)
+        step2 = [i for i in result if i["id"] == "step-2"][0]
+        assert step2["skip_commit"] == "auto"
+        assert step2["name"] == "Second step"
+
+    def test_edit_skip_commit_true(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--skip-commit", "true",
+        ])
+        result = _read(todo_file)
+        step2 = [i for i in result if i["id"] == "step-2"][0]
+        assert step2["skip_commit"] == "true"
+
+    def test_edit_skip_commit_false_clears_key(self, todo_file):
+        data = [dict(SAMPLE_DATA[1], skip_commit="auto")]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "edit",
+            "--id", "step-2",
+            "--skip-commit", "false",
+        ])
+        result = _read(todo_file)
+        assert "skip_commit" not in result[0]
 
 
 # -----------------------------------------------------------------------
@@ -584,6 +727,56 @@ class TestShow:
         assert "details:" not in out
         assert "completed_at:" not in out
         assert "commit_title:" not in out
+
+    def test_show_skip_commit_when_not_false(
+        self, todo_file, capsys,
+    ):
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": "D", "completed_at": "", "commit_title": "",
+            "skip_commit": "auto",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "skip_commit: auto" in out
+
+        data[0]["skip_commit"] = "true"
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "skip_commit: true" in out
+
+    def test_show_skip_commit_false_omitted(
+        self, todo_file, capsys,
+    ):
+        data = [{
+            "id": "s1", "name": "Test",
+            "details": "D", "completed_at": "", "commit_title": "",
+            "skip_commit": "false",
+        }]
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "skip_commit" not in out
+
+        data[0].pop("skip_commit")
+        _write(todo_file, data)
+        todo_helper.main([
+            "--todo-file", str(todo_file), "show",
+            "--format", "markdown",
+        ])
+        out = capsys.readouterr().out
+        assert "skip_commit" not in out
 
     def test_show_markdown_no_wrap_by_default(
         self, todo_file, capsys,
@@ -953,6 +1146,45 @@ class TestXmlFormat:
             ):
                 assert loaded[i][key] == original[i][key]
 
+    def test_write_load_skip_commit_roundtrip(self, xml_file):
+        for value in ("auto", "true"):
+            original = [
+                {
+                    "id": "s1", "name": "Skip task",
+                    "details": "Details",
+                    "completed_at": "",
+                    "commit_title": "",
+                    "skip_commit": value,
+                },
+            ]
+            todo_helper.write_todo_xml(xml_file, original)
+            text = xml_file.read_text(encoding="utf-8")
+            assert f"<skip-commit>{value}</skip-commit>" in text
+            loaded = todo_helper.load_todo_xml(xml_file)
+            assert loaded[0]["skip_commit"] == value
+
+    def test_write_omits_skip_commit_when_false_or_absent(self, xml_file):
+        for item in (
+            {
+                "id": "s1", "name": "No skip",
+                "details": "Details",
+                "completed_at": "",
+                "commit_title": "",
+            },
+            {
+                "id": "s1", "name": "False skip",
+                "details": "Details",
+                "completed_at": "",
+                "commit_title": "",
+                "skip_commit": "false",
+            },
+        ):
+            todo_helper.write_todo_xml(xml_file, [item])
+            text = xml_file.read_text(encoding="utf-8")
+            assert "<skip-commit>" not in text
+            loaded = todo_helper.load_todo_xml(xml_file)
+            assert "skip_commit" not in loaded[0]
+
     def test_validate_xml(self, xml_file, caplog):
         xml_file.write_text(SAMPLE_XML, encoding="utf-8")
         with caplog.at_level(logging.INFO):
@@ -973,6 +1205,20 @@ class TestXmlFormat:
         assert len(data) == 4
         assert data[-1]["id"] == "step-4"
         assert data[-1]["name"] == "Fourth step"
+
+    def test_append_skip_commit_auto_to_xml(self, xml_file):
+        xml_file.write_text(SAMPLE_XML, encoding="utf-8")
+        todo_helper.main([
+            "--todo-file", str(xml_file), "append",
+            "--id", "step-4",
+            "--step-name", "Skip append",
+            "--details", "Details",
+            "--skip-commit", "auto",
+        ])
+        text = xml_file.read_text(encoding="utf-8")
+        assert "<skip-commit>auto</skip-commit>" in text
+        data = todo_helper.load_todo_xml(xml_file)
+        assert data[-1]["skip_commit"] == "auto"
 
     def test_edit_xml_entry(self, xml_file):
         xml_file.write_text(SAMPLE_XML, encoding="utf-8")
