@@ -19,6 +19,12 @@ TODO_HELPER_COOKBOOK = (
 RESOLVE_SPEC_LIST = (
     REPO_ROOT / "skills" / "spex" / "references" / "resolve-spec-list.md"
 )
+APPLY_TASK_PHASES = (
+    REPO_ROOT / "skills" / "spex" / "references" / "apply-task-phases.md"
+)
+APPLY_SUBAGENT_HANDOFF = (
+    REPO_ROOT / "skills" / "spex" / "references" / "apply-subagent-handoff.md"
+)
 MODIFY_TODO = REPO_ROOT / "skills" / "spex" / "templates" / "modify-todo.md"
 README_MD = REPO_ROOT / "README.md"
 README_ZH = REPO_ROOT / "README.zh.md"
@@ -570,3 +576,28 @@ class TestSharedSopReferences:
         _index(text, "Single element")
         _index(text, "Multiple")
         _index(text, "**STOP**")
+
+    def test_apply_task_phases_exists_with_core_anchors(self):
+        assert APPLY_TASK_PHASES.is_file()
+        text = _read(APPLY_TASK_PHASES)
+        _index(text, "`$task_prompt`")
+        _index(text, "apply-helper dirty --json")
+        _index(text, "skip_commit six-arm")
+        _index(text, "**FAIL/STOP**")
+        _index(text, "outcome=committed")
+        _index(text, "outcome=skip_commit")
+        _index(text, "`$did_commit`")
+        _index(text, "do not persist `commit_title`")
+        _index(text, "Paths")
+        _index(text, "directory boundary")
+
+    def test_apply_subagent_handoff_exists_with_outcome_anchors(self):
+        assert APPLY_SUBAGENT_HANDOFF.is_file()
+        text = _read(APPLY_SUBAGENT_HANDOFF)
+        _index(text, "outcome=committed")
+        _index(text, "outcome=skip_commit")
+        _index(text, "intentional STOP")
+        _index(text, "empty `commit_title` alone")
+        _index(text, "apply-helper dirty --json")
+        _index(text, "Do **not** rely on sub-agent")
+        _index(text, "`$task_prompt`")
