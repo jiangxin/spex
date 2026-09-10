@@ -25,15 +25,8 @@ is required, sub-agent runs Phase 5 (`apply-commit`) after
 implementation.
 
 ON_FAIL (implement/commit **execution** errors only — not
-intentional STOP): report + retry **once**, with retry
-preconditions:
-
-1. Run `apply-helper dirty --json` to capture current state
-2. Choose explicitly between:
-   - **(a) default**: keep dirty changes; hand "partial implementation + dirty paths" to the fresh sub-agent as context
-   - **(b)**: `git restore` to a clean tree, then re-run
-3. The report **must** state which option was taken
-4. IF still fails -> STOP
+intentional STOP): Load and follow Phases 4–5 execution-failure
+retry in `references/apply-task-phases.md` (fresh sub-agent).
 
 Phase 4/5 still set `$did_commit` inside the sub-agent for
 **local** routing only.

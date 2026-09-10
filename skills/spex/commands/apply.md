@@ -37,13 +37,7 @@ Apply a specification to implement code step by step.
   committed, review begin/round, task done, post-action); the
   agent need not intervene
 
-- Empty `[]` from Phase 1 `--must-undone` resolve:
-  - IF `$spec_name` is non-empty → **Completed-spec recovery**
-    (re-check with `--must-done` in Phase 1) — do **not** default-STOP
-    on the first `[]`
-  - ELSE (empty / missing `$spec_name`) → report no match /
-    no undone work → **STOP** (keep resolve-spec-list default
-    STOP)
+- Empty `[]` recovery: see Phase 1 empty `[]` handling
 
 ## Control flow
 
@@ -108,6 +102,9 @@ for outer loops; Phase bodies below do not restate the diagram.
     loop — only iterate this Phase 1 `$specs` array. Branch base
     is guaranteed by Phase 2 precheck (`meta.branch`); the loop
     must **not** switch branches by hand between specs
+  - **Dependency warning:** each spec's branch starts from its own
+    `meta.branch`; `--all` does **not** chain the previous spec's
+    commits. Dependent specs must be applied and merged one at a time
   - For each entry in `$specs`: set `$spec_name` / `$spec_path` ->
     Phases 2–9 (Phase 9 when that spec's tasks all done)
   - After Phase 9 for one spec -> next `$specs` item at Phase 2.
@@ -120,11 +117,7 @@ for outer loops; Phase bodies below do not restate the diagram.
     ```
 
   - Load and follow `references/resolve-spec-list.md` exactly.
-    Empty `[]` recovery is defined in Preconditions — do **not** default-STOP
-    on the first `[]` when `$spec_name` is non-empty
-    (Completed-spec `--must-done` recheck below); empty / missing
-    name keeps resolve-spec-list default STOP. ON_FAIL (true
-    script error) -> STOP
+    ON_FAIL (true script error) -> STOP
   - **Empty `[]` handling:** IF resolve yields `[]`:
     - IF `$spec_name` is non-empty → **Completed-spec recovery**,
       re-check:
@@ -144,6 +137,10 @@ for outer loops; Phase bodies below do not restate the diagram.
 ### Phase 2: Validate Branch
 
 - Load and follow `references/apply-task-phases.md` Phase 2 exactly
+- Side effects: this CMD creates and switches to `spex/<name>`
+  (base: `meta.branch`), writes `spex_branch` to `meta.json`,
+  sets the git branch description, and fires the `apply`
+  pre-action hook
 - Pass `$spex_root` to Phases 4–5 sub-agent
 
 ### Phase 3: Build Prompt / Resume Gate
@@ -217,14 +214,10 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
   retryable — FAIL; no Phase 7; leave `completed_at` unset; do **not**
   treat as `outcome=skip_commit`
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
-- ON_FAIL Phases 4–5 execution (not intentional STOP) -> report +
-  retry once with retry preconditions:
-  1. Run `apply-helper dirty --json` to capture current state
-  2. Choose explicitly: **(a) default** keep dirty changes and hand
-     "partial implementation + dirty paths" to the fresh sub-agent
-     as context; **(b)** `git restore` to a clean tree, then re-run
-  3. The report **must** state which option was taken
-  4. Still fails -> STOP
+- Empty `[]` recovery: see Phase 1 empty `[]` handling
+- ON_FAIL Phases 4–5 execution (not intentional STOP) -> Load and
+  follow Phases 4–5 execution-failure retry in
+  `references/apply-task-phases.md` (fresh sub-agent)
 - Unexpected handoff / residual dirty after commit -> STOP; no
   Phase 7
 - Phase 6 abnormal STOP -> end entire `/spex apply` per

@@ -210,6 +210,22 @@ $spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
 - When returning to main from Phases 4–5 sub-agent (persist OK
   and not residual-dirty STOP): report `outcome=committed`
 
+## Phases 4–5 execution-failure retry
+
+ON_FAIL Phases 4–5 **execution** errors only (not intentional
+Phase 4 STOP — those are **not** retryable): report + retry
+**once**, with retry preconditions:
+
+1. Run `apply-helper dirty --json` to capture current state
+2. Choose explicitly between:
+   - **(a) default**: keep dirty changes; pass "partial implementation + dirty paths" as context to the retry (`apply`: fresh Phases 4–5 sub-agent; `apply-one-step`: in-session retry — same protocol, no new sub-agent)
+   - **(b)**: `git restore` to a clean tree, then re-run
+3. The report **must** state which option was taken
+4. IF still fails -> STOP
+
+Commands Load this section with a one-line pointer; do **not**
+duplicate the four steps in `apply.md` / `apply-one-step.md`.
+
 ## Phase 6: Review Loop
 
 - Load and follow `references/apply-review-loop.md` exactly

@@ -1181,22 +1181,24 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         for path in (APPLY_MD, APPLY_ONE_STEP_MD):
             text = _read(path)
             pre = _h2_section(text, "Preconditions")
-            _index(pre, "Completed-spec recovery")
-            _index(pre, "do **not** default-STOP")
-            _index(pre, "empty / missing `$spec_name`")
-            _index(pre, "no undone work")
+            _index(pre, "see Phase 1 empty `[]` handling")
+            assert "Completed-spec recovery" not in pre
+            assert "--must-done" not in pre
+            fail = _h2_section(text, "Failure Handling")
+            _index(fail, "see Phase 1 empty `[]` handling")
             phase1 = _h3_section(text, "Phase 1: Resolve Spec")
             _index(phase1, "--must-done")
             _index(phase1, '"$spec_name"')
             _index(phase1, "Completed-spec recovery")
-            _index(phase1, "Empty `[]` recovery is defined in Preconditions")
-            _index(phase1, "do **not** default-STOP")
-            _index(phase1, "when `$spec_name` is non-empty")
+            _index(phase1, "**Empty `[]` handling:**")
             _index(phase1, "already")
             _index(phase1, "post-action")
             _index(phase1, "empty / missing `$spec_name`")
             _index(phase1, "no undone work")
             _index(phase1, "**STOP**")
+            # Full empty-[] rule body appears exactly once per command
+            assert text.count("**Empty `[]` handling:**") == 1
+            assert text.count("list --json --must-done") == 1
             # Named recovery must not leave empty-name [] without STOP
             assert phase1.index("empty / missing `$spec_name`") > phase1.index(
                 "--must-done"
@@ -1266,29 +1268,67 @@ class TestHandoffChecklistAndRetryPreconditions:
         _index(checklist, "step 4 unexpected handoff STOP")
 
     def test_retry_preconditions_dirty_json_in_handoff_and_apply(self):
+        phases = _read(APPLY_TASK_PHASES)
+        retry = _h2_section(phases, "Phases 4–5 execution-failure retry")
+        _index(retry, "apply-helper dirty --json")
+        _index(retry, "partial implementation")
+        _index(retry, "dirty paths")
+        _index(retry, "git restore")
+        _index(retry, "(a) default")
+        _index(retry, "must** state which option")
+        _index(retry, "still fails")
+        _index(retry, "fresh Phases 4–5 sub-agent")
+        _index(retry, "in-session")
+        _index(retry, "not** retryable")
+        # Full four-step protocol lives only here
+        assert phases.count("**(a) default**") == 1
+        assert "**(a) default**" not in _read(APPLY_MD)
+        assert "**(a) default**" not in _read(APPLY_ONE_STEP_MD)
+        assert "**(a) default**" not in _read(APPLY_SUBAGENT_HANDOFF)
+
         handoff = _read(APPLY_SUBAGENT_HANDOFF)
         launch = _h2_section(handoff, "Sub-agent launch (implement path)")
-        _index(launch, "apply-helper dirty --json")
-        _index(launch, "partial implementation")
-        _index(launch, "dirty paths")
-        _index(launch, "git restore")
-        _index(launch, "(a) default")
-        _index(launch, "must** state which option")
-        _index(launch, "still fails")
+        _index(launch, "execution-failure")
+        _index(launch, "apply-task-phases.md")
         # Intentional STOP remains non-retryable (trust boundary intact)
         _index(handoff, "Do **not** retry")
         _index(handoff, "intentional STOP")
 
-        apply_fh = _h2_section(_read(APPLY_MD), "Failure Handling")
-        _index(apply_fh, "apply-helper dirty --json")
-        _index(apply_fh, "partial implementation")
-        _index(apply_fh, "dirty paths")
-        _index(apply_fh, "git restore")
-        _index(apply_fh, "(a) default")
-        _index(apply_fh, "must** state which option")
-        _index(apply_fh, "not**")
-        _index(apply_fh, "retryable")
-        _index(apply_fh, "intentional STOP")
+        for path, mode in (
+            (APPLY_MD, "fresh sub-agent"),
+            (APPLY_ONE_STEP_MD, "in-session"),
+        ):
+            fh = _h2_section(_read(path), "Failure Handling")
+            _index(fh, "execution-failure retry")
+            _index(fh, "apply-task-phases.md")
+            _index(fh, mode)
+            _index(fh, "not**")
+            _index(fh, "retryable")
+            _index(fh, "intentional STOP")
+            assert "apply-helper dirty --json" not in fh
+            assert "git restore" not in fh
+
+
+class TestApplyPrecheckSideEffectsAndAllDependency:
+    """R4-F5 / R4-F7 / R4-F19 (P1-5 / P1-7 / P2-19): side effects + retry + []."""
+
+    def test_phase2_side_effect_note_in_both_apply_commands(self):
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            phase2 = _h3_section(_read(path), "Phase 2: Validate Branch")
+            _index(phase2, "Side effects")
+            _index(phase2, "spex/<name>")
+            _index(phase2, "meta.branch")
+            _index(phase2, "spex_branch")
+            _index(phase2, "meta.json")
+            _index(phase2, "branch description")
+            _index(phase2, "pre-action hook")
+
+    def test_apply_all_dependency_warning(self):
+        phase1 = _h3_section(_read(APPLY_MD), "Phase 1: Resolve Spec")
+        _index(phase1, "Dependency warning")
+        _index(phase1, "does **not** chain")
+        _index(phase1, "meta.branch")
+        _index(phase1, "applied and merged one at a time")
 
 
 class TestPlanCommandCommonReference:
