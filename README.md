@@ -147,6 +147,10 @@ disable-model-invocation: true
 
 - **`/spex merge [spec-name]`** — Merge the completed spec into the main branch and auto-archive.
 
+- **`/spex create`** refuses to switch away from a dirty working tree. If you are not on the recorded base branch and have uncommitted changes, Spex reports the dirty paths and stops instead of silently leaving work behind.
+
+- **`/spex merge`** prints failure reasons to stderr as well as the JSON stdout, so the agent can report the cause without parsing machine output.
+
 ---
 
 ## Using the spex CLI

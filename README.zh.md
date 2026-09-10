@@ -147,6 +147,10 @@ disable-model-invocation: true
 
 - **`/spex merge [spec-name]`** - 将开发完成的 spec 合并到主干分支，并自动归档。
 
+- **`/spex create`** 不会在脏工作区上切换分支。如果你不在创建 spec 时记录的主干分支上，且存在未提交的修改，Spex 会列出脏路径并停止，避免未提交的工作在不知不觉中被遗落。
+
+- **`/spex merge`** 失败时会将原因同时输出到 stderr 和 JSON stdout，agent 无需解析机器输出即可报告失败原因。
+
 ---
 
 ## 使用 spex 命令行
