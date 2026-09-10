@@ -134,10 +134,13 @@ class TestAutoSelect:
         )
         ctx = _mock_project_context(top_workdir=str(tmp_path))
         mock_merge = MagicMock()
+        target_wt = Path(tmp_path)
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
+             patch("worktree.find_worktree_for_branch",
+                   return_value=target_wt), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_post_action"), \
              patch("archive.archive_single_spec", return_value=None), \
@@ -147,6 +150,7 @@ class TestAutoSelect:
         mock_merge.assert_called_once()
         call_args = mock_merge.call_args
         assert call_args[0][1] == "spex/auto"
+        assert call_args[1]["cwd"] == target_wt
         assert "Auto-selected: auto-topic" in caplog.text
 
     def test_auto_select_no_topics(self, tmp_path, caplog):
@@ -276,6 +280,8 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
+             patch("worktree.find_worktree_for_branch",
+                   return_value=Path(tmp_path)), \
              patch("branch.merge_branch", side_effect=conflict), \
              patch("hooks.run_pre_action"), \
              caplog.at_level(logging.ERROR), \
@@ -310,6 +316,29 @@ class TestMergeErrorsToStderr:
         assert "Failed to create target branch" in data["errors"][0]
         assert data["errors"][0] in caplog.text
 
+    def test_target_not_checked_out_falls_back_to_main(
+        self, tmp_path, capsys,
+    ):
+        """When target is free, merge in main_worktree (legacy path)."""
+        specs, _ = _setup_topic(tmp_path)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+        mock_merge = MagicMock()
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.branch_exists", return_value=True), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("branch.merge_branch", mock_merge), \
+             patch("hooks.run_pre_action"), \
+             patch("hooks.run_post_action"), \
+             patch("archive.archive_single_spec", return_value=None):
+            spex_merge.cli_submit(["my-topic", "--no-archive"])
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["errors"] == []
+        mock_merge.assert_called_once()
+        assert mock_merge.call_args[1]["cwd"] == ctx.main_worktree
+
     def test_success_path_has_no_error_logs(self, tmp_path, capsys, caplog):
         specs, _ = _setup_topic(tmp_path)
         ctx = _mock_project_context(top_workdir=str(tmp_path))
@@ -317,6 +346,8 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
+             patch("worktree.find_worktree_for_branch",
+                   return_value=Path(tmp_path)), \
              patch("branch.merge_branch"), \
              patch("hooks.run_pre_action"), \
              patch("hooks.run_post_action"), \

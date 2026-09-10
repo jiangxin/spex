@@ -761,6 +761,7 @@ class TestCliSubmit:
 
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
+    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
     @patch("branch.merge_branch")
     @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
@@ -768,7 +769,7 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success(self, mock_resolve, _specs, _ctx, _exists, mock_merge,
-                           mock_archive, tmp_path, capsys):
+                           _find_wt, mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/done", "branch": "main"}),
@@ -782,9 +783,12 @@ class TestCliSubmit:
         assert out["target"] == "main"
         assert out["errors"] == []
         assert "archived" in out
-        mock_merge.assert_called_once_with("main", "spex/done", cwd=None)
+        mock_merge.assert_called_once_with(
+            "main", "spex/done", cwd=Path("/fake/main"),
+        )
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
+    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
     @patch("branch.merge_branch")
     @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
@@ -792,8 +796,8 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
-                                    _exists, mock_merge, mock_archive, tmp_path,
-                                    capsys):
+                                    _exists, mock_merge, _find_wt, mock_archive,
+                                    tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/done", "branch": "main"}),
@@ -806,6 +810,7 @@ class TestCliSubmit:
         mock_archive.assert_called_once()
 
     @patch("archive.archive_single_spec")
+    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
@@ -813,8 +818,8 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
-                                           _exists, mock_merge, mock_archive,
-                                           tmp_path, capsys):
+                                           mock_merge, _exists, _find_wt,
+                                           mock_archive, tmp_path, capsys):
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/done", "branch": "main"}),
@@ -827,6 +832,7 @@ class TestCliSubmit:
         mock_archive.assert_not_called()
 
     @patch("archive.archive_single_spec")
+    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
@@ -835,8 +841,8 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
-                                      _exists, _merge, mock_archive, tmp_path,
-                                      capsys, caplog):
+                                      _merge, _exists, _find_wt, mock_archive,
+                                      tmp_path, capsys, caplog):
         import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
@@ -855,6 +861,7 @@ class TestCliSubmit:
         assert out["errors"][0] in caplog.text
         mock_archive.assert_not_called()
 
+    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
@@ -863,8 +870,8 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
-                                         _exists, _merge, tmp_path, capsys,
-                                         caplog):
+                                         _merge, _exists, _find_wt, tmp_path,
+                                         capsys, caplog):
         import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(

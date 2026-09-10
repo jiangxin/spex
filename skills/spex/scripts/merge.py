@@ -68,6 +68,7 @@ def cli_submit(argv=None, command="submit") -> None:
     import config as cfg
     import hooks
     from branch import branch_exists, create_and_switch_branch, merge_branch, resolve_default_branch
+    from worktree import find_worktree_for_branch
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
@@ -155,9 +156,17 @@ def cli_submit(argv=None, command="submit") -> None:
             _fail_with_errors({"action": method, "source": source,
                                "target": target, "errors": errors})
 
+    # Merge in the worktree that already has target checked out — never
+    # switch into a branch locked by another (e.g. feature) worktree.
+    # When target is free (not checked out anywhere), fall back to the
+    # main worktree so legacy in-place apply can switch and merge.
+    target_wt = find_worktree_for_branch(target, cwd=ctx.main_worktree)
+    if target_wt is None:
+        target_wt = ctx.main_worktree
+
     if method == "merge":
         try:
-            merge_branch(target, source, cwd=ctx.main_worktree)
+            merge_branch(target, source, cwd=target_wt)
         except subprocess.CalledProcessError as e:
             errors.append(f"Merge failed: {e.stderr.strip() or str(e)}")
             _fail_with_errors({"action": method, "source": source,

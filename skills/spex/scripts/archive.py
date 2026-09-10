@@ -130,6 +130,21 @@ def move_spec(spec_dir: Path, archives_dir: Path) -> Path:
     return move_spec_with_conflict(spec_dir, archives_dir)
 
 
+def _remove_spex_worktree(spec_dir: Path, *, force: bool = False) -> None:
+    """Remove linked spex worktree when ``meta.spex_worktree`` is set.
+
+    Runs even if ``use_git_worktree`` is false, so leftover paths are cleaned.
+    ``force`` maps to ``git worktree remove --force`` (archive ``-f``).
+    """
+    meta = load_meta(spec_dir)
+    if not meta or not meta.spex_worktree:
+        return
+    from worktree import remove_worktree
+
+    cwd = meta.main_worktree or None
+    remove_worktree(meta.spex_worktree, force=force, cwd=cwd)
+
+
 def _archive_one(
     spec_name: str,
     specs_dir: Path,
@@ -185,6 +200,7 @@ def _archive_one(
             archives_dir / spec_dir.name,
         )
     archives_dir.mkdir(parents=True, exist_ok=True)
+    _remove_spex_worktree(spec_dir, force=force)
     dest = move_spec(spec_dir, archives_dir)
     logger.info("Archived: %s -> %s", spec_dir.name, dest)
     return ArchiveItem("archived", spec_dir.name, dest)
@@ -438,6 +454,7 @@ def main(argv=None):
 
     archives_dir.mkdir(parents=True, exist_ok=True)
     for spec_dir in completed:
+        _remove_spex_worktree(spec_dir, force=args.force)
         dest = move_spec(spec_dir, archives_dir)
         logger.info("Archived: %s -> %s", spec_dir.name, dest)
         results.append(ArchiveItem("archived", spec_dir.name, dest))
