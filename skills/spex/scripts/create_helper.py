@@ -313,6 +313,7 @@ def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
         created_at=timestamp,
         prompts=[{"text": prompt, "timestamp": timestamp}] if prompt else [],
         description=wrap_text(description) if description else "",
+        use_git_worktree=bool(ctx.config.get("use_git_worktree", False)),
     )
     meta_path = Path(spec_dir) / "meta.json"
     atomic_write_json(meta_path, meta.to_dict())

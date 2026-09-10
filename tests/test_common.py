@@ -1009,6 +1009,8 @@ class TestSpecMeta:
         assert m.prompts == []
         assert m.description == ""
         assert m.spex_branch == ""
+        assert m.use_git_worktree is False
+        assert m.spex_worktree == ""
         assert m.extras == {}
 
     def test_spec_meta_from_dict_full(self):
@@ -1024,6 +1026,8 @@ class TestSpecMeta:
             "prompts": ["do stuff"],
             "description": "A cool feature",
             "spex_branch": "spex/my-topic",
+            "use_git_worktree": True,
+            "spex_worktree": "/home/user/.spex/worktree/repo/my-topic",
         }
         m = SpecMeta.from_dict(data)
         result = m.to_dict()
@@ -1044,10 +1048,14 @@ class TestSpecMeta:
         m = SpecMeta.from_dict(data)
         assert m.description == ""
         assert m.spex_branch == ""
-        # description and spex_branch omitted from output
+        assert m.use_git_worktree is False
+        assert m.spex_worktree == ""
+        # description, spex_branch, spex_worktree omitted; use_git_worktree always written
         result = m.to_dict()
         assert "description" not in result
         assert "spex_branch" not in result
+        assert "spex_worktree" not in result
+        assert result["use_git_worktree"] is False
 
     def test_spec_meta_from_dict_extras(self):
         data = {
@@ -1065,11 +1073,25 @@ class TestSpecMeta:
         assert m.name == "old"
 
     def test_spec_meta_to_dict_omits_empty(self):
-        m = SpecMeta(name="t", description="", spex_branch="")
+        m = SpecMeta(name="t", description="", spex_branch="", spex_worktree="")
         result = m.to_dict()
         assert "description" not in result
         assert "spex_branch" not in result
+        assert "spex_worktree" not in result
         assert result["name"] == "t"
+        assert result["use_git_worktree"] is False
+
+    def test_spec_meta_old_meta_missing_use_git_worktree(self):
+        """Old meta.json without use_git_worktree key defaults to False."""
+        m = SpecMeta.from_dict({
+            "name": "legacy",
+            "workdir": "/work",
+            "branch": "main",
+        })
+        assert m.use_git_worktree is False
+        assert m.spex_worktree == ""
+        assert m.to_dict()["use_git_worktree"] is False
+        assert "spex_worktree" not in m.to_dict()
 
     def test_spec_meta_to_dict_includes_extras(self):
         m = SpecMeta(
