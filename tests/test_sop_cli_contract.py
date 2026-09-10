@@ -722,6 +722,7 @@ class TestSopCliContract:
         assert "--completed-at" not in body
         # check_evidence checks must match normalize_check_evidence keys.
         assert '"completed_at"' in body
+        assert "duration_ms" in body
         assert "finished_at" not in body
         # if/else amend fences plus Constraints prose mention.
         assert body.count("commit --amend") == 3

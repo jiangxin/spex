@@ -429,11 +429,18 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
         "mode": data["mode"],
         "findings_count": len(data.get("findings", [])),
     }))
-    from debug_log import emit_apply_anchor
+    from debug_log import emit_apply_anchor, emit_apply_route
 
     emit_apply_anchor(
         path.parent,
         f"===== APPLY review round → {data['round']} =====",
+    )
+    emit_apply_route(
+        path.parent,
+        "new_major_next_full_round",
+        step=data.get("step_id", ""),
+        round=data["round"],
+        commit=commit_sha,
     )
 
 
@@ -664,14 +671,69 @@ def build_open_batch_payload(
 def cmd_open_batch(path: Path, step_id: str = "") -> None:
     """Print all open findings for the current round as one JSON batch."""
     if not path.is_file():
-        print(json.dumps(build_open_batch_payload(
+        payload = build_open_batch_payload(
             None, path, step_id=step_id, exists=False,
-        )))
+        )
+        print(json.dumps(payload))
+        _emit_open_batch_telemetry(path.parent, payload)
         return
     data = load_review(path)
-    print(json.dumps(build_open_batch_payload(
+    payload = build_open_batch_payload(
         data, path, step_id=step_id, exists=True,
-    )))
+    )
+    print(json.dumps(payload))
+    _emit_open_batch_telemetry(path.parent, payload)
+
+
+def _emit_open_batch_telemetry(spec_dir: Path, payload: dict) -> None:
+    """Close an open review span and emit the post-review route decision.
+
+    Called after every open-batch so full/delta review wall time is recorded
+    with an explicit ``duration_ms`` (not inferred from the next CLI tee).
+    """
+    from debug_log import emit_apply_route, end_apply_span, has_open_apply_span
+
+    step = payload.get("step_id", "")
+    round_num = int(payload.get("round", 1) or 1)
+    mode = payload.get("mode") or "full"
+    open_count = int(payload.get("open_count", 0) or 0)
+    has_major = bool(payload.get("has_major"))
+    commit = payload.get("commit_sha", "")
+
+    if has_open_apply_span(spec_dir, "review"):
+        end_apply_span(
+            spec_dir,
+            "review",
+            step=step,
+            round=round_num,
+            mode=mode,
+            commit=commit,
+            findings=open_count,
+            has_major=has_major,
+        )
+        if open_count == 0:
+            result = "phase7_no_findings"
+        elif mode == "delta":
+            if not has_major:
+                result = "phase7_no_findings"
+            elif round_num >= MAX_REVIEW_ROUND:
+                result = "hard_cap_batch_fix"
+            else:
+                # bump-round is the sole owner of new_major_next_full_round.
+                result = None
+        else:
+            result = "batch_fix"
+        if result is not None:
+            emit_apply_route(
+                spec_dir,
+                result,
+                step=step,
+                round=round_num,
+                mode=mode,
+                findings=open_count,
+                has_major=has_major,
+                commit=commit,
+            )
 
 
 def parse_id_list(raw: str) -> list[str]:
@@ -764,11 +826,15 @@ def normalize_check_evidence(raw) -> Optional[dict]:
             completed_at = ""
         if not isinstance(completed_at, str):
             return None
-        normalized_checks.append({
+        entry = {
             "command": command,
             "exit_code": exit_code,
             "completed_at": completed_at,
-        })
+        }
+        duration_ms = item.get("duration_ms")
+        if type(duration_ms) is int and duration_ms >= 0:
+            entry["duration_ms"] = duration_ms
+        normalized_checks.append(entry)
     return {
         "commit_sha": commit_sha.strip(),
         "checks": normalized_checks,
@@ -944,7 +1010,17 @@ def cmd_set_pending(
         "fix_base_commit_sha": base_sha,
         "count": len(ids),
     }))
+    from debug_log import start_apply_span
 
+    start_apply_span(
+        path.parent,
+        "fix",
+        step=data.get("step_id", ""),
+        round=int(data.get("round", 1) or 1),
+        ids=ids,
+        has_major=bool(data["pending_has_major"]),
+        base=base_sha,
+    )
 
 def cmd_complete_batch(
     path: Path,
@@ -1001,21 +1077,116 @@ def cmd_complete_batch(
 
     # Snapshot open state so a failed write cannot leave a partial file
     # (atomic_write_json already replaces whole file; keep in-memory only).
+    had_major = bool(data.get("pending_has_major"))
     apply_complete_batch(data, ids, new_sha, evidence)
     save_review(path, data)
     logger.info(
         "Completed pending batch (%d findings, fixed=%s).",
         len(ids), new_sha,
     )
+    awaiting_delta = bool(data.get("awaiting_delta"))
     print(json.dumps({
         "completed": True,
         "resumed": False,
         "fixed_commit_sha": new_sha,
         "completed_ids": ids,
         "check_evidence": evidence,
-        "awaiting_delta": bool(data.get("awaiting_delta")),
+        "awaiting_delta": awaiting_delta,
     }))
+    _emit_complete_batch_telemetry(
+        path.parent,
+        step_id=data.get("step_id", ""),
+        round_num=int(data.get("round", 1) or 1),
+        ids=ids,
+        had_major=had_major,
+        base_sha=base_sha,
+        new_sha=new_sha,
+        evidence=evidence,
+        awaiting_delta=awaiting_delta,
+    )
 
+
+def _emit_complete_batch_telemetry(
+    spec_dir: Path,
+    *,
+    step_id: str,
+    round_num: int,
+    ids: list[str],
+    had_major: bool,
+    base_sha: str,
+    new_sha: str,
+    evidence: dict,
+    awaiting_delta: bool,
+) -> None:
+    """Emit checks/fix end anchors and the post-batch route decision."""
+    from debug_log import (
+        emit_apply_route,
+        end_apply_span,
+        has_open_apply_span,
+        start_apply_span,
+        sum_check_evidence_duration_ms,
+    )
+
+    checks = list(evidence.get("checks") or [])
+    evidence_ms = sum_check_evidence_duration_ms(evidence)
+    ok = all(
+        isinstance(c, dict) and c.get("exit_code") == 0 for c in checks
+    ) if checks else False
+
+    # Checks duration is evidence-bound only — never wall-clock from an
+    # early open span (e.g. fix-prompt time). Missing per-check
+    # duration_ms yields duration_ms=0 rather than a fabricated value.
+    if not has_open_apply_span(spec_dir, "checks"):
+        start_apply_span(
+            spec_dir,
+            "checks",
+            emit_begin=True,
+            step=step_id,
+            count=len(checks),
+            sha=new_sha,
+        )
+    end_apply_span(
+        spec_dir,
+        "checks",
+        duration_ms=evidence_ms,
+        step=step_id,
+        count=len(checks),
+        ok=ok,
+        sha=new_sha,
+    )
+
+    if not has_open_apply_span(spec_dir, "fix"):
+        start_apply_span(
+            spec_dir,
+            "fix",
+            emit_begin=False,
+            step=step_id,
+            round=round_num,
+            ids=ids,
+            has_major=had_major,
+            base=base_sha,
+        )
+    end_apply_span(
+        spec_dir,
+        "fix",
+        step=step_id,
+        round=round_num,
+        ids=ids,
+        has_major=had_major,
+        base=base_sha,
+        new=new_sha,
+    )
+
+    result = "major_delta" if awaiting_delta else "minor_direct_complete"
+    emit_apply_route(
+        spec_dir,
+        result,
+        step=step_id,
+        round=round_num,
+        has_major=had_major,
+        base=base_sha,
+        new=new_sha,
+    )
 
 def cmd_next(path: Path, step_id: str = "") -> None:
     """Print the first open finding as JSON (or id=null if none)."""

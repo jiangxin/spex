@@ -134,8 +134,10 @@ EOF
    - `new_head`: `git rev-parse HEAD` after the amend
    - `check_evidence`: JSON with `commit_sha` set to that new HEAD
      and a non-empty `checks` list of
-     `{ "command": "...", "exit_code": 0, "completed_at": "..." }`
-     for the lint/test set you ran
+     `{ "command": "...", "exit_code": 0, "completed_at": "...", "duration_ms": <int> }`
+     for the lint/test set you ran. Include per-check `duration_ms`
+     (wall-clock ms for that command) so debug telemetry can sum check
+     durations directly; omit only if timing is unavailable.
 
 ## Reference (context only)
 

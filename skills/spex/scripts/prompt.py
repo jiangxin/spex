@@ -1265,15 +1265,21 @@ def _do_apply_review(args):
         prompt_bytes = measure_prompt_bytes(rendered)
 
     if args.name:
-        from debug_log import emit_apply_anchor
+        from debug_log import start_apply_span
 
-        emit_apply_anchor(
+        # Begin a review span so open-batch can emit a matching end with
+        # duration_ms (full or delta) without inferring from the next CLI tee.
+        start_apply_span(
             resolve_spec_dir(args.name),
-            "===== APPLY review begin "
-            f"round={metadata.get('review_round', 1)} "
-            f"mode={metadata.get('mode', 'full')} "
-            f"commit={metadata.get('commit_sha', '')} "
-            f"prompt_bytes={prompt_bytes} =====",
+            "review",
+            step=metadata.get("step_id", "") or metadata.get(
+                "current_task_id", "",
+            ),
+            round=metadata.get("review_round", 1),
+            mode=metadata.get("mode", "full"),
+            commit=metadata.get("commit_sha", ""),
+            prompt_bytes=prompt_bytes,
+            findings=len(metadata.get("finding_id_list") or []),
         )
 
     if args.json_mode:
@@ -1369,12 +1375,41 @@ def _do_apply_fix(args):
         sys.exit(1)
 
     prompt_bytes = measure_prompt_bytes(rendered)
+    finding_ids = list(metadata.get("finding_id_list") or [])
+    if args.name:
+        from debug_log import (
+            has_open_apply_span,
+            start_apply_span,
+        )
+
+        spec_dir = resolve_spec_dir(args.name)
+        step_id = metadata.get("step_id", "") or metadata.get(
+            "current_task_id", "",
+        )
+        # Start fix span when set-pending did not already open one (resume).
+        # Checks spans are owned by complete-batch (evidence-bound duration).
+        if not has_open_apply_span(spec_dir, "fix"):
+            start_apply_span(
+                spec_dir,
+                "fix",
+                step=step_id,
+                round=metadata.get("review_round", 1),
+                ids=finding_ids,
+                has_major=bool(
+                    metadata.get("pending_has_major")
+                    or metadata.get("has_major")
+                ),
+                base=metadata.get("fix_base_commit_sha")
+                or metadata.get("commit_sha", ""),
+                prompt_bytes=prompt_bytes,
+            )
+
     if args.json_mode:
         print(json.dumps({
             "prompt": rendered,
             "task_id": metadata.get("step_id", ""),
             "finding_id": metadata.get("finding_id", ""),
-            "finding_ids": list(metadata.get("finding_id_list") or []),
+            "finding_ids": finding_ids,
             "commit_sha": metadata.get("commit_sha", ""),
             "review_round": metadata.get("review_round", 1),
             "review_file": metadata.get("review_file", ""),
