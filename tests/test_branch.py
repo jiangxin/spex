@@ -824,20 +824,23 @@ class TestCliSubmit:
     @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
                                       _exists, _merge, mock_archive, tmp_path,
-                                      capsys):
+                                      capsys, caplog):
+        import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
             encoding="utf-8",
         )
         mock_resolve.return_value = tmp_path
-        try:
-            cli_submit(["conflict"])
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
+        with caplog.at_level(logging.ERROR):
+            try:
+                cli_submit(["conflict"])
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
         out = json.loads(capsys.readouterr().out)
         assert "Merge failed" in out["errors"][0]
+        assert out["errors"][0] in caplog.text
         mock_archive.assert_not_called()
 
     @patch("branch.branch_exists", return_value=True)
@@ -848,20 +851,24 @@ class TestCliSubmit:
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,
-                                         _exists, _merge, tmp_path, capsys):
+                                         _exists, _merge, tmp_path, capsys,
+                                         caplog):
+        import logging
         meta_path = tmp_path / "meta.json"
         meta_path.write_text(
             json.dumps({"spex_branch": "spex/conflict", "branch": "main"}),
             encoding="utf-8",
         )
         mock_resolve.return_value = tmp_path
-        try:
-            cli_submit(["conflict"])
-            assert False, "Should have called sys.exit(1)"
-        except SystemExit as e:
-            assert e.code == 1
+        with caplog.at_level(logging.ERROR):
+            try:
+                cli_submit(["conflict"])
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
         out = json.loads(capsys.readouterr().out)
         assert "Merge failed" in out["errors"][0]
+        assert out["errors"][0] in caplog.text
 
 
 @pytest.mark.slow

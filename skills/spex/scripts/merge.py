@@ -12,6 +12,14 @@ from cli import ArgumentParser
 from common import logger
 
 
+def _fail_with_errors(payload: dict) -> None:
+    """Print JSON errors to stdout and mirror each to stderr, then exit 1."""
+    for err in payload.get("errors") or []:
+        logger.error("%s", err)
+    print(json.dumps(payload))
+    sys.exit(1)
+
+
 def _build_submit_parser() -> ArgumentParser:
     """Build the argument parser for ``spex submit``."""
     parser = ArgumentParser(
@@ -105,9 +113,8 @@ def cli_submit(argv=None, command="submit") -> None:
 
     if not source:
         errors.append("No spex_branch in spec meta.json")
-        print(json.dumps({"action": method, "source": "", "target": target,
-                          "errors": errors}))
-        sys.exit(1)
+        _fail_with_errors({"action": method, "source": "", "target": target,
+                           "errors": errors})
 
     # Run pre-action hook before merge
     done, total = common.get_todo_progress(spec_dir)
@@ -145,23 +152,20 @@ def cli_submit(argv=None, command="submit") -> None:
                 f"Failed to create target branch '{target}': "
                 f"{e.stderr.strip() or str(e)}"
             )
-            print(json.dumps({"action": method, "source": source,
-                              "target": target, "errors": errors}))
-            sys.exit(1)
+            _fail_with_errors({"action": method, "source": source,
+                               "target": target, "errors": errors})
 
     if method == "merge":
         try:
             merge_branch(target, source, cwd=ctx.main_worktree)
         except subprocess.CalledProcessError as e:
             errors.append(f"Merge failed: {e.stderr.strip() or str(e)}")
-            print(json.dumps({"action": method, "source": source,
-                              "target": target, "errors": errors}))
-            sys.exit(1)
+            _fail_with_errors({"action": method, "source": source,
+                               "target": target, "errors": errors})
     else:
         errors.append(f"submit method '{method}' is not implemented")
-        print(json.dumps({"action": method, "source": source,
-                          "target": target, "errors": errors}))
-        sys.exit(1)
+        _fail_with_errors({"action": method, "source": source,
+                           "target": target, "errors": errors})
 
     # Run post-action hook on success
     done, total = common.get_todo_progress(spec_dir)
