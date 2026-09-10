@@ -437,13 +437,29 @@ class TestCreatePlanOnlySop:
         _index(phase3, "create-helper validate-name")
         _index(phase3, "not** the sole")
         _index(phase3, "side-effect-free")
+        _index(phase3, "Always call it")
         _index(phase3, "prepare-spec` re-validates")
         _index(phase3, "≤31 bytes")
         assert "<32 bytes" not in phase3
         _index(phase3, "Do **not** call `prepare-spec`")
-        _index(phase3, "at most one fenced `json`")
+        _index(phase3, "at most one fenced `text`")
+        assert "already certain" not in phase3
+        assert "may skip" not in phase3
         assert '"name"' in phase3 or "`name`" in phase3
         assert '"description"' in phase3 or "`description`" in phase3
+
+    def test_phase3_preview_fence_is_not_json(self):
+        """R4-F20 / P2-20: Phase 3 preview must not use a json fence."""
+        text = _read(CREATE_MD)
+        phase3 = _h3_section(
+            text, "Phase 3: Generate Name and Description"
+        )
+        assert "language\n  tag `json`" not in phase3
+        assert "fenced `json`" not in phase3
+        _index(phase3, "fenced `text`")
+        phase8 = _h3_section(text, "Phase 8: Output")
+        _index(phase8, "json spex-result")
+        assert "```json spex-result" in _read(PLAN_COMMAND_COMMON)
 
     def test_phase5_6_load_shared_references(self):
         text = _read(CREATE_MD)
@@ -467,6 +483,7 @@ class TestCreatePlanOnlySop:
         _index(section, "validate-name")
         _index(section, "precheck")
         _index(section, "end-session")
+        _index(section, "Any termination before `prepare-spec` succeeds")
         _index(section, "plan-command-common.md")
         _index(section, "immediate STOP")
         _index(section, "roll")
@@ -475,6 +492,26 @@ class TestCreatePlanOnlySop:
         _index(shared, "`$spec_path`")
         _index(shared, "immediate STOP")
         _index(shared, "roll back")
+
+    def test_session_end_before_prepare_spec(self):
+        """R4-F6 / P1-6: end-session on any stop before prepare-spec."""
+        text = _read(CREATE_MD)
+        fail = _h2_section(text, "Failure Handling")
+        _index(fail, "Any termination before `prepare-spec` succeeds")
+        _index(fail, "create-helper end-session")
+        _index(fail, "Phase 2 user abandon")
+        _index(fail, "Phase 3")
+        phase2 = _h3_section(text, "Phase 2: Clarify Requirement")
+        _index(phase2, "create-helper end-session")
+        _index(phase2, "before `prepare-spec`")
+        phase3 = _h3_section(
+            text, "Phase 3: Generate Name and Description"
+        )
+        _index(phase3, "create-helper end-session")
+        _index(phase3, "before `prepare-spec`")
+        assert "already certain" not in text
+        assert "may skip `validate-name`" not in text
+        assert "may skip" not in text.lower()
 
 
 class TestModifyPlanOnlySop:

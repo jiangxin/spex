@@ -74,6 +74,8 @@ $spex_skill_dir/scripts/spex create-helper begin-session
   that). Stay within plan-command-common explore whitelist.
 - Clarification gate / how to clarify: follow
   `references/plan-command-common.md` exactly (no partial restatement)
+- IF user abandons or does not answer -> `create-helper end-session`
+  -> STOP (Failure Handling: any termination before `prepare-spec`)
 - After clarification (or none needed) -> `$requirement` ← complete
   unambiguous requirement (including replies)
 - Redact secrets in `$requirement` before persist -> Phase 3
@@ -88,29 +90,30 @@ $spex_skill_dir/scripts/spex create-helper begin-session
   - `description`: brief English summary (merge commit message + PR
     description). Single line — no embedded newlines; wrapping is
     automatic.
-- Optional: at most one fenced `json` block in this phase (language
-  tag `json`) for human readability — e.g.
-  `{"name": "add-login-api", "description": "Add user login API with JWT authentication"}`.
-  Do not emit additional `json` fences while iterating; do not treat
-  chat fencing as sufficient without CLI success.
+- Optional: at most one fenced `text` block in this phase (language
+  tag `text`) for human readability — e.g.
+  `name: add-login-api` / `description: Add user login API with JWT
+  authentication`. Do not emit `json` fences here (Phase 8 owns the
+  trailing `json spex-result`); do not treat chat fencing as
+  sufficient without CLI success.
 - CMD (`validate-name` is a **side-effect-free** pre-check: no
-  directory, no pre-action hook on failure. `prepare-spec` re-validates
-  internally, so this is recommended when the name is uncertain, not
-  the only gate):
+  directory, no pre-action hook on failure. Always call it —
+  `prepare-spec` re-validates internally, so this is not the only
+  gate):
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper validate-name \
   --name "$name" --description "$description"
 ```
 
-- IF name already certain -> may skip `validate-name`, bind
-  `$name` / `$description` from the proposed fields (no JSON
-  stdout), and continue Phase 4 (`prepare-spec` re-validates)
 - IF exit 0 -> bind `$name` / `$description` from JSON stdout
   (`name`, `description`); continue Phase 4
 - ON_FAIL (non-zero) -> stderr has reason; fix fields -> retry
   `validate-name` until exit 0. Do **not** call `prepare-spec`
   until validation succeeds.
+- IF giving up after repeated naming failures ->
+  `create-helper end-session` -> STOP (Failure Handling: any
+  termination before `prepare-spec`)
 
 ### Phase 4: Prepare Spec Directory
 
@@ -198,7 +201,7 @@ $spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
 
 - Follow `references/plan-command-common.md` output format (human
   summary + trailing `json spex-result`)
-- Distinct from Phase 3's optional `json` name/description fence
+- Distinct from Phase 3's optional `text` name/description preview
 - `spec_name` MUST include the `YYYY-MM-DD-HH-MM-` prefix (Phase 4
   directory name)
 - Callers that need a machine result MUST parse the last fenced
@@ -217,12 +220,16 @@ $spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - Out-of-scope writes: follow `references/plan-command-common.md`
   (immediate STOP + rollback when possible)
-- ON_FAIL Phase 1 `precheck` -> `create-helper end-session` -> STOP
-  (clears any active create session so a later create-or-reuse
-  `begin-session` cannot merge a failed session into the next
-  spec's `debug.log`)
-- ON_FAIL Phase 3 `validate-name` -> fix `$name` / `$description` ->
-  retry until exit 0; do not call `prepare-spec` until OK
+- **Any termination before `prepare-spec` succeeds** (Phase 1
+  `precheck` failure, Phase 2 user abandon / no answer, Phase 3
+  give-up after repeated naming failures) ->
+  `create-helper end-session` -> STOP. Clears any active create
+  session so a later create-or-reuse `begin-session` cannot merge a
+  stale session into the next spec's `debug.log`. Phase 2 / Phase 3
+  STOP branches each carry a one-line pointer to this rule.
+- ON_FAIL Phase 3 `validate-name` (still retrying) -> fix `$name` /
+  `$description` -> retry until exit 0; do not call `prepare-spec`
+  until OK
 - ON_FAIL Phase 4 `prepare-spec` -> session kept; return Phase 3 with
   different `$name`
 - ON_FAIL Phase 7 post-action -> fix `todo.json` -> re-run until OK
