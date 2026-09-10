@@ -658,6 +658,113 @@ class TestSopCliContract:
                     f"{name}: spec_name still optional"
                 )
 
+    def test_apply_review_template_full_and_delta_modes(self):
+        """apply-review supports explicit full/delta modes and evidence reuse."""
+        raw = (SPEX_ROOT / "templates" / "apply-review.md").read_text(
+            encoding="utf-8",
+        )
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+        assert match, "apply-review.md: missing front-matter"
+        fm = match.group(1)
+        optional_block = re.search(r"optional:\n((?:  - .+\n)+)", fm)
+        assert optional_block
+        optional = {
+            line.strip()[2:].strip()
+            for line in optional_block.group(1).splitlines()
+            if line.strip().startswith("- ")
+        }
+        assert "review_mode" in optional
+        assert "fix_base_commit_sha" in optional
+        assert "fixed_commit_sha" in optional
+        assert "check_evidence_reusable" in optional
+
+        body = strip_front_matter(raw)
+        assert "review_mode | default(mode | default('full')) == 'delta'" in body
+        assert "focused review of the fix delta" in body
+        assert "**Lint and tests**" in body
+        assert "**Commit message quality**" in body
+        assert "No new major" in body
+        assert "New major" in body
+        assert "Reuse the persisted lint/test evidence" in body
+        assert "No reusable check evidence" in body
+        assert "Do NOT append minor issues" in body
+
+    def test_apply_fix_template_is_batch_amend(self):
+        """apply-fix SOP: one batch, one check set, one amend; no pre-mark."""
+        raw = (SPEX_ROOT / "templates" / "apply-fix.md").read_text(
+            encoding="utf-8",
+        )
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+        assert match, "apply-fix.md: missing front-matter"
+        fm = match.group(1)
+        required_block = re.search(r"required:\n((?:  - .+\n)+)", fm)
+        assert required_block
+        required = {
+            line.strip()[2:].strip()
+            for line in required_block.group(1).splitlines()
+            if line.strip().startswith("- ")
+        }
+        assert "finding_ids" in required
+        assert "finding_id" not in required
+        assert "open_findings" in required
+
+        body = strip_front_matter(raw)
+        collapsed = re.sub(r"\s+", " ", body.lower())
+        assert "complete finding batch" in collapsed
+        assert "n findings" in collapsed
+        assert "Amend exactly once" in body
+        assert "Prohibit" in body or "prohibit" in body
+        assert "processed_ids" in body
+        assert "check_evidence" in body
+        assert "new_head" in body
+        assert "Do **not** mark findings complete" in body
+        assert "complete-batch" in body
+        assert "--completed-at" not in body
+        # check_evidence checks must match normalize_check_evidence keys.
+        assert '"completed_at"' in body
+        assert "duration_ms" in body
+        assert "finished_at" not in body
+        # if/else amend fences plus Constraints prose mention.
+        assert body.count("commit --amend") == 3
+        # No review-helper edit bash that marks findings before amend.
+        assert "edit --step" not in body
+
+    def test_apply_fix_rendered_template_cli_contract(self):
+        """Rendered apply-fix has no bogus spex flags; expands skill dir."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-fix",
+            extra_vars={
+                "spec_content_concise": "# Spec\n",
+                "current_task_description": "Do the work",
+                "current_task_id": "step-1",
+                "step_id": "step-1",
+                "commit_sha": "deadbeef",
+                "review_round": 1,
+                "review_file": "/tmp/review.json",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "open_findings": "- r1-f1: nit",
+                "finding_ids": "r1-f1, r1-f2",
+                "spec_name": "demo-spec",
+                "user_name": "Test",
+                "user_email": "t@example.com",
+            },
+        )
+        assert "$spex_skill_dir" not in rendered
+        assert "r1-f1, r1-f2" in rendered
+        collapsed = re.sub(r"\s+", " ", rendered.lower())
+        assert "complete finding batch" in collapsed
+        assert "--completed-at" not in rendered
+        assert "commit --amend" in rendered
+        assert "Do **not** mark findings complete" in rendered
+        assert "complete-batch" in rendered
+        # Rendered body must not invoke review-helper edit/complete-batch.
+        for block in FENCE_RE.findall(rendered):
+            if "scripts/spex" in block:
+                assert "edit" not in block
+                assert "complete-batch" not in block
+
     def test_rendered_templates_have_no_literal_spex_skill_dir(self):
         """Jinja must expand spex_skill_dir — no surviving $spex_skill_dir."""
         from prompt import render_prompt

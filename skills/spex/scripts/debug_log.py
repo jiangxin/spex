@@ -88,6 +88,216 @@ def emit_apply_anchor(
     append_debug_anchor(Path(spec_dir) / DEBUG_LOG_NAME, line)
 
 
+# ---------------------------------------------------------------------------
+# Structured review-flow telemetry (helper-owned APPLY anchors)
+# ---------------------------------------------------------------------------
+
+APPLY_SPAN_KINDS = ("review", "fix", "checks")
+APPLY_ROUTE_RESULTS = (
+    "phase7_no_findings",
+    "batch_fix",
+    "minor_direct_complete",
+    "major_delta",
+    "new_major_next_full_round",
+    "hard_cap_batch_fix",
+)
+
+
+def _format_apply_field_value(value) -> str:
+    """Serialize a field value for an APPLY anchor line."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        return ",".join(str(v) for v in value if v is not None and str(v))
+    if value is None:
+        return ""
+    return str(value)
+
+
+def format_apply_event(event: str, **fields) -> str:
+    """Build ``===== APPLY <event> [k=v ...] =====`` without a trailing newline.
+
+    Field order follows insertion order. Empty values are omitted so anchors
+    stay skim-friendly. ``event`` is the free-form middle token sequence
+    (e.g. ``review begin``, ``fix end``, ``route result=major_delta``).
+    """
+    parts = [f"===== APPLY {event}"]
+    for key, value in fields.items():
+        if value is None or value == "":
+            continue
+        if isinstance(value, (list, tuple)) and not value:
+            continue
+        parts.append(f"{key}={_format_apply_field_value(value)}")
+    return " ".join(parts) + " ====="
+
+
+def apply_span_state_path(spec_dir: str | Path) -> Path:
+    """Sidecar path for open review-flow spans beside ``debug.log``."""
+    return Path(spec_dir) / f"{DEBUG_LOG_NAME}.apply_span"
+
+
+def read_apply_spans(spec_dir: str | Path) -> dict:
+    """Load open span map ``{kind: {...}}``; empty dict on missing/invalid."""
+    path = apply_span_state_path(spec_dir)
+    if not path.is_file():
+        return {}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw) if raw.strip() else {}
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def has_open_apply_span(spec_dir: str | Path, kind: str) -> bool:
+    """True when an open span of ``kind`` exists beside the debug log."""
+    return kind in read_apply_spans(spec_dir)
+
+
+def _write_apply_spans(spec_dir: str | Path, spans: dict) -> None:
+    """Persist open span map; delete sidecar when empty."""
+    path = apply_span_state_path(spec_dir)
+    try:
+        if not spans:
+            path.unlink(missing_ok=True)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(spans, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.debug("Failed to write apply span state %s: %s", path, exc)
+
+
+def start_apply_span(
+    spec_dir: str | Path,
+    kind: str,
+    *,
+    argv: list[str] | None = None,
+    emit_begin: bool = True,
+    **fields,
+) -> dict | None:
+    """Record a review-flow span start and optionally emit a begin anchor.
+
+    Returns the span dict when debug is enabled; ``None`` when skipped.
+    Replaces any existing open span of the same ``kind``.
+    """
+    if kind not in APPLY_SPAN_KINDS:
+        raise ValueError(f"unknown apply span kind: {kind!r}")
+    if not debug_enabled(argv if argv is not None else sys.argv):
+        return None
+
+    started_at = local_iso_timestamp()
+    span = {
+        "kind": kind,
+        "started_at": started_at,
+        "started_mono": time.monotonic(),
+        **{k: v for k, v in fields.items() if v is not None and v != ""},
+    }
+    spans = read_apply_spans(spec_dir)
+    spans[kind] = span
+    _write_apply_spans(spec_dir, spans)
+
+    if emit_begin:
+        emit_fields = {
+            "ts": started_at,
+            **{k: v for k, v in fields.items() if k != "started_mono"},
+        }
+        emit_apply_anchor(
+            spec_dir,
+            format_apply_event(f"{kind} begin", **emit_fields),
+            argv=argv if argv is not None else sys.argv,
+        )
+    return span
+
+
+def end_apply_span(
+    spec_dir: str | Path,
+    kind: str,
+    *,
+    argv: list[str] | None = None,
+    duration_ms: int | None = None,
+    **fields,
+) -> dict | None:
+    """Close an open span, emit an end anchor with ``duration_ms``, and clear it.
+
+    Returns the closed span (including ``duration_ms``) when one was open and
+    debug is enabled; ``None`` when skipped or no matching open span.
+    """
+    if kind not in APPLY_SPAN_KINDS:
+        raise ValueError(f"unknown apply span kind: {kind!r}")
+    if not debug_enabled(argv if argv is not None else sys.argv):
+        return None
+
+    spans = read_apply_spans(spec_dir)
+    span = spans.pop(kind, None)
+    if span is None:
+        return None
+    _write_apply_spans(spec_dir, spans)
+
+    ended_at = local_iso_timestamp()
+    if duration_ms is None:
+        started_mono = span.get("started_mono")
+        if isinstance(started_mono, (int, float)):
+            duration_ms = max(0, int((time.monotonic() - started_mono) * 1000))
+        else:
+            duration_ms = 0
+
+    # Prefer end-call fields; fall back to begin-span metadata for continuity.
+    merged = {
+        k: v
+        for k, v in span.items()
+        if k not in {"kind", "started_at", "started_mono"}
+    }
+    merged.update({k: v for k, v in fields.items() if v is not None and v != ""})
+    merged["ts"] = ended_at
+    merged["duration_ms"] = duration_ms
+
+    emit_apply_anchor(
+        spec_dir,
+        format_apply_event(f"{kind} end", **merged),
+        argv=argv if argv is not None else sys.argv,
+    )
+    return merged
+
+
+def emit_apply_route(
+    spec_dir: str | Path,
+    result: str,
+    *,
+    argv: list[str] | None = None,
+    **fields,
+) -> None:
+    """Emit a route-decision anchor (helper-owned; no agent prose)."""
+    if result not in APPLY_ROUTE_RESULTS:
+        logger.debug("Unknown apply route result: %s", result)
+    emit_apply_anchor(
+        spec_dir,
+        format_apply_event(
+            "route",
+            ts=local_iso_timestamp(),
+            result=result,
+            **fields,
+        ),
+        argv=argv if argv is not None else sys.argv,
+    )
+
+
+def sum_check_evidence_duration_ms(evidence: dict | None) -> int:
+    """Sum optional per-check ``duration_ms`` from check_evidence; else 0."""
+    if not isinstance(evidence, dict):
+        return 0
+    total = 0
+    for item in evidence.get("checks") or []:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("duration_ms")
+        if type(value) is int and value >= 0:
+            total += value
+    return total
+
+
 def parse_name_from_argv(argv: list[str]) -> str | None:
     """Parse --name or --name= from argv."""
     return parse_flag_from_argv(argv, "--name")

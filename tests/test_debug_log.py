@@ -917,3 +917,108 @@ class TestTraceCommandArchiveFollow:
 
         assert not (spex_root / "specs").exists()
         assert not vanished.exists()
+
+
+class TestApplyFlowTelemetryHelpers:
+    """Structured APPLY span helpers used by review/fix instrumentation."""
+
+    def test_format_apply_event_omits_empty(self):
+        from debug_log import format_apply_event
+
+        line = format_apply_event(
+            "review begin",
+            step="step-7",
+            mode="full",
+            findings=0,
+            empty="",
+            none=None,
+        )
+        assert line.startswith("===== APPLY review begin ")
+        assert "step=step-7" in line
+        assert "mode=full" in line
+        assert "findings=0" in line
+        assert "empty=" not in line
+        assert "none=" not in line
+        assert line.endswith(" =====")
+
+    def test_start_end_span_records_duration(self, tmp_path, monkeypatch):
+        import time
+
+        from debug_log import (
+            DEBUG_LOG_NAME,
+            end_apply_span,
+            has_open_apply_span,
+            start_apply_span,
+        )
+
+        monkeypatch.setattr("sys.argv", ["spex", "-d"])
+        with patch("debug_log.debug_enabled", return_value=True):
+            start_apply_span(
+                tmp_path,
+                "review",
+                step="step-7",
+                mode="delta",
+                commit="abc",
+                prompt_bytes=100,
+            )
+            assert has_open_apply_span(tmp_path, "review")
+            time.sleep(0.02)
+            closed = end_apply_span(
+                tmp_path,
+                "review",
+                findings=2,
+                has_major=True,
+            )
+
+        assert closed is not None
+        assert closed["duration_ms"] >= 10
+        assert not has_open_apply_span(tmp_path, "review")
+        content = (tmp_path / DEBUG_LOG_NAME).read_text(encoding="utf-8")
+        assert "===== APPLY review begin" in content
+        assert "===== APPLY review end" in content
+        assert f"duration_ms={closed['duration_ms']}" in content
+        assert "mode=delta" in content
+        assert "findings=2" in content
+
+    def test_sum_check_evidence_duration_ms(self):
+        from debug_log import sum_check_evidence_duration_ms
+
+        assert sum_check_evidence_duration_ms(None) == 0
+        assert sum_check_evidence_duration_ms({"checks": []}) == 0
+        assert sum_check_evidence_duration_ms({
+            "checks": [
+                {"command": "a", "exit_code": 0, "duration_ms": 100},
+                {"command": "b", "exit_code": 0, "duration_ms": 50},
+                {"command": "c", "exit_code": 0},
+            ],
+        }) == 150
+
+    def test_trace_gap_ms_still_works_with_apply_anchors(
+        self, tmp_path, monkeypatch,
+    ):
+        """APPLY anchors must not break CLI tee gap_ms / duration_ms."""
+        from debug_log import append_debug_anchor, format_apply_event
+
+        # Match TestTraceCommand: keep flush on the explicit log path.
+        monkeypatch.setattr(
+            "debug_log.resolve_debug_log_path",
+            lambda _argv: None,
+        )
+        log_path = tmp_path / "debug.log"
+
+        with trace_command(log_path, ["spex", "version"]):
+            print("first")
+        append_debug_anchor(
+            log_path,
+            format_apply_event(
+                "review begin", step="step-7", mode="full",
+            ),
+        )
+        with trace_command(log_path, ["spex", "version"]):
+            print("second")
+
+        content = log_path.read_text(encoding="utf-8")
+        assert content.count("===== BEGIN ") == 2
+        assert "duration_ms=" in content
+        assert "gap_ms=" in content
+        assert "===== APPLY review begin" in content

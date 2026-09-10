@@ -960,3 +960,945 @@ class TestNext:
         assert payload["open_count"] == 0
         assert payload["exists"] is False
         assert not (spec_dir / "review-step-1.json").exists()
+
+
+class TestOpenBatch:
+    """open-batch returns one deterministic finding batch + has_major."""
+
+    def test_empty_no_findings(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc123",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["exists"] is True
+        assert payload["open_count"] == 0
+        assert payload["has_major"] is False
+        assert payload["findings"] == []
+        assert payload["mode"] == "full"
+        assert payload["pending_findings"] == []
+        assert payload["pending_has_major"] is False
+        assert payload["commit_sha"] == "abc123"
+        assert payload["reviewed_commit_sha"] == "abc123"
+
+    def test_empty_missing_file(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["exists"] is False
+        assert payload["open_count"] == 0
+        assert payload["has_major"] is False
+        assert payload["findings"] == []
+        assert payload["mode"] == "full"
+
+    def test_minor_only(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "minor",
+            "--category", "other", "--title", "Nit A",
+            "--details", "rename helper",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f2", "--severity", "minor",
+            "--category", "code-quality", "--title", "Nit B",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["has_major"] is False
+        assert payload["open_count"] == 2
+        assert [f["id"] for f in payload["findings"]] == ["f1", "f2"]
+        assert payload["findings"][0]["details"] == "rename helper"
+        assert payload["findings"][0]["severity"] == "minor"
+        assert payload["findings"][0]["category"] == "other"
+
+    def test_mixed_severity_stable_order(self, spec_dir, capsys):
+        """File order is preserved; has_major true when any major is open."""
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "minor",
+            "--category", "other", "--title", "First",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f2", "--severity", "major",
+            "--category", "tests", "--title", "Second",
+            "--details", "add coverage",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f3", "--severity", "minor",
+            "--category", "lint", "--title", "Third",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["has_major"] is True
+        assert [f["id"] for f in payload["findings"]] == ["f1", "f2", "f3"]
+        assert payload["findings"][1]["severity"] == "major"
+        assert payload["findings"][1]["details"] == "add coverage"
+        # Same result on a second call (deterministic).
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        again = json.loads(capsys.readouterr().out)
+        assert again == payload
+
+    def test_skips_completed_findings(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f1", "--severity", "major",
+            "--category", "tests", "--title", "Done",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f2", "--severity", "minor",
+            "--category", "other", "--title", "Open",
+        ])
+        review_helper.main([
+            "--name", "my-topic", "edit",
+            "--step", "step-1", "--id", "f1",
+            "--completed-at", "now",
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["has_major"] is False
+        assert [f["id"] for f in payload["findings"]] == ["f2"]
+
+    def test_legacy_file_defaults(self, spec_dir, capsys):
+        """Old review JSON without batch-state keys still queries cleanly."""
+        path = spec_dir / "review-step-1.json"
+        path.write_text(json.dumps({
+            "step_id": "step-1",
+            "commit_sha": "legacysha",
+            "round": 2,
+            "findings": [
+                {
+                    "id": "r2-f1",
+                    "severity": "major",
+                    "category": "security",
+                    "title": "Legacy major",
+                    "details": "fix me",
+                    "completed_at": "",
+                },
+                {
+                    "id": "r2-f2",
+                    "severity": "minor",
+                    "category": "other",
+                    "title": "Legacy minor done",
+                    "details": "",
+                    "completed_at": "2026-01-01T00:00:00",
+                },
+            ],
+        }) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["exists"] is True
+        assert payload["round"] == 2
+        assert payload["commit_sha"] == "legacysha"
+        assert payload["mode"] == "full"
+        assert payload["reviewed_commit_sha"] == "legacysha"
+        assert payload["pending_findings"] == []
+        assert payload["pending_has_major"] is False
+        assert payload["fix_base_commit_sha"] == ""
+        assert payload["fixed_commit_sha"] == ""
+        assert payload["check_evidence"] is None
+        assert payload["has_major"] is True
+        assert [f["id"] for f in payload["findings"]] == ["r2-f1"]
+        # Legacy file on disk is unchanged until a write migrates it.
+        on_disk = _read(path)
+        assert "mode" not in on_disk
+        assert "pending_findings" not in on_disk
+
+    def test_malformed_state_normalized(self, spec_dir, capsys):
+        """Malformed batch-state values are replaced with safe defaults."""
+        path = spec_dir / "review-step-1.json"
+        path.write_text(json.dumps({
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "mode": "bogus",
+            "reviewed_commit_sha": 123,
+            "pending_findings": "not-a-list",
+            "pending_has_major": "yes",
+            "fix_base_commit_sha": None,
+            "fixed_commit_sha": ["x"],
+            "check_evidence": ["bad"],
+            "findings": [
+                {
+                    "id": "f1",
+                    "severity": "minor",
+                    "category": "other",
+                    "title": "Still open",
+                    "details": "",
+                    "completed_at": "",
+                },
+            ],
+        }) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["mode"] == "full"
+        assert payload["reviewed_commit_sha"] == "abc"
+        assert payload["pending_findings"] == []
+        assert payload["pending_has_major"] is False
+        assert payload["fix_base_commit_sha"] == ""
+        assert payload["fixed_commit_sha"] == ""
+        assert payload["check_evidence"] is None
+        assert payload["has_major"] is False
+        assert [f["id"] for f in payload["findings"]] == ["f1"]
+
+    def test_malformed_pending_derives_has_major(self, spec_dir, capsys):
+        """Non-bool pending_has_major is derived from pending open majors."""
+        path = spec_dir / "review-step-1.json"
+        path.write_text(json.dumps({
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "pending_findings": ["f1", "f2"],
+            "pending_has_major": "maybe",
+            "findings": [
+                {
+                    "id": "f1",
+                    "severity": "major",
+                    "category": "tests",
+                    "title": "A",
+                    "details": "",
+                    "completed_at": "",
+                },
+                {
+                    "id": "f2",
+                    "severity": "minor",
+                    "category": "other",
+                    "title": "B",
+                    "details": "",
+                    "completed_at": "",
+                },
+            ],
+        }) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["pending_findings"] == ["f1", "f2"]
+        assert payload["pending_has_major"] is True
+        assert payload["has_major"] is True
+
+    def test_missing_pending_has_major_derives_from_pending(
+        self, spec_dir, capsys,
+    ):
+        """Absent pending_has_major is derived when pending IDs are set."""
+        path = spec_dir / "review-step-1.json"
+        path.write_text(json.dumps({
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "pending_findings": ["f1"],
+            "findings": [
+                {
+                    "id": "f1",
+                    "severity": "major",
+                    "category": "tests",
+                    "title": "A",
+                    "details": "",
+                    "completed_at": "",
+                },
+            ],
+        }) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "open-batch", "--step", "step-1",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["pending_findings"] == ["f1"]
+        assert payload["pending_has_major"] is True
+        assert payload["has_major"] is True
+
+    def test_bump_round_resets_batch_and_keeps_full_mode(
+        self, spec_dir, capsys,
+    ):
+        """bump-round advances full rounds only and clears pending batch."""
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc",
+        ])
+        path = spec_dir / "review-step-1.json"
+        data = _read(path)
+        data["mode"] = "delta"
+        data["pending_findings"] = ["f1"]
+        data["pending_has_major"] = True
+        data["fix_base_commit_sha"] = "abc"
+        data["fixed_commit_sha"] = "def"
+        data["check_evidence"] = {"commit_sha": "def", "checks": []}
+        path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "bump-round",
+            "--step", "step-1", "--commit", "ghi",
+        ])
+        out = _last_json_line(capsys)
+        assert out["round"] == 2
+        assert out["mode"] == "full"
+        data = _read(path)
+        assert data["round"] == 2
+        assert data["mode"] == "full"
+        assert data["pending_findings"] == []
+        assert data["pending_has_major"] is False
+        assert data["fix_base_commit_sha"] == ""
+        assert data["fixed_commit_sha"] == ""
+        assert data["check_evidence"] is None
+        assert data["reviewed_commit_sha"] == "ghi"
+
+    def test_normalize_review_state_unit(self):
+        data = {
+            "commit_sha": "xyz",
+            "findings": [],
+            "mode": "delta",
+            "pending_findings": [1, "f1", None, ""],
+            "check_evidence": {"commit_sha": "xyz"},
+        }
+        out = review_helper.normalize_review_state(data)
+        assert out["mode"] == "delta"
+        assert out["reviewed_commit_sha"] == "xyz"
+        assert out["pending_findings"] == ["1", "f1"]
+        assert out["check_evidence"] == {"commit_sha": "xyz"}
+        assert out is data
+
+
+class TestInitBatchState:
+    def test_init_writes_batch_state_defaults(self, spec_dir, capsys):
+        review_helper.main([
+            "--name", "my-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["mode"] == "full"
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["mode"] == "full"
+        assert data["reviewed_commit_sha"] == "abc1234"
+        assert data["pending_findings"] == []
+        assert data["pending_has_major"] is False
+        assert data["fix_base_commit_sha"] == ""
+        assert data["fixed_commit_sha"] == ""
+        assert data["awaiting_delta"] is False
+        assert data["check_evidence"] is None
+
+
+def _evidence(sha: str, exit_code: int = 0) -> str:
+    return json.dumps({
+        "commit_sha": sha,
+        "checks": [
+            {
+                "command": "pytest tests/test_review_helper.py",
+                "exit_code": exit_code,
+                "completed_at": "2026-09-10T12:00:00",
+            },
+        ],
+    })
+
+
+class TestNormalizeCheckEvidence:
+    def test_accepts_int_exit_code(self):
+        raw = {
+            "commit_sha": "abc",
+            "checks": [{"command": "pytest", "exit_code": 0}],
+        }
+        assert review_helper.normalize_check_evidence(raw) is not None
+
+    def test_rejects_bool_exit_code(self):
+        for bad in (False, True):
+            raw = {
+                "commit_sha": "abc",
+                "checks": [{"command": "pytest", "exit_code": bad}],
+            }
+            assert review_helper.normalize_check_evidence(raw) is None
+
+    def test_evidence_is_successful_rejects_bool_zero(self):
+        evidence = {
+            "commit_sha": "abc",
+            "checks": [{"command": "pytest", "exit_code": False}],
+        }
+        assert review_helper.evidence_is_successful(evidence, "abc") is False
+
+
+def _seed_open_findings(spec_dir, base_sha="basesha1", capsys=None):
+    review_helper.main([
+        "--name", "my-topic", "init",
+        "--step", "step-1", "--commit", base_sha,
+    ])
+    review_helper.main([
+        "--name", "my-topic", "append",
+        "--step", "step-1",
+        "--id", "f1", "--severity", "minor",
+        "--category", "other", "--title", "Nit",
+    ])
+    review_helper.main([
+        "--name", "my-topic", "append",
+        "--step", "step-1",
+        "--id", "f2", "--severity", "major",
+        "--category", "tests", "--title", "Cover",
+    ])
+    if capsys is not None:
+        capsys.readouterr()
+    return spec_dir / "review-step-1.json"
+
+
+def _patch_git_ok(monkeypatch, head_sha, clean=True, dirty_paths=None):
+    monkeypatch.setattr(
+        review_helper, "get_head_sha",
+        lambda cwd=None: head_sha,
+    )
+    monkeypatch.setattr(
+        review_helper, "is_project_tree_clean",
+        lambda spex_root=None, cwd=None: (
+            clean, [] if clean else list(dirty_paths or ["dirty.py"]),
+        ),
+    )
+
+
+class TestSetPending:
+    def test_sets_pending_batch(self, spec_dir, capsys):
+        _seed_open_findings(spec_dir, "basesha1", capsys=capsys)
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["pending_findings"] == ["f1", "f2"]
+        assert out["pending_has_major"] is True
+        assert out["fix_base_commit_sha"] == "basesha1"
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["pending_findings"] == ["f1", "f2"]
+        assert data["pending_has_major"] is True
+        assert data["fixed_commit_sha"] == ""
+        assert data["check_evidence"] is None
+
+    def test_rejects_completed_finding(self, spec_dir):
+        path = _seed_open_findings(spec_dir)
+        review_helper.main([
+            "--name", "my-topic", "edit",
+            "--step", "step-1", "--id", "f1",
+            "--completed-at", "now",
+        ])
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "set-pending",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+            ])
+        data = _read(path)
+        assert data["pending_findings"] == []
+
+
+class TestCompleteBatch:
+    """Atomic complete-batch: all-or-nothing + resumable after amend."""
+
+    def test_success_marks_all_and_persists_evidence(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is False
+        assert out["completed_ids"] == ["f1", "f2"]
+        data = _read(spec_dir / "review-step-1.json")
+        assert all(f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == "newsha99"
+        assert data["commit_sha"] == "newsha99"
+        assert data["pending_findings"] == []
+        assert data["pending_has_major"] is False
+        assert data["awaiting_delta"] is True  # batch included major f2
+        assert out["awaiting_delta"] is True
+        assert data["check_evidence"]["commit_sha"] == "newsha99"
+        assert data["check_evidence"]["checks"][0]["exit_code"] == 0
+
+    def test_complete_batch_sets_awaiting_delta_for_major(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """Major batch leaves durable awaiting_delta after pending is cleared."""
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["awaiting_delta"] is True
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["pending_has_major"] is False
+        assert data["pending_findings"] == []
+        assert data["awaiting_delta"] is True
+        # status exposes the durable resume marker with no open findings
+        review_helper.main([
+            "--name", "my-topic", "status",
+            "--step", "step-1", "--json",
+        ])
+        status = json.loads(capsys.readouterr().out)
+        assert status["awaiting_delta"] is True
+        assert status["needs_fix"] is False
+        assert status["done"] is False
+        assert status["ready_to_complete"] is False
+        # set-pending for a later batch clears awaiting_delta
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f3", "--severity", "major",
+            "--category", "tests", "--title", "later",
+            "--details", "x",
+        ])
+        # Heal commit to current tip for set-pending base
+        data = _read(spec_dir / "review-step-1.json")
+        data["commit_sha"] = "newsha99"
+        (spec_dir / "review-step-1.json").write_text(
+            json.dumps(data), encoding="utf-8",
+        )
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f3",
+            "--base-commit", "newsha99",
+        ])
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["awaiting_delta"] is False
+
+    def test_complete_batch_hard_cap_skips_awaiting_delta(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """At max round with mode=delta, major complete-batch skips delta."""
+        path = _seed_open_findings(spec_dir, "basesha1")
+        data = _read(path)
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        data["mode"] = "delta"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f2",
+            "--base-commit", "basesha1",
+        ])
+        # set-pending must preserve mode=delta; re-assert round after write
+        data = _read(path)
+        assert data["mode"] == "delta"
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        path.write_text(json.dumps(data), encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["awaiting_delta"] is False
+        data = _read(path)
+        assert data["awaiting_delta"] is False
+        assert data["pending_has_major"] is False
+
+    def test_id_mismatch_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_head_mismatch_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "otherhead")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_dirty_tree_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(
+            monkeypatch, "newsha99", clean=False,
+            dirty_paths=["skills/spex/scripts/review_helper.py"],
+        )
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_failed_evidence_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99", exit_code=1),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_evidence_not_bound_to_new_commit_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("othersha00"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_base_sha_mismatch_fix_base_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "wrongbase",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_base_sha_mismatch_review_commit_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        data = _read(path)
+        # Keep fix_base_commit_sha aligned with --base-commit so only
+        # review commit_sha mismatches.
+        data["commit_sha"] = "reviewshaX"
+        path.write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8",
+        )
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_same_sha_as_base_rejected(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "basesha1")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "basesha1",
+                "--evidence", _evidence("basesha1"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_write_failure_then_resume(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """Amend-success / completion-interrupted: findings stay open, resume works."""
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        real_save = review_helper.save_review
+
+        def boom(p, data):
+            raise OSError("simulated write failure")
+
+        monkeypatch.setattr(review_helper, "save_review", boom)
+        with pytest.raises(OSError, match="simulated"):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        data = _read(path)
+        assert data["pending_findings"] == ["f1", "f2"]
+        assert all(not f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == ""
+
+        monkeypatch.setattr(review_helper, "save_review", real_save)
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is False
+        data = _read(path)
+        assert all(f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == "newsha99"
+        assert data["pending_findings"] == []
+
+    def test_idempotent_when_already_completed(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is True
+
+    def test_validate_complete_batch_unit_zero_write(self):
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "basesha1",
+            "round": 1,
+            "pending_findings": ["f1", "f2"],
+            "pending_has_major": True,
+            "fix_base_commit_sha": "basesha1",
+            "fixed_commit_sha": "",
+            "check_evidence": None,
+            "findings": [
+                {
+                    "id": "f1", "severity": "minor", "category": "other",
+                    "title": "a", "details": "", "completed_at": "",
+                },
+                {
+                    "id": "f2", "severity": "major", "category": "tests",
+                    "title": "b", "details": "", "completed_at": "",
+                },
+            ],
+        }
+        evidence = json.loads(_evidence("newsha99"))
+        err = review_helper.validate_complete_batch(
+            data, ["f1", "f2"], "basesha1", "newsha99", evidence,
+            head_sha="newsha99", tree_clean=True,
+        )
+        assert err is None
+        # Mutating apply happens only after validation; data still open.
+        assert all(not f["completed_at"] for f in data["findings"])
+        err = review_helper.validate_complete_batch(
+            data, ["f1", "f2"], "basesha1", "newsha99", evidence,
+            head_sha="newsha99", tree_clean=False,
+        )
+        assert err is not None
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_sha_matches_prefix(self):
+        assert review_helper.sha_matches("abcdef1", "abcdef1deadbeef")
+        assert review_helper.sha_matches("ABCDEF1", "abcdef1")
+        assert not review_helper.sha_matches("abc", "abcdef1")
+        assert not review_helper.sha_matches("abcdef1", "abcdef2")
+
+    def test_evidence_from_stdin(self, spec_dir, capsys, monkeypatch):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        monkeypatch.setattr(
+            review_helper.sys, "stdin",
+            __import__("io").StringIO(_evidence("newsha99")),
+        )
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence-from-stdin",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["fixed_commit_sha"] == "newsha99"

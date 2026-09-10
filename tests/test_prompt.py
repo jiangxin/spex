@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+import re
 import subprocess
 
 import pytest
@@ -2100,11 +2101,15 @@ class TestApplyReviewStepReviewGate:
 
         import prompt as prompt_mod
 
-        def _enrich(metadata, spec_name, commit_sha=None, finding_id=None):
+        def _enrich(
+            metadata, spec_name, commit_sha=None, finding_id=None, mode=None,
+        ):
             metadata["commit_sha"] = commit_sha or ""
             metadata["review_round"] = 1
             metadata["review_file"] = ""
             metadata["step_id"] = "step-1"
+            metadata["mode"] = mode or "full"
+            metadata["skip_delta"] = False
             return metadata
 
         monkeypatch.setattr(
@@ -2126,7 +2131,7 @@ class TestApplyReviewStepReviewGate:
             lambda *a, **k: "Review Checklist full prompt",
         )
         args = SimpleNamespace(
-            name="", commit_sha="deadbeef", json_mode=True,
+            name="", commit_sha="deadbeef", json_mode=True, mode=None,
         )
         prompt_mod._do_apply_review(args)
         data = json.loads(capsys.readouterr().out)
@@ -2134,6 +2139,672 @@ class TestApplyReviewStepReviewGate:
         assert "skip_review" not in data
         assert "Review Checklist" in data["prompt"]
         assert data["commit_sha"] == "deadbeef"
+
+
+class TestCompactReviewContext:
+    """Fast unit tests for compact full/delta review prompt context."""
+
+    def test_normalize_review_mode(self):
+        from prompt import normalize_review_mode
+
+        assert normalize_review_mode("full") == "full"
+        assert normalize_review_mode("DELTA") == "delta"
+        assert normalize_review_mode(None) == "full"
+        assert normalize_review_mode("other") == "full"
+
+    def test_extract_acceptance_criteria(self):
+        from prompt import extract_acceptance_criteria
+
+        text = (
+            "- Do the work\n\n"
+            "**Acceptance criteria**: payloads are distinct "
+            "and size drops.\n"
+        )
+        assert "payloads are distinct" in extract_acceptance_criteria(text)
+
+    def test_should_render_delta_minor_only_false(self):
+        from prompt import should_render_delta_prompt
+
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "minor", "category": "other",
+                    "title": "nit", "details": "x", "completed_at": "",
+                },
+            ],
+            "pending_findings": ["r1-f1"],
+            "pending_has_major": False,
+        }
+        assert should_render_delta_prompt(data) is False
+
+    def test_should_render_delta_with_major_true(self):
+        from prompt import should_render_delta_prompt
+
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "major", "category": "tests",
+                    "title": "missing", "details": "x", "completed_at": "",
+                },
+            ],
+            "pending_findings": ["r1-f1"],
+            "pending_has_major": True,
+        }
+        assert should_render_delta_prompt(data) is True
+
+    def test_should_render_delta_from_awaiting_delta_after_complete(self):
+        """Durable awaiting_delta warrants delta after pending is cleared."""
+        from prompt import should_render_delta_prompt
+
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "fixed",
+            "round": 1,
+            "mode": "full",
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "major", "category": "tests",
+                    "title": "missing", "details": "x",
+                    "completed_at": "2026-09-10T12:00:00",
+                },
+            ],
+            "pending_findings": [],
+            "pending_has_major": False,
+            "fixed_commit_sha": "fixed",
+            "awaiting_delta": True,
+        }
+        assert should_render_delta_prompt(data) is True
+        data["awaiting_delta"] = False
+        assert should_render_delta_prompt(data) is False
+
+    def test_full_and_delta_payloads_structurally_distinct(self):
+        from prompt import build_compact_review_context
+
+        meta = {
+            "spec_content": "FULL SPEC " * 500,
+            "spec_content_concise": "Requirement summary only.",
+            "current_task_description": (
+                "- **step-3**: Work\n  Details.\n\n"
+                "  **Acceptance criteria**: must shrink.\n"
+            ),
+            "completed_tasks": "SHOULD NOT APPEAR",
+            "completed_tasks_concise": "SHOULD NOT APPEAR",
+            "future_tasks": "FUTURE BODY SHOULD NOT APPEAR",
+            "future_tasks_concise": "FUTURE BODY SHOULD NOT APPEAR",
+            "commit_sha": "deadbeef",
+        }
+        review = {
+            "step_id": "step-3",
+            "commit_sha": "deadbeef",
+            "round": 1,
+            "mode": "full",
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "major", "category": "tests",
+                    "title": "Missing tests", "details": "Add coverage",
+                    "completed_at": "",
+                },
+                {
+                    "id": "r1-done", "severity": "minor", "category": "other",
+                    "title": "Done nit", "details": "completed details",
+                    "completed_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+            "pending_findings": ["r1-f1"],
+            "pending_has_major": True,
+            "fix_base_commit_sha": "base0001",
+            "fixed_commit_sha": "fixed002",
+            "check_evidence": None,
+        }
+        full = build_compact_review_context(
+            meta, mode="full", review_data=review, include_diff=False,
+        )
+        delta = build_compact_review_context(
+            meta, mode="delta", review_data=review, include_diff=False,
+        )
+        assert full["mode"] == "full"
+        assert delta["mode"] == "delta"
+        assert full["fixed_commit_sha"] == ""
+        assert delta["fixed_commit_sha"] == "fixed002"
+        assert delta["fix_base_commit_sha"] == "base0001"
+        assert full["completed_tasks"] == ""
+        assert full["future_tasks"] == ""
+        assert full["spec_content"] == ""
+        assert "Requirement summary" in full["spec_content_concise"]
+        assert "must shrink" in full["acceptance_criteria"]
+        assert "Missing tests" in full["open_findings"]
+        assert "completed details" not in full["open_findings"]
+        assert "SHOULD NOT APPEAR" not in full["open_findings"]
+        assert full["mode"] != delta["mode"] or (
+            full["fixed_commit_sha"] != delta["fixed_commit_sha"]
+        )
+        assert full["finding_ids"] == "r1-f1"
+        assert full["finding_id_list"] == ["r1-f1"]
+        assert full["pending_has_major"] is True
+
+    def test_batch_open_findings_lists_all_ids_without_filter(self):
+        """Without finding_id, compact context lists the full open batch."""
+        from prompt import build_compact_review_context
+
+        meta = {
+            "spec_content_concise": "Summary",
+            "current_task_description": "Work",
+            "commit_sha": "abc",
+        }
+        review = {
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "minor", "category": "other",
+                    "title": "A", "details": "a", "completed_at": "",
+                },
+                {
+                    "id": "r1-f2", "severity": "major", "category": "tests",
+                    "title": "B", "details": "b", "completed_at": "",
+                },
+            ],
+            "pending_findings": [],
+            "pending_has_major": False,
+        }
+        ctx = build_compact_review_context(
+            meta, mode="full", review_data=review, include_diff=False,
+        )
+        assert ctx["finding_id_list"] == ["r1-f1", "r1-f2"]
+        assert ctx["finding_ids"] == "r1-f1, r1-f2"
+        assert "A" in ctx["open_findings"] and "B" in ctx["open_findings"]
+        assert ctx["has_major"] is True
+
+    def test_apply_fix_template_batch_render_no_pre_complete(self):
+        """Rendered apply-fix: one amend, no pre-amend completed_at write."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-fix",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Implement batch fix",
+                "current_task_id": "step-4",
+                "step_id": "step-4",
+                "commit_sha": "deadbeef",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-4.json",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "open_findings": (
+                    "### r1-f1 (minor)\nA\n\n### r1-f2 (major)\nB"
+                ),
+                "finding_ids": "r1-f1, r1-f2",
+                "spec_name": "demo-spec",
+                "acceptance_criteria": "one amend",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "complete finding batch" in collapsed
+        assert "r1-f1, r1-f2" in rendered
+        assert "Amend exactly once" in rendered
+        amend_fences = [
+            b for b in re.findall(r"```bash\n(.*?)```", rendered, re.S)
+            if "commit --amend" in b
+        ]
+        assert len(amend_fences) == 1
+        assert "--completed-at" not in rendered
+        assert "edit --step" not in rendered
+        assert "Do **not** mark findings complete" in rendered
+        assert "complete-batch" in rendered
+        assert "processed_ids" in rendered
+        assert "check_evidence" in rendered
+
+    def test_apply_prompt_size_cap_preserves_protected(self):
+        from prompt import (
+            DEFAULT_REVIEW_PROMPT_MAX_BYTES,
+            apply_prompt_size_cap,
+            measure_prompt_bytes,
+        )
+
+        fields = {
+            "spec_content_concise": "S" * 20_000,
+            "current_task_description": "TASK-KEEP-ME" + ("T" * 5_000),
+            "commit_diff": "D" * 30_000,
+            "open_findings": "FINDING-PROTECTED-CONTENT",
+            "acceptance_criteria": "ACCEPT-PROTECTED",
+        }
+        capped = apply_prompt_size_cap(fields, 8_000)
+        total = measure_prompt_bytes(
+            "".join(v for v in capped.values() if isinstance(v, str))
+        )
+        assert total <= 8_000
+        assert "FINDING-PROTECTED-CONTENT" in capped["open_findings"]
+        assert "ACCEPT-PROTECTED" in capped["acceptance_criteria"]
+        assert capped["current_task_description"]
+        assert "TASK-KEEP-ME" in capped["current_task_description"]
+        assert measure_prompt_bytes(capped["spec_content_concise"]) < 20_000
+        assert measure_prompt_bytes(capped["commit_diff"]) < 30_000
+        assert DEFAULT_REVIEW_PROMPT_MAX_BYTES < 30_000
+
+    def test_build_compact_large_diff_keeps_task_description(self, monkeypatch):
+        """Large diff must not zero current_task_description under the cap."""
+        from prompt import (
+            DEFAULT_REVIEW_PROMPT_MAX_BYTES,
+            build_compact_review_context,
+            measure_prompt_bytes,
+        )
+
+        monkeypatch.setattr(
+            "prompt.fetch_review_diff",
+            lambda *a, **k: "DIFF-LINE\n" * 20_000,
+        )
+        meta = {
+            "spec_content_concise": "Requirement summary only.",
+            "current_task_description": (
+                "- **step-3**: UNIQUE-TASK-TOKEN Work\n"
+                "  Details for the current step.\n\n"
+                "  **Acceptance criteria**: must remain visible.\n"
+            ),
+            "commit_sha": "deadbeef",
+        }
+        result = build_compact_review_context(
+            meta,
+            mode="full",
+            review_data={
+                "step_id": "step-3",
+                "commit_sha": "deadbeef",
+                "round": 1,
+                "mode": "full",
+                "findings": [],
+            },
+            commit_sha="deadbeef",
+            max_bytes=DEFAULT_REVIEW_PROMPT_MAX_BYTES,
+        )
+        assert result["current_task_description"]
+        assert "UNIQUE-TASK-TOKEN" in result["current_task_description"]
+        assert "must remain visible" in result["acceptance_criteria"]
+        total = measure_prompt_bytes(
+            result["spec_content_concise"]
+            + result["current_task_description"]
+            + result["acceptance_criteria"]
+            + result["open_findings"]
+            + result["commit_diff"]
+        )
+        assert total <= DEFAULT_REVIEW_PROMPT_MAX_BYTES
+
+    def test_check_evidence_reusable_requires_matching_sha(
+        self, monkeypatch,
+    ):
+        import prompt as prompt_mod
+
+        evidence = {
+            "commit_sha": "abc1234567890",
+            "checks": [
+                {
+                    "command": "pytest",
+                    "exit_code": 0,
+                    "completed_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+        }
+        monkeypatch.setattr(
+            "review_helper.is_project_tree_clean",
+            lambda **kwargs: (True, []),
+        )
+        assert prompt_mod.is_check_evidence_reusable(
+            evidence, "abc1234567890",
+        ) is True
+        assert prompt_mod.is_check_evidence_reusable(
+            evidence, "ffffffffffffffff",
+        ) is False
+
+    def test_check_evidence_invalidated_when_dirty(self, monkeypatch):
+        import prompt as prompt_mod
+
+        evidence = {
+            "commit_sha": "abc1234567890",
+            "checks": [
+                {
+                    "command": "pytest",
+                    "exit_code": 0,
+                    "completed_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+        }
+        assert prompt_mod.is_check_evidence_reusable(
+            evidence, "abc1234567890", tree_clean=False,
+        ) is False
+        assert prompt_mod.is_check_evidence_reusable(
+            evidence, "abc1234567890", tree_clean=True,
+        ) is True
+
+    def test_apply_review_template_full_mode_checklist(self):
+        """Full mode keeps the complete Round 1 checklist."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Implement feature",
+                "commit_sha": "deadbeef",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-5.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo-spec",
+                "review_mode": "full",
+                "mode": "full",
+                "check_evidence_reusable": False,
+                "acceptance_criteria": "full checklist preserved",
+            },
+        )
+        assert "Mode: **full**" in rendered
+        assert "Round 1 policy" in rendered
+        assert "**major** and **minor**" in rendered
+        assert "**Lint and tests**" in rendered
+        assert "**Commit message quality**" in rendered
+        assert "**Code review**" in rendered
+        assert "focused review of the fix delta" not in rendered
+        assert "Fix base:" not in rendered
+        assert "No reusable check evidence" in rendered
+        assert "Run the project's lint" in rendered
+
+    def test_apply_review_template_delta_mode_focused(self):
+        """Delta mode reviews only the fix range + integration impact."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Fix majors",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-5.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo-spec",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+                "check_evidence_reusable": False,
+                "open_findings": "### r1-f1 (major)\nMissing tests",
+                "acceptance_criteria": "focused post-fix review",
+            },
+        )
+        assert "Mode: **delta**" in rendered
+        assert "Fix base: `base0001`" in rendered
+        assert "Fixed commit: `fixed002`" in rendered
+        assert "base0001..fixed002" in rendered
+        assert "focused review of the fix delta" in rendered
+        assert "**Verify fixes**" in rendered
+        assert "**Integration impact**" in rendered
+        assert "Round 1 policy" not in rendered
+        assert "**Commit message quality**" not in rendered
+        assert "git diff base0001..fixed002" in rendered
+
+    def test_apply_review_template_no_new_major_outcome(self):
+        """Delta template instructs do-nothing when no new major appears."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Req",
+                "current_task_description": "Task",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "no new major" in collapsed
+        assert "do **nothing**" in rendered or "do nothing" in collapsed
+        assert "do not call `append`" in collapsed or "do not call append" in collapsed
+
+    def test_apply_review_template_new_major_outcome(self):
+        """Delta template permits recording only newly introduced majors."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Req",
+                "current_task_description": "Task",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "new major" in collapsed
+        assert "only record **new major**" in rendered
+        assert "Do NOT append minor issues" in rendered
+        assert "newly introduced majors" in collapsed or "new major(s)" in collapsed
+
+    def test_apply_review_template_reuses_check_evidence(self):
+        """Valid evidence skips identical lint/test reruns; invalid requires them."""
+        from prompt import render_prompt
+
+        base = {
+            "spec_content_concise": "Req",
+            "current_task_description": "Task",
+            "commit_sha": "deadbeef",
+            "review_round": 1,
+            "review_file": "/tmp/review.json",
+            "step_id": "step-5",
+            "spex_skill_dir": "/tmp/fake-skill",
+            "spec_name": "demo",
+            "review_mode": "full",
+            "mode": "full",
+        }
+        reusable = render_prompt(
+            "apply-review",
+            metadata={**base, "check_evidence_reusable": True},
+        )
+        assert "Reuse the persisted lint/test evidence" in reusable
+        assert "do **not** re-run identical successful checks" in reusable
+        assert "No reusable check evidence" not in reusable
+        assert "Reuse valid HEAD-bound check evidence" in reusable
+        assert "Continue with remaining non-check checklist" in reusable
+        assert "Record any known failures" not in reusable
+
+        required = render_prompt(
+            "apply-review",
+            metadata={**base, "check_evidence_reusable": False},
+        )
+        assert "No reusable check evidence" in required
+        assert "Run the project's lint" in required
+
+    @pytest.mark.slow
+    def test_minor_only_skips_delta_prompt_json(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """delta mode with only minor findings must not render a prompt."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Work",
+                details=(
+                    "Do stuff.\n\n"
+                    "**Acceptance criteria**: compact payloads.\n"
+                ),
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "delta-skip", tasks)
+        monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "delta-skip", "init",
+            "--step", "step-1", "--commit", "cafebabe",
+        ])
+        review_helper.main([
+            "--name", "delta-skip", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other",
+            "--title", "Style nit",
+            "--details", "optional",
+        ])
+        review_helper.main([
+            "--name", "delta-skip", "set-pending",
+            "--step", "step-1",
+            "--ids", "r1-f1",
+            "--base-commit", "cafebabe",
+        ])
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([
+                "apply-review", "--name", "delta-skip",
+                "--commit", "cafebabe", "--mode", "delta", "--json",
+            ])
+        assert exc_info.value.code == 0
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert data.get("skipped") is True
+        assert data.get("reason") == "minor_only"
+        assert data.get("mode") == "delta"
+        assert data.get("prompt") == ""
+        assert data.get("prompt_bytes") == 0
+
+    @pytest.mark.slow
+    def test_major_batch_renders_delta_review_prompt(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Major pending batch receives a focused delta apply-review prompt."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Work",
+                details=(
+                    "Do stuff.\n\n"
+                    "**Acceptance criteria**: focused post-fix review.\n"
+                ),
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "delta-major", tasks)
+        monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "delta-major", "init",
+            "--step", "step-1", "--commit", "fixed002",
+        ])
+        review_helper.main([
+            "--name", "delta-major", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "major",
+            "--category", "tests",
+            "--title", "Missing tests",
+            "--details", "Add coverage",
+        ])
+        review_helper.main([
+            "--name", "delta-major", "set-pending",
+            "--step", "step-1",
+            "--ids", "r1-f1",
+            "--base-commit", "base0001",
+        ])
+        # Simulate amend success so delta context has a fixed SHA.
+        path = review_helper.resolve_review_path("delta-major", "step-1")
+        data = review_helper.load_review(path)
+        data["fixed_commit_sha"] = "fixed002"
+        data["mode"] = "delta"
+        review_helper.save_review(path, data)
+        capsys.readouterr()
+
+        main([
+            "apply-review", "--name", "delta-major",
+            "--commit", "fixed002", "--mode", "delta", "--json",
+        ])
+        out = _parse_json_stdout(capsys.readouterr().out)
+        assert out.get("skipped") is not True
+        assert out["mode"] == "delta"
+        assert out["fix_base_commit_sha"] == "base0001"
+        assert out["fixed_commit_sha"] == "fixed002"
+        assert out["has_major"] is True
+        prompt = out["prompt"]
+        assert "Mode: **delta**" in prompt
+        assert "focused review of the fix delta" in prompt
+        assert "base0001" in prompt
+        assert "Missing tests" in prompt
+        assert out["prompt_bytes"] > 0
+
+    @pytest.mark.slow
+    def test_context_excludes_completed_and_future_bodies(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Done step",
+                details="COMPLETED_BODY_UNIQUE_TOKEN",
+                completed=True,
+            ),
+            _make_task(
+                "step-2",
+                name="Current",
+                details=(
+                    "Implement now.\n\n"
+                    "**Acceptance criteria**: no future leakage.\n"
+                ),
+            ),
+            _make_task(
+                "step-3",
+                name="Later",
+                details="FUTURE_BODY_UNIQUE_TOKEN",
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "compact-ctx", tasks)
+        (spec_dir / "spec.md").write_text(
+            "<!-- spex:begin:requirement -->\n# Requirement\n"
+            "Relevant req.\n"
+            "<!-- spex:begin:detailed-design -->\n# Detailed Design\n"
+            "LONG_DESIGN_SHOULD_DROP\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
+
+        from prompt import main
+
+        main([
+            "apply-review", "--name", "compact-ctx",
+            "--commit", "cafebabe", "--mode", "full", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        prompt = data["prompt"]
+        assert "COMPLETED_BODY_UNIQUE_TOKEN" not in prompt
+        assert "FUTURE_BODY_UNIQUE_TOKEN" not in prompt
+        assert "LONG_DESIGN_SHOULD_DROP" not in prompt
+        assert "no future leakage" in data.get("acceptance_criteria", "")
+        assert data["mode"] == "full"
+        assert data["prompt_bytes"] < 30_000
+        assert data["prompt_bytes"] == len(prompt.encode("utf-8"))
 
 
 @pytest.mark.slow
@@ -2177,10 +2848,10 @@ class TestApplyReviewAndFix:
         assert "detached HEAD" in data["prompt"]
         assert "FORBIDDEN" in data["prompt"]
 
-    def test_apply_fix_includes_single_finding(
+    def test_apply_fix_batch_includes_all_open_findings(
         self, tmp_path, monkeypatch, capsys,
     ):
-        """apply-fix injects only the requested finding."""
+        """apply-fix injects the full open batch in one fix prompt."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature"),
@@ -2209,27 +2880,195 @@ class TestApplyReviewAndFix:
             "--id", "r1-f2", "--severity", "minor",
             "--category", "other",
             "--title", "Other nit",
-            "--details", "Should not appear",
+            "--details", "Tighten naming",
         ])
         capsys.readouterr()  # drain helper stdout
+
+        main([
+            "apply-fix", "--name", "test-topic",
+            "--commit", "abc1234", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        prompt = data["prompt"]
+        assert "Missing unit tests" in prompt
+        assert "Other nit" in prompt
+        # Normalize whitespace across wrapped lines.
+        collapsed = " ".join(prompt.lower().split())
+        assert "complete finding batch" in collapsed
+        assert "Amend exactly once" in prompt
+        assert "lint/test" in collapsed
+        assert "commit --amend" in prompt
+        amend_fences = [
+            b for b in re.findall(r"```bash\n(.*?)```", prompt, re.S)
+            if "commit --amend" in b
+        ]
+        assert len(amend_fences) == 1
+        # No pre-amend completed_at write — orchestrator owns completion.
+        assert "--completed-at" not in prompt
+        assert "edit --step" not in prompt
+        assert "Do **not** mark findings complete" in prompt
+        assert "complete-batch" in prompt
+        assert data["task_id"] == "step-2"
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
+        assert "detached HEAD" in prompt
+        assert "git checkout" in prompt
+        assert "processed_ids" in prompt
+        assert "check_evidence" in prompt
+        assert "new_head" in prompt
+
+    def test_apply_fix_legacy_finding_id_keeps_full_batch(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Legacy --finding-id validates membership but does not shrink batch."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature"),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-2", "--commit", "abc1234",
+        ])
+        for fid, title in (("r1-f1", "First"), ("r1-f2", "Second")):
+            review_helper.main([
+                "--name", "test-topic", "append",
+                "--step", "step-2",
+                "--id", fid, "--severity", "minor",
+                "--category", "other",
+                "--title", title,
+                "--details", f"Details for {fid}",
+            ])
+        capsys.readouterr()
 
         main([
             "apply-fix", "--name", "test-topic",
             "--commit", "abc1234", "--finding-id", "r1-f1", "--json",
         ])
         data = _parse_json_stdout(capsys.readouterr().out)
-        assert "Missing unit tests" in data["prompt"]
-        assert "Add tests for edge cases" in data["prompt"]
-        assert "Other nit" not in data["prompt"]
-        assert "exactly one" in data["prompt"].lower()
-        assert "commit --amend" in data["prompt"]
-        assert "Amend now" in data["prompt"] or "amend immediately" in (
-            data["prompt"].lower()
-        )
-        assert data["task_id"] == "step-2"
+        assert "First" in data["prompt"]
+        assert "Second" in data["prompt"]
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
         assert data["finding_id"] == "r1-f1"
-        assert "detached HEAD" in data["prompt"]
-        assert "git checkout" in data["prompt"]
+
+    def test_apply_fix_rejects_finding_outside_batch(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """--finding-id not in the open batch exits non-zero."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        review_helper.main([
+            "--name", "test-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other",
+            "--title", "Only one",
+            "--details", "x",
+        ])
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "apply-fix", "--name", "test-topic",
+                    "--commit", "abc1234", "--finding-id", "missing",
+                ])
+        assert exc_info.value.code == 1
+        assert "not in the open fix batch" in caplog.text
+
+    def test_apply_fix_rejects_empty_finding_batch(
+        self, tmp_path, monkeypatch, caplog, capsys,
+    ):
+        """Empty open/pending batch exits non-zero (including --json)."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        # No findings appended → resolved batch is empty.
+        capsys.readouterr()  # drain helper stdout
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "apply-fix", "--name", "test-topic",
+                    "--commit", "abc1234", "--json",
+                ])
+        assert exc_info.value.code == 1
+        assert "open fix batch is empty" in caplog.text
+        # --json callers must not receive a successful prompt payload.
+        assert capsys.readouterr().out.strip() == ""
+
+    def test_apply_fix_prefers_pending_batch(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """When pending_findings is set, apply-fix renders that batch only."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        for fid, title in (
+            ("r1-f1", "In batch"),
+            ("r1-f2", "Also in batch"),
+            ("r1-f3", "Outside pending"),
+        ):
+            review_helper.main([
+                "--name", "test-topic", "append",
+                "--step", "step-1",
+                "--id", fid, "--severity", "minor",
+                "--category", "other",
+                "--title", title,
+                "--details", f"Details {fid}",
+            ])
+        review_helper.main([
+            "--name", "test-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "r1-f1,r1-f2",
+            "--base-commit", "abc1234",
+        ])
+        capsys.readouterr()
+
+        main([
+            "apply-fix", "--name", "test-topic",
+            "--commit", "abc1234", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
+        assert "In batch" in data["prompt"]
+        assert "Also in batch" in data["prompt"]
+        assert "Outside pending" not in data["prompt"]
+        assert "exactly one" not in data["prompt"].lower()
 
     def test_apply_review_requires_commit_without_file(
         self, tmp_path, monkeypatch, caplog,
@@ -2337,3 +3176,72 @@ class TestApplyReviewAndFix:
             assert data["task_id"] == "step-1"
         finally:
             clear_config_cache()
+
+    def test_apply_review_large_diff_keeps_prompt_and_task(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Large synthetic diff must not empty apply-review prompt/task."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task(
+                "step-2",
+                name="UNIQUE-LARGE-DIFF-TASK",
+                details=(
+                    "Implement feature.\n\n"
+                    "**Acceptance criteria**: keep task visible under size cap."
+                ),
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "large-diff-topic", tasks)
+        monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
+
+        # Real large commit so fetch_review_diff returns a monopolizing patch.
+        big = repo / "big_payload.txt"
+        big.write_text("X" * 80_000, encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "big_payload.txt"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "add large payload"],
+            cwd=str(repo), capture_output=True, check=True,
+        )
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo), capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        import review_helper
+        from prompt import (
+            _build_metadata,
+            _enrich_review_metadata,
+            main,
+            measure_prompt_bytes,
+        )
+
+        review_helper.main([
+            "--name", "large-diff-topic", "init",
+            "--step", "step-2", "--commit", sha,
+        ])
+        capsys.readouterr()
+
+        main([
+            "apply-review", "--name", "large-diff-topic",
+            "--commit", sha, "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert data.get("all_done") is not True
+        assert data["prompt"]
+        assert data["prompt_bytes"] > 0
+        assert data["prompt_bytes"] == measure_prompt_bytes(data["prompt"])
+        assert "UNIQUE-LARGE-DIFF-TASK" in data["prompt"]
+        assert "Review Checklist" in data["prompt"]
+
+        # Metadata after enrichment/size-cap must retain task description.
+        metadata = _build_metadata("apply-review", "large-diff-topic")
+        _enrich_review_metadata(
+            metadata, "large-diff-topic", commit_sha=sha, mode="full",
+        )
+        assert metadata.get("current_task_description")
+        assert "UNIQUE-LARGE-DIFF-TASK" in metadata["current_task_description"]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -32,7 +33,9 @@ VALID_CATEGORIES = (
     "security",
     "other",
 )
+# Caps full review rounds only; delta review must not increment ``round``.
 MAX_REVIEW_ROUND = 3
+VALID_MODES = ("full", "delta")
 
 VALID_SUBCOMMANDS = (
     "init",
@@ -43,6 +46,9 @@ VALID_SUBCOMMANDS = (
     "status",
     "show",
     "next",
+    "open-batch",
+    "set-pending",
+    "complete-batch",
 )
 
 _PARSE_ARGV: Optional[list[str]] = None
@@ -80,6 +86,108 @@ def _resolve_completed_at(value):
     return value
 
 
+def _default_batch_state(commit_sha: str = "") -> dict:
+    """Return default batch-state fields for a new or legacy review."""
+    return {
+        "mode": "full",
+        "reviewed_commit_sha": commit_sha or "",
+        "pending_findings": [],
+        "pending_has_major": False,
+        "fix_base_commit_sha": "",
+        "fixed_commit_sha": "",
+        "awaiting_delta": False,
+        "check_evidence": None,
+    }
+
+
+def normalize_review_state(data: dict) -> dict:
+    """Fill missing/malformed batch-state fields with backward-compatible defaults.
+
+    Mutates ``data`` in place and returns it. Legacy files without the new
+    keys behave as a full review with no pending batch. Invalid types are
+    replaced rather than raising, so callers can still query open findings.
+    """
+    defaults = _default_batch_state(str(data.get("commit_sha") or ""))
+    mode = data.get("mode", defaults["mode"])
+    if mode not in VALID_MODES:
+        mode = defaults["mode"]
+    data["mode"] = mode
+
+    reviewed = data.get("reviewed_commit_sha", defaults["reviewed_commit_sha"])
+    if not isinstance(reviewed, str):
+        reviewed = defaults["reviewed_commit_sha"]
+    data["reviewed_commit_sha"] = reviewed
+
+    pending = data.get("pending_findings", defaults["pending_findings"])
+    if not isinstance(pending, list):
+        pending = list(defaults["pending_findings"])
+    else:
+        pending = [str(x) for x in pending if x is not None and str(x)]
+    data["pending_findings"] = pending
+
+    if "pending_has_major" not in data or not isinstance(
+        data.get("pending_has_major"), bool,
+    ):
+        # Missing or non-bool: derive from pending IDs + findings.
+        pending_has_major = _pending_ids_have_major(data, pending)
+    else:
+        pending_has_major = data["pending_has_major"]
+    data["pending_has_major"] = pending_has_major
+
+    for key in ("fix_base_commit_sha", "fixed_commit_sha"):
+        value = data.get(key, defaults[key])
+        if not isinstance(value, str):
+            value = defaults[key]
+        data[key] = value
+
+    awaiting = data.get("awaiting_delta", defaults["awaiting_delta"])
+    if not isinstance(awaiting, bool):
+        awaiting = defaults["awaiting_delta"]
+    data["awaiting_delta"] = awaiting
+
+    evidence = data.get("check_evidence", defaults["check_evidence"])
+    if evidence is not None and not isinstance(evidence, dict):
+        evidence = defaults["check_evidence"]
+    data["check_evidence"] = evidence
+    return data
+
+
+def delta_warranted_after_batch(data: dict, had_major: bool) -> bool:
+    """True when complete-batch should leave ``awaiting_delta`` set.
+
+    Major batches need one delta review, except the hard-cap path: at max
+    full round after a delta already ran (``mode == \"delta\"``), fixing
+    remaining majors must go to Phase 7 without another delta.
+    """
+    if not had_major:
+        return False
+    round_num = int(data.get("round", 1))
+    mode = data.get("mode", "full")
+    if round_num >= MAX_REVIEW_ROUND and mode == "delta":
+        return False
+    return True
+
+
+def _pending_ids_have_major(data: dict, pending_ids: list) -> bool:
+    """True if any pending finding id refers to an open major finding."""
+    if not pending_ids:
+        return False
+    by_id = {
+        item.get("id"): item
+        for item in data.get("findings", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for fid in pending_ids:
+        item = by_id.get(fid)
+        if (
+            isinstance(item, dict)
+            and not item.get("completed_at")
+            and item.get("severity") == "major"
+        ):
+            return True
+    return False
+
+
 def load_review(path: Path) -> dict:
     """Load a review file; exit on missing or invalid JSON."""
     if not path.is_file():
@@ -96,12 +204,12 @@ def load_review(path: Path) -> dict:
     if "findings" not in data or not isinstance(data["findings"], list):
         logger.error("Error: review file missing 'findings' list.")
         sys.exit(1)
-    return data
+    return normalize_review_state(data)
 
 
 def save_review(path: Path, data: dict) -> None:
-    """Atomically write the review JSON file."""
-    atomic_write_json(path, data)
+    """Atomically write the review JSON file (batch-state fields normalized)."""
+    atomic_write_json(path, normalize_review_state(data))
 
 
 def _count_open(findings: list) -> tuple[int, int]:
@@ -131,14 +239,21 @@ def _format_finding(item: dict) -> str:
     )
 
 
-def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
-    """Create or reset a review file for the step."""
+def _new_review_document(step_id: str, commit_sha: str) -> dict:
+    """Build a fresh review document including batch-state defaults."""
     data = {
         "step_id": step_id,
         "commit_sha": commit_sha,
         "round": 1,
         "findings": [],
     }
+    data.update(_default_batch_state(commit_sha))
+    return data
+
+
+def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
+    """Create or reset a review file for the step."""
+    data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
     logger.info("Initialized '%s'.", path.name)
@@ -148,6 +263,7 @@ def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
         "step_id": step_id,
         "commit_sha": commit_sha,
         "round": 1,
+        "mode": data["mode"],
     }))
 
 
@@ -167,12 +283,7 @@ def _ensure_review_for_append(
             path.name,
         )
         sys.exit(1)
-    data = {
-        "step_id": step_id,
-        "commit_sha": commit_sha,
-        "round": 1,
-        "findings": [],
-    }
+    data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
     logger.info("Created '%s' on first append.", path.name)
@@ -281,7 +392,11 @@ def cmd_edit(path: Path, args) -> None:
 
 
 def cmd_bump_round(path: Path, commit_sha: str) -> None:
-    """Increment round and update commit_sha; preserve findings."""
+    """Increment full-review round and update commit_sha; preserve findings.
+
+    ``round`` counts full review rounds only (capped by MAX_REVIEW_ROUND).
+    Delta reviews must not call this; a bump always returns to mode=full.
+    """
     data = load_review(path)
     current = int(data.get("round", 1))
     if current >= MAX_REVIEW_ROUND:
@@ -294,6 +409,15 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
         sys.exit(1)
     data["round"] = current + 1
     data["commit_sha"] = commit_sha
+    data["mode"] = "full"
+    data["reviewed_commit_sha"] = commit_sha
+    # Clear prior fix batch; a new full round starts fresh.
+    data["pending_findings"] = []
+    data["pending_has_major"] = False
+    data["fix_base_commit_sha"] = ""
+    data["fixed_commit_sha"] = ""
+    data["awaiting_delta"] = False
+    data["check_evidence"] = None
     save_review(path, data)
     logger.info(
         "Bumped round to %d (commit_sha=%s).",
@@ -302,13 +426,21 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
     print(json.dumps({
         "round": data["round"],
         "commit_sha": commit_sha,
+        "mode": data["mode"],
         "findings_count": len(data.get("findings", [])),
     }))
-    from debug_log import emit_apply_anchor
+    from debug_log import emit_apply_anchor, emit_apply_route
 
     emit_apply_anchor(
         path.parent,
         f"===== APPLY review round → {data['round']} =====",
+    )
+    emit_apply_route(
+        path.parent,
+        "new_major_next_full_round",
+        step=data.get("step_id", ""),
+        round=data["round"],
+        commit=commit_sha,
     )
 
 
@@ -337,6 +469,7 @@ def _clean_status_payload(path: Path, step_id: str = "") -> dict:
         "open_major": 0,
         "open_minor": 0,
         "needs_fix": False,
+        "awaiting_delta": False,
         "ready_to_complete": True,
         "done": True,
         "exists": False,
@@ -353,10 +486,13 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
         open_major, open_minor = _count_open(data["findings"])
         round_num = int(data.get("round", 1))
         needs_fix = open_major > 0 or open_minor > 0
+        awaiting_delta = bool(data.get("awaiting_delta"))
         # ready_to_complete: no open majors, and either no open findings
         # or max round reached (open minors may remain after max rounds).
+        # Still awaiting delta after a major batch is not complete.
         ready_to_complete = (
             open_major == 0
+            and not awaiting_delta
             and (not needs_fix or round_num >= MAX_REVIEW_ROUND)
         )
         payload = {
@@ -366,9 +502,10 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             "open_major": open_major,
             "open_minor": open_minor,
             "needs_fix": needs_fix,
+            "awaiting_delta": awaiting_delta,
             "ready_to_complete": ready_to_complete,
-            # done: no open findings
-            "done": not needs_fix,
+            # done: no open findings and not waiting on post-major delta
+            "done": (not needs_fix) and (not awaiting_delta),
             "exists": True,
             "review_file": path.name,
         }
@@ -380,6 +517,7 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             f"open_major={payload['open_major']} "
             f"open_minor={payload['open_minor']} "
             f"needs_fix={str(payload['needs_fix']).lower()} "
+            f"awaiting_delta={str(payload['awaiting_delta']).lower()} "
             f"ready_to_complete={str(payload['ready_to_complete']).lower()} "
             f"done={str(payload['done']).lower()} "
             f"exists={str(payload['exists']).lower()}"
@@ -468,6 +606,587 @@ def get_finding_by_id(data: dict, finding_id: str) -> Optional[dict]:
             return item
     return None
 
+
+def _finding_summary(item: dict) -> dict:
+    """Stable subset of finding fields for batch query output."""
+    return {
+        "id": item.get("id", ""),
+        "severity": item.get("severity", ""),
+        "category": item.get("category", ""),
+        "title": item.get("title", ""),
+        "details": item.get("details", ""),
+    }
+
+
+def build_open_batch_payload(
+    data: Optional[dict],
+    path: Path,
+    step_id: str = "",
+    exists: bool = True,
+) -> dict:
+    """Build the open-batch JSON payload (stable finding order + has_major)."""
+    if data is None:
+        defaults = _default_batch_state()
+        return {
+            "step_id": step_id,
+            "commit_sha": "",
+            "round": 1,
+            "mode": defaults["mode"],
+            "reviewed_commit_sha": "",
+            "pending_findings": [],
+            "pending_has_major": False,
+            "fix_base_commit_sha": "",
+            "fixed_commit_sha": "",
+            "awaiting_delta": False,
+            "check_evidence": None,
+            "has_major": False,
+            "open_count": 0,
+            "findings": [],
+            "exists": False,
+            "review_file": path.name,
+        }
+    data = normalize_review_state(data)
+    open_items = get_open_findings(data)
+    has_major = any(item.get("severity") == "major" for item in open_items)
+    return {
+        "step_id": data.get("step_id", "") or step_id,
+        "commit_sha": data.get("commit_sha", ""),
+        "round": int(data.get("round", 1)),
+        "mode": data["mode"],
+        "reviewed_commit_sha": data["reviewed_commit_sha"],
+        "pending_findings": list(data["pending_findings"]),
+        "pending_has_major": bool(data["pending_has_major"]),
+        "fix_base_commit_sha": data["fix_base_commit_sha"],
+        "fixed_commit_sha": data["fixed_commit_sha"],
+        "awaiting_delta": bool(data["awaiting_delta"]),
+        "check_evidence": data["check_evidence"],
+        "has_major": has_major,
+        "open_count": len(open_items),
+        "findings": [_finding_summary(item) for item in open_items],
+        "exists": exists,
+        "review_file": path.name,
+    }
+
+
+def cmd_open_batch(path: Path, step_id: str = "") -> None:
+    """Print all open findings for the current round as one JSON batch."""
+    if not path.is_file():
+        payload = build_open_batch_payload(
+            None, path, step_id=step_id, exists=False,
+        )
+        print(json.dumps(payload))
+        _emit_open_batch_telemetry(path.parent, payload)
+        return
+    data = load_review(path)
+    payload = build_open_batch_payload(
+        data, path, step_id=step_id, exists=True,
+    )
+    print(json.dumps(payload))
+    _emit_open_batch_telemetry(path.parent, payload)
+
+
+def _emit_open_batch_telemetry(spec_dir: Path, payload: dict) -> None:
+    """Close an open review span and emit the post-review route decision.
+
+    Called after every open-batch so full/delta review wall time is recorded
+    with an explicit ``duration_ms`` (not inferred from the next CLI tee).
+    """
+    from debug_log import emit_apply_route, end_apply_span, has_open_apply_span
+
+    step = payload.get("step_id", "")
+    round_num = int(payload.get("round", 1) or 1)
+    mode = payload.get("mode") or "full"
+    open_count = int(payload.get("open_count", 0) or 0)
+    has_major = bool(payload.get("has_major"))
+    commit = payload.get("commit_sha", "")
+
+    if has_open_apply_span(spec_dir, "review"):
+        end_apply_span(
+            spec_dir,
+            "review",
+            step=step,
+            round=round_num,
+            mode=mode,
+            commit=commit,
+            findings=open_count,
+            has_major=has_major,
+        )
+        if open_count == 0:
+            result = "phase7_no_findings"
+        elif mode == "delta":
+            if not has_major:
+                result = "phase7_no_findings"
+            elif round_num >= MAX_REVIEW_ROUND:
+                result = "hard_cap_batch_fix"
+            else:
+                # bump-round is the sole owner of new_major_next_full_round.
+                result = None
+        else:
+            result = "batch_fix"
+        if result is not None:
+            emit_apply_route(
+                spec_dir,
+                result,
+                step=step,
+                round=round_num,
+                mode=mode,
+                findings=open_count,
+                has_major=has_major,
+                commit=commit,
+            )
+
+
+def parse_id_list(raw: str) -> list[str]:
+    """Parse a comma-separated finding-id list into non-empty strings."""
+    if not raw or not str(raw).strip():
+        return []
+    return [part.strip() for part in str(raw).split(",") if part.strip()]
+
+
+def sha_matches(left: str, right: str) -> bool:
+    """True if two commit SHAs refer to the same commit (prefix-safe)."""
+    a = (left or "").strip().lower()
+    b = (right or "").strip().lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    # Accept short/full prefix match when both look like hex SHAs.
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    if len(shorter) < 7:
+        return False
+    return longer.startswith(shorter) and all(
+        c in "0123456789abcdef" for c in longer
+    )
+
+
+def get_head_sha(cwd: Optional[str] = None) -> str:
+    """Return full HEAD SHA, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def is_project_tree_clean(
+    spex_root: Optional[str] = None,
+    cwd: Optional[str] = None,
+) -> tuple[bool, list[str]]:
+    """Return (clean, dirty_paths) excluding paths under spex_root."""
+    from apply_helper import collect_dirty
+    from common import get_spex_root
+
+    root = spex_root or get_spex_root(
+        workdir=cwd, require_git=False, auto_init=False,
+    )
+    try:
+        dirty, paths, _ = collect_dirty(root, cwd=cwd)
+    except (OSError, subprocess.CalledProcessError):
+        return False, ["<git-status-failed>"]
+    return (not dirty, list(paths))
+
+
+def normalize_check_evidence(raw) -> Optional[dict]:
+    """Parse and normalize check evidence; return None if invalid."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(raw, dict):
+        return None
+    commit_sha = raw.get("commit_sha")
+    if not isinstance(commit_sha, str) or not commit_sha.strip():
+        return None
+    checks = raw.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return None
+    normalized_checks = []
+    for item in checks:
+        if not isinstance(item, dict):
+            return None
+        command = item.get("command")
+        exit_code = item.get("exit_code")
+        if not isinstance(command, str) or not command.strip():
+            return None
+        # bool is a subclass of int; reject so False is not treated as 0.
+        if type(exit_code) is not int:
+            return None
+        completed_at = item.get("completed_at", "")
+        if completed_at is None:
+            completed_at = ""
+        if not isinstance(completed_at, str):
+            return None
+        entry = {
+            "command": command,
+            "exit_code": exit_code,
+            "completed_at": completed_at,
+        }
+        duration_ms = item.get("duration_ms")
+        if type(duration_ms) is int and duration_ms >= 0:
+            entry["duration_ms"] = duration_ms
+        normalized_checks.append(entry)
+    return {
+        "commit_sha": commit_sha.strip(),
+        "checks": normalized_checks,
+    }
+
+
+def evidence_is_successful(evidence: dict, expected_sha: str) -> bool:
+    """True if evidence is bound to expected_sha and every check exited 0."""
+    if not sha_matches(evidence.get("commit_sha", ""), expected_sha):
+        return False
+    checks = evidence.get("checks") or []
+    if not checks:
+        return False
+    return all(
+        isinstance(c, dict)
+        and type(c.get("exit_code")) is int
+        and c.get("exit_code") == 0
+        for c in checks
+    )
+
+
+def _finding_ids_set(ids) -> set[str]:
+    """Normalize an iterable of finding ids to a set of strings."""
+    return {str(x) for x in ids if x is not None and str(x)}
+
+
+def validate_complete_batch(
+    data: dict,
+    finding_ids: list[str],
+    base_sha: str,
+    new_sha: str,
+    evidence: dict,
+    head_sha: str,
+    tree_clean: bool,
+) -> Optional[str]:
+    """Return an error message if complete-batch validation fails."""
+    data = normalize_review_state(data)
+    ids = list(finding_ids)
+    if not ids:
+        return "finding id list is empty"
+    if not base_sha or not new_sha:
+        return "base and new commit SHAs are required"
+    if sha_matches(base_sha, new_sha):
+        return "new commit SHA must differ from base commit SHA"
+    if not sha_matches(head_sha, new_sha):
+        return "new commit SHA does not match current HEAD"
+    if not tree_clean:
+        return "project tree is dirty outside spex_root"
+    if not evidence_is_successful(evidence, new_sha):
+        return "check evidence missing, failed, or not bound to new SHA"
+
+    pending = list(data.get("pending_findings") or [])
+    if not pending:
+        return "no pending finding batch"
+    if _finding_ids_set(pending) != _finding_ids_set(ids):
+        return "finding id set does not match pending batch"
+
+    stored_base = data.get("fix_base_commit_sha") or ""
+    if not stored_base or not sha_matches(stored_base, base_sha):
+        return "base commit SHA does not match fix_base_commit_sha"
+
+    review_sha = data.get("commit_sha") or ""
+    if not review_sha or not sha_matches(review_sha, base_sha):
+        return "review commit_sha does not match expected base"
+
+    by_id = {
+        item.get("id"): item
+        for item in data.get("findings", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for fid in ids:
+        item = by_id.get(fid)
+        if item is None:
+            return f"finding id '{fid}' not found"
+        if item.get("completed_at"):
+            return f"finding id '{fid}' is already completed"
+    return None
+
+
+def apply_complete_batch(
+    data: dict,
+    finding_ids: list[str],
+    new_sha: str,
+    evidence: dict,
+    completed_at: Optional[str] = None,
+) -> dict:
+    """Mutate review data to mark the pending batch complete (in memory)."""
+    data = normalize_review_state(data)
+    had_major = bool(data.get("pending_has_major"))
+    stamp = completed_at or local_iso_timestamp()
+    id_set = _finding_ids_set(finding_ids)
+    for item in data.get("findings", []):
+        if isinstance(item, dict) and item.get("id") in id_set:
+            item["completed_at"] = stamp
+    data["fixed_commit_sha"] = new_sha
+    data["check_evidence"] = evidence
+    data["commit_sha"] = new_sha
+    data["pending_findings"] = []
+    data["pending_has_major"] = False
+    # Durable post-batch signal: survives clearing pending_has_major so
+    # 6d / resume can still require delta (unless hard-cap skip).
+    data["awaiting_delta"] = delta_warranted_after_batch(data, had_major)
+    return normalize_review_state(data)
+
+
+def complete_batch_already_done(
+    data: dict, finding_ids: list[str], new_sha: str,
+) -> bool:
+    """True if this batch was already completed for new_sha (resume no-op)."""
+    data = normalize_review_state(data)
+    if not sha_matches(data.get("fixed_commit_sha") or "", new_sha):
+        return False
+    by_id = {
+        item.get("id"): item
+        for item in data.get("findings", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for fid in finding_ids:
+        item = by_id.get(fid)
+        if item is None or not item.get("completed_at"):
+            return False
+    return True
+
+
+def cmd_set_pending(
+    path: Path,
+    finding_ids: list[str],
+    base_sha: str,
+) -> None:
+    """Establish a pending fix batch from open finding IDs."""
+    ids = list(finding_ids)
+    if not ids:
+        logger.error("Error: --ids must list at least one finding id.")
+        sys.exit(1)
+    if len(ids) != len(set(ids)):
+        logger.error("Error: --ids contains duplicate finding ids.")
+        sys.exit(1)
+    if not base_sha:
+        logger.error("Error: --base-commit is required.")
+        sys.exit(1)
+
+    data = load_review(path)
+    by_id = {
+        item.get("id"): item
+        for item in data.get("findings", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for fid in ids:
+        item = by_id.get(fid)
+        if item is None:
+            logger.error("Error: finding id '%s' not found.", fid)
+            sys.exit(1)
+        if item.get("completed_at"):
+            logger.error(
+                "Error: finding id '%s' is already completed.", fid,
+            )
+            sys.exit(1)
+
+    data["pending_findings"] = ids
+    data["pending_has_major"] = _pending_ids_have_major(data, ids)
+    data["fix_base_commit_sha"] = base_sha
+    data["fixed_commit_sha"] = ""
+    data["awaiting_delta"] = False
+    data["check_evidence"] = None
+    save_review(path, data)
+    logger.info(
+        "Set pending batch (%d findings, base=%s).",
+        len(ids), base_sha,
+    )
+    print(json.dumps({
+        "pending_findings": ids,
+        "pending_has_major": data["pending_has_major"],
+        "fix_base_commit_sha": base_sha,
+        "count": len(ids),
+    }))
+    from debug_log import start_apply_span
+
+    start_apply_span(
+        path.parent,
+        "fix",
+        step=data.get("step_id", ""),
+        round=int(data.get("round", 1) or 1),
+        ids=ids,
+        has_major=bool(data["pending_has_major"]),
+        base=base_sha,
+    )
+
+def cmd_complete_batch(
+    path: Path,
+    finding_ids: list[str],
+    base_sha: str,
+    new_sha: str,
+    evidence_raw,
+    spex_root: Optional[str] = None,
+    cwd: Optional[str] = None,
+) -> None:
+    """Atomically complete a pending batch after amend + verification.
+
+    On any validation failure: exit non-zero without writing completed_at.
+    Supports resume when amend already moved HEAD but the write was skipped.
+    """
+    evidence = normalize_check_evidence(evidence_raw)
+    if evidence is None:
+        logger.error(
+            "Error: --evidence must be JSON with commit_sha and "
+            "non-empty successful checks.",
+        )
+        sys.exit(1)
+
+    data = load_review(path)
+    ids = list(finding_ids)
+
+    # Idempotent resume: batch already marked complete for this SHA.
+    if complete_batch_already_done(data, ids, new_sha):
+        logger.info(
+            "Pending batch already completed for %s; nothing to write.",
+            new_sha,
+        )
+        print(json.dumps({
+            "completed": True,
+            "resumed": True,
+            "fixed_commit_sha": data.get("fixed_commit_sha", ""),
+            "completed_ids": ids,
+            "awaiting_delta": bool(data.get("awaiting_delta")),
+        }))
+        return
+
+    head_sha = get_head_sha(cwd)
+    tree_clean, dirty_paths = is_project_tree_clean(
+        spex_root=spex_root, cwd=cwd,
+    )
+    err = validate_complete_batch(
+        data, ids, base_sha, new_sha, evidence, head_sha, tree_clean,
+    )
+    if err:
+        logger.error("Error: complete-batch rejected: %s.", err)
+        if dirty_paths and not tree_clean:
+            logger.error("Dirty paths: %s", ", ".join(dirty_paths[:20]))
+        sys.exit(1)
+
+    # Snapshot open state so a failed write cannot leave a partial file
+    # (atomic_write_json already replaces whole file; keep in-memory only).
+    had_major = bool(data.get("pending_has_major"))
+    apply_complete_batch(data, ids, new_sha, evidence)
+    save_review(path, data)
+    logger.info(
+        "Completed pending batch (%d findings, fixed=%s).",
+        len(ids), new_sha,
+    )
+    awaiting_delta = bool(data.get("awaiting_delta"))
+    print(json.dumps({
+        "completed": True,
+        "resumed": False,
+        "fixed_commit_sha": new_sha,
+        "completed_ids": ids,
+        "check_evidence": evidence,
+        "awaiting_delta": awaiting_delta,
+    }))
+    _emit_complete_batch_telemetry(
+        path.parent,
+        step_id=data.get("step_id", ""),
+        round_num=int(data.get("round", 1) or 1),
+        ids=ids,
+        had_major=had_major,
+        base_sha=base_sha,
+        new_sha=new_sha,
+        evidence=evidence,
+        awaiting_delta=awaiting_delta,
+    )
+
+
+def _emit_complete_batch_telemetry(
+    spec_dir: Path,
+    *,
+    step_id: str,
+    round_num: int,
+    ids: list[str],
+    had_major: bool,
+    base_sha: str,
+    new_sha: str,
+    evidence: dict,
+    awaiting_delta: bool,
+) -> None:
+    """Emit checks/fix end anchors and the post-batch route decision."""
+    from debug_log import (
+        emit_apply_route,
+        end_apply_span,
+        has_open_apply_span,
+        start_apply_span,
+        sum_check_evidence_duration_ms,
+    )
+
+    checks = list(evidence.get("checks") or [])
+    evidence_ms = sum_check_evidence_duration_ms(evidence)
+    ok = all(
+        isinstance(c, dict) and c.get("exit_code") == 0 for c in checks
+    ) if checks else False
+
+    # Checks duration is evidence-bound only — never wall-clock from an
+    # early open span (e.g. fix-prompt time). Missing per-check
+    # duration_ms yields duration_ms=0 rather than a fabricated value.
+    if not has_open_apply_span(spec_dir, "checks"):
+        start_apply_span(
+            spec_dir,
+            "checks",
+            emit_begin=True,
+            step=step_id,
+            count=len(checks),
+            sha=new_sha,
+        )
+    end_apply_span(
+        spec_dir,
+        "checks",
+        duration_ms=evidence_ms,
+        step=step_id,
+        count=len(checks),
+        ok=ok,
+        sha=new_sha,
+    )
+
+    if not has_open_apply_span(spec_dir, "fix"):
+        start_apply_span(
+            spec_dir,
+            "fix",
+            emit_begin=False,
+            step=step_id,
+            round=round_num,
+            ids=ids,
+            has_major=had_major,
+            base=base_sha,
+        )
+    end_apply_span(
+        spec_dir,
+        "fix",
+        step=step_id,
+        round=round_num,
+        ids=ids,
+        has_major=had_major,
+        base=base_sha,
+        new=new_sha,
+    )
+
+    result = "major_delta" if awaiting_delta else "minor_direct_complete"
+    emit_apply_route(
+        spec_dir,
+        result,
+        step=step_id,
+        round=round_num,
+        has_major=had_major,
+        base=base_sha,
+        new=new_sha,
+    )
 
 def cmd_next(path: Path, step_id: str = "") -> None:
     """Print the first open finding as JSON (or id=null if none)."""
@@ -731,6 +1450,73 @@ def _build_parser():
     )
     p_next.add_argument("--step", required=True, help="Step id")
 
+    p_open_batch = subs.add_parser(
+        "open-batch",
+        description=(
+            "Print all open findings for the current round as one "
+            "JSON batch, including has_major and batch-state fields."
+        ),
+        help="All open findings as one batch (JSON)",
+    )
+    p_open_batch.add_argument("--step", required=True, help="Step id")
+
+    p_set_pending = subs.add_parser(
+        "set-pending",
+        description=(
+            "Establish a pending fix batch from open finding IDs "
+            "and record the fix-base commit SHA."
+        ),
+        help="Set pending finding batch before fix",
+    )
+    p_set_pending.add_argument("--step", required=True, help="Step id")
+    p_set_pending.add_argument(
+        "--ids", required=True,
+        help="Comma-separated finding IDs for the pending batch",
+    )
+    p_set_pending.add_argument(
+        "--base-commit", required=True, dest="base_sha",
+        help="Commit SHA before the batch fix amend",
+    )
+
+    p_complete = subs.add_parser(
+        "complete-batch",
+        description=(
+            "Atomically mark a pending finding batch complete after a "
+            "successful amend and verified checks. Writes nothing when "
+            "validation fails (findings stay open)."
+        ),
+        help="Atomically complete pending batch after amend",
+    )
+    p_complete.add_argument("--step", required=True, help="Step id")
+    p_complete.add_argument(
+        "--ids", required=True,
+        help="Comma-separated finding IDs (must match pending batch)",
+    )
+    p_complete.add_argument(
+        "--base-commit", required=True, dest="base_sha",
+        help="Expected fix-base / review commit SHA before amend",
+    )
+    p_complete.add_argument(
+        "--new-commit", required=True, dest="new_sha",
+        help="Commit SHA after amend (must equal current HEAD)",
+    )
+    p_complete.add_argument(
+        "--evidence", default=None,
+        help="Check evidence JSON (commit_sha + successful checks)",
+    )
+    p_complete.add_argument(
+        "--evidence-from-stdin", action="store_true",
+        help="Read check evidence JSON from stdin",
+    )
+    p_complete.add_argument(
+        "--spex-root", default=None,
+        help="Spex root to exclude from dirty-tree checks",
+    )
+    p_complete.add_argument(
+        "--workdir", default=None,
+        help="Git workdir for HEAD and dirty checks (default: cwd)",
+    )
+
     return parser
 
 
@@ -785,6 +1571,31 @@ def main(argv=None):
         )
     elif args.subcmd == "next":
         cmd_next(path, step_id=step_id)
+    elif args.subcmd == "open-batch":
+        cmd_open_batch(path, step_id=step_id)
+    elif args.subcmd == "set-pending":
+        cmd_set_pending(
+            path, parse_id_list(args.ids), args.base_sha,
+        )
+    elif args.subcmd == "complete-batch":
+        if args.evidence_from_stdin:
+            evidence_raw = sys.stdin.read()
+        elif args.evidence is not None:
+            evidence_raw = args.evidence
+        else:
+            logger.error(
+                "Error: pass --evidence or --evidence-from-stdin.",
+            )
+            sys.exit(1)
+        cmd_complete_batch(
+            path,
+            parse_id_list(args.ids),
+            args.base_sha,
+            args.new_sha,
+            evidence_raw,
+            spex_root=args.spex_root,
+            cwd=args.workdir,
+        )
 
 
 if __name__ == "__main__":
