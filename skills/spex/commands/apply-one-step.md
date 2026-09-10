@@ -25,11 +25,11 @@ Apply a single step from a specification's todo list.
 ## Preconditions
 
 - Load and follow `references/cli-contract.md` exactly
-- Bind from `$user_prompt`: `$spec_name` (Usage token or whole
-  prompt). `$user_prompt` is already the redacted remainder after
-  the router strips the recognized command/alias token (see
-  SKILL.md Routing Discipline). Missing name -> Phase 1 lists
-  candidates
+- Load and follow `references/resolve-spec-name.md` exactly
+  (shared first-word probe + empty-name re-list)
+- `$user_prompt` is already the redacted remainder after the router
+  strips the recognized command/alias token (see SKILL.md Routing
+  Discipline). Phase 1 follows `resolve-spec-name.md`
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
   stage/commit paths under `$spex_root/`. Persist `commit_title`
   before `completed_at` when committing
@@ -49,15 +49,19 @@ Apply a single step from a specification's todo list.
 
 ### Phase 1: Resolve Spec
 
-- CMD:
+- Load and follow `references/resolve-spec-name.md` exactly.
+  Caller CMD:
 
-```bash
-$spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
-```
+  ```bash
+  $spex_skill_dir/scripts/spex list --json --must-undone "<probe>"
+  ```
 
-- Load and follow `references/resolve-spec-list.md` exactly.
-  ON_FAIL (true script error) -> STOP
-- **Empty `[]` handling:** IF resolve yields `[]`:
+  where `<probe>` is `$first_word` or empty per that reference.
+  Load and follow `references/resolve-spec-list.md`. ON_FAIL (true
+  script error) -> STOP
+- **Empty `[]` handling:** IF resolve yields `[]` (including after
+  resolve-spec-name step 3), or a filtered first-word probe left a
+  non-empty `$spec_name` recovery candidate with no undone match:
   - IF `$spec_name` is non-empty → **Completed-spec recovery**,
     re-check:
 

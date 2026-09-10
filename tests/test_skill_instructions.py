@@ -19,6 +19,9 @@ TODO_HELPER_COOKBOOK = (
 RESOLVE_SPEC_LIST = (
     REPO_ROOT / "skills" / "spex" / "references" / "resolve-spec-list.md"
 )
+RESOLVE_SPEC_NAME = (
+    REPO_ROOT / "skills" / "spex" / "references" / "resolve-spec-name.md"
+)
 APPLY_TASK_PHASES = (
     REPO_ROOT / "skills" / "spex" / "references" / "apply-task-phases.md"
 )
@@ -256,6 +259,7 @@ class TestSkillCredentialSafety:
             SPEC_ASSETS,
             TODO_HELPER_COOKBOOK,
             RESOLVE_SPEC_LIST,
+            RESOLVE_SPEC_NAME,
         )
         leftovers: list[str] = []
         for path in sop_paths:
@@ -477,31 +481,22 @@ class TestModifyPlanOnlySop:
     """Lock modify.md binding, PLAN whitelist, and Load pointers."""
 
     def test_binds_spec_name_and_request_from_user_prompt(self):
-        pre = _h2_section(_read(MODIFY_MD), "Preconditions")
+        """R4-F9 / P1-9: shared resolve-spec-name replaces hyphen heuristic."""
+        text = _read(MODIFY_MD)
+        pre = _h2_section(text, "Preconditions")
         _index(pre, "`$user_prompt`")
         _index(pre, "`$spec_name`")
         _index(pre, "`$request`")
-        _index(pre, "priority")
         _index(pre, "untrusted")
-        _index(pre, "looks like a spec name")
-        # R3-F7 / P1-7: must contain a hyphen (exclude bare words)
-        _index(pre, "`^[a-z0-9]+(-[a-z0-9]+)+$`")
-        _index(pre, "must contain a hyphen")
-        _index(pre, "`add`")
-        _index(pre, "`fix`")
-        _index(pre, "≤ 64")
-        _index(pre, r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`")
-        _index(pre, "no whitespace")
-        _index(pre, "multi-word")
-        _index(pre, "name candidate")
-        _index(pre, "`$spec_name` ← the candidate")
-        _index(pre, "`[]`")
-        _index(pre, "unlike a name")
-        _index(pre, "whole `$user_prompt`")
-        _index(pre, "rebind")
-        _index(pre, "re-run Phase 1 with empty name")
+        _index(pre, "Load and follow `references/resolve-spec-name.md`")
         _index(pre, "not** confirming")
-        _index(pre, "`$request`")
+        # Step-23 hyphen / date-prefix heuristics must be gone
+        assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in text
+        assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in text
+        assert "must contain a hyphen" not in text
+        assert "looks like a spec name" not in text
+        assert "name candidate" not in text
+        assert "≤ 64" not in text
 
     def test_plan_write_whitelist_only_spec_path(self):
         text = _read(MODIFY_MD)
@@ -515,19 +510,24 @@ class TestModifyPlanOnlySop:
         _index(phase10, "outside `$spec_path`")
         _index(phase10, "plan-command-common.md")
 
-    def test_phase1_loads_resolve_spec_list(self):
+    def test_phase1_loads_resolve_spec_name_and_list(self):
         phase1 = _h3_section(_read(MODIFY_MD), "Phase 1: Resolve Spec")
+        _index(
+            phase1,
+            "Load and follow `references/resolve-spec-name.md`",
+        )
         _index(
             phase1,
             "Load and follow `references/resolve-spec-list.md`",
         )
         _index(phase1, "`[]`")
-        # R3-F7 / P1-7: echo-confirm after single match
-        _index(phase1, "spec=<X> / request=<Y>")
-        _index(phase1, "wait for confirmation")
-        _index(phase1, "round trip")
-        _index(phase1, "not** confirm")
-        _index(phase1, "`$request`")
+        # Echo-confirm lives in the shared reference (step-23 survives)
+        shared = _read(RESOLVE_SPEC_NAME)
+        _index(shared, "spec=<X> / request=<Y>")
+        _index(shared, "wait for confirmation")
+        _index(shared, "round trip")
+        _index(shared, "not** confirm")
+        _index(shared, "`$request`")
 
     def test_resolve_spec_list_documents_substring_matching(self):
         """R3-F7 / P1-7: list patterns are substring, not exact."""
@@ -537,6 +537,10 @@ class TestModifyPlanOnlySop:
         _index(notes, "compare `spec_name`")
         _index(notes, "regex")
         _index(notes, "glob")
+        # R4-F9: shared name resolver repeats the substring warning
+        name_ref = _read(RESOLVE_SPEC_NAME)
+        _index(name_ref, "**substrings**")
+        _index(name_ref, "exact match")
 
     def test_phase2_selecting_spec_does_not_confirm_request(self):
         phase2 = _h3_section(
@@ -802,6 +806,10 @@ class TestApplyStepReviewSop:
             phase6 = _h3_section(text, "Phase 6: Review Loop")
             _index(phase6, "Load and follow `references/apply-review-loop.md`")
             phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+            _index(
+                phase1,
+                "Load and follow `references/resolve-spec-name.md`",
+            )
             _index(
                 phase1,
                 "Load and follow `references/resolve-spec-list.md`",
@@ -1142,6 +1150,70 @@ class TestSharedSopReferences:
         _index(text, "True error")
         _index(text, "**STOP**")
 
+    def test_resolve_spec_name_shared_across_commands(self):
+        """R4-F9 / P1-9: one name-resolution rule for four commands."""
+        assert RESOLVE_SPEC_NAME.is_file()
+        text = _read(RESOLVE_SPEC_NAME)
+        assert len(text.splitlines()) <= 50
+        _index(text, "$first_word")
+        _index(text, "unconditionally")
+        _index(text, "list --json")
+        _index(text, "empty name")
+        _index(text, "spec=<X> / request=<Y>")
+        _index(text, "**substrings**")
+        _index(text, "resolve-spec-list.md")
+        # Filtered [] must keep first word as recovery candidate so
+        # apply/merge named completed/unfinished recovery stays reachable
+        _index(text, "recovery candidate")
+        _index(text, "--must-undone")
+        _index(text, "--must-done")
+        _index(text, "**do not** clear")
+        _index(text, "completed-spec")
+        _index(text, "unfinished-spec")
+        needle = "Load and follow `references/resolve-spec-name.md`"
+        for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD, MERGE_MD):
+            _index(_read(path), needle)
+        modify = _read(MODIFY_MD)
+        assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in modify
+        assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in modify
+
+    def test_filtered_empty_probe_keeps_recovery_before_empty_relist(self):
+        """r1-f3: filtered [] keeps first-word for --must-done / plain re-check."""
+        resolve = _read(RESOLVE_SPEC_NAME)
+        # Shared algorithm: preserve recovery candidate before empty-name re-list
+        candidate = _index(resolve, "recovery candidate")
+        keep = _index(resolve, "**do not** clear")
+        empty_relist = _index(resolve, "with an empty name")
+        assert candidate < empty_relist, (
+            "recovery candidate must be set before empty-name re-list"
+        )
+        assert keep < empty_relist, (
+            "filtered [] must not clear the name before empty-name re-list"
+        )
+        _index(resolve, "never wipe a filtered recovery candidate")
+        _index(resolve, "completed/unfinished recovery")
+
+        # apply / apply-one-step: candidate remains for --must-done re-check
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            phase1 = _h3_section(_read(path), "Phase 1: Resolve Spec")
+            cand = _index(phase1, "recovery candidate")
+            must_done = _index(phase1, '--must-done "$spec_name"')
+            empty_stop = _index(phase1, "empty / missing `$spec_name`")
+            assert cand < must_done < empty_stop, (
+                f"{path.name}: recovery candidate must stay available "
+                "for --must-done before empty-name STOP"
+            )
+
+        # merge: candidate remains for plain list re-check
+        merge_p1 = _h3_section(_read(MERGE_MD), "Phase 1: Resolve Spec")
+        cand = _index(merge_p1, "recovery candidate")
+        plain = _index(merge_p1, 'list --json "$spec_name"')
+        empty_stop = _index(merge_p1, "empty / missing `$spec_name`")
+        assert cand < plain < empty_stop, (
+            "merge: recovery candidate must stay available for plain "
+            "list re-check before empty-name STOP"
+        )
+
     def test_apply_task_phases_exists_with_core_anchors(self):
         assert APPLY_TASK_PHASES.is_file()
         text = _read(APPLY_TASK_PHASES)
@@ -1191,6 +1263,7 @@ class TestApplyOneStepCompletedSpecAndDedupe:
             _index(phase1, '"$spec_name"')
             _index(phase1, "Completed-spec recovery")
             _index(phase1, "**Empty `[]` handling:**")
+            _index(phase1, "recovery candidate")
             _index(phase1, "already")
             _index(phase1, "post-action")
             _index(phase1, "empty / missing `$spec_name`")
@@ -1442,10 +1515,15 @@ class TestMergeArchiveInitSop:
         phase1 = _h3_section(text, "Phase 1: Resolve Spec")
         _index(
             phase1,
+            "Load and follow `references/resolve-spec-name.md`",
+        )
+        _index(
+            phase1,
             "Load and follow `references/resolve-spec-list.md`",
         )
         _index(phase1, "--must-done")
         _index(phase1, "Unfinished-spec recovery")
+        _index(phase1, "recovery candidate")
         _index(phase1, 'list --json "$spec_name"')
         _index(phase1, "not finished")
         _index(phase1, "x/y")

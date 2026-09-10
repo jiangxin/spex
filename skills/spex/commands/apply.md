@@ -15,14 +15,16 @@ Apply a specification to implement code step by step.
 ## Preconditions
 
 - Load and follow `references/cli-contract.md` exactly
+- Load and follow `references/resolve-spec-name.md` exactly
+  (shared first-word probe; `--all` binds before that algorithm)
 - Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
   (never call the task prompt `$prompt`)
-- Bind from `$user_prompt`: `$spec_name` or `--all` (Usage token or
-  whole `$user_prompt`). `$user_prompt` is already the redacted
-  remainder after the router strips the recognized command/alias
-  token (see SKILL.md Routing Discipline) — it is never the bare
-  command word `apply` / `run` / `do` / `go`. Missing name and no
-  `--all` -> Phase 1 lists candidates
+- Bind `--all` from `$user_prompt` when present (Usage flag
+  anywhere). `$user_prompt` is already the redacted remainder after
+  the router strips the recognized command/alias token (see
+  SKILL.md Routing Discipline) — it is never the bare command word
+  `apply` / `run` / `do` / `go`. Without `--all`, Phase 1 follows
+  `resolve-spec-name.md`
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
   stage/commit paths under `$spex_root/`. Phases 4–5 sub-agent may
   persist `commit_title` only — never `completed_at`
@@ -110,15 +112,19 @@ for outer loops; Phase bodies below do not restate the diagram.
   - After Phase 9 for one spec -> next `$specs` item at Phase 2.
     IF none remain -> **STOP**
 - ELSE:
-  - CMD:
+  - Load and follow `references/resolve-spec-name.md` exactly.
+    Caller CMD:
 
     ```bash
-    $spex_skill_dir/scripts/spex list --json --must-undone "$spec_name"
+    $spex_skill_dir/scripts/spex list --json --must-undone "<probe>"
     ```
 
-  - Load and follow `references/resolve-spec-list.md` exactly.
-    ON_FAIL (true script error) -> STOP
-  - **Empty `[]` handling:** IF resolve yields `[]`:
+    where `<probe>` is `$first_word` or empty per that reference.
+    Load and follow `references/resolve-spec-list.md`. ON_FAIL
+    (true script error) -> STOP
+  - **Empty `[]` handling:** IF resolve yields `[]` (including after
+    resolve-spec-name step 3), or a filtered first-word probe left a
+    non-empty `$spec_name` recovery candidate with no undone match:
     - IF `$spec_name` is non-empty → **Completed-spec recovery**,
       re-check:
 
