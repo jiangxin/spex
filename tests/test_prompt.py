@@ -2455,6 +2455,160 @@ class TestCompactReviewContext:
             evidence, "abc1234567890", tree_clean=True,
         ) is True
 
+    def test_apply_review_template_full_mode_checklist(self):
+        """Full mode keeps the complete Round 1 checklist."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Implement feature",
+                "commit_sha": "deadbeef",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-5.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo-spec",
+                "review_mode": "full",
+                "mode": "full",
+                "check_evidence_reusable": False,
+                "acceptance_criteria": "full checklist preserved",
+            },
+        )
+        assert "Mode: **full**" in rendered
+        assert "Round 1 policy" in rendered
+        assert "**major** and **minor**" in rendered
+        assert "**Lint and tests**" in rendered
+        assert "**Commit message quality**" in rendered
+        assert "**Code review**" in rendered
+        assert "focused review of the fix delta" not in rendered
+        assert "Fix base:" not in rendered
+        assert "No reusable check evidence" in rendered
+        assert "Run the project's lint" in rendered
+
+    def test_apply_review_template_delta_mode_focused(self):
+        """Delta mode reviews only the fix range + integration impact."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Fix majors",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-5.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo-spec",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+                "check_evidence_reusable": False,
+                "open_findings": "### r1-f1 (major)\nMissing tests",
+                "acceptance_criteria": "focused post-fix review",
+            },
+        )
+        assert "Mode: **delta**" in rendered
+        assert "Fix base: `base0001`" in rendered
+        assert "Fixed commit: `fixed002`" in rendered
+        assert "base0001..fixed002" in rendered
+        assert "focused review of the fix delta" in rendered
+        assert "**Verify fixes**" in rendered
+        assert "**Integration impact**" in rendered
+        assert "Round 1 policy" not in rendered
+        assert "**Commit message quality**" not in rendered
+        assert "git diff base0001..fixed002" in rendered
+
+    def test_apply_review_template_no_new_major_outcome(self):
+        """Delta template instructs do-nothing when no new major appears."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Req",
+                "current_task_description": "Task",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "no new major" in collapsed
+        assert "do **nothing**" in rendered or "do nothing" in collapsed
+        assert "do not call `append`" in collapsed or "do not call append" in collapsed
+
+    def test_apply_review_template_new_major_outcome(self):
+        """Delta template permits recording only newly introduced majors."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-review",
+            metadata={
+                "spec_content_concise": "Req",
+                "current_task_description": "Task",
+                "commit_sha": "fixed002",
+                "review_round": 1,
+                "review_file": "/tmp/review.json",
+                "step_id": "step-5",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "spec_name": "demo",
+                "review_mode": "delta",
+                "mode": "delta",
+                "fix_base_commit_sha": "base0001",
+                "fixed_commit_sha": "fixed002",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "new major" in collapsed
+        assert "only record **new major**" in rendered
+        assert "Do NOT append minor issues" in rendered
+        assert "newly introduced majors" in collapsed or "new major(s)" in collapsed
+
+    def test_apply_review_template_reuses_check_evidence(self):
+        """Valid evidence skips identical lint/test reruns; invalid requires them."""
+        from prompt import render_prompt
+
+        base = {
+            "spec_content_concise": "Req",
+            "current_task_description": "Task",
+            "commit_sha": "deadbeef",
+            "review_round": 1,
+            "review_file": "/tmp/review.json",
+            "step_id": "step-5",
+            "spex_skill_dir": "/tmp/fake-skill",
+            "spec_name": "demo",
+            "review_mode": "full",
+            "mode": "full",
+        }
+        reusable = render_prompt(
+            "apply-review",
+            metadata={**base, "check_evidence_reusable": True},
+        )
+        assert "Reuse the persisted lint/test evidence" in reusable
+        assert "do **not** re-run identical successful checks" in reusable
+        assert "No reusable check evidence" not in reusable
+        assert "Reuse valid HEAD-bound check evidence" in reusable
+        assert "Continue with remaining non-check checklist" in reusable
+        assert "Record any known failures" not in reusable
+
+        required = render_prompt(
+            "apply-review",
+            metadata={**base, "check_evidence_reusable": False},
+        )
+        assert "No reusable check evidence" in required
+        assert "Run the project's lint" in required
+
     @pytest.mark.slow
     def test_minor_only_skips_delta_prompt_json(
         self, tmp_path, monkeypatch, capsys,
@@ -2509,6 +2663,71 @@ class TestCompactReviewContext:
         assert data.get("mode") == "delta"
         assert data.get("prompt") == ""
         assert data.get("prompt_bytes") == 0
+
+    @pytest.mark.slow
+    def test_major_batch_renders_delta_review_prompt(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Major pending batch receives a focused delta apply-review prompt."""
+        tasks = [
+            _make_task(
+                "step-1",
+                name="Work",
+                details=(
+                    "Do stuff.\n\n"
+                    "**Acceptance criteria**: focused post-fix review.\n"
+                ),
+            ),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "delta-major", tasks)
+        monkeypatch.chdir(repo)
+        _pin_step_review_enabled(monkeypatch)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "delta-major", "init",
+            "--step", "step-1", "--commit", "fixed002",
+        ])
+        review_helper.main([
+            "--name", "delta-major", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "major",
+            "--category", "tests",
+            "--title", "Missing tests",
+            "--details", "Add coverage",
+        ])
+        review_helper.main([
+            "--name", "delta-major", "set-pending",
+            "--step", "step-1",
+            "--ids", "r1-f1",
+            "--base-commit", "base0001",
+        ])
+        # Simulate amend success so delta context has a fixed SHA.
+        path = review_helper.resolve_review_path("delta-major", "step-1")
+        data = review_helper.load_review(path)
+        data["fixed_commit_sha"] = "fixed002"
+        data["mode"] = "delta"
+        review_helper.save_review(path, data)
+        capsys.readouterr()
+
+        main([
+            "apply-review", "--name", "delta-major",
+            "--commit", "fixed002", "--mode", "delta", "--json",
+        ])
+        out = _parse_json_stdout(capsys.readouterr().out)
+        assert out.get("skipped") is not True
+        assert out["mode"] == "delta"
+        assert out["fix_base_commit_sha"] == "base0001"
+        assert out["fixed_commit_sha"] == "fixed002"
+        assert out["has_major"] is True
+        prompt = out["prompt"]
+        assert "Mode: **delta**" in prompt
+        assert "focused review of the fix delta" in prompt
+        assert "base0001" in prompt
+        assert "Missing tests" in prompt
+        assert out["prompt_bytes"] > 0
 
     @pytest.mark.slow
     def test_context_excludes_completed_and_future_bodies(

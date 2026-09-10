@@ -658,6 +658,37 @@ class TestSopCliContract:
                     f"{name}: spec_name still optional"
                 )
 
+    def test_apply_review_template_full_and_delta_modes(self):
+        """apply-review supports explicit full/delta modes and evidence reuse."""
+        raw = (SPEX_ROOT / "templates" / "apply-review.md").read_text(
+            encoding="utf-8",
+        )
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+        assert match, "apply-review.md: missing front-matter"
+        fm = match.group(1)
+        optional_block = re.search(r"optional:\n((?:  - .+\n)+)", fm)
+        assert optional_block
+        optional = {
+            line.strip()[2:].strip()
+            for line in optional_block.group(1).splitlines()
+            if line.strip().startswith("- ")
+        }
+        assert "review_mode" in optional
+        assert "fix_base_commit_sha" in optional
+        assert "fixed_commit_sha" in optional
+        assert "check_evidence_reusable" in optional
+
+        body = strip_front_matter(raw)
+        assert "review_mode | default(mode | default('full')) == 'delta'" in body
+        assert "focused review of the fix delta" in body
+        assert "**Lint and tests**" in body
+        assert "**Commit message quality**" in body
+        assert "No new major" in body
+        assert "New major" in body
+        assert "Reuse the persisted lint/test evidence" in body
+        assert "No reusable check evidence" in body
+        assert "Do NOT append minor issues" in body
+
     def test_apply_fix_template_is_batch_amend(self):
         """apply-fix SOP: one batch, one check set, one amend; no pre-mark."""
         raw = (SPEX_ROOT / "templates" / "apply-fix.md").read_text(
