@@ -180,11 +180,20 @@ class TestCreateBranch:
 class TestMergeBranch:
     @patch("branch.subprocess.run")
     def test_merge_calls_switch_and_merge(self, mock_run):
-        mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="", stderr=""
-        )
+        mock_run.side_effect = [
+            # get_current_branch (not on target)
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="other\n", stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="",
+            ),
+        ]
         merge_branch("main", "spex/feature")
-        assert mock_run.call_count == 2
+        assert mock_run.call_count == 3
         mock_run.assert_any_call(
             ["git", "switch", "main"],
             capture_output=True, text=True, check=True, cwd=None,
@@ -198,6 +207,9 @@ class TestMergeBranch:
     @patch("branch.subprocess.run")
     def test_merge_raises_on_conflict(self, mock_run):
         mock_run.side_effect = [
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="other\n", stderr="",
+            ),
             subprocess.CompletedProcess(args=[], returncode=0, stdout="",
                                        stderr=""),
             subprocess.CalledProcessError(1, "git merge",
