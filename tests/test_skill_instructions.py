@@ -558,13 +558,16 @@ class TestModifyPlanOnlySop:
             "Load and follow `references/resolve-spec-list.md`",
         )
         _index(phase1, "`[]`")
-        # Echo-confirm lives in the shared reference (step-23 survives)
+        # Conditional skip-confirm lives in the shared reference
         shared = _read(RESOLVE_SPEC_NAME)
         _index(shared, "spec=<X> / request=<Y>")
-        _index(shared, "wait for confirmation")
-        _index(shared, "round trip")
-        _index(shared, "not** confirm")
-        _index(shared, "`$request`")
+        _index(shared, "Skip wait")
+        _index(shared, "proceed")
+        _index(shared, "exactly one")
+        _index(shared, "$first_word")
+        _index(shared, "adopt non-empty `$request`")
+        _index(shared, "pick = confirm")
+        _index(shared, "Wait/ask")
 
     def test_resolve_spec_list_documents_substring_matching(self):
         """R3-F7 / P1-7: list patterns are substring, not exact."""
