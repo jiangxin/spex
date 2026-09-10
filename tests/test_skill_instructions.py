@@ -1656,9 +1656,13 @@ class TestMergeArchiveInitSop:
         _index(pre, "Ignore all tokens")
         _index(pre, "accepts no")
         assert "usually" not in pre.lower()
-        _index(pre, "Non-git")
-        _index(pre, "Already initialized")
-        _index(pre, "Warnings")
+        # P2-24: edge cases moved from Preconditions into Phase 2
+        assert "Non-git" not in pre
+        assert "Already initialized" not in pre
+        phase2 = _h2_section(text, "Phase 2: Report Results")
+        _index(phase2, "Non-git")
+        _index(phase2, "Already initialized")
+        _index(phase2, "Warnings")
         fail = _h2_section(text, "Failure Handling")
         _index(fail, "ON_FAIL")
         _index(fail, "exit 0")
