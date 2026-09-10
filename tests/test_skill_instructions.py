@@ -667,7 +667,9 @@ SOP_STEP_REVIEW_PATHS = (
 
 class TestApplyStepReviewSop:
     def test_6a_skipped_continues_to_phase_7(self):
-        section = _h2_section(_read(APPLY_REVIEW_LOOP), "6a. Review sub-agent")
+        section = _h2_section(
+            _read(APPLY_REVIEW_LOOP), "6a. Full review sub-agent"
+        )
         skipped_at = _index(section, '"skipped": true')
         no_launch_at = _index(section, "do **not** launch a review sub-agent")
         phase7_at = _index(section, "proceed to Phase 7")
@@ -684,6 +686,9 @@ class TestApplyStepReviewSop:
         no_6c_at = _index(section, "do **not** enter **6c**")
         phase7_at = _index(section, "to Phase 7")
         assert probe_at < skipped_at < no_6c_at < phase7_at
+        # Open major + step_review=false must STOP (not silent complete)
+        _index(section, "open_major")
+        _index(section, "must not silently ignore")
         # Single detection path — no “read config or probe” dual path
         assert "read config, or" not in section.lower()
         assert "or probe" not in section.lower()
@@ -695,20 +700,20 @@ class TestApplyStepReviewSop:
         invariants = _h2_section(text, "Invariants (do not weaken)")
         _index(invariants, "STOP** only for abnormal failures")
         _index(invariants, '"skipped": true')
-        _index(invariants, "is **not** STOP")
         _index(invariants, "Phase 7")
-        # Round Model folded into Invariants + 6b / 6c-iii
+        _index(invariants, "Open major")
+        # Round Model folded into Invariants + 6b / 6f
         assert "## Round Model" not in text
-        six_b = _h2_section(text, "6b. Check status (after a review pass)")
+        six_b = _h2_section(text, "6b. Route after a full review pass")
         _index(six_b, "max review round (currently 3)")
-        _index(six_b, "rounds 1–2")
-        six_c_iii = _h3_section(text, "6c-iii. Bump round or finish (hard cap)")
-        _index(six_c_iii, "do not bump")
-        _index(six_c_iii, "do not re-review")
-        _index(six_c_iii, "Never force a fourth review")
+        _index(six_b, "minor-only")
+        _index(six_b, "must **not** enter delta review")
+        six_f = _h2_section(text, "6f. Route after delta / full-round cap")
+        _index(six_f, "do not bump")
+        _index(six_f, "Never force a fourth full review")
 
     def test_review_loop_layered_structure_and_agent_memory(self):
-        """R3-F18 / S4: layered review-loop + P0-1 agent-memory wording."""
+        """Layered review-loop + agent-memory wording (batch/delta machine)."""
         text = _read(APPLY_REVIEW_LOOP)
         invariants = _h2_section(text, "Invariants (do not weaken)")
         inv_lines = []
@@ -723,24 +728,28 @@ class TestApplyStepReviewSop:
         assert "## Round Model" not in text
         assert "## Orchestration Rules" not in text
         appendix_a = _h2_section(text, "Appendix A: Call-frequency optimisation")
-        _index(appendix_a, "Avoid redundant status / next / show")
+        _index(appendix_a, "Avoid redundant status / open-batch / show")
         _index(appendix_a, "status --json")
         _index(appendix_a, "6c-i")
         _index(appendix_a, "bump-round")
         _index(appendix_a, "Never re-run `status --json`")
+        _index(appendix_a, "Prompt cache")
+        _index(appendix_a, "complete-batch")
         appendix_b = _h2_section(text, "Appendix B: Sub-agent constraints")
         _index(appendix_b, "bump-round")
         _index(appendix_b, "git checkout")
         _index(appendix_b, "amend")
-        # P0-1: agent-memory wording, no shell unset
+        _index(appendix_b, "complete-batch")
+        # Agent-memory wording, no shell unset; cache before render
         assert "unset " not in text
-        _index(text, "clear the cached review prompt and its round marker")
-        _index(text, "clear the cached fix prompt and its finding-id marker")
+        _index(text, "clear the cached review prompt and its round/mode markers")
+        _index(text, "clear the cached fix prompt and its batch-id marker")
         _index(text, "agent memory")
-        # P0-4 SOP: ensure-branch failure note at both call sites
+        _index(text, "cache first")
+        # ensure-branch failure note at full-review and batch-fix sites
         for title in (
-            "6a. Review sub-agent",
-            "6c-ii. Fix + amend one finding",
+            "6a. Full review sub-agent",
+            "6c-ii. Fix + amend one batch",
         ):
             section = (
                 _h2_section(text, title)
@@ -1091,7 +1100,9 @@ class TestApplyStepReviewSop:
 
 class TestApplyReviewNoCheckout:
     def test_review_loop_reattaches_after_review(self):
-        section = _h2_section(_read(APPLY_REVIEW_LOOP), "6a. Review sub-agent")
+        section = _h2_section(
+            _read(APPLY_REVIEW_LOOP), "6a. Full review sub-agent"
+        )
         _index(section, "git checkout")
         _index(section, "detached HEAD")
         ensure_at = _index(section, "apply-helper ensure-branch")
@@ -1100,7 +1111,7 @@ class TestApplyReviewNoCheckout:
 
     def test_review_loop_reattaches_after_fix(self):
         text = _read(APPLY_REVIEW_LOOP)
-        section = _h3_section(text, "6c-ii. Fix + amend one finding")
+        section = _h3_section(text, "6c-ii. Fix + amend one batch")
         _index(section, "apply-helper ensure-branch")
         _index(section, "detached HEAD")
 

@@ -211,12 +211,16 @@ def should_render_delta_prompt(review_data: Optional[dict]) -> bool:
     """True only when a delta review is warranted (batch/open has major).
 
     Minor-only batches must not render or launch a delta review prompt.
+    After ``complete-batch`` clears pending flags, ``awaiting_delta`` is the
+    durable signal that a major batch still requires delta.
     """
     if not isinstance(review_data, dict):
         return False
     import review_helper
 
     data = review_helper.normalize_review_state(dict(review_data))
+    if bool(data.get("awaiting_delta")):
+        return True
     pending = list(data.get("pending_findings") or [])
     if pending:
         return bool(data.get("pending_has_major"))
@@ -814,6 +818,20 @@ def _enrich_review_metadata(
         metadata["future_tasks"] = ""
         metadata["future_tasks_concise"] = ""
         return metadata
+
+    # Consuming a warranted delta: persist mode=delta and clear the
+    # durable awaiting_delta marker so Phase 7 / hard-cap paths do not
+    # re-enter 6e after this prompt launches.
+    if (
+        review_mode == "delta"
+        and isinstance(review_data, dict)
+        and path is not None
+        and path.is_file()
+    ):
+        review_data = review_helper.normalize_review_state(review_data)
+        review_data["mode"] = "delta"
+        review_data["awaiting_delta"] = False
+        review_helper.save_review(path, review_data)
 
     compact = build_compact_review_context(
         metadata,

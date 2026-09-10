@@ -95,6 +95,7 @@ def _default_batch_state(commit_sha: str = "") -> dict:
         "pending_has_major": False,
         "fix_base_commit_sha": "",
         "fixed_commit_sha": "",
+        "awaiting_delta": False,
         "check_evidence": None,
     }
 
@@ -139,11 +140,32 @@ def normalize_review_state(data: dict) -> dict:
             value = defaults[key]
         data[key] = value
 
+    awaiting = data.get("awaiting_delta", defaults["awaiting_delta"])
+    if not isinstance(awaiting, bool):
+        awaiting = defaults["awaiting_delta"]
+    data["awaiting_delta"] = awaiting
+
     evidence = data.get("check_evidence", defaults["check_evidence"])
     if evidence is not None and not isinstance(evidence, dict):
         evidence = defaults["check_evidence"]
     data["check_evidence"] = evidence
     return data
+
+
+def delta_warranted_after_batch(data: dict, had_major: bool) -> bool:
+    """True when complete-batch should leave ``awaiting_delta`` set.
+
+    Major batches need one delta review, except the hard-cap path: at max
+    full round after a delta already ran (``mode == \"delta\"``), fixing
+    remaining majors must go to Phase 7 without another delta.
+    """
+    if not had_major:
+        return False
+    round_num = int(data.get("round", 1))
+    mode = data.get("mode", "full")
+    if round_num >= MAX_REVIEW_ROUND and mode == "delta":
+        return False
+    return True
 
 
 def _pending_ids_have_major(data: dict, pending_ids: list) -> bool:
@@ -394,6 +416,7 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
     data["pending_has_major"] = False
     data["fix_base_commit_sha"] = ""
     data["fixed_commit_sha"] = ""
+    data["awaiting_delta"] = False
     data["check_evidence"] = None
     save_review(path, data)
     logger.info(
@@ -439,6 +462,7 @@ def _clean_status_payload(path: Path, step_id: str = "") -> dict:
         "open_major": 0,
         "open_minor": 0,
         "needs_fix": False,
+        "awaiting_delta": False,
         "ready_to_complete": True,
         "done": True,
         "exists": False,
@@ -455,10 +479,13 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
         open_major, open_minor = _count_open(data["findings"])
         round_num = int(data.get("round", 1))
         needs_fix = open_major > 0 or open_minor > 0
+        awaiting_delta = bool(data.get("awaiting_delta"))
         # ready_to_complete: no open majors, and either no open findings
         # or max round reached (open minors may remain after max rounds).
+        # Still awaiting delta after a major batch is not complete.
         ready_to_complete = (
             open_major == 0
+            and not awaiting_delta
             and (not needs_fix or round_num >= MAX_REVIEW_ROUND)
         )
         payload = {
@@ -468,9 +495,10 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             "open_major": open_major,
             "open_minor": open_minor,
             "needs_fix": needs_fix,
+            "awaiting_delta": awaiting_delta,
             "ready_to_complete": ready_to_complete,
-            # done: no open findings
-            "done": not needs_fix,
+            # done: no open findings and not waiting on post-major delta
+            "done": (not needs_fix) and (not awaiting_delta),
             "exists": True,
             "review_file": path.name,
         }
@@ -482,6 +510,7 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             f"open_major={payload['open_major']} "
             f"open_minor={payload['open_minor']} "
             f"needs_fix={str(payload['needs_fix']).lower()} "
+            f"awaiting_delta={str(payload['awaiting_delta']).lower()} "
             f"ready_to_complete={str(payload['ready_to_complete']).lower()} "
             f"done={str(payload['done']).lower()} "
             f"exists={str(payload['exists']).lower()}"
@@ -601,6 +630,7 @@ def build_open_batch_payload(
             "pending_has_major": False,
             "fix_base_commit_sha": "",
             "fixed_commit_sha": "",
+            "awaiting_delta": False,
             "check_evidence": None,
             "has_major": False,
             "open_count": 0,
@@ -621,6 +651,7 @@ def build_open_batch_payload(
         "pending_has_major": bool(data["pending_has_major"]),
         "fix_base_commit_sha": data["fix_base_commit_sha"],
         "fixed_commit_sha": data["fixed_commit_sha"],
+        "awaiting_delta": bool(data["awaiting_delta"]),
         "check_evidence": data["check_evidence"],
         "has_major": has_major,
         "open_count": len(open_items),
@@ -825,6 +856,8 @@ def apply_complete_batch(
     completed_at: Optional[str] = None,
 ) -> dict:
     """Mutate review data to mark the pending batch complete (in memory)."""
+    data = normalize_review_state(data)
+    had_major = bool(data.get("pending_has_major"))
     stamp = completed_at or local_iso_timestamp()
     id_set = _finding_ids_set(finding_ids)
     for item in data.get("findings", []):
@@ -835,6 +868,9 @@ def apply_complete_batch(
     data["commit_sha"] = new_sha
     data["pending_findings"] = []
     data["pending_has_major"] = False
+    # Durable post-batch signal: survives clearing pending_has_major so
+    # 6d / resume can still require delta (unless hard-cap skip).
+    data["awaiting_delta"] = delta_warranted_after_batch(data, had_major)
     return normalize_review_state(data)
 
 
@@ -895,6 +931,7 @@ def cmd_set_pending(
     data["pending_has_major"] = _pending_ids_have_major(data, ids)
     data["fix_base_commit_sha"] = base_sha
     data["fixed_commit_sha"] = ""
+    data["awaiting_delta"] = False
     data["check_evidence"] = None
     save_review(path, data)
     logger.info(
@@ -945,6 +982,7 @@ def cmd_complete_batch(
             "resumed": True,
             "fixed_commit_sha": data.get("fixed_commit_sha", ""),
             "completed_ids": ids,
+            "awaiting_delta": bool(data.get("awaiting_delta")),
         }))
         return
 
@@ -975,6 +1013,7 @@ def cmd_complete_batch(
         "fixed_commit_sha": new_sha,
         "completed_ids": ids,
         "check_evidence": evidence,
+        "awaiting_delta": bool(data.get("awaiting_delta")),
     }))
 
 

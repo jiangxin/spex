@@ -2198,6 +2198,31 @@ class TestCompactReviewContext:
         }
         assert should_render_delta_prompt(data) is True
 
+    def test_should_render_delta_from_awaiting_delta_after_complete(self):
+        """Durable awaiting_delta warrants delta after pending is cleared."""
+        from prompt import should_render_delta_prompt
+
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "fixed",
+            "round": 1,
+            "mode": "full",
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "major", "category": "tests",
+                    "title": "missing", "details": "x",
+                    "completed_at": "2026-09-10T12:00:00",
+                },
+            ],
+            "pending_findings": [],
+            "pending_has_major": False,
+            "fixed_commit_sha": "fixed",
+            "awaiting_delta": True,
+        }
+        assert should_render_delta_prompt(data) is True
+        data["awaiting_delta"] = False
+        assert should_render_delta_prompt(data) is False
+
     def test_full_and_delta_payloads_structurally_distinct(self):
         from prompt import build_compact_review_context
 

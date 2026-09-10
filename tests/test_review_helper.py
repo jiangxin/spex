@@ -1313,6 +1313,7 @@ class TestInitBatchState:
         assert data["pending_has_major"] is False
         assert data["fix_base_commit_sha"] == ""
         assert data["fixed_commit_sha"] == ""
+        assert data["awaiting_delta"] is False
         assert data["check_evidence"] is None
 
 
@@ -1458,8 +1459,106 @@ class TestCompleteBatch:
         assert data["commit_sha"] == "newsha99"
         assert data["pending_findings"] == []
         assert data["pending_has_major"] is False
+        assert data["awaiting_delta"] is True  # batch included major f2
+        assert out["awaiting_delta"] is True
         assert data["check_evidence"]["commit_sha"] == "newsha99"
         assert data["check_evidence"]["checks"][0]["exit_code"] == 0
+
+    def test_complete_batch_sets_awaiting_delta_for_major(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """Major batch leaves durable awaiting_delta after pending is cleared."""
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["awaiting_delta"] is True
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["pending_has_major"] is False
+        assert data["pending_findings"] == []
+        assert data["awaiting_delta"] is True
+        # status exposes the durable resume marker with no open findings
+        review_helper.main([
+            "--name", "my-topic", "status",
+            "--step", "step-1", "--json",
+        ])
+        status = json.loads(capsys.readouterr().out)
+        assert status["awaiting_delta"] is True
+        assert status["needs_fix"] is False
+        assert status["done"] is False
+        assert status["ready_to_complete"] is False
+        # set-pending for a later batch clears awaiting_delta
+        review_helper.main([
+            "--name", "my-topic", "append",
+            "--step", "step-1",
+            "--id", "f3", "--severity", "major",
+            "--category", "tests", "--title", "later",
+            "--details", "x",
+        ])
+        # Heal commit to current tip for set-pending base
+        data = _read(spec_dir / "review-step-1.json")
+        data["commit_sha"] = "newsha99"
+        (spec_dir / "review-step-1.json").write_text(
+            json.dumps(data), encoding="utf-8",
+        )
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f3",
+            "--base-commit", "newsha99",
+        ])
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["awaiting_delta"] is False
+
+    def test_complete_batch_hard_cap_skips_awaiting_delta(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """At max round with mode=delta, major complete-batch skips delta."""
+        path = _seed_open_findings(spec_dir, "basesha1")
+        data = _read(path)
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        data["mode"] = "delta"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f2",
+            "--base-commit", "basesha1",
+        ])
+        # set-pending must preserve mode=delta; re-assert round after write
+        data = _read(path)
+        assert data["mode"] == "delta"
+        data["round"] = review_helper.MAX_REVIEW_ROUND
+        path.write_text(json.dumps(data), encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["awaiting_delta"] is False
+        data = _read(path)
+        assert data["awaiting_delta"] is False
+        assert data["pending_has_major"] is False
 
     def test_id_mismatch_writes_nothing(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
