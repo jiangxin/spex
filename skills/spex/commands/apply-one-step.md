@@ -168,8 +168,9 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
 - Phase 4 intentional STOP (`false`+clean, `true`+dirty) is **not**
   retryable — FAIL; no Phase 7; leave `completed_at` unset
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
-- Residual dirty after commit -> STOP; do not persist
-  `commit_title`; no Phase 6/7
+- Residual dirty after commit -> follow Phase 5 residual-dirty
+  handling in `references/apply-task-phases.md` (persist
+  `commit_title` first; STOP without Phase 6/7 / `completed_at`)
 - Phase 6 abnormal STOP -> end invocation per
   `apply-review-loop.md` (no Phase 7/8)
 - ON_FAIL Phase 7 todo edit -> STOP

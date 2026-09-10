@@ -887,10 +887,18 @@ class TestApplyStepReviewSop:
 
         phase5 = _h2_section(phases, "Phase 5: Commit (record commit_title only)")
         _index(phase5, "`$did_commit`")
-        _index(phase5, "Recompute `$dirty`")
         _index(phase5, "Leftover dirty paths poison")
-        _index(phase5, "do not persist `commit_title`")
-        _index(phase5, "outcome=committed")
+        persist = _index(phase5, "--commit-title")
+        recompute = _index(phase5, "Recompute `$dirty`")
+        outcome = _index(phase5, "outcome=committed")
+        assert persist < recompute, (
+            "Phase 5 must persist commit_title before recomputing dirty"
+        )
+        assert persist < outcome, (
+            "Phase 5 must persist commit_title before outcome=committed"
+        )
+        _index(phase5, "only allowed **after** persist")
+        _index(phase5, "do **not** skip persisting on residual dirty")
 
         # Phase 6 is Load-only pointer; STOP/6c live in review-loop
         phase6 = _h2_section(phases, "Phase 6: Review Loop")
@@ -1127,7 +1135,13 @@ class TestSharedSopReferences:
         _index(text, "outcome=committed")
         _index(text, "outcome=skip_commit")
         _index(text, "`$did_commit`")
-        _index(text, "do not persist `commit_title`")
+        phase5 = _h2_section(text, "Phase 5: Commit (record commit_title only)")
+        persist = _index(phase5, "--commit-title")
+        outcome = _index(phase5, "outcome=committed")
+        assert persist < outcome, (
+            "Phase 5 must persist --commit-title before outcome=committed"
+        )
+        _index(phase5, "do **not** skip persisting on residual dirty")
         _index(text, "Paths")
         _index(text, "directory boundary")
 

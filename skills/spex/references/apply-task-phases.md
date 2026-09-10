@@ -183,21 +183,32 @@ git rev-parse --short HEAD
 ```
 
 - `$commit_sha` ← output
-- Recompute `$dirty` via the same Phase 4 dirty CLI
-  (`apply-helper dirty --json`). IF `$dirty` -> report leftover
-  paths excl. `$spex_root` -> STOP (do not persist `commit_title`;
-  do not Phase 6/7)
 - `$did_commit` ← `true`
-- When returning to main from Phases 4–5 sub-agent: report
-  `outcome=committed`
 
 - **Persist commit_title now — do NOT set `completed_at` yet**
-  (review/fix may still be pending; enables interrupt resume):
+  (review/fix may still be pending; enables interrupt resume).
+  Persist **before** any return to main or residual-dirty STOP:
+  `commit_title` is the only resume source of truth — if it is
+  missing, the next `prompt apply-one-task` resumes at
+  `implement` and re-implements the step (likely a second
+  commit):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
   --id "$current_task_id" --commit-title "$commit_title"
 ```
+
+- ON_FAIL of persist: report error -> STOP. Do **not** report
+  `outcome=committed`
+- Returning to the main session is only allowed **after** persist
+  succeeds
+- Recompute `$dirty` via the same Phase 4 dirty CLI
+  (`apply-helper dirty --json`). IF `$dirty` -> report leftover
+  paths excl. `$spex_root` -> STOP (do not Phase 6/7; do not set
+  `completed_at`). The commit already happened, so persist ran
+  first; do **not** skip persisting on residual dirty
+- When returning to main from Phases 4–5 sub-agent (persist OK
+  and not residual-dirty STOP): report `outcome=committed`
 
 ## Phase 6: Review Loop
 
