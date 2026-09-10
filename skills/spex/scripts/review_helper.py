@@ -32,7 +32,9 @@ VALID_CATEGORIES = (
     "security",
     "other",
 )
+# Caps full review rounds only; delta review must not increment ``round``.
 MAX_REVIEW_ROUND = 3
+VALID_MODES = ("full", "delta")
 
 VALID_SUBCOMMANDS = (
     "init",
@@ -43,6 +45,7 @@ VALID_SUBCOMMANDS = (
     "status",
     "show",
     "next",
+    "open-batch",
 )
 
 _PARSE_ARGV: Optional[list[str]] = None
@@ -80,6 +83,86 @@ def _resolve_completed_at(value):
     return value
 
 
+def _default_batch_state(commit_sha: str = "") -> dict:
+    """Return default batch-state fields for a new or legacy review."""
+    return {
+        "mode": "full",
+        "reviewed_commit_sha": commit_sha or "",
+        "pending_findings": [],
+        "pending_has_major": False,
+        "fix_base_commit_sha": "",
+        "fixed_commit_sha": "",
+        "check_evidence": None,
+    }
+
+
+def normalize_review_state(data: dict) -> dict:
+    """Fill missing/malformed batch-state fields with backward-compatible defaults.
+
+    Mutates ``data`` in place and returns it. Legacy files without the new
+    keys behave as a full review with no pending batch. Invalid types are
+    replaced rather than raising, so callers can still query open findings.
+    """
+    defaults = _default_batch_state(str(data.get("commit_sha") or ""))
+    mode = data.get("mode", defaults["mode"])
+    if mode not in VALID_MODES:
+        mode = defaults["mode"]
+    data["mode"] = mode
+
+    reviewed = data.get("reviewed_commit_sha", defaults["reviewed_commit_sha"])
+    if not isinstance(reviewed, str):
+        reviewed = defaults["reviewed_commit_sha"]
+    data["reviewed_commit_sha"] = reviewed
+
+    pending = data.get("pending_findings", defaults["pending_findings"])
+    if not isinstance(pending, list):
+        pending = list(defaults["pending_findings"])
+    else:
+        pending = [str(x) for x in pending if x is not None and str(x)]
+    data["pending_findings"] = pending
+
+    if "pending_has_major" not in data or not isinstance(
+        data.get("pending_has_major"), bool,
+    ):
+        # Missing or non-bool: derive from pending IDs + findings.
+        pending_has_major = _pending_ids_have_major(data, pending)
+    else:
+        pending_has_major = data["pending_has_major"]
+    data["pending_has_major"] = pending_has_major
+
+    for key in ("fix_base_commit_sha", "fixed_commit_sha"):
+        value = data.get(key, defaults[key])
+        if not isinstance(value, str):
+            value = defaults[key]
+        data[key] = value
+
+    evidence = data.get("check_evidence", defaults["check_evidence"])
+    if evidence is not None and not isinstance(evidence, dict):
+        evidence = defaults["check_evidence"]
+    data["check_evidence"] = evidence
+    return data
+
+
+def _pending_ids_have_major(data: dict, pending_ids: list) -> bool:
+    """True if any pending finding id refers to an open major finding."""
+    if not pending_ids:
+        return False
+    by_id = {
+        item.get("id"): item
+        for item in data.get("findings", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for fid in pending_ids:
+        item = by_id.get(fid)
+        if (
+            isinstance(item, dict)
+            and not item.get("completed_at")
+            and item.get("severity") == "major"
+        ):
+            return True
+    return False
+
+
 def load_review(path: Path) -> dict:
     """Load a review file; exit on missing or invalid JSON."""
     if not path.is_file():
@@ -96,12 +179,12 @@ def load_review(path: Path) -> dict:
     if "findings" not in data or not isinstance(data["findings"], list):
         logger.error("Error: review file missing 'findings' list.")
         sys.exit(1)
-    return data
+    return normalize_review_state(data)
 
 
 def save_review(path: Path, data: dict) -> None:
-    """Atomically write the review JSON file."""
-    atomic_write_json(path, data)
+    """Atomically write the review JSON file (batch-state fields normalized)."""
+    atomic_write_json(path, normalize_review_state(data))
 
 
 def _count_open(findings: list) -> tuple[int, int]:
@@ -131,14 +214,21 @@ def _format_finding(item: dict) -> str:
     )
 
 
-def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
-    """Create or reset a review file for the step."""
+def _new_review_document(step_id: str, commit_sha: str) -> dict:
+    """Build a fresh review document including batch-state defaults."""
     data = {
         "step_id": step_id,
         "commit_sha": commit_sha,
         "round": 1,
         "findings": [],
     }
+    data.update(_default_batch_state(commit_sha))
+    return data
+
+
+def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
+    """Create or reset a review file for the step."""
+    data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
     logger.info("Initialized '%s'.", path.name)
@@ -148,6 +238,7 @@ def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
         "step_id": step_id,
         "commit_sha": commit_sha,
         "round": 1,
+        "mode": data["mode"],
     }))
 
 
@@ -167,12 +258,7 @@ def _ensure_review_for_append(
             path.name,
         )
         sys.exit(1)
-    data = {
-        "step_id": step_id,
-        "commit_sha": commit_sha,
-        "round": 1,
-        "findings": [],
-    }
+    data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
     logger.info("Created '%s' on first append.", path.name)
@@ -281,7 +367,11 @@ def cmd_edit(path: Path, args) -> None:
 
 
 def cmd_bump_round(path: Path, commit_sha: str) -> None:
-    """Increment round and update commit_sha; preserve findings."""
+    """Increment full-review round and update commit_sha; preserve findings.
+
+    ``round`` counts full review rounds only (capped by MAX_REVIEW_ROUND).
+    Delta reviews must not call this; a bump always returns to mode=full.
+    """
     data = load_review(path)
     current = int(data.get("round", 1))
     if current >= MAX_REVIEW_ROUND:
@@ -294,6 +384,14 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
         sys.exit(1)
     data["round"] = current + 1
     data["commit_sha"] = commit_sha
+    data["mode"] = "full"
+    data["reviewed_commit_sha"] = commit_sha
+    # Clear prior fix batch; a new full round starts fresh.
+    data["pending_findings"] = []
+    data["pending_has_major"] = False
+    data["fix_base_commit_sha"] = ""
+    data["fixed_commit_sha"] = ""
+    data["check_evidence"] = None
     save_review(path, data)
     logger.info(
         "Bumped round to %d (commit_sha=%s).",
@@ -302,6 +400,7 @@ def cmd_bump_round(path: Path, commit_sha: str) -> None:
     print(json.dumps({
         "round": data["round"],
         "commit_sha": commit_sha,
+        "mode": data["mode"],
         "findings_count": len(data.get("findings", [])),
     }))
     from debug_log import emit_apply_anchor
@@ -467,6 +566,78 @@ def get_finding_by_id(data: dict, finding_id: str) -> Optional[dict]:
         if isinstance(item, dict) and item.get("id") == finding_id:
             return item
     return None
+
+
+def _finding_summary(item: dict) -> dict:
+    """Stable subset of finding fields for batch query output."""
+    return {
+        "id": item.get("id", ""),
+        "severity": item.get("severity", ""),
+        "category": item.get("category", ""),
+        "title": item.get("title", ""),
+        "details": item.get("details", ""),
+    }
+
+
+def build_open_batch_payload(
+    data: Optional[dict],
+    path: Path,
+    step_id: str = "",
+    exists: bool = True,
+) -> dict:
+    """Build the open-batch JSON payload (stable finding order + has_major)."""
+    if data is None:
+        defaults = _default_batch_state()
+        return {
+            "step_id": step_id,
+            "commit_sha": "",
+            "round": 1,
+            "mode": defaults["mode"],
+            "reviewed_commit_sha": "",
+            "pending_findings": [],
+            "pending_has_major": False,
+            "fix_base_commit_sha": "",
+            "fixed_commit_sha": "",
+            "check_evidence": None,
+            "has_major": False,
+            "open_count": 0,
+            "findings": [],
+            "exists": False,
+            "review_file": path.name,
+        }
+    data = normalize_review_state(data)
+    open_items = get_open_findings(data)
+    has_major = any(item.get("severity") == "major" for item in open_items)
+    return {
+        "step_id": data.get("step_id", "") or step_id,
+        "commit_sha": data.get("commit_sha", ""),
+        "round": int(data.get("round", 1)),
+        "mode": data["mode"],
+        "reviewed_commit_sha": data["reviewed_commit_sha"],
+        "pending_findings": list(data["pending_findings"]),
+        "pending_has_major": bool(data["pending_has_major"]),
+        "fix_base_commit_sha": data["fix_base_commit_sha"],
+        "fixed_commit_sha": data["fixed_commit_sha"],
+        "check_evidence": data["check_evidence"],
+        "has_major": has_major,
+        "open_count": len(open_items),
+        "findings": [_finding_summary(item) for item in open_items],
+        "exists": exists,
+        "review_file": path.name,
+    }
+
+
+def cmd_open_batch(path: Path, step_id: str = "") -> None:
+    """Print all open findings for the current round as one JSON batch."""
+    if not path.is_file():
+        print(json.dumps(build_open_batch_payload(
+            None, path, step_id=step_id, exists=False,
+        )))
+        return
+    data = load_review(path)
+    print(json.dumps(build_open_batch_payload(
+        data, path, step_id=step_id, exists=True,
+    )))
 
 
 def cmd_next(path: Path, step_id: str = "") -> None:
@@ -731,6 +902,16 @@ def _build_parser():
     )
     p_next.add_argument("--step", required=True, help="Step id")
 
+    p_open_batch = subs.add_parser(
+        "open-batch",
+        description=(
+            "Print all open findings for the current round as one "
+            "JSON batch, including has_major and batch-state fields."
+        ),
+        help="All open findings as one batch (JSON)",
+    )
+    p_open_batch.add_argument("--step", required=True, help="Step id")
+
     return parser
 
 
@@ -785,6 +966,8 @@ def main(argv=None):
         )
     elif args.subcmd == "next":
         cmd_next(path, step_id=step_id)
+    elif args.subcmd == "open-batch":
+        cmd_open_batch(path, step_id=step_id)
 
 
 if __name__ == "__main__":
