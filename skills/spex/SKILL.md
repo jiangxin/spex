@@ -6,7 +6,7 @@ version: 0.8.0
 arguments:
   - name: command
     required: false
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned). High-signal words (create/modify/archive/apply-one-step/init/apply/merge) may match anywhere; high-frequency aliases (new/run/do/go/step/submit) count as a command word only in first-token position."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go; supports --all), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned). High-signal words (create/modify/archive/apply-one-step/init/apply/merge) may match anywhere; high-frequency aliases (new/run/do/go/step/submit) count as a command word only in first-token position. Non-English free-form input is mapped by meaning (Chinese trigger words in the Free-form table); do not strip tokens from non-English text."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -32,7 +32,7 @@ arguments:
 |-----------------|--------------------|--------------------------------------|
 | `create`        | `new`              | Create a spec document (no code changes) |
 | `modify`        |                    | Modify a spec's requirements         |
-| `apply`         | `run`, `do`, `go`  | Apply a spec to generate code        |
+| `apply`         | `run`, `do`, `go`  | Apply a spec to generate code (supports --all) |
 | `apply-one-step`| `step`             | Apply one step from a spec's todo list |
 | `merge`         | `submit`           | Submit completed work (merge or PR)  |
 | `archive`       |                    | Archive a completed spec             |
@@ -117,15 +117,20 @@ When first arg matches no route, infer intent.
 Body rules below are the source of truth; keep YAML
 `arguments.command.description` aligned with rules 1–4.
 
-| If the user's text suggests...                      | Suggest command   |
-|-----------------------------------------------------|-------------------|
-| A new feature, requirement, or idea to implement    | `create`          |
-| Changing requirements for an existing spec           | `modify`          |
-| Starting implementation of a spec                    | `apply`           |
-| Working through a spec one step at a time            | `apply-one-step`  |
-| Finishing, merging, or submitting completed work     | `merge`           |
-| Cleaning up completed specs                          | `archive`         |
-| Setting up spex for the first time                   | `init`            |
+| If the user's text suggests...                      | Chinese triggers                         | Suggest command   |
+|-----------------------------------------------------|------------------------------------------|-------------------|
+| A new feature, requirement, or idea to implement    | 创建 / 新建 / 加个 / 做一个              | `create`          |
+| Changing requirements for an existing spec           | 修改 / 调整需求 / 改一下 spec             | `modify`          |
+| Starting implementation of a spec                    | 实施 / 执行 / 开始做 / 跑一下             | `apply`           |
+| Working through a spec one step at a time            | 一步一步 / 单步 / 下一步                  | `apply-one-step`  |
+| Finishing, merging, or submitting completed work     | 提交 / 合并 / 交付                        | `merge`           |
+| Cleaning up completed specs                          | 归档 / 清理已完成                         | `archive`         |
+| Setting up spex for the first time                   | 初始化 / 装一下                           | `init`            |
+| All remaining unfinished specs                       | 全都做完 / 所有 spec                      | `apply --all`     |
+
+Non-English input is mapped by meaning using the Chinese triggers
+above (and equivalent intent in other languages). Do **not** apply
+command-token stripping to non-English free-form text.
 
 Decision rules (in order):
 

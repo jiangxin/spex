@@ -1812,3 +1812,79 @@ class TestRound3RegressionGate:
         assert "mark-phase" not in create
         assert "mark-phase" not in _read(APPLY_MD)
         assert "mark-phase" not in loop
+
+
+class TestRound4ChineseTriggersAndAllFlag:
+    """R4-F13 / R4-F14 (P1-13 remaining + P1-14): Chinese triggers + --all."""
+
+    def test_chinese_trigger_column_and_non_english_no_stripping(self):
+        free = _h3_section(_skill_body(), "Free-form Intent Inference")
+        _index(free, "Chinese triggers")
+        triggers = {
+            "create": ("创建", "新建", "加个", "做一个"),
+            "modify": ("修改", "调整需求", "改一下 spec"),
+            "apply": ("实施", "执行", "开始做", "跑一下"),
+            "apply-one-step": ("一步一步", "单步", "下一步"),
+            "merge": ("提交", "合并", "交付"),
+            "archive": ("归档", "清理已完成"),
+            "init": ("初始化", "装一下"),
+        }
+        for cmd, words in triggers.items():
+            for word in words:
+                _index(free, word)
+            assert f"`{cmd}`" in free, cmd
+        # Existing English intent rows must survive
+        for row in (
+            "A new feature, requirement, or idea to implement",
+            "Changing requirements for an existing spec",
+            "Starting implementation of a spec",
+            "Working through a spec one step at a time",
+            "Finishing, merging, or submitting completed work",
+            "Cleaning up completed specs",
+            "Setting up spex for the first time",
+        ):
+            _index(free, row)
+        _index(free, "Non-English input is mapped by meaning")
+        _index(free, "Do **not** apply")
+        _index(free, "command-token stripping")
+        _index(free, "non-English free-form")
+
+    def test_apply_all_visibility_in_tables_and_front_matter(self):
+        text = _read(SKILL_MD)
+        body = _skill_body()
+        supported = _h2_section(body, "Supported Commands")
+        apply_row_start = _index(supported, "| `apply`")
+        apply_row = supported[apply_row_start : apply_row_start + 120]
+        assert "(supports --all)" in apply_row
+        # Existing aliases preserved
+        assert "`run`" in apply_row and "`do`" in apply_row and "`go`" in apply_row
+
+        free = _h3_section(body, "Free-form Intent Inference")
+        _index(free, "All remaining unfinished specs")
+        _index(free, "全都做完")
+        _index(free, "所有 spec")
+        _index(free, "`apply --all`")
+
+        fm_end = text.find("\n---", 3)
+        assert fm_end != -1
+        front_matter = text[: fm_end + 4]
+        cmd_desc_start = front_matter.find("name: command")
+        assert cmd_desc_start != -1
+        cmd_block = front_matter[cmd_desc_start:]
+        assert "supports --all" in cmd_block
+        assert "Non-English" in cmd_block or "non-English" in cmd_block
+
+    def test_first_token_stripping_rule_still_present(self):
+        """P1-13 first half (7411a37): strip only when command is first token."""
+        body = _skill_body()
+        routing = _h3_section(body, "Routing Discipline")
+        _index(routing, "only when that")
+        _index(routing, "token is the first token")
+        _index(routing, "/spex create 增加登录接口")
+        _index(routing, "/spex 请帮我 create 登录接口")
+        _index(routing, "请帮我 create 登录接口")
+        free = _h3_section(body, "Free-form Intent Inference")
+        r1 = _index(free, "unique** command word")
+        assert "first token" in free[r1 : r1 + 400].lower()
+        _index(free, "High-signal")
+        _index(free, "High-frequency aliases")
