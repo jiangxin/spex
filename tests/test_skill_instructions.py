@@ -700,7 +700,7 @@ class TestApplyStepReviewSop:
         # Round Model folded into Invariants + 6b / 6c-iii
         assert "## Round Model" not in text
         six_b = _h2_section(text, "6b. Check status (after a review pass)")
-        _index(six_b, "round-3 majors")
+        _index(six_b, "max review round (currently 3)")
         _index(six_b, "rounds 1–2")
         six_c_iii = _h3_section(text, "6c-iii. Bump round or finish (hard cap)")
         _index(six_c_iii, "do not bump")
@@ -754,7 +754,7 @@ class TestApplyStepReviewSop:
             assert ensure_at < fail_at < stop_at < recover_at, title
         # 6-entry heal: assign $commit_sha ← $head_sha before set-commit
         entry = _h2_section(text, "6-entry. Resume / continue gate")
-        assign_at = _index(entry, "$commit_sha` ← `$head_sha` **first**")
+        assign_at = _index(entry, "set `$commit_sha` ← `$head_sha`")
         set_commit_at = _index(entry, "set-commit")
         assert assign_at < set_commit_at
 
@@ -1802,7 +1802,7 @@ class TestRound3RegressionGate:
         )
         _index(review_tpl, "git checkout")
         invariants = _h2_section(loop, "Invariants (do not weaken)")
-        _index(invariants, "At most **3** review passes")
+        _index(invariants, "max review round (currently 3)")
         resolve = _read(RESOLVE_SPEC_LIST)
         _index(resolve, "[]")
         archive = _read(ARCHIVE_MD)

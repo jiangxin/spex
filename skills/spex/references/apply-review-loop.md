@@ -13,10 +13,10 @@ exit codes, stdout/stderr, quoting, and one-helper-per-shell.
 1. **Durable entry:** `$did_commit` true **or** non-empty
    `commit_title` + empty `completed_at` → set `$did_commit`←`true`;
    else skip to Phase 7 (no load for skip-commit without commit).
-2. **STOP** only for abnormal failures (fix/amend verify fails
-   after relaunch) — not for round-3 open majors.
-3. At most **3** review passes. Round-3 open majors → **6c**
-   same invocation; never bump or re-review past 3.
+2. **STOP** only for abnormal failures (fix/amend verify fails after
+   relaunch) — not for open majors at the max review round (currently 3).
+3. The max review round (currently 3) caps review passes; open majors at
+   that round → **6c** same invocation; never bump or re-review past it.
 4. `"skipped": true` (`step_review=false`) is **not** STOP → Phase 7.
 5. Abnormal STOP ends whole invocation (apply: no 7/8/9 / next
    task/`$specs`; one-step: no Phase 7/8); step stays incomplete.
@@ -74,9 +74,13 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
 1. If status JSON `"commit_sha"` is non-empty **and** equals
    `$head_sha`, use that value.
 2. If status JSON `"commit_sha"` is non-empty **but differs** from
-   `$head_sha`: the review file is stale after an amend — set
-   `$commit_sha` ← `$head_sha` **first**, then heal the file with
-   that value (only when `exists` is true):
+   `$head_sha`: before healing, compare `$head_sha` with the short
+   SHA prefix recorded in the step's `commit_title` in `todo.json`.
+   Matching means `$head_sha` is the original step commit or an
+   amend of it. If they match, set `$commit_sha` ← `$head_sha` and
+   heal the file with that value (only when `exists` is true). If
+   they do not match, report the review `commit_sha`, `$head_sha`
+   and the todo SHA, then abnormal STOP for the user to resolve.
 
    ```bash
    $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
@@ -108,7 +112,8 @@ Then:
       probe `"prompt"` as `$review_prompt`. (Interrupted earlier
       invocations with `needs_fix` still true resume via Phase 3
       `resume_phase=review` into this gate → **6c** at any `round`,
-      including 3, unless the probe returned `"skipped": true`.)
+      including the max review round (currently 3), unless the probe
+      returned `"skipped": true`.)
 - Otherwise: go to **6a** (start or continue review).
 
 `$var` names here are agent context variables (see SKILL Variable
@@ -196,19 +201,22 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
    review file was created because the review found nothing):
    refresh `$commit_title` with `git log -1 --pretty="%h: %s"` and
    proceed to Phase 7.
-2. If `"open_major"` == 0 and `"round"` >= 3: refresh
-   `$commit_title` and proceed to Phase 7 (remaining open minors
-   may stay unfinished). At max round this matches
+2. If `"open_major"` == 0 and `"round"` has reached the max review
+   round (currently 3): refresh `$commit_title` and proceed to
+   Phase 7 (remaining open minors may stay unfinished). At the max
+   review round (currently 3) this matches
    `"ready_to_complete": true`, but earlier rounds must still fix
    minors via rule 3. Round N is the N-th review sub-agent pass on
    the step commit; after rounds 1–2 with any open findings
    (major or minor), the path is fix → bump → re-review.
 3. **Otherwise** (`needs_fix` is true — including when
-   `"round"` >= 3 and `"open_major"` > 0): you **MUST** continue
-   to 6c and launch the fix loop. Never proceed to Phase 7 while
-   open majors remain, and never leave round-3 majors unfixed in
-   this invocation. In rounds 1–2 this also includes minor-only
-   reviews. A review file always exists when `needs_fix` is true.
+   `"round"` has reached the max review round (currently 3) and
+   `"open_major"` > 0): you **MUST** continue to 6c and launch the
+   fix loop. Never proceed to Phase 7 while open majors remain,
+   and never leave open majors at the max review round (currently 3)
+   unfixed in this invocation. In rounds 1–2 this also includes
+   minor-only reviews. A review file always exists when
+   `needs_fix` is true.
 
 ## 6c. Fix loop — one finding at a time
 
@@ -326,8 +334,9 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
 
 - IF non-zero exit -> report stderr -> STOP
 - ELSE parse JSON stdout:
-  - If `"round"` < 3: bump round and sync `commit_sha` (findings
-    preserved), then go back to **6a**:
+  - If `"round"` is below the max review round (currently 3): bump
+    round and sync `commit_sha` (findings preserved), then go back
+    to **6a**:
 
     ```bash
     $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
@@ -342,17 +351,18 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
     the new round. Then go back to **6a** (fresh review sub-agent on
     the latest amended commit).
 
-  - If `"round"` >= 3: **do not bump** and **do not re-review**.
-    Refresh `$commit_title` and proceed to Phase 7. (After a
-    successful fix loop, `open_major` should be 0. If fix/amend
-    verification failed earlier, that path already stopped and
-    reported.) Round 3 is the last review pass: open majors must
-    already have been fixed in **6c** this same invocation; open
-    minors may remain. Never force a fourth review.
+  - If `"round"` has reached the max review round (currently 3):
+    **do not bump** and **do not re-review**. Refresh
+    `$commit_title` and proceed to Phase 7. (After a successful fix
+    loop, `open_major` should be 0. If fix/amend verification failed
+    earlier, that path already stopped and reported.) At the max
+    review round (currently 3), this is the last review pass: open
+    majors must already have been fixed in **6c** this same
+    invocation; open minors may remain. Never force a fourth review.
 
 If `bump-round` exits non-zero because the round cap was reached,
-treat it the same as the `round >= 3` case (never force a fourth
-review).
+treat it the same as the case where the max review round
+(currently 3) has been reached (never force a fourth review).
 
 ## Appendix A: Call-frequency optimisation
 
