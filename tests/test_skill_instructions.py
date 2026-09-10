@@ -1052,6 +1052,39 @@ class TestApplyStepReviewSop:
                 f"{path.name} must document post-commit residue risk"
             )
 
+    def test_readme_documents_optimized_step_review(self):
+        """Bilingual READMEs describe batch fix / minor-only / delta / cap."""
+        for path in (README_MD, README_ZH):
+            text = _read(path)
+            plain = text.replace("**", "")
+            assert "batch fix" in plain.lower() or "批量修复" in plain, (
+                f"{path.name} must document batch fix"
+            )
+            assert (
+                "minor-only" in plain.lower()
+                or "仅 minor" in plain
+            ), (
+                f"{path.name} must document minor-only direct completion"
+            )
+            assert (
+                "delta review" in plain.lower()
+            ), (
+                f"{path.name} must document delta review"
+            )
+            assert (
+                "three full" in plain.lower()
+                or "三轮 full" in plain
+                or "最多三轮" in plain
+            ), (
+                f"{path.name} must document the three full-round cap"
+            )
+            assert (
+                "Round 1 is always a full review" in plain
+                or "第 1 轮始终是 full review" in plain
+            ), (
+                f"{path.name} must document Round 1 full review"
+            )
+
     def test_readme_documents_round2_user_cli(self):
         """R2 leftover: list empty JSON + archive --json in bilingual README."""
         for path in (README_MD, README_ZH):

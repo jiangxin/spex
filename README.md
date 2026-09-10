@@ -330,7 +330,25 @@ After a coding-step commit, the tree (excluding `$spex_root`) must be
 clean — leftover unstaged files poison later `true`/`auto` steps, so
 apply SOPs STOP if residue remains. Values accept JSON bool
 `true`/`false` or lowercase strings `"false"` | `"auto"` | `"true"`
-(not `"True"` / `"AUTO"`). Example `todo.json` content:
+(not `"True"` / `"AUTO"`).
+
+When `step_review` is enabled and a step produced a commit, apply runs
+an optimized Phase 6 review loop:
+
+1. **Round 1 is always a full review** of the step commit.
+2. **Batch fix**: all open findings from that pass are fixed by one
+   sub-agent, one related lint/test check set, and one `git commit
+   --amend` — not one agent/amend per finding.
+3. **Minor-only**: after a successful batch fix, the step completes
+   (Phase 7). No delta review and no second full review round.
+4. **Any major**: after batch fix, Spex runs one **delta review** of
+   the fix range. No new major → complete; new major → next full
+   round (capped at three full rounds; never a fourth).
+5. Findings are marked complete only after amend succeeds and HEAD
+   verification passes. `step_review=false` with open majors is an
+   abnormal STOP (not a silent skip).
+
+Example `todo.json` content:
 
 ```json
 [

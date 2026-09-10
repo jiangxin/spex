@@ -327,6 +327,22 @@ Spex 的解法是：`todo.json` 中每个开发步骤包含两个必填字段
 也必须干净——残留未提交改动会破坏后续 `true`/`auto` 步骤，因此 apply
 SOP 在发现残留时会 STOP。取值只接受 JSON 布尔 `true`/`false` 或小写
 字符串 `"false"` | `"auto"` | `"true"`（不接受 `"True"` / `"AUTO"`）。
+
+当 `step_review` 开启且步骤已产生 commit 时，apply 会进入优化后的
+Phase 6 review 循环：
+
+1. **第 1 轮始终是 full review**，审查该步骤的 commit。
+2. **批量修复（batch fix）**：该轮全部 open findings 由**一个**子
+   agent 处理，只跑一组相关 lint/test，只执行一次
+   `git commit --amend`——不再按 finding 逐个启动/amend。
+3. **仅 minor**：batch fix 成功后直接进入 Phase 7 完成步骤；不启动
+   delta review，也不进入第 2 轮 full review。
+4. **含 major**：batch fix 后启动一次 **delta review**，只检查修复
+   增量。无新 major → 完成；有新 major → 进入下一轮 full review
+  （最多三轮 full review，绝不会启动第四轮）。
+5. 仅在 amend 成功且 HEAD 校验通过后才标记 finding 完成。
+   `step_review=false` 且仍有 open major 时为异常 STOP（不会静默跳过）。
+
 `todo.json` 示例如下：
 
 ```json
