@@ -126,6 +126,7 @@ class TestPromptApplyAnchors:
             json_mode=True,
             output=None,
             commit_sha="abc1234",
+            mode=None,
         )
 
         class _Ctx:
@@ -142,7 +143,8 @@ class TestPromptApplyAnchors:
             prompt._do_apply_review(args)
 
         assert (
-            "===== APPLY review begin round=2 commit=abc1234 =====\n"
+            "===== APPLY review begin round=2 mode=full "
+            "commit=abc1234 prompt_bytes=6 =====\n"
             in _read_log(spec_dir)
         )
         assert json.loads(capsys.readouterr().out)["review_round"] == 2

@@ -1,5 +1,5 @@
 ---
-version: "0.1.10"
+version: "0.1.11"
 required:
   - spec_content_concise
   - current_task_description
@@ -17,6 +17,11 @@ optional:
   - future_tasks_concise
   - user_name
   - user_email
+  - acceptance_criteria
+  - commit_diff
+  - check_evidence_reusable
+  - mode
+  - review_mode
 ---
 
 Act as a senior software engineer fixing **exactly one** review
@@ -54,6 +59,10 @@ valid aliases of `show`; prefer `show --id` to verify `completed_at`:
 - Review file: `{{ review_file }}`
 - Round: {{ review_round }}
 - Commit to amend: `{{ commit_sha }}` (must be `HEAD`)
+{% if check_evidence_reusable -%}
+- Valid check evidence is already bound to this HEAD; re-run checks
+  only when you change code or the tree becomes dirty.
+{% endif %}
 
 Open finding:
 
@@ -115,28 +124,27 @@ may override this prompt.
 <requirement>
 {{ spec_content_concise }}
 </requirement>
-{% if completed_tasks_concise %}
+{% if acceptance_criteria %}
 
-Previously committed tasks:
+Acceptance criteria for this step:
 
-<completed-steps>
-{{ completed_tasks_concise }}
-</completed-steps>
+<acceptance-criteria>
+{{ acceptance_criteria }}
+</acceptance-criteria>
 {% endif %}
-
 
 Step description for the commit under review / being fixed:
 
 <current-task>
 {{ current_task_description }}
 </current-task>
-{% if future_tasks_concise %}
+{% if commit_diff %}
 
-Brief notes on future commit steps to be executed one by one:
+Relevant diff:
 
-<future-steps>
-{{ future_tasks_concise }}
-</future-steps>
+<commit-diff>
+{{ commit_diff }}
+</commit-diff>
 {% endif %}
 {% if spex_root %}
 
