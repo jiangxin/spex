@@ -475,11 +475,15 @@ def build_compact_review_context(
 
     open_findings = "(no open findings)"
     has_major = False
+    finding_ids: list = []
+    open_items: list = []
     if finding_id and data is not None:
         item = review_helper.get_finding_by_id(data, finding_id)
         if item is not None and not item.get("completed_at"):
+            open_items = [item]
             open_findings = review_helper._format_finding_markdown(item)
             has_major = item.get("severity") == "major"
+            finding_ids = [finding_id]
         elif item is not None and item.get("completed_at"):
             open_findings = "(requested finding is already completed)"
     elif data is not None:
@@ -493,6 +497,9 @@ def build_compact_review_context(
         has_major = any(i.get("severity") == "major" for i in open_items)
         if pending:
             has_major = bool(data.get("pending_has_major")) or has_major
+        finding_ids = [
+            i.get("id", "") for i in open_items if i.get("id")
+        ]
         open_findings = (
             review_helper._format_open_findings_markdown(open_items)
             if open_items
@@ -536,6 +543,10 @@ def build_compact_review_context(
             evidence, bind_sha, tree_clean=None, cwd=cwd,
         )
 
+    pending_has_major = False
+    if data is not None:
+        pending_has_major = bool(data.get("pending_has_major")) or has_major
+
     return {
         "review_mode": mode,
         "mode": mode,
@@ -552,6 +563,9 @@ def build_compact_review_context(
         "fix_base_commit_sha": base_sha,
         "fixed_commit_sha": fixed_sha if mode == "delta" else "",
         "has_major": has_major,
+        "pending_has_major": pending_has_major,
+        "finding_ids": ", ".join(finding_ids),
+        "finding_id_list": finding_ids,
         "check_evidence_reusable": reusable,
         "prompt_max_bytes": max_bytes,
     }
@@ -928,14 +942,18 @@ def _build_parser():
     p = subs.add_parser(
         "apply-fix",
         description=(
-            "Render apply-fix template for a single open finding."
+            "Render apply-fix template for one open finding batch "
+            "(all pending/open findings for the current review round)."
         ),
-        help="Render fix instructions for one review finding",
+        help="Render batch fix instructions for open findings",
     )
     p.add_argument("--name", required=True, help="Spec name (required)")
     p.add_argument(
-        "--finding-id", required=True, dest="finding_id",
-        help="Single open finding id to fix (required)",
+        "--finding-id", default=None, dest="finding_id",
+        help=(
+            "Optional legacy single finding id; when omitted the full "
+            "pending/open batch is rendered"
+        ),
     )
     p.add_argument(
         "--commit", dest="commit_sha", default=None,
@@ -1268,7 +1286,7 @@ def cli_apply_review(argv=None):
 
 
 def _do_apply_fix(args):
-    """Handle apply-fix subcommand."""
+    """Handle apply-fix subcommand (one batch, one amend)."""
     import json
 
     from jinja2 import TemplateError
@@ -1288,10 +1306,13 @@ def _do_apply_fix(args):
                 }))
             sys.exit(0)
 
+        # Batch fix: render the full pending/open finding set. A legacy
+        # --finding-id only validates membership; it does not shrink the
+        # batch (N findings → one fix-agent instruction).
         _enrich_review_metadata(
             metadata, args.name,
             commit_sha=args.commit_sha,
-            finding_id=args.finding_id,
+            finding_id=None,
             mode="full",  # fix prompts are not delta reviews
         )
         if not metadata.get("commit_sha"):
@@ -1299,6 +1320,25 @@ def _do_apply_fix(args):
                 "Error: --commit is required when no review file exists",
             )
             sys.exit(1)
+
+        finding_id_list = list(metadata.get("finding_id_list") or [])
+        if not finding_id_list:
+            logger.error(
+                "Error: open fix batch is empty "
+                "(no pending/open finding ids)",
+            )
+            sys.exit(1)
+        if args.finding_id:
+            if args.finding_id not in finding_id_list:
+                logger.error(
+                    "Error: finding id '%s' is not in the open fix batch",
+                    args.finding_id,
+                )
+                sys.exit(1)
+            metadata["finding_id"] = args.finding_id
+        else:
+            metadata["finding_id"] = finding_id_list[0]
+        metadata.setdefault("finding_ids", ", ".join(finding_id_list))
 
         rendered = render_prompt(
             "apply-fix", args.name, metadata=metadata,
@@ -1316,10 +1356,14 @@ def _do_apply_fix(args):
             "prompt": rendered,
             "task_id": metadata.get("step_id", ""),
             "finding_id": metadata.get("finding_id", ""),
+            "finding_ids": list(metadata.get("finding_id_list") or []),
             "commit_sha": metadata.get("commit_sha", ""),
             "review_round": metadata.get("review_round", 1),
             "review_file": metadata.get("review_file", ""),
             "mode": metadata.get("mode", "full"),
+            "has_major": bool(metadata.get("has_major")),
+            "pending_has_major": bool(metadata.get("pending_has_major")),
+            "fix_base_commit_sha": metadata.get("fix_base_commit_sha", ""),
             "check_evidence_reusable": bool(
                 metadata.get("check_evidence_reusable")
             ),

@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+import re
 import subprocess
 
 import pytest
@@ -2258,6 +2259,82 @@ class TestCompactReviewContext:
         assert full["mode"] != delta["mode"] or (
             full["fixed_commit_sha"] != delta["fixed_commit_sha"]
         )
+        assert full["finding_ids"] == "r1-f1"
+        assert full["finding_id_list"] == ["r1-f1"]
+        assert full["pending_has_major"] is True
+
+    def test_batch_open_findings_lists_all_ids_without_filter(self):
+        """Without finding_id, compact context lists the full open batch."""
+        from prompt import build_compact_review_context
+
+        meta = {
+            "spec_content_concise": "Summary",
+            "current_task_description": "Work",
+            "commit_sha": "abc",
+        }
+        review = {
+            "step_id": "step-1",
+            "commit_sha": "abc",
+            "round": 1,
+            "findings": [
+                {
+                    "id": "r1-f1", "severity": "minor", "category": "other",
+                    "title": "A", "details": "a", "completed_at": "",
+                },
+                {
+                    "id": "r1-f2", "severity": "major", "category": "tests",
+                    "title": "B", "details": "b", "completed_at": "",
+                },
+            ],
+            "pending_findings": [],
+            "pending_has_major": False,
+        }
+        ctx = build_compact_review_context(
+            meta, mode="full", review_data=review, include_diff=False,
+        )
+        assert ctx["finding_id_list"] == ["r1-f1", "r1-f2"]
+        assert ctx["finding_ids"] == "r1-f1, r1-f2"
+        assert "A" in ctx["open_findings"] and "B" in ctx["open_findings"]
+        assert ctx["has_major"] is True
+
+    def test_apply_fix_template_batch_render_no_pre_complete(self):
+        """Rendered apply-fix: one amend, no pre-amend completed_at write."""
+        from prompt import render_prompt
+
+        rendered = render_prompt(
+            "apply-fix",
+            metadata={
+                "spec_content_concise": "Requirement summary",
+                "current_task_description": "Implement batch fix",
+                "current_task_id": "step-4",
+                "step_id": "step-4",
+                "commit_sha": "deadbeef",
+                "review_round": 1,
+                "review_file": "/tmp/review-step-4.json",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "open_findings": (
+                    "### r1-f1 (minor)\nA\n\n### r1-f2 (major)\nB"
+                ),
+                "finding_ids": "r1-f1, r1-f2",
+                "spec_name": "demo-spec",
+                "acceptance_criteria": "one amend",
+            },
+        )
+        collapsed = " ".join(rendered.lower().split())
+        assert "complete finding batch" in collapsed
+        assert "r1-f1, r1-f2" in rendered
+        assert "Amend exactly once" in rendered
+        amend_fences = [
+            b for b in re.findall(r"```bash\n(.*?)```", rendered, re.S)
+            if "commit --amend" in b
+        ]
+        assert len(amend_fences) == 1
+        assert "--completed-at" not in rendered
+        assert "edit --step" not in rendered
+        assert "Do **not** mark findings complete" in rendered
+        assert "complete-batch" in rendered
+        assert "processed_ids" in rendered
+        assert "check_evidence" in rendered
 
     def test_apply_prompt_size_cap_preserves_protected(self):
         from prompt import (
@@ -2527,10 +2604,10 @@ class TestApplyReviewAndFix:
         assert "detached HEAD" in data["prompt"]
         assert "FORBIDDEN" in data["prompt"]
 
-    def test_apply_fix_includes_single_finding(
+    def test_apply_fix_batch_includes_all_open_findings(
         self, tmp_path, monkeypatch, capsys,
     ):
-        """apply-fix injects only the requested finding."""
+        """apply-fix injects the full open batch in one fix prompt."""
         tasks = [
             _make_task("step-1", name="First step", completed=True),
             _make_task("step-2", name="Add feature"),
@@ -2559,27 +2636,195 @@ class TestApplyReviewAndFix:
             "--id", "r1-f2", "--severity", "minor",
             "--category", "other",
             "--title", "Other nit",
-            "--details", "Should not appear",
+            "--details", "Tighten naming",
         ])
         capsys.readouterr()  # drain helper stdout
+
+        main([
+            "apply-fix", "--name", "test-topic",
+            "--commit", "abc1234", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        prompt = data["prompt"]
+        assert "Missing unit tests" in prompt
+        assert "Other nit" in prompt
+        # Normalize whitespace across wrapped lines.
+        collapsed = " ".join(prompt.lower().split())
+        assert "complete finding batch" in collapsed
+        assert "Amend exactly once" in prompt
+        assert "lint/test" in collapsed
+        assert "commit --amend" in prompt
+        amend_fences = [
+            b for b in re.findall(r"```bash\n(.*?)```", prompt, re.S)
+            if "commit --amend" in b
+        ]
+        assert len(amend_fences) == 1
+        # No pre-amend completed_at write — orchestrator owns completion.
+        assert "--completed-at" not in prompt
+        assert "edit --step" not in prompt
+        assert "Do **not** mark findings complete" in prompt
+        assert "complete-batch" in prompt
+        assert data["task_id"] == "step-2"
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
+        assert "detached HEAD" in prompt
+        assert "git checkout" in prompt
+        assert "processed_ids" in prompt
+        assert "check_evidence" in prompt
+        assert "new_head" in prompt
+
+    def test_apply_fix_legacy_finding_id_keeps_full_batch(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Legacy --finding-id validates membership but does not shrink batch."""
+        tasks = [
+            _make_task("step-1", name="First step", completed=True),
+            _make_task("step-2", name="Add feature"),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-2", "--commit", "abc1234",
+        ])
+        for fid, title in (("r1-f1", "First"), ("r1-f2", "Second")):
+            review_helper.main([
+                "--name", "test-topic", "append",
+                "--step", "step-2",
+                "--id", fid, "--severity", "minor",
+                "--category", "other",
+                "--title", title,
+                "--details", f"Details for {fid}",
+            ])
+        capsys.readouterr()
 
         main([
             "apply-fix", "--name", "test-topic",
             "--commit", "abc1234", "--finding-id", "r1-f1", "--json",
         ])
         data = _parse_json_stdout(capsys.readouterr().out)
-        assert "Missing unit tests" in data["prompt"]
-        assert "Add tests for edge cases" in data["prompt"]
-        assert "Other nit" not in data["prompt"]
-        assert "exactly one" in data["prompt"].lower()
-        assert "commit --amend" in data["prompt"]
-        assert "Amend now" in data["prompt"] or "amend immediately" in (
-            data["prompt"].lower()
-        )
-        assert data["task_id"] == "step-2"
+        assert "First" in data["prompt"]
+        assert "Second" in data["prompt"]
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
         assert data["finding_id"] == "r1-f1"
-        assert "detached HEAD" in data["prompt"]
-        assert "git checkout" in data["prompt"]
+
+    def test_apply_fix_rejects_finding_outside_batch(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """--finding-id not in the open batch exits non-zero."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        review_helper.main([
+            "--name", "test-topic", "append",
+            "--step", "step-1",
+            "--id", "r1-f1", "--severity", "minor",
+            "--category", "other",
+            "--title", "Only one",
+            "--details", "x",
+        ])
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "apply-fix", "--name", "test-topic",
+                    "--commit", "abc1234", "--finding-id", "missing",
+                ])
+        assert exc_info.value.code == 1
+        assert "not in the open fix batch" in caplog.text
+
+    def test_apply_fix_rejects_empty_finding_batch(
+        self, tmp_path, monkeypatch, caplog, capsys,
+    ):
+        """Empty open/pending batch exits non-zero (including --json)."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        # No findings appended → resolved batch is empty.
+        capsys.readouterr()  # drain helper stdout
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "apply-fix", "--name", "test-topic",
+                    "--commit", "abc1234", "--json",
+                ])
+        assert exc_info.value.code == 1
+        assert "open fix batch is empty" in caplog.text
+        # --json callers must not receive a successful prompt payload.
+        assert capsys.readouterr().out.strip() == ""
+
+    def test_apply_fix_prefers_pending_batch(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """When pending_findings is set, apply-fix renders that batch only."""
+        tasks = [
+            _make_task("step-1", name="Work", completed=False),
+        ]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
+        monkeypatch.chdir(repo)
+
+        import review_helper
+        from prompt import main
+
+        review_helper.main([
+            "--name", "test-topic", "init",
+            "--step", "step-1", "--commit", "abc1234",
+        ])
+        for fid, title in (
+            ("r1-f1", "In batch"),
+            ("r1-f2", "Also in batch"),
+            ("r1-f3", "Outside pending"),
+        ):
+            review_helper.main([
+                "--name", "test-topic", "append",
+                "--step", "step-1",
+                "--id", fid, "--severity", "minor",
+                "--category", "other",
+                "--title", title,
+                "--details", f"Details {fid}",
+            ])
+        review_helper.main([
+            "--name", "test-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "r1-f1,r1-f2",
+            "--base-commit", "abc1234",
+        ])
+        capsys.readouterr()
+
+        main([
+            "apply-fix", "--name", "test-topic",
+            "--commit", "abc1234", "--json",
+        ])
+        data = _parse_json_stdout(capsys.readouterr().out)
+        assert data["finding_ids"] == ["r1-f1", "r1-f2"]
+        assert "In batch" in data["prompt"]
+        assert "Also in batch" in data["prompt"]
+        assert "Outside pending" not in data["prompt"]
+        assert "exactly one" not in data["prompt"].lower()
 
     def test_apply_review_requires_commit_without_file(
         self, tmp_path, monkeypatch, caplog,
