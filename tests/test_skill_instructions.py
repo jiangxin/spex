@@ -334,6 +334,16 @@ class TestCompactSopRouterSkeleton:
         _index(text, "1 SOP+refs")
         _index(text, "body is source of truth")
 
+    def test_must_preserve_side_effect_annotation_rule(self):
+        text = _read(COMPACT_SOP)
+        must = _h2_section(text, "Must Preserve")
+        _index(must, "Side-effect annotations on CMDs")
+        _index(must, "changes git state")
+        _index(must, "writes files")
+        _index(must, "triggers a hook")
+        _index(must, "create-helper precheck")
+        _index(must, "apply-helper precheck")
+
 
 class TestCommandPersistRedact:
     def test_create_redacts_requirement_before_prepare_spec(self):
@@ -394,6 +404,13 @@ class TestCreatePlanOnlySop:
         pre = _h2_section(text, "Preconditions")
         _index(pre, "begin-session` **after** Phase 1")
         _index(pre, "precheck")
+
+    def test_phase1_precheck_side_effect_annotation(self):
+        text = _read(CREATE_MD)
+        assert "no side effects" not in text.lower()
+        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Session")
+        _index(phase1, "may switch to main_branch_name")
+        _index(phase1, "does not create the spec dir")
 
     def test_phase2_clarification_gate(self):
         phase2 = _h3_section(_read(CREATE_MD), "Phase 2: Clarify Requirement")

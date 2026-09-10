@@ -65,6 +65,12 @@ Style rules:
 14. Phase titles and numbers (`### Phase N: ...`).
 15. Explicit shared loads:
     `Load and follow references/<file>.md exactly`.
+16. Side-effect annotations on CMDs: any CMD that changes git state,
+    writes files, or triggers a hook MUST carry a side-effect note on
+    its SOP line (e.g. `CMD (may switch to main_branch_name; …)` or
+    `CMD (creates spex/<name> branch; writes meta; runs hook; …)`).
+    Worked examples: `create-helper precheck` and
+    `apply-helper precheck`.
 
 ## Do Not
 

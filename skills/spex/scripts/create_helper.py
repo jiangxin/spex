@@ -318,6 +318,29 @@ def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
     atomic_write_json(meta_path, meta.to_dict())
 
 
+def list_working_tree_dirty_paths(
+    cwd: str | Path | None = None,
+) -> list[str]:
+    """Return relative dirty paths from ``git status --porcelain``.
+
+    Reuses ``apply_helper.parse_porcelain_paths`` for path extraction.
+    Raises ``subprocess.CalledProcessError`` on git failure.
+    """
+    from apply_helper import parse_porcelain_paths
+
+    porcelain = subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=cwd,
+        text=True,
+        stderr=subprocess.PIPE,
+    )
+    paths: list[str] = []
+    for line in porcelain.splitlines():
+        if line:
+            paths.extend(parse_porcelain_paths(line))
+    return paths
+
+
 def validate_create_branch(
     config: dict, cwd: str | Path | None = None,
 ) -> str:
@@ -344,6 +367,22 @@ def validate_create_branch(
 
     main_branch = config["main_branch_name"]
     if main_branch and current != main_branch:
+        try:
+            dirty_paths = list_working_tree_dirty_paths(cwd)
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                "Error: cannot check working tree status: %s",
+                e.stderr.strip() if e.stderr else e,
+            )
+            sys.exit(1)
+        if dirty_paths:
+            logger.error(
+                "Working tree is dirty; refusing to switch to '%s'. "
+                "Commit or stash first, or switch manually: %s",
+                main_branch,
+                dirty_paths,
+            )
+            sys.exit(1)
         logger.warning(
             f"Warning: current branch '{current}' does not match "
             f"main_branch_name '{main_branch}'. "

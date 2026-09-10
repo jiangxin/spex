@@ -577,17 +577,21 @@ class TestValidateCreateBranch:
         except SystemExit as e:
             assert e.code == 1
 
+    @patch("create_helper.list_working_tree_dirty_paths", return_value=[])
     @patch("branch.switch_branch")
     @patch("branch.get_current_branch", return_value="develop")
-    def test_wrong_main_branch_auto_switches(self, _curr, _switch):
+    def test_wrong_main_branch_auto_switches(self, _curr, _switch, _dirty):
         result = validate_create_branch({"branch_management": True,
                                          "main_branch_name": "main"})
         assert result == "main"
         _switch.assert_called_once_with("main", None)
 
+    @patch("create_helper.list_working_tree_dirty_paths", return_value=[])
     @patch("branch.switch_branch")
     @patch("branch.get_current_branch", return_value="develop")
-    def test_auto_switch_success_output(self, _curr, _switch, caplog):
+    def test_auto_switch_success_output(
+        self, _curr, _switch, _dirty, caplog,
+    ):
         import logging
         with caplog.at_level(logging.INFO):
             result = validate_create_branch({"branch_management": True,
@@ -597,11 +601,14 @@ class TestValidateCreateBranch:
         assert "Switching" in caplog.text
         assert "Switched to branch" in caplog.text
 
+    @patch("create_helper.list_working_tree_dirty_paths", return_value=[])
     @patch("branch.switch_branch",
            side_effect=subprocess.CalledProcessError(
                1, "git", stderr="error: pathspec"))
     @patch("branch.get_current_branch", return_value="develop")
-    def test_auto_switch_failure_exits(self, _curr, _switch, caplog):
+    def test_auto_switch_failure_exits(
+        self, _curr, _switch, _dirty, caplog,
+    ):
         import logging
         with caplog.at_level(logging.ERROR):
             try:
@@ -611,6 +618,31 @@ class TestValidateCreateBranch:
             except SystemExit as e:
                 assert e.code == -1
         assert "failed to switch" in caplog.text
+
+    @patch("branch.switch_branch")
+    @patch("branch.get_current_branch", return_value="feature")
+    def test_dirty_tree_refuses_switch(self, _curr, _switch, caplog):
+        import logging
+        with (
+            patch(
+                "create_helper.list_working_tree_dirty_paths",
+                return_value=["dirty.txt", "other.py"],
+            ),
+            caplog.at_level(logging.ERROR),
+        ):
+            try:
+                validate_create_branch({
+                    "branch_management": True,
+                    "main_branch_name": "main",
+                })
+                assert False, "Should have called sys.exit(1)"
+            except SystemExit as e:
+                assert e.code == 1
+        _switch.assert_not_called()
+        assert "dirty.txt" in caplog.text
+        assert "other.py" in caplog.text
+        assert "refusing to switch" in caplog.text
+        assert "Commit or stash" in caplog.text
 
     @patch("branch.get_current_branch", return_value="spex/feature")
     def test_spex_prefix_exits(self, _mock):
@@ -634,6 +666,77 @@ class TestValidateCreateBranch:
                 pass
         assert "main_branch_name" in caplog.text
         assert "Hint" in caplog.text
+
+
+def _init_git_repo(path: Path) -> None:
+    """Initialize a git repo with user config and an initial commit."""
+    subprocess.run(
+        ["git", "init", "-b", "main", str(path)],
+        capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"],
+        cwd=str(path), capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "T"],
+        cwd=str(path), capture_output=True, check=True,
+    )
+    (path / "README").write_text("init\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "."], cwd=str(path), capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=str(path), capture_output=True, check=True,
+    )
+
+
+class TestValidateCreateBranchDirtyIntegration:
+    """Real-git coverage for dirty-tree guard before auto-switch."""
+
+    def test_dirty_feature_branch_refuses_and_stays(self, tmp_path, caplog):
+        import logging
+
+        _init_git_repo(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "-b", "feature"],
+            cwd=str(tmp_path), capture_output=True, check=True,
+        )
+        (tmp_path / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as exc:
+                validate_create_branch(
+                    {"branch_management": True, "main_branch_name": "main"},
+                    cwd=str(tmp_path),
+                )
+        assert exc.value.code == 1
+        assert "dirty.txt" in caplog.text
+        assert "refusing to switch" in caplog.text
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(tmp_path), capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert branch == "feature"
+
+    def test_clean_feature_branch_switches_to_main(self, tmp_path):
+        _init_git_repo(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "-b", "feature"],
+            cwd=str(tmp_path), capture_output=True, check=True,
+        )
+
+        result = validate_create_branch(
+            {"branch_management": True, "main_branch_name": "main"},
+            cwd=str(tmp_path),
+        )
+        assert result == "main"
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(tmp_path), capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert branch == "main"
 
 
 class TestCliPostAction:
