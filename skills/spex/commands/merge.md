@@ -40,17 +40,26 @@ Submit completed work by merging the feature branch or creating a PR.
 $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
 ```
 
-- Load and follow `references/resolve-spec-list.md` exactly
+- Load and follow `references/resolve-spec-list.md` exactly.
+  Empty `[]` recovery below overrides the default STOP when
+  `$spec_name` is non-empty
+- **Empty `[]` handling:** IF resolve yields `[]`:
+  - IF `$spec_name` is non-empty → **Unfinished-spec recovery**,
+    re-check:
 
-### Phase 2: Validate (optional)
+    ```bash
+    $spex_skill_dir/scripts/spex list --json "$spec_name"
+    ```
 
-- Optional agent-side fast-fail: read `$spec_path/meta.json` and IF
-  `spex_branch` not set -> report branch management inactive -> STOP.
-  Prefer trusting the script (same as archive) — `spex merge` also
-  validates; skip this phase when unsure and let Phase 3 surface the
-  error.
+    - IF hit (non-empty array) -> report that the spec exists but
+      is not finished (`x/y` steps from the hit's `spec_path`
+      todo progress, `format_spec` style); suggest
+      `/spex apply "<spec>"` -> **STOP**
+    - IF still `[]` -> report no match -> **STOP**
+  - ELSE (empty / missing `$spec_name`) → report no match →
+    **STOP**
 
-### Phase 3: Submit
+### Phase 2: Submit
 
 - Forward any agent-supplied Usage flags unchanged.
 - Note: `spex merge` has **no** `--json` flag; stdout is always JSON.
@@ -67,7 +76,7 @@ $spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
   - IF `--dry-run` / `-n` was used -> report preview -> **STOP** (no
     real submit in the same invocation)
 
-### Phase 4: Output
+### Phase 3: Output
 
 - Display summary:
 
@@ -85,9 +94,10 @@ $spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
 ## Failure Handling
 
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
-- ON_FAIL Phase 1 list / resolve -> STOP
-- ON_FAIL Phase 2 no `spex_branch` (when optional check runs) -> STOP
-- ON_FAIL Phase 3 merge (non-zero, non-JSON, or `errors` non-empty)
+  (trust the script; missing `spex_branch` and other merge failures
+  appear on stderr)
+- ON_FAIL Phase 1 list / resolve / unfinished-spec recovery -> STOP
+- ON_FAIL Phase 2 merge (non-zero, non-JSON, or `errors` non-empty)
   -> STOP
 - `--dry-run` complete -> STOP (re-invoke for real submit)
 

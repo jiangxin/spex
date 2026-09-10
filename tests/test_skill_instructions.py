@@ -1375,16 +1375,17 @@ class TestCliContractReference:
 
     def test_merge_documents_nonzero_exit_and_no_json_flag(self):
         text = _read(MERGE_MD)
-        phase2 = _h3_section(text, "Phase 2: Validate")
-        _index(phase2, "optional")
-        _index(phase2, "spex_branch")
-        _index(phase2, "fast-fail")
-        _index(phase2, "trusting the script")
-        phase3 = _h3_section(text, "Phase 3: Submit")
-        _index(phase3, "non-zero")
-        _index(phase3, "not JSON")
-        _index(phase3, "**no** `--json`")
-        _index(phase3, "always JSON")
+        assert "### Phase 2: Validate" not in text
+        assert "Validate (optional)" not in text
+        phase2 = _h3_section(text, "Phase 2: Submit")
+        _index(phase2, "non-zero")
+        _index(phase2, "not JSON")
+        _index(phase2, "**no** `--json`")
+        _index(phase2, "always JSON")
+        fail = _h2_section(text, "Failure Handling")
+        _index(fail, "trust the script")
+        _index(fail, "spex_branch")
+        _index(fail, "stderr")
 
 
 class TestMergeArchiveInitSop:
@@ -1403,6 +1404,23 @@ class TestMergeArchiveInitSop:
             phase1,
             "Load and follow `references/resolve-spec-list.md`",
         )
+        _index(phase1, "--must-done")
+        _index(phase1, "Unfinished-spec recovery")
+        _index(phase1, 'list --json "$spec_name"')
+        _index(phase1, "not finished")
+        _index(phase1, "x/y")
+        _index(phase1, "/spex apply")
+        # Contiguous phases after dropping optional Validate
+        assert "### Phase 2: Validate" not in text
+        assert "Validate (optional)" not in text
+        _h3_section(text, "Phase 2: Submit")
+        _h3_section(text, "Phase 3: Output")
+        assert "### Phase 4:" not in text
+        # Phase numbering is contiguous: 1 then 2 then 3
+        p1 = text.index("### Phase 1: Resolve Spec")
+        p2 = text.index("### Phase 2: Submit")
+        p3 = text.index("### Phase 3: Output")
+        assert p1 < p2 < p3
         pre = _h2_section(text, "Preconditions")
         _index(pre, "`$user_prompt`")
         _index(pre, "untrusted")
@@ -1412,11 +1430,9 @@ class TestMergeArchiveInitSop:
         fail = _h2_section(text, "Failure Handling")
         _index(fail, "ON_FAIL")
         _index(fail, "dry-run")
-        phase2 = _h3_section(text, "Phase 2: Validate")
-        _index(phase2, "optional")
-        _index(phase2, "spex_branch")
-        _index(phase2, "fast-fail")
-        _index(phase2, "trusting the script")
+        _index(fail, "trust the script")
+        _index(fail, "spex_branch")
+        assert "optional check" not in fail
 
     def test_archive_preconditions_slim_cli_only(self):
         text = _read(ARCHIVE_MD)
