@@ -1314,3 +1314,492 @@ class TestInitBatchState:
         assert data["fix_base_commit_sha"] == ""
         assert data["fixed_commit_sha"] == ""
         assert data["check_evidence"] is None
+
+
+def _evidence(sha: str, exit_code: int = 0) -> str:
+    return json.dumps({
+        "commit_sha": sha,
+        "checks": [
+            {
+                "command": "pytest tests/test_review_helper.py",
+                "exit_code": exit_code,
+                "completed_at": "2026-09-10T12:00:00",
+            },
+        ],
+    })
+
+
+class TestNormalizeCheckEvidence:
+    def test_accepts_int_exit_code(self):
+        raw = {
+            "commit_sha": "abc",
+            "checks": [{"command": "pytest", "exit_code": 0}],
+        }
+        assert review_helper.normalize_check_evidence(raw) is not None
+
+    def test_rejects_bool_exit_code(self):
+        for bad in (False, True):
+            raw = {
+                "commit_sha": "abc",
+                "checks": [{"command": "pytest", "exit_code": bad}],
+            }
+            assert review_helper.normalize_check_evidence(raw) is None
+
+    def test_evidence_is_successful_rejects_bool_zero(self):
+        evidence = {
+            "commit_sha": "abc",
+            "checks": [{"command": "pytest", "exit_code": False}],
+        }
+        assert review_helper.evidence_is_successful(evidence, "abc") is False
+
+
+def _seed_open_findings(spec_dir, base_sha="basesha1", capsys=None):
+    review_helper.main([
+        "--name", "my-topic", "init",
+        "--step", "step-1", "--commit", base_sha,
+    ])
+    review_helper.main([
+        "--name", "my-topic", "append",
+        "--step", "step-1",
+        "--id", "f1", "--severity", "minor",
+        "--category", "other", "--title", "Nit",
+    ])
+    review_helper.main([
+        "--name", "my-topic", "append",
+        "--step", "step-1",
+        "--id", "f2", "--severity", "major",
+        "--category", "tests", "--title", "Cover",
+    ])
+    if capsys is not None:
+        capsys.readouterr()
+    return spec_dir / "review-step-1.json"
+
+
+def _patch_git_ok(monkeypatch, head_sha, clean=True, dirty_paths=None):
+    monkeypatch.setattr(
+        review_helper, "get_head_sha",
+        lambda cwd=None: head_sha,
+    )
+    monkeypatch.setattr(
+        review_helper, "is_project_tree_clean",
+        lambda spex_root=None, cwd=None: (
+            clean, [] if clean else list(dirty_paths or ["dirty.py"]),
+        ),
+    )
+
+
+class TestSetPending:
+    def test_sets_pending_batch(self, spec_dir, capsys):
+        _seed_open_findings(spec_dir, "basesha1", capsys=capsys)
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["pending_findings"] == ["f1", "f2"]
+        assert out["pending_has_major"] is True
+        assert out["fix_base_commit_sha"] == "basesha1"
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["pending_findings"] == ["f1", "f2"]
+        assert data["pending_has_major"] is True
+        assert data["fixed_commit_sha"] == ""
+        assert data["check_evidence"] is None
+
+    def test_rejects_completed_finding(self, spec_dir):
+        path = _seed_open_findings(spec_dir)
+        review_helper.main([
+            "--name", "my-topic", "edit",
+            "--step", "step-1", "--id", "f1",
+            "--completed-at", "now",
+        ])
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "set-pending",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+            ])
+        data = _read(path)
+        assert data["pending_findings"] == []
+
+
+class TestCompleteBatch:
+    """Atomic complete-batch: all-or-nothing + resumable after amend."""
+
+    def test_success_marks_all_and_persists_evidence(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is False
+        assert out["completed_ids"] == ["f1", "f2"]
+        data = _read(spec_dir / "review-step-1.json")
+        assert all(f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == "newsha99"
+        assert data["commit_sha"] == "newsha99"
+        assert data["pending_findings"] == []
+        assert data["pending_has_major"] is False
+        assert data["check_evidence"]["commit_sha"] == "newsha99"
+        assert data["check_evidence"]["checks"][0]["exit_code"] == 0
+
+    def test_id_mismatch_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_head_mismatch_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "otherhead")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_dirty_tree_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(
+            monkeypatch, "newsha99", clean=False,
+            dirty_paths=["skills/spex/scripts/review_helper.py"],
+        )
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_failed_evidence_writes_nothing(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99", exit_code=1),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_evidence_not_bound_to_new_commit_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("othersha00"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_base_sha_mismatch_fix_base_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "wrongbase",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_base_sha_mismatch_review_commit_writes_nothing(
+        self, spec_dir, monkeypatch,
+    ):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        data = _read(path)
+        # Keep fix_base_commit_sha aligned with --base-commit so only
+        # review commit_sha mismatches.
+        data["commit_sha"] = "reviewshaX"
+        path.write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8",
+        )
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "newsha99")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+        data = _read(path)
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_same_sha_as_base_rejected(self, spec_dir, monkeypatch):
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        before = path.read_text(encoding="utf-8")
+        _patch_git_ok(monkeypatch, "basesha1")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "basesha1",
+                "--evidence", _evidence("basesha1"),
+            ])
+        assert path.read_text(encoding="utf-8") == before
+
+    def test_write_failure_then_resume(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        """Amend-success / completion-interrupted: findings stay open, resume works."""
+        path = _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        real_save = review_helper.save_review
+
+        def boom(p, data):
+            raise OSError("simulated write failure")
+
+        monkeypatch.setattr(review_helper, "save_review", boom)
+        with pytest.raises(OSError, match="simulated"):
+            review_helper.main([
+                "--name", "my-topic", "complete-batch",
+                "--step", "step-1",
+                "--ids", "f1,f2",
+                "--base-commit", "basesha1",
+                "--new-commit", "newsha99",
+                "--evidence", _evidence("newsha99"),
+            ])
+        data = _read(path)
+        assert data["pending_findings"] == ["f1", "f2"]
+        assert all(not f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == ""
+
+        monkeypatch.setattr(review_helper, "save_review", real_save)
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is False
+        data = _read(path)
+        assert all(f["completed_at"] for f in data["findings"])
+        assert data["fixed_commit_sha"] == "newsha99"
+        assert data["pending_findings"] == []
+
+    def test_idempotent_when_already_completed(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence", _evidence("newsha99"),
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        assert out["resumed"] is True
+
+    def test_validate_complete_batch_unit_zero_write(self):
+        data = {
+            "step_id": "step-1",
+            "commit_sha": "basesha1",
+            "round": 1,
+            "pending_findings": ["f1", "f2"],
+            "pending_has_major": True,
+            "fix_base_commit_sha": "basesha1",
+            "fixed_commit_sha": "",
+            "check_evidence": None,
+            "findings": [
+                {
+                    "id": "f1", "severity": "minor", "category": "other",
+                    "title": "a", "details": "", "completed_at": "",
+                },
+                {
+                    "id": "f2", "severity": "major", "category": "tests",
+                    "title": "b", "details": "", "completed_at": "",
+                },
+            ],
+        }
+        evidence = json.loads(_evidence("newsha99"))
+        err = review_helper.validate_complete_batch(
+            data, ["f1", "f2"], "basesha1", "newsha99", evidence,
+            head_sha="newsha99", tree_clean=True,
+        )
+        assert err is None
+        # Mutating apply happens only after validation; data still open.
+        assert all(not f["completed_at"] for f in data["findings"])
+        err = review_helper.validate_complete_batch(
+            data, ["f1", "f2"], "basesha1", "newsha99", evidence,
+            head_sha="newsha99", tree_clean=False,
+        )
+        assert err is not None
+        assert all(not f["completed_at"] for f in data["findings"])
+
+    def test_sha_matches_prefix(self):
+        assert review_helper.sha_matches("abcdef1", "abcdef1deadbeef")
+        assert review_helper.sha_matches("ABCDEF1", "abcdef1")
+        assert not review_helper.sha_matches("abc", "abcdef1")
+        assert not review_helper.sha_matches("abcdef1", "abcdef2")
+
+    def test_evidence_from_stdin(self, spec_dir, capsys, monkeypatch):
+        _seed_open_findings(spec_dir, "basesha1")
+        review_helper.main([
+            "--name", "my-topic", "set-pending",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+        ])
+        _patch_git_ok(monkeypatch, "newsha99")
+        monkeypatch.setattr(
+            review_helper.sys, "stdin",
+            __import__("io").StringIO(_evidence("newsha99")),
+        )
+        capsys.readouterr()
+        review_helper.main([
+            "--name", "my-topic", "complete-batch",
+            "--step", "step-1",
+            "--ids", "f1,f2",
+            "--base-commit", "basesha1",
+            "--new-commit", "newsha99",
+            "--evidence-from-stdin",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert out["completed"] is True
+        data = _read(spec_dir / "review-step-1.json")
+        assert data["fixed_commit_sha"] == "newsha99"
