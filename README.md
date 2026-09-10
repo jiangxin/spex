@@ -188,6 +188,7 @@ Display spex configuration, including Git info, paths, config file list, and spe
   main_branch_name  =
   submit_method     = merge
   step_review       = true
+  use_git_worktree  = false
 
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
@@ -238,7 +239,9 @@ spex open [spec-name] --run "ls -la"
 
 Archive completed specs (or restore from archives). Prefer `--json` for
 machine-readable stdout (`dry_run` + `results[]`); human logs stay on
-stderr.
+stderr. When a spec has `meta.spex_worktree`, archive removes that
+linked worktree before moving the directory (it does not delete the
+`spex/*` branch).
 
 ```bash
 spex archive --json                     # Archive completed specs
@@ -249,7 +252,7 @@ spex archive --json --restore --name <spec>
 
 ### spex merge
 
-Merge a spec into the main branch and archive it. Same functionality as the `/spex merge` skill command.
+Merge a spec into the main branch and archive it. Same functionality as the `/spex merge` skill command. Merge runs in the worktree that already has the target trunk checked out, so a feature locked in a linked spex worktree does not block the trunk branch.
 
 ---
 
@@ -420,6 +423,35 @@ Managing branches while developing multiple features simultaneously can be chall
 New spex branches are created from `meta.branch` (the base branch recorded when the spec was created; typically `main` / `master`), not from the current HEAD. That keeps `/spex apply --all` and back-to-back applies from carrying commits from one spec onto the next. If the recorded base is missing locally, Spex falls back to the current HEAD and logs a warning.
 
 During the apply review loop, `apply-helper ensure-branch` re-attaches to the spec branch after a review/fix sub-agent. If HEAD is detached on a commit that is **not** an ancestor of that branch, ensure-branch exits with an error and prints a `git branch -f` recovery hint — it does not silently discard the detached commit.
+
+#### Optional linked git worktree (`use_git_worktree`)
+
+By default (`use_git_worktree = false`), apply switches the main checkout in place onto `spex/<name>`. You can opt in so each spec gets an isolated linked worktree instead — useful when you want to keep the IDE on the main checkout while the agent codes on the feature branch.
+
+Enable in `.spex.toml` (or `~/.spex.toml`):
+
+```toml
+[spex]
+use_git_worktree = true
+```
+
+Behavior:
+
+| Concern | Detail |
+|---------|--------|
+| Scope | Global config is snapshotted into `meta.use_git_worktree` at **create** only. Changing the global flag later does not affect existing specs. Apply / merge / archive read **meta**, not the live config. |
+| Path | `~/.spex/worktree/<repo_basename>/<spec_name>/` (under the user home; directory name `worktree` is singular). Independent of project `spex_root`. |
+| Meta | `use_git_worktree` (bool, always written on create; missing key on old specs → `false`). `spex_worktree` (absolute path) is filled on first apply precheck when enabled; omitted when unused. |
+| Apply | Creates or reuses the worktree; agents use `$spex_worktree` as coding `working_directory`. Does **not** switch the user's IDE root or create a multi-root workspace. |
+| Merge | Merges in the worktree that already has the target trunk checked out — never switches into a trunk branch locked by the feature worktree. |
+| Archive | Removes the linked worktree when `meta.spex_worktree` is set; still does not delete the `spex/*` branch. |
+| Requires | `branch_management = true`. With branch management off, no feature branch and no spex worktree path. |
+
+Known limits (first release):
+
+- Ignored files (`.env`, local secrets) and dependency installs are **not** auto-synced into the linked worktree — copy or reinstall manually if needed.
+- The IDE may stay on the main checkout while the agent works in `$spex_worktree` (dual-root). That is intentional; Spex only constrains the Agent cwd.
+- Repo basename collisions under `~/.spex/worktree/` and a configurable worktree root are out of scope for now.
 
 Spex itself is developed using the spex skill. The following `git log --merges` output shows how branch descriptions appear in merge commits:
 

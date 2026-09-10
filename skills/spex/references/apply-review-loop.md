@@ -19,6 +19,9 @@ exit codes, stdout/stderr, quoting, and one-helper-per-shell.
 7. Single render: `$review_prompt`/(round+mode); `$fix_prompt`/batch-ids. **Cache check before** every prompt CMD.
 8. After review/fix: `ensure-branch` — never `git checkout` to fix HEAD.
 9. Orthogonal to `step_review` — probe via `prompt apply-review --json` only (do **not** read `.spex.toml`).
+10. **Coding cwd:** when `$spex_worktree` is non-empty (bound in
+    Phase 2), review / fix sub-agents MUST use it as
+    `working_directory`. Do **not** switch the user's IDE root.
 
 **Caller precondition:** same as durable entry. Steps with
 `skip_commit` that skipped commit → Phase 7 without loading this
@@ -492,6 +495,9 @@ aliases of `show` (compat).
 
 ## Appendix B: Sub-agent constraints
 
+- **Working directory:** when `$spex_worktree` is non-empty, launch
+  review / fix sub-agents with that path as `working_directory`
+  (Agent cwd only — do not switch the IDE root).
 - **Review sub-agent (full):** record findings only via
   `review-helper append` (with `--commit`). Must not modify source
   code, must not call `init`, must not call `bump-round`, and must

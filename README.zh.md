@@ -188,6 +188,7 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
   main_branch_name  =
   submit_method     = merge
   step_review       = true
+  use_git_worktree  = false
 
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
@@ -238,6 +239,8 @@ spex open [spec-name] --run "ls -la"
 
 归档已完成的 specs（或从 archives 恢复）。机器可读结果请用 `--json`
 （stdout：`dry_run` + `results[]`）；人类可读日志仍走 stderr。
+若 spec 的 `meta.spex_worktree` 非空，归档前会删除对应 linked
+worktree（不会删除 `spex/*` 分支）。
 
 ```bash
 spex archive --json                     # 归档已完成的 specs
@@ -248,7 +251,7 @@ spex archive --json --restore --name <spec>
 
 ### spex merge
 
-合并 spec 到主干并归档。功能和 `/spex merge` 技能命令相同。
+合并 spec 到主干并归档。功能和 `/spex merge` 技能命令相同。merge 在已 checkout 目标主干的 worktree 中执行，因此 feature 被 locked 在 linked spex worktree 中时也不会阻塞主干分支。
 
 ---
 
@@ -415,6 +418,35 @@ Phase 6 review 循环：
 新建 spex 分支时以 `meta.branch`（创建 spec 时记录的主干，通常是 `main` / `master`）为起点，而不是当前 HEAD。这样 `/spex apply --all` 或连续 apply 多个 spec 时，不会把上一个 spec 的提交带进下一个分支。若本地缺少该基线分支，Spex 会回退到当前 HEAD 并打出 warning。
 
 在 apply 的 review 循环中，`apply-helper ensure-branch` 会在 review/fix 子 agent 之后重新挂回 spec 分支。若此时处于 detached HEAD，且该提交**不是**目标分支的祖先，ensure-branch 会报错退出并打印 `git branch -f` 恢复提示，而不会静默丢掉 detached 提交。
+
+#### 可选的 linked git worktree（`use_git_worktree`）
+
+默认（`use_git_worktree = false`）下，apply 会在主工作区原地切到 `spex/<name>`。你可以选择为每个 spec 创建独立的 linked worktree——便于 IDE 继续停在主工作区，而 Agent 在 feature 分支上编码。
+
+在 `.spex.toml`（或 `~/.spex.toml`）中开启：
+
+```toml
+[spex]
+use_git_worktree = true
+```
+
+行为说明：
+
+| 关注点 | 说明 |
+|--------|------|
+| 作用范围 | 全局配置仅在 **create** 时快照进 `meta.use_git_worktree`。之后改全局开关不影响已有 spec。apply / merge / archive **只读 meta**，不读实时配置。 |
+| 路径 | `~/.spex/worktree/<仓库 basename>/<spec_name>/`（用户主目录下；目录名 `worktree` 为单数）。与项目 `spex_root` 无关。 |
+| Meta | `use_git_worktree`（bool，create 时始终写出；旧 spec 缺省视为 `false`）。`spex_worktree`（绝对路径）在启用时于首次 apply precheck 填充；未使用则省略。 |
+| Apply | 创建或复用 worktree；Agent 以 `$spex_worktree` 为编码 `working_directory`。**不**切换用户 IDE 根目录，也不生成多根 workspace。 |
+| Merge | 在已 checkout 目标主干的 worktree 中执行 merge——不会切到被 feature worktree 占用的主干分支。 |
+| Archive | 若 `meta.spex_worktree` 非空则删除对应 worktree；仍不自动删除 `spex/*` 分支。 |
+| 前提 | 需要 `branch_management = true`。关闭分支管理时不会建 feature 分支，也不会走 spex worktree 路径。 |
+
+已知限制（首期）：
+
+- 忽略文件（`.env`、本地密钥等）与依赖安装**不会**自动同步到 linked worktree——需要时请手动复制或重装。
+- IDE 可能仍停在主工作区，而 Agent 在 `$spex_worktree` 中工作（双根）。这是刻意设计；Spex 只约束 Agent 工作目录。
+- 仓库 basename 在 `~/.spex/worktree/` 下冲突、以及可配置 worktree 根路径，暂不在首期范围。
 
 Spex 本身即使用 spex skill 开发。以下 `git log --merges` 输出展示了分支描述在合并提交中的呈现方式：
 

@@ -30,6 +30,10 @@ Archive completed specs.
 - Forward Usage flags unchanged; trust the script for completion /
   branch / restore matching rules (do not pre-check git or todos
   to decide whether to call)
+- When `meta.spex_worktree` is set, the CLI removes that linked
+  worktree before moving the spec (archive `-f` maps to
+  `git worktree remove --force`). It does **not** delete the
+  `spex/*` branch
 - Always pass `--json` so Phase 3 can parse stdout
 - After success, update `$spec_path` from Phase 3 JSON (not the
   pre-move `specs/...` path)
