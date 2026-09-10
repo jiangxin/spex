@@ -1559,41 +1559,57 @@ class TestMergeArchiveInitSop:
         _index(pre, "Do **not** move")
         _index(pre, "only run the CLI")
         _index(pre, "`$spec_path`")
-        _index(pre, "--dry-run")
-        _index(pre, "**STOP**")
         _index(pre, "anywhere")
         _index(pre, "--json")
+        # R4-F10: Preconditions are bind + Load only — no CLI call
+        assert "scripts/spex" not in pre
         # Script-enforced rules must not be re-taught in Preconditions
         assert "todo.json" not in pre
         assert "fuzzy" not in pre.lower()
         fail = _h2_section(text, "Failure Handling")
         _index(fail, "ON_FAIL")
         _index(fail, "dry-run")
-        phase2 = _h3_section(text, "Phase 2: Report Results")
-        _index(phase2, "$spec_path")
-        _index(phase2, "--json")
-        _index(phase2, "dry_run")
-        _index(phase2, "results")
-        assert "Archived: <name> -> <dest>" not in phase2
+        phase3 = _h3_section(text, "Phase 3: Report")
+        _index(phase3, "$spec_path")
+        _index(phase3, "--json")
+        _index(phase3, "dry_run")
+        _index(phase3, "results")
+        assert "Archived: <name> -> <dest>" not in phase3
 
     def test_archive_confirmation_gate_for_batch_and_force(self):
-        """R3-F11 / P2-11: dry-run confirm when no --name; --force confirms."""
-        pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
-        _index(pre, "Confirmation gate")
-        _index(pre, "no `--name`")
-        _index(pre, "--dry-run --json")
-        _index(pre, "results[]")
-        _index(pre, "explicit user confirmation")
-        _index(pre, "--force")
-        _index(pre, "spex_branch")
+        """R3-F11 / P2-11 + R4-F10: Probe+Confirm phase; --force confirms."""
+        text = _read(ARCHIVE_MD)
+        phase1 = _h3_section(text, "Phase 1: Probe + Confirm")
+        _index(phase1, "`--name` is unbound")
+        _index(phase1, "--dry-run --json")
+        _index(phase1, "results[]")
+        _index(phase1, "explicit user confirmation")
+        _index(phase1, "--force")
+        _index(phase1, "spex_branch")
         # Gate must not apply when user already bound --dry-run / -n
-        _index(pre, "did **not** bind `--dry-run` / `-n`")
-        _index(pre, "pre-Phase-1 probe")
-        _index(pre, "not** the user dry-run STOP path")
-        # Round 2 dry-run STOP semantics unchanged
-        _index(pre, "--dry-run` / `-n` success")
-        _index(pre, "**STOP** this invocation")
-        _index(pre, "invoke `/spex archive` again")
+        _index(phase1, "did **not** bind `--dry-run` / `-n`")
+        # Round 2 dry-run STOP: explicit short-circuit before Phase 1
+        short = _h3_section(text, "Explicit `--dry-run` short-circuit (before Phase 1)")
+        _index(short, "--dry-run` / `-n`")
+        _index(short, "**STOP** this invocation")
+        _index(short, "invoke `/spex archive` again")
+        # Contiguous phases after restructure
+        _h3_section(text, "Phase 2: Run Archive")
+        _h3_section(text, "Phase 3: Report")
+        p1 = text.index("### Phase 1: Probe + Confirm")
+        p2 = text.index("### Phase 2: Run Archive")
+        p3 = text.index("### Phase 3: Report")
+        short_i = text.index(
+            "### Explicit `--dry-run` short-circuit (before Phase 1)"
+        )
+        assert short_i < p1 < p2 < p3
+
+    def test_archive_bare_name_requires_name_flag(self):
+        """R4-F10 / P2-23: bare names must become --name; no positional."""
+        pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
+        _index(pre, "--name <name>")
+        _index(pre, "no positional")
+        _index(pre, "bare name")
 
     def test_init_edge_notes_and_failure_handling(self):
         text = _read(INIT_MD)
