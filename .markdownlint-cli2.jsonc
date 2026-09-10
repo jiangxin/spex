@@ -1,6 +1,6 @@
 {
   "globs": ["*.md", "commands/*.md"],
-  "ignores": ["node_modules/**"],
+  "ignores": ["node_modules/**", "skills/spex/templates/**"],
   "config": {
     "MD009": true,
     "MD010": true,

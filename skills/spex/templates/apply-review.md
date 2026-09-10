@@ -8,11 +8,11 @@ required:
   - review_file
   - step_id
   - spex_skill_dir
+  - spec_name
 optional:
   - spex_root
   - completed_tasks_concise
   - future_tasks_concise
-  - spec_name
 ---
 
 Act as a senior code reviewer. Your task is to review the git commit

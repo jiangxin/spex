@@ -221,6 +221,7 @@ class TestNoSpexBranch:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert "No spex_branch" in data["errors"][0]
+        assert data["errors"][0] in caplog.text
 
 
 @pytest.mark.slow
@@ -259,3 +260,70 @@ class TestNonMergeSubmitMethod:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert "not implemented" in data["errors"][0]
+        assert data["errors"][0] in caplog.text
+
+
+class TestMergeErrorsToStderr:
+    """P0-4 / R4-F4: JSON errors must also appear on stderr via logger."""
+
+    def test_merge_conflict_logs_error_to_stderr(self, tmp_path, capsys, caplog):
+        specs, _ = _setup_topic(tmp_path, spex_branch="spex/conflict")
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+        conflict = subprocess.CalledProcessError(
+            1, "git", stderr="CONFLICT (content)",
+        )
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.branch_exists", return_value=True), \
+             patch("branch.merge_branch", side_effect=conflict), \
+             patch("hooks.run_pre_action"), \
+             caplog.at_level(logging.ERROR), \
+             pytest.raises(SystemExit) as exc_info:
+            spex_merge.cli_submit(["my-topic"])
+
+        assert exc_info.value.code == 1
+        data = json.loads(capsys.readouterr().out)
+        assert "Merge failed" in data["errors"][0]
+        assert data["errors"][0] in caplog.text
+
+    def test_target_branch_create_failure_logs_to_stderr(
+        self, tmp_path, capsys, caplog,
+    ):
+        specs, _ = _setup_topic(tmp_path)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+        create_err = subprocess.CalledProcessError(
+            1, "git", stderr="fatal: cannot create branch",
+        )
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.branch_exists", return_value=False), \
+             patch("branch.create_and_switch_branch", side_effect=create_err), \
+             patch("hooks.run_pre_action"), \
+             caplog.at_level(logging.ERROR), \
+             pytest.raises(SystemExit) as exc_info:
+            spex_merge.cli_submit(["my-topic"])
+
+        assert exc_info.value.code == 1
+        data = json.loads(capsys.readouterr().out)
+        assert "Failed to create target branch" in data["errors"][0]
+        assert data["errors"][0] in caplog.text
+
+    def test_success_path_has_no_error_logs(self, tmp_path, capsys, caplog):
+        specs, _ = _setup_topic(tmp_path)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("branch.branch_exists", return_value=True), \
+             patch("branch.merge_branch"), \
+             patch("hooks.run_pre_action"), \
+             patch("hooks.run_post_action"), \
+             patch("archive.archive_single_spec", return_value=None), \
+             caplog.at_level(logging.ERROR):
+            spex_merge.cli_submit(["my-topic", "--no-archive"])
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["errors"] == []
+        assert not any(r.levelno >= logging.ERROR for r in caplog.records)

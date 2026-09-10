@@ -23,7 +23,62 @@ from common import (
 
 SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
+# Short create name (no date prefix): [a-z0-9][a-z0-9-]* and ≤31 bytes.
+CREATE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+MAX_CREATE_NAME_BYTES = 31
 MAX_SPEC_NAME_BYTES = 64
+
+
+def validate_create_name(name: str, description: str) -> dict:
+    """Validate Phase 3 create name/description; return normalized fields.
+
+    Raises ValueError with a human-readable reason on failure.
+    """
+    if name is None or not str(name).strip():
+        raise ValueError("name is required and must be non-empty.")
+    name = str(name).strip()
+
+    if DATE_PREFIX_PATTERN.match(name):
+        raise ValueError(
+            f"name '{name}' must not include a YYYY-MM-DD-HH-MM- date "
+            "prefix; prepare-spec adds it."
+        )
+
+    if not CREATE_NAME_PATTERN.match(name):
+        raise ValueError(
+            f"invalid name '{name}'. Must match [a-z0-9][a-z0-9-]* "
+            "(lowercase letters, digits, hyphens; must start with "
+            "alphanumeric)."
+        )
+
+    name_bytes = len(name.encode("utf-8"))
+    if name_bytes > MAX_CREATE_NAME_BYTES:
+        raise ValueError(
+            f"name '{name}' is {name_bytes} bytes; must be at most "
+            f"{MAX_CREATE_NAME_BYTES} bytes."
+        )
+
+    if description is None:
+        raise ValueError("description is required and must be non-empty.")
+    description = str(description)
+    if not description.strip():
+        raise ValueError("description is required and must be non-empty.")
+    if "\n" in description or "\r" in description:
+        raise ValueError(
+            "description must be a single line (no embedded newlines)."
+        )
+
+    return {"name": name, "description": description.strip()}
+
+
+def _do_validate_name(args):
+    """CLI: validate create name/description; print JSON on success."""
+    try:
+        result = validate_create_name(args.name, args.description)
+    except ValueError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    print(json.dumps(result))
 
 
 def _new_session_id() -> str:
@@ -263,6 +318,29 @@ def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
     atomic_write_json(meta_path, meta.to_dict())
 
 
+def list_working_tree_dirty_paths(
+    cwd: str | Path | None = None,
+) -> list[str]:
+    """Return relative dirty paths from ``git status --porcelain``.
+
+    Reuses ``apply_helper.parse_porcelain_paths`` for path extraction.
+    Raises ``subprocess.CalledProcessError`` on git failure.
+    """
+    from apply_helper import parse_porcelain_paths
+
+    porcelain = subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=cwd,
+        text=True,
+        stderr=subprocess.PIPE,
+    )
+    paths: list[str] = []
+    for line in porcelain.splitlines():
+        if line:
+            paths.extend(parse_porcelain_paths(line))
+    return paths
+
+
 def validate_create_branch(
     config: dict, cwd: str | Path | None = None,
 ) -> str:
@@ -289,6 +367,22 @@ def validate_create_branch(
 
     main_branch = config["main_branch_name"]
     if main_branch and current != main_branch:
+        try:
+            dirty_paths = list_working_tree_dirty_paths(cwd)
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                "Error: cannot check working tree status: %s",
+                e.stderr.strip() if e.stderr else e,
+            )
+            sys.exit(1)
+        if dirty_paths:
+            logger.error(
+                "Working tree is dirty; refusing to switch to '%s'. "
+                "Commit or stash first, or switch manually: %s",
+                main_branch,
+                dirty_paths,
+            )
+            sys.exit(1)
         logger.warning(
             f"Warning: current branch '{current}' does not match "
             f"main_branch_name '{main_branch}'. "
@@ -338,14 +432,22 @@ def _do_prepare_spec(args):
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
 
     try:
-        spec_name, spec_dir = create_spec(args.name, specs_dir)
+        validated = validate_create_name(args.name, args.description)
+    except ValueError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+
+    try:
+        spec_name, spec_dir = create_spec(validated["name"], specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
 
     ctx = cfg.get_project_context()
     timestamp = local_iso_timestamp()
-    _write_meta(spec_dir, ctx, prompt, timestamp, args.description)
+    _write_meta(
+        spec_dir, ctx, prompt, timestamp, validated["description"],
+    )
 
     if ctx.spex_root:
         _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
@@ -497,6 +599,21 @@ def _build_parser():
         help="Spec directory path to merge session log into",
     )
 
+    p_validate_name = subs.add_parser(
+        "validate-name",
+        description=(
+            "Validate create Phase 3 name and description."
+        ),
+        help="Validate create Phase 3 name and description",
+    )
+    p_validate_name.add_argument(
+        "--name", required=True, help="Short spec name (no date prefix)",
+    )
+    p_validate_name.add_argument(
+        "--description", required=True,
+        help="Single-line brief description",
+    )
+
     p_prepare = subs.add_parser(
         "prepare-spec",
         description=(
@@ -546,6 +663,8 @@ def main(argv=None):
         _do_begin_session(args)
     elif args.subcmd == "end-session":
         _do_end_session(args)
+    elif args.subcmd == "validate-name":
+        _do_validate_name(args)
     elif args.subcmd == "prepare-spec":
         _do_prepare_spec(args)
     elif args.subcmd == "post-action":

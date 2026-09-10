@@ -306,6 +306,7 @@ def _build_metadata(template_name, spec_name=None):
     if template_name != "spec-template" and spec_name:
         metadata.update(_build_task_context(spec_dir))
 
+    metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
     return metadata
 
 

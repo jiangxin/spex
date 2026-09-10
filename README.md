@@ -141,11 +141,15 @@ disable-model-invocation: true
 
 - **`/spex modify [spec-name] [changes]`** — Modify an existing spec. Updates the `todo.json` development steps, preserving completed steps while regenerating unfinished tasks.
 
-- **`/spex apply [spec-name]`** — Begin step-by-step implementation. Creates a local branch with the `spex/` prefix by default. Use `spex list` to monitor progress during development.
+- **`/spex apply [spec-name]`** — Begin step-by-step implementation. Creates a local `spex/` branch from `meta.branch` (the project base recorded at create time), not from whatever HEAD you happen to be on. Use `spex list` to monitor progress during development.
 
 - **`/spex apply-one-step [spec-name]`** — Same as `/spex apply`, but executes only one step at a time. Useful when you want fine-grained control over each step.
 
 - **`/spex merge [spec-name]`** — Merge the completed spec into the main branch and auto-archive.
+
+- **`/spex create`** refuses to switch away from a dirty working tree. If you are not on the recorded base branch and have uncommitted changes, Spex reports the dirty paths and stops instead of silently leaving work behind.
+
+- **`/spex merge`** prints failure reasons to stderr as well as the JSON stdout, so the agent can report the cause without parsing machine output.
 
 ---
 
@@ -206,7 +210,7 @@ spex list -v                 # Include spec descriptions
 spex list -vv                # Include step completion details
 spex list --archives         # Archived specs
 spex list --all-projects     # Specs from all projects
-spex list --json             # JSON format output
+spex list --json             # JSON array on stdout (no matches → [] + exit 0)
 ```
 
 ### spex show
@@ -232,7 +236,16 @@ spex open [spec-name] --run "ls -la"
 
 ### spex archive
 
-Archive a completed spec.
+Archive completed specs (or restore from archives). Prefer `--json` for
+machine-readable stdout (`dry_run` + `results[]`); human logs stay on
+stderr.
+
+```bash
+spex archive --json                     # Archive completed specs
+spex archive --json --name <spec>       # Archive one spec by name
+spex archive --json --dry-run           # Preview without moving
+spex archive --json --restore --name <spec>
+```
 
 ### spex merge
 
@@ -386,6 +399,10 @@ If you use Spex across multiple projects, you can store specs from different pro
 
 Managing branches while developing multiple features simultaneously can be challenging. Spex handles this automatically by default: each spec gets its own development branch with a `spex/` prefix, and merging automatically archives the spec. Branch descriptions are also set (via `git config branch.<name>.description`), so the merge commit message includes a summary of the requirement.
 
+New spex branches are created from `meta.branch` (the base branch recorded when the spec was created; typically `main` / `master`), not from the current HEAD. That keeps `/spex apply --all` and back-to-back applies from carrying commits from one spec onto the next. If the recorded base is missing locally, Spex falls back to the current HEAD and logs a warning.
+
+During the apply review loop, `apply-helper ensure-branch` re-attaches to the spec branch after a review/fix sub-agent. If HEAD is detached on a commit that is **not** an ancestor of that branch, ensure-branch exits with an error and prints a `git branch -f` recovery hint — it does not silently discard the detached commit.
+
 Spex itself is developed using the spex skill. The following `git log --merges` output shows how branch descriptions appear in merge commits:
 
 ```
@@ -495,6 +512,10 @@ If `/spex apply` reports a branch name conflict, it means a branch with that nam
 1. Use `spex show` to check the spec's current status.
 2. Use `/spex apply` to continue development.
 3. If the old branch is no longer needed, delete it with `git branch -D <branch-name>`.
+
+### ensure-branch refused to re-attach
+
+If apply stops because `apply-helper ensure-branch` failed on a detached HEAD, Spex is protecting a commit that is not an ancestor of the spec branch (for example an amend done while detached). Recover with the printed `git branch -f <spex-branch> <sha>` hint (or cherry-pick / recreate the fix on the branch), then re-run `/spex apply`.
 
 ### How to interrupt and resume development
 

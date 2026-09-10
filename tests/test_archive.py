@@ -1178,12 +1178,282 @@ class TestAllProjectsFlag:
 class TestArchiveSopSpecPath:
     """Lightweight checks that archive.md documents $spec_path updates."""
 
-    def test_sop_updates_spec_path_after_archive_and_restore(self):
+    def test_sop_updates_spec_path_from_json(self):
         content = ARCHIVE_SOP.read_text(encoding="utf-8")
-        assert "Archived: <name> -> <dest>" in content
-        assert "Restored: <name> -> <dest>" in content
+        assert "--json" in content
+        assert "dry_run" in content
+        assert "results" in content
+        assert "spec_path" in content
         assert "$spec_path" in content
         assert "pre-move" in content or "specs/..." in content
+        assert "Archived: <name> -> <dest>" not in content
+        assert "known Usage flags" in content or "anywhere" in content
+
+
+class TestArchiveJsonOutput:
+    """Tests for archive --json stdout shapes."""
+
+    def test_json_archive_single(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch("branch.branch_exists", return_value=False):
+            spex_archive.main(["--json", "--name", "done-topic"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is False
+        assert len(data["results"]) == 1
+        item = data["results"][0]
+        assert item["action"] == "archived"
+        assert item["spec_name"] == "done-topic"
+        assert item["spec_path"] == str(archives / "done-topic")
+        assert (archives / "done-topic").is_dir()
+
+    def test_json_dry_run_single(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "done-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch("branch.branch_exists", return_value=False):
+            spex_archive.main(["--json", "--name", "done-topic", "-n"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is True
+        item = data["results"][0]
+        assert item["action"] == "would_archive"
+        assert item["spec_name"] == "done-topic"
+        assert (specs / "done-topic").is_dir()
+        assert not (archives / "done-topic").exists()
+
+    def test_json_skipped_active_branch(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        topic = specs / "active-topic"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
+        )
+        archives = tmp_path / "archives"
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch("branch.branch_exists", return_value=True):
+            spex_archive.main(["--json", "--name", "active-topic"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is False
+        item = data["results"][0]
+        assert item["action"] == "skipped"
+        assert "active branch" in item["detail"]
+        assert (specs / "active-topic").is_dir()
+
+    def test_json_restore(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "old-topic", [_make_task("1")])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ):
+            spex_archive.main(
+                ["--json", "--restore", "--name", "old-topic"]
+            )
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is False
+        item = data["results"][0]
+        assert item["action"] == "restored"
+        assert item["spec_name"] == "old-topic"
+        assert item["spec_path"] == str(specs / "old-topic")
+        assert (specs / "old-topic").is_dir()
+
+    def test_json_restore_dry_run(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        _write_todo(archives / "old-topic", [_make_task("1")])
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ):
+            spex_archive.main(
+                ["--json", "--restore", "--name", "old-topic", "-n"]
+            )
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is True
+        item = data["results"][0]
+        assert item["action"] == "would_restore"
+        assert (archives / "old-topic").is_dir()
+        assert not (specs / "old-topic").exists()
+
+    def test_json_batch_archive(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        _write_todo(specs / "alpha-topic", [_make_task("1")])
+        _write_todo(specs / "beta-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/repo")
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is False
+        actions = {r["action"] for r in data["results"]}
+        assert actions == {"archived"}
+        names = {r["spec_name"] for r in data["results"]}
+        assert names == {"alpha-topic", "beta-topic"}
+        assert (archives / "alpha-topic").is_dir()
+        assert (archives / "beta-topic").is_dir()
+
+    def test_json_batch_dry_run_with_skip(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        topic_active = specs / "active-topic"
+        _write_todo(topic_active, [_make_task("1")])
+        (topic_active / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
+        )
+        _write_todo(specs / "merged-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/repo")
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), patch(
+            "branch.branch_exists",
+            side_effect=lambda name: name == "spex/active",
+        ):
+            spex_archive.main(["--json", "--dry-run"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is True
+        by_name = {r["spec_name"]: r for r in data["results"]}
+        assert by_name["merged-topic"]["action"] == "would_archive"
+        assert by_name["active-topic"]["action"] == "skipped"
+        assert (specs / "merged-topic").is_dir()
+        assert (specs / "active-topic").is_dir()
+
+    def test_json_dry_run_skipped_respects_project_scope(
+        self, tmp_path, capsys
+    ):
+        """Unrelated active-branch specs must not appear as skipped."""
+        specs = tmp_path / "specs"
+        mine_active = specs / "mine-active"
+        _write_todo(mine_active, [_make_task("1")])
+        (mine_active / "meta.json").write_text(
+            json.dumps({
+                "workdir": "/my/repo",
+                "spex_branch": "spex/mine-active",
+            }),
+            encoding="utf-8",
+        )
+        other_active = specs / "other-active"
+        _write_todo(other_active, [_make_task("1")])
+        (other_active / "meta.json").write_text(
+            json.dumps({
+                "workdir": "/other/repo",
+                "spex_branch": "spex/other-active",
+            }),
+            encoding="utf-8",
+        )
+        _write_todo(specs / "mine-merged", [_make_task("1")])
+        (specs / "mine-merged" / "meta.json").write_text(
+            json.dumps({"workdir": "/my/repo"}), encoding="utf-8"
+        )
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/my/repo")
+
+        def _branch_exists(name):
+            return name in {"spex/mine-active", "spex/other-active"}
+
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), patch("branch.branch_exists", side_effect=_branch_exists):
+            spex_archive.main(["--json", "--dry-run"])
+        data = json.loads(capsys.readouterr().out)
+        by_name = {r["spec_name"]: r for r in data["results"]}
+        assert by_name["mine-merged"]["action"] == "would_archive"
+        assert by_name["mine-active"]["action"] == "skipped"
+        assert "other-active" not in by_name
+
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), patch("branch.branch_exists", side_effect=_branch_exists):
+            spex_archive.main(["--json", "--dry-run", "--all-projects"])
+        data_all = json.loads(capsys.readouterr().out)
+        by_name_all = {r["spec_name"]: r for r in data_all["results"]}
+        assert by_name_all["other-active"]["action"] == "skipped"
+        assert by_name_all["mine-active"]["action"] == "skipped"
+
+    def test_json_batch_dry_run_force_no_double_list(self, tmp_path, capsys):
+        """--force dry-run must not also emit skipped for active branch."""
+        specs = tmp_path / "specs"
+        topic_active = specs / "active-topic"
+        _write_todo(topic_active, [_make_task("1")])
+        (topic_active / "meta.json").write_text(
+            json.dumps({"spex_branch": "spex/active"}), encoding="utf-8"
+        )
+        _write_todo(specs / "merged-topic", [_make_task("1")])
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/repo")
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ), patch(
+            "branch.branch_exists",
+            side_effect=lambda name: name == "spex/active",
+        ):
+            spex_archive.main(["--json", "--dry-run", "--force"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is True
+        names = [r["spec_name"] for r in data["results"]]
+        assert names.count("active-topic") == 1
+        by_name = {r["spec_name"]: r for r in data["results"]}
+        assert by_name["active-topic"]["action"] == "would_archive"
+        assert by_name["merged-topic"]["action"] == "would_archive"
+        assert not any(r["action"] == "skipped" for r in data["results"])
+        assert (specs / "active-topic").is_dir()
+        assert (specs / "merged-topic").is_dir()
+
+    def test_json_noop_when_nothing_to_archive(self, tmp_path, capsys):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        archives = tmp_path / "archives"
+        ctx = _mock_project_context(top_workdir="/repo")
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives
+        ), patch.object(
+            spex_archive, "get_project_context", return_value=ctx
+        ):
+            spex_archive.main(["--json"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is False
+        assert len(data["results"]) == 1
+        assert data["results"][0]["action"] == "noop"
 
 
 class TestDebugArchiveCliRegression:

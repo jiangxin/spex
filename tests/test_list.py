@@ -844,9 +844,10 @@ class TestNoSpecsStderr:
         assert captured.out == ""
         assert "No specs found." in captured.err
 
-    def test_empty_json_exits_nonzero(
+    def test_empty_json_prints_empty_array(
         self, tmp_path, monkeypatch, capsys,
     ):
+        """--json with no matches: stdout [] and exit 0."""
         specs = tmp_path / "specs"
         archives = tmp_path / "archives"
         specs.mkdir()
@@ -861,13 +862,11 @@ class TestNoSpecsStderr:
             common_mod, "get_project_context", lambda _w=None: ctx,
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            main(["--json"])
-        assert exc_info.value.code == 1
+        main(["--json"])
 
         captured = capsys.readouterr()
-        assert captured.out == ""
-        assert "No specs found." in captured.err
+        assert json.loads(captured.out) == []
+        assert "No specs found." not in captured.err
 
 
 class TestMainFlags:
@@ -981,6 +980,18 @@ class TestMainFlags:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "No specs found." in captured.err
+
+    def test_no_match_json_prints_empty_array(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Filtered-empty + --json: stdout [] and exit 0."""
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--json", "nonexistent-pattern-xyz"])
+
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == []
+        assert "No specs found." not in captured.err
 
     def test_old_all_flag_rejected(
         self, tmp_path, monkeypatch,

@@ -79,7 +79,8 @@ def _format_verbose(spec_dir):
 
 
 
-def main(argv=None):
+def _build_parser() -> ArgumentParser:
+    """Build the argument parser for ``spex show``."""
     parser = ArgumentParser(
         prog="spex show",
         description="Show detailed information about a spec.",
@@ -98,6 +99,11 @@ def main(argv=None):
         action="store_true",
         help="Show specs from all projects (disables project filter)",
     )
+    return parser
+
+
+def main(argv=None):
+    parser = _build_parser()
     args = parser.parse(argv)
 
     if args.name:

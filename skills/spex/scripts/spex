@@ -250,6 +250,14 @@ def _print_config_sections(sections, requested=None):
                 print(f"  {item}")
 
 
+def _build_config_parser():
+    """Build the argument parser for ``spex config``."""
+    parser = ArgumentParser(prog="spex config", usage=_CONFIG_USAGE)
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("names", nargs="*")
+    return parser
+
+
 def _run_config(argv=None):
     """Show spex configuration variables."""
     import config as spex_config
@@ -261,9 +269,7 @@ def _run_config(argv=None):
     if argv and argv[0] == "get":
         argv = argv[1:]
 
-    parser = ArgumentParser(prog="spex config", usage=_CONFIG_USAGE)
-    parser.add_argument("--all", action="store_true")
-    parser.add_argument("names", nargs="*")
+    parser = _build_config_parser()
     args = parser.parse(argv)
 
     ctx = spex_config.get_project_context()

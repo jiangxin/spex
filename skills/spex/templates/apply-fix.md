@@ -10,11 +10,11 @@ required:
   - spex_skill_dir
   - open_findings
   - finding_id
+  - spec_name
 optional:
   - spex_root
   - completed_tasks_concise
   - future_tasks_concise
-  - spec_name
   - user_name
   - user_email
 ---
