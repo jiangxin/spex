@@ -526,7 +526,13 @@ class TestModifyPlanOnlySop:
         _index(pre, "`$request`")
         _index(pre, "untrusted")
         _index(pre, "Load and follow `references/resolve-spec-name.md`")
-        _index(pre, "not** confirming")
+        _index(pre, "skip-confirm")
+        _index(pre, "adopt non-empty")
+        _index(pre, "still empty")
+        _index(pre, "Phase 2 asks")
+        # Old never-confirms wording must stay gone
+        assert "never confirms `$request`" not in pre
+        assert "not** confirming" not in pre
         # Step-23 hyphen / date-prefix heuristics must be gone
         assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in text
         assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in text
@@ -582,12 +588,18 @@ class TestModifyPlanOnlySop:
         _index(name_ref, "**substrings**")
         _index(name_ref, "exact match")
 
-    def test_phase2_selecting_spec_does_not_confirm_request(self):
+    def test_phase2_empty_request_still_asks_after_lock(self):
+        """Empty $request after Phase 1 still asks; skip-confirm adopts non-empty."""
         phase2 = _h3_section(
             _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
         )
-        _index(phase2, "never")
-        _index(phase2, "confirms `$request`")
+        _index(phase2, "missing/empty")
+        _index(phase2, "skip-confirm")
+        _index(phase2, "do not re-ask")
+        _index(phase2, "plan-command-common.md")
+        # Old never-confirms wording must stay gone
+        assert "never confirms `$request`" not in phase2
+        assert "not** confirming" not in phase2
 
     def test_phase3_loads_spec_assets(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
