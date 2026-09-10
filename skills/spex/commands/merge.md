@@ -18,7 +18,8 @@ Submit completed work by merging the feature branch or creating a PR.
 
 - Load and follow `references/cli-contract.md` exactly
 - Load and follow `references/resolve-spec-name.md` exactly
-  (shared first-word probe; Usage flags bind before that algorithm)
+  (shared first-word probe; Usage flags bind before that algorithm;
+  conditional skip-confirm on S1/S2/S3 — no always-wait after lock)
 - Bind from `$user_prompt`: recognize known Usage flags **anywhere** in
   the free-form text; strip them before resolve-spec-name. `$user_prompt`
   is already the redacted remainder after the router strips the

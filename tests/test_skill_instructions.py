@@ -1258,6 +1258,16 @@ class TestSharedSopReferences:
         _index(text, "spec=<X> / request=<Y>")
         _index(text, "**substrings**")
         _index(text, "resolve-spec-list.md")
+        # Skip-vs-confirm contract (no unconditional always-wait after lock)
+        assert "wait for confirmation" not in text
+        _index(text, "Skip wait")
+        _index(text, "proceed")
+        _index(text, "exactly one list hit")
+        _index(text, "empty-name probe exactly one hit")
+        _index(text, "pick = confirm")
+        _index(text, "no second confirm")
+        _index(text, "adopt non-empty `$request`")
+        _index(text, "Wait/ask only while multi-hit")
         # Filtered [] must keep first word as recovery candidate so
         # apply/merge named completed/unfinished recovery stays reachable
         _index(text, "recovery candidate")
@@ -1268,7 +1278,12 @@ class TestSharedSopReferences:
         _index(text, "unfinished-spec")
         needle = "Load and follow `references/resolve-spec-name.md`"
         for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD, MERGE_MD):
-            _index(_read(path), needle)
+            body = _read(path)
+            _index(body, needle)
+            pre = _h2_section(body, "Preconditions")
+            _index(pre, "skip-confirm")
+            assert "echo-confirm" not in pre
+            assert "wait for confirmation" not in pre
         modify = _read(MODIFY_MD)
         assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in modify
         assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in modify
