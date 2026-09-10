@@ -29,9 +29,12 @@ Caller supplies the exact `list --json` CMD (flags such as
    probe missed — never wipe a filtered recovery candidate before
    the caller has run completed/unfinished recovery
 4. After locking (single hit or user pick), echo once
-   `spec=<X> / request=<Y>` and wait for confirmation. Merge with
-   "selecting a spec does **not** confirm `$request`" into one
-   round trip (do not ask separately for spec lock and request)
+   `spec=<X> / request=<Y>` (observability). Skip wait / proceed
+   immediately (adopt non-empty `$request`; no second confirm) if
+   any: (S1) `$first_word` non-empty + exactly one list hit;
+   (S2) `$first_word` empty + empty-name probe exactly one hit;
+   (S3) user finished multi-hit numbered pick (pick = confirm).
+   Wait/ask only while multi-hit choice is still pending — not after pick / lock
 5. `list` matches **substrings**. A single hit is **not** proof of
    an exact match — callers that need exact semantics must compare
    `spec_name` themselves

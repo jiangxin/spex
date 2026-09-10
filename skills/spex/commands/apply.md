@@ -16,7 +16,8 @@ Apply a specification to implement code step by step.
 
 - Load and follow `references/cli-contract.md` exactly
 - Load and follow `references/resolve-spec-name.md` exactly
-  (shared first-word probe; `--all` binds before that algorithm)
+  (shared first-word probe; `--all` binds before that algorithm;
+  conditional skip-confirm on S1/S2/S3 — no always-wait after lock)
 - Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
   (never call the task prompt `$prompt`)
 - Bind `--all` from `$user_prompt` when present (Usage flag

@@ -26,7 +26,8 @@ Apply a single step from a specification's todo list.
 
 - Load and follow `references/cli-contract.md` exactly
 - Load and follow `references/resolve-spec-name.md` exactly
-  (shared first-word probe + empty-name re-list)
+  (shared first-word probe + empty-name re-list; conditional
+  skip-confirm on S1/S2/S3 — no always-wait after lock)
 - `$user_prompt` is already the redacted remainder after the router
   strips the recognized command/alias token (see SKILL.md Routing
   Discipline). Phase 1 follows `resolve-spec-name.md`

@@ -526,7 +526,13 @@ class TestModifyPlanOnlySop:
         _index(pre, "`$request`")
         _index(pre, "untrusted")
         _index(pre, "Load and follow `references/resolve-spec-name.md`")
-        _index(pre, "not** confirming")
+        _index(pre, "skip-confirm")
+        _index(pre, "adopt non-empty")
+        _index(pre, "still empty")
+        _index(pre, "Phase 2 asks")
+        # Old never-confirms wording must stay gone
+        assert "never confirms `$request`" not in pre
+        assert "not** confirming" not in pre
         # Step-23 hyphen / date-prefix heuristics must be gone
         assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in text
         assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in text
@@ -558,13 +564,16 @@ class TestModifyPlanOnlySop:
             "Load and follow `references/resolve-spec-list.md`",
         )
         _index(phase1, "`[]`")
-        # Echo-confirm lives in the shared reference (step-23 survives)
+        # Conditional skip-confirm lives in the shared reference
         shared = _read(RESOLVE_SPEC_NAME)
         _index(shared, "spec=<X> / request=<Y>")
-        _index(shared, "wait for confirmation")
-        _index(shared, "round trip")
-        _index(shared, "not** confirm")
-        _index(shared, "`$request`")
+        _index(shared, "Skip wait")
+        _index(shared, "proceed")
+        _index(shared, "exactly one")
+        _index(shared, "$first_word")
+        _index(shared, "adopt non-empty `$request`")
+        _index(shared, "pick = confirm")
+        _index(shared, "Wait/ask")
 
     def test_resolve_spec_list_documents_substring_matching(self):
         """R3-F7 / P1-7: list patterns are substring, not exact."""
@@ -579,12 +588,18 @@ class TestModifyPlanOnlySop:
         _index(name_ref, "**substrings**")
         _index(name_ref, "exact match")
 
-    def test_phase2_selecting_spec_does_not_confirm_request(self):
+    def test_phase2_empty_request_still_asks_after_lock(self):
+        """Empty $request after Phase 1 still asks; skip-confirm adopts non-empty."""
         phase2 = _h3_section(
             _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
         )
-        _index(phase2, "never")
-        _index(phase2, "confirms `$request`")
+        _index(phase2, "missing/empty")
+        _index(phase2, "skip-confirm")
+        _index(phase2, "do not re-ask")
+        _index(phase2, "plan-command-common.md")
+        # Old never-confirms wording must stay gone
+        assert "never confirms `$request`" not in phase2
+        assert "not** confirming" not in phase2
 
     def test_phase3_loads_spec_assets(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
@@ -1243,6 +1258,16 @@ class TestSharedSopReferences:
         _index(text, "spec=<X> / request=<Y>")
         _index(text, "**substrings**")
         _index(text, "resolve-spec-list.md")
+        # Skip-vs-confirm contract (no unconditional always-wait after lock)
+        assert "wait for confirmation" not in text
+        _index(text, "Skip wait")
+        _index(text, "proceed")
+        _index(text, "exactly one list hit")
+        _index(text, "empty-name probe exactly one hit")
+        _index(text, "pick = confirm")
+        _index(text, "no second confirm")
+        _index(text, "adopt non-empty `$request`")
+        _index(text, "Wait/ask only while multi-hit")
         # Filtered [] must keep first word as recovery candidate so
         # apply/merge named completed/unfinished recovery stays reachable
         _index(text, "recovery candidate")
@@ -1253,7 +1278,12 @@ class TestSharedSopReferences:
         _index(text, "unfinished-spec")
         needle = "Load and follow `references/resolve-spec-name.md`"
         for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD, MERGE_MD):
-            _index(_read(path), needle)
+            body = _read(path)
+            _index(body, needle)
+            pre = _h2_section(body, "Preconditions")
+            _index(pre, "skip-confirm")
+            assert "echo-confirm" not in pre
+            assert "wait for confirmation" not in pre
         modify = _read(MODIFY_MD)
         assert "`^[a-z0-9]+(-[a-z0-9]+)+$`" not in modify
         assert r"`^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9-]+$`" not in modify
