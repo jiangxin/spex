@@ -1,9 +1,11 @@
 """SOP ↔ CLI contract gate (R3-F19 / S5).
 
-Scan ``skills/spex/{SKILL.md,commands,references}`` for ``scripts/spex …``
-invocations in (1) fenced ``bash`` blocks, (2) inline backticks, and
-(3) same-line ``CMD:`` bodies — then assert every subcommand and flag exists
-on the real argparse parsers (reflection first; ``--help`` only as fallback).
+Scan ``skills/spex/{SKILL.md,commands,references,templates}`` for
+``scripts/spex …`` invocations in (1) fenced ``bash`` blocks, (2) inline
+backticks, and (3) same-line ``CMD:`` bodies — then assert every subcommand
+and flag exists on the real argparse parsers (reflection first; ``--help``
+only as fallback). Templates are rendered with placeholder metadata first
+so Jinja ``{{ var }}`` expands before scanning.
 """
 
 from __future__ import annotations
@@ -16,6 +18,9 @@ import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
+
+from common import strip_front_matter
+from jinja2 import Template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEX_ROOT = REPO_ROOT / "skills" / "spex"
@@ -48,6 +53,8 @@ PLACEHOLDER_RE = re.compile(
 )
 # Harvest options from --help; lookarounds use [\w-] (not [\\w-]).
 _HELP_OPTION_RE = re.compile(r"(?<![\w-])(-\w|--[\w-]+)(?![\w-])")
+_FRONT_MATTER_KEY_RE = re.compile(r"^  - (\w+)\s*$")
+_UNQUOTED_NAME_RE = re.compile(r"""--name\s+\$spec_name\b""")
 
 # Top-level commands that expose a nested subcommand (second positional).
 NESTED_COMMANDS = frozenset({
@@ -59,11 +66,60 @@ NESTED_COMMANDS = frozenset({
 })
 
 
+def _front_matter_keys(content: str) -> set[str]:
+    """Collect keys listed under front-matter ``required`` / ``optional``."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return set()
+    keys: set[str] = set()
+    in_list = False
+    for line in match.group(1).splitlines():
+        if re.match(r"^(required|optional):\s*$", line):
+            in_list = True
+            continue
+        if in_list:
+            m = _FRONT_MATTER_KEY_RE.match(line)
+            if m:
+                keys.add(m.group(1))
+                continue
+            if line and not line.startswith(" "):
+                in_list = False
+    return keys
+
+
+def _render_template_for_scan(path: Path) -> str:
+    """Render a skill template with placeholder metadata for CLI scanning."""
+    raw = path.read_text(encoding="utf-8")
+    keys = _front_matter_keys(raw)
+    # Truthy placeholders so ``{% if var %}`` blocks (and their bash fences)
+    # are included; values look like shell placeholders to PLACEHOLDER_RE.
+    meta = {k: f"${k}" for k in keys}
+    body = strip_front_matter(raw)
+    return Template(body).render(**meta)
+
+
 def _sop_files() -> list[Path]:
     files = [SPEX_ROOT / "SKILL.md"]
     files.extend(sorted((SPEX_ROOT / "commands").glob("*.md")))
     files.extend(sorted((SPEX_ROOT / "references").glob("*.md")))
+    files.extend(sorted((SPEX_ROOT / "templates").glob("*.md")))
     return [p for p in files if p.is_file()]
+
+
+def _text_for_scan(path: Path) -> str:
+    """Return file text ready for invocation extraction.
+
+    Templates under ``skills/spex/templates/`` are Jinja-rendered with
+    placeholder metadata first. Paths outside the skill tree (e.g. test
+    fixtures) are read as plain text.
+    """
+    try:
+        rel = path.relative_to(SPEX_ROOT).as_posix()
+    except ValueError:
+        return path.read_text(encoding="utf-8")
+    if rel.startswith("templates/"):
+        return _render_template_for_scan(path)
+    return path.read_text(encoding="utf-8")
 
 
 def _expand_line_continuations(block: str) -> str:
@@ -139,8 +195,10 @@ def _extract_invocations(path: Path) -> list[tuple[str, str]]:
     - fenced ``bash`` blocks
     - inline backticks outside fences
     - same-line ``CMD:`` bodies outside fences (non-backtick forms)
+
+    Templates under ``templates/`` are Jinja-rendered first.
     """
-    text = path.read_text(encoding="utf-8")
+    text = _text_for_scan(path)
     results: list[tuple[str, str]] = []
 
     for block in FENCE_RE.findall(text):
@@ -561,3 +619,108 @@ class TestSopCliContract:
         assert "--not" not in from_help
         # Help harvest must not invent flags beyond the live parser.
         assert from_help - {"-h", "--help"} <= reflected
+
+    def test_templates_included_in_sop_files(self):
+        """Templates are under the SOP↔CLI gate (R4-F15 / S4)."""
+        rels = {p.relative_to(SPEX_ROOT).as_posix() for p in _sop_files()}
+        assert any(r.startswith("templates/") for r in rels)
+        assert "templates/apply-fix.md" in rels
+        assert "templates/apply-review.md" in rels
+        assert "templates/modify-todo.md" in rels
+
+    def test_spec_name_required_in_review_templates(self):
+        """apply-fix / apply-review list spec_name under required."""
+        for name in ("apply-fix.md", "apply-review.md"):
+            raw = (SPEX_ROOT / "templates" / name).read_text(encoding="utf-8")
+            match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+            assert match, f"{name}: missing front-matter"
+            fm = match.group(1)
+            required_block = re.search(
+                r"required:\n((?:  - .+\n)+)", fm,
+            )
+            assert required_block, f"{name}: missing required list"
+            required = {
+                line.strip()[2:].strip()
+                for line in required_block.group(1).splitlines()
+                if line.strip().startswith("- ")
+            }
+            assert "spec_name" in required, f"{name}: spec_name not required"
+            optional_block = re.search(
+                r"optional:\n((?:  - .+\n)+)", fm,
+            )
+            if optional_block:
+                optional = {
+                    line.strip()[2:].strip()
+                    for line in optional_block.group(1).splitlines()
+                    if line.strip().startswith("- ")
+                }
+                assert "spec_name" not in optional, (
+                    f"{name}: spec_name still optional"
+                )
+
+    def test_rendered_templates_have_no_literal_spex_skill_dir(self):
+        """Jinja must expand spex_skill_dir — no surviving $spex_skill_dir."""
+        from prompt import render_prompt
+
+        # modify-todo is the template that previously left $spex_skill_dir
+        rendered = render_prompt(
+            "modify-todo",
+            extra_vars={
+                "spec_content": "# Spec\n",
+                "spec_name": "demo-spec",
+                "spex_skill_dir": "/tmp/fake-skill",
+                "completed_tasks": "",
+            },
+        )
+        assert "$spex_skill_dir" not in rendered
+        assert "/tmp/fake-skill/scripts/spex" in rendered
+        assert '--name "demo-spec"' in rendered
+
+    def test_no_unquoted_name_spec_name_in_sop_or_templates(self):
+        """cli-contract rule 4: --name \"$spec_name\", never bare $spec_name."""
+        offenders: list[str] = []
+        for path in _sop_files():
+            text = path.read_text(encoding="utf-8")
+            if _UNQUOTED_NAME_RE.search(text):
+                rel = path.relative_to(SPEX_ROOT).as_posix()
+                offenders.append(rel)
+        assert not offenders, (
+            "unquoted --name $spec_name in:\n" + "\n".join(offenders)
+        )
+
+    def test_apply_one_task_wraps_future_steps(self):
+        """future_tasks_concise must live inside <future-steps>."""
+        text = (SPEX_ROOT / "templates" / "apply-one-task.md").read_text(
+            encoding="utf-8",
+        )
+        assert "<future-steps>" in text
+        assert "</future-steps>" in text
+        assert re.search(
+            r"<future-steps>\s*\{\{\s*future_tasks_concise\s*\}\}\s*"
+            r"</future-steps>",
+            text,
+        )
+        assert "untrusted data" in text.lower() or "Fenced content" in text
+
+    def test_detects_bogus_flag_in_template(self, tmp_path: Path):
+        """Inject a fake flag into a template and confirm the gate fails."""
+        sample = tmp_path / "bogus-template.md"
+        sample.write_text(
+            "---\nversion: \"0.0.0\"\nrequired:\n  - spex_skill_dir\n---\n\n"
+            "```bash\n"
+            "{{ spex_skill_dir }}/scripts/spex list --json --not-a-real-flag\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        rendered = _render_template_for_scan(sample)
+        # Mimic _extract_invocations on rendered text
+        results: list[tuple[str, str]] = []
+        for block in FENCE_RE.findall(rendered):
+            expanded = _expand_line_continuations(block)
+            for raw_line in expanded.splitlines():
+                _append_invocation(results, raw_line)
+        assert results, "expected rendered template invocation"
+        raw, tail = results[0]
+        errors = _check_invocation("templates/bogus-template.md", raw, tail)
+        assert errors, "expected bogus template flag to be rejected"
+        assert any("--not-a-real-flag" in e for e in errors)

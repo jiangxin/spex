@@ -47,7 +47,7 @@ Prefer `--details-from-stdin` + heredoc for multi-line details.
 **Coding step** (default — omit `--skip-commit`):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" append \
   --id step-1 --step-name "Short description for the step" \
   --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
@@ -65,7 +65,7 @@ DETAILS
 `auto` when a commit is only needed if files change):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name append \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" append \
   --id step-N --step-name "Confirm checklist without repo edits" \
   --skip-commit true \
   --details-from-stdin <<'DETAILS'
@@ -84,7 +84,7 @@ Review current steps before adding more (and again after the
 plan is complete):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name show \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" show \
   --format markdown
 ```
 
@@ -93,7 +93,7 @@ $spex_skill_dir/scripts/spex todo-helper --name $spec_name show \
 Only specified fields are updated:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name edit \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
   --id step-1 --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
@@ -105,6 +105,6 @@ DETAILS
 ## Remove
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name $spec_name remove \
+$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" remove \
   --id step-1
 ```
