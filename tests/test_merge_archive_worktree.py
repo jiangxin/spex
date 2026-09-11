@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -231,6 +232,169 @@ class TestMergeOnTargetWorktree:
         assert out["target"] == main_branch
         assert get_current_branch(main) == main_branch
         assert (main / "feature.txt").is_file()
+
+
+@pytest.mark.slow
+class TestMergeDryRunWorktree:
+    def test_dry_run_exposes_worktree_ops(
+        self, tmp_path, monkeypatch, capsys, caplog,
+    ):
+        """Worktree mode: dry-run JSON/logs show merge cwd + remove plan."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        main_branch = get_current_branch(main)
+
+        spex_root = tmp_path / "spex"
+        specs = spex_root / "specs"
+        archives = spex_root / "archives"
+        (main / ".spex.toml").write_text(
+            f'[spex]\nspex_root = "{spex_root}"\n',
+            encoding="utf-8",
+        )
+
+        spec_name = "2026-09-10-19-36-dry-run-wt"
+        wt_path = resolve_spex_worktree_path(main, spec_name)
+        add_worktree(wt_path, "spex/dry-run-feat", cwd=main)
+        (wt_path / "feature.txt").write_text("feat\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "feature.txt"],
+            cwd=wt_path, check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "feature"],
+            cwd=wt_path, check=True, capture_output=True,
+        )
+        head_before = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=main, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+        _write_completed_spec(
+            specs / spec_name,
+            main=main,
+            spex_branch="spex/dry-run-feat",
+            spex_worktree=str(wt_path),
+            branch=main_branch,
+        )
+
+        clear_config_cache()
+        clear_spex_root_cache()
+        monkeypatch.chdir(main)
+
+        ctx = ProjectContext(
+            cwd=main,
+            top_workdir=main,
+            main_worktree=main,
+            remote_url="",
+            branch=main_branch,
+            user_name="Test",
+            user_email="test@example.com",
+            config={"submit_method": "merge"},
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+        )
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("common.get_archives_dir", return_value=archives), \
+             patch("hooks.run_pre_action"), \
+             patch("hooks.run_post_action"), \
+             caplog.at_level(logging.INFO):
+            cli_submit([spec_name, "--dry-run"])
+
+        out = json.loads(capsys.readouterr().out)
+        assert out["dry_run"] is True
+        assert out["errors"] == []
+        assert out["source"] == "spex/dry-run-feat"
+        assert out["target"] == main_branch
+        assert out["archived"] is True
+        assert Path(out["merge_cwd"]).resolve() == main.resolve()
+        assert out["spex_worktree"] == str(wt_path)
+        assert out["would_remove_worktree"] is True
+        assert "Would merge in worktree" in caplog.text
+        assert "Feature worktree" in caplog.text
+        assert "Would remove worktree" in caplog.text
+
+        # Repo unchanged: no merge, worktree still registered, HEAD same.
+        head_after = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=main, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        assert head_after == head_before
+        assert get_current_branch(main) == main_branch
+        assert not (main / "feature.txt").exists()
+        assert is_registered_worktree(wt_path, cwd=main)
+        assert (specs / spec_name).is_dir()
+
+    def test_dry_run_legacy_no_spex_worktree(
+        self, tmp_path, monkeypatch, capsys, caplog,
+    ):
+        """Legacy: merge_cwd is main worktree; would_remove_worktree=false."""
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        main_branch = get_current_branch(main)
+
+        spex_root = tmp_path / "spex"
+        specs = spex_root / "specs"
+        (main / ".spex.toml").write_text(
+            f'[spex]\nspex_root = "{spex_root}"\n',
+            encoding="utf-8",
+        )
+
+        # Feature commit on a branch that is not checked out elsewhere.
+        subprocess.run(
+            ["git", "branch", "spex/legacy-dry"],
+            cwd=main, check=True, capture_output=True,
+        )
+
+        spec_name = "legacy-dry-run"
+        _write_completed_spec(
+            specs / spec_name,
+            main=main,
+            spex_branch="spex/legacy-dry",
+            spex_worktree="",
+            branch=main_branch,
+        )
+
+        clear_config_cache()
+        clear_spex_root_cache()
+        monkeypatch.chdir(main)
+
+        ctx = ProjectContext(
+            cwd=main,
+            top_workdir=main,
+            main_worktree=main,
+            remote_url="",
+            branch=main_branch,
+            user_name="Test",
+            user_email="test@example.com",
+            config={"submit_method": "merge"},
+            spex_root=str(spex_root),
+            spex_roots=[str(spex_root)],
+        )
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("hooks.run_pre_action"), \
+             patch("hooks.run_post_action"), \
+             caplog.at_level(logging.INFO):
+            cli_submit([spec_name, "--dry-run"])
+
+        out = json.loads(capsys.readouterr().out)
+        assert out["dry_run"] is True
+        assert out["errors"] == []
+        assert Path(out["merge_cwd"]).resolve() == main.resolve()
+        assert out["spex_worktree"] == ""
+        assert out["would_remove_worktree"] is False
+        assert out["archived"] is True
+        assert "Would merge in worktree" in caplog.text
+        assert "Feature worktree" not in caplog.text
+        assert "Would remove worktree" not in caplog.text
+        assert get_current_branch(main) == main_branch
 
 
 @pytest.mark.slow

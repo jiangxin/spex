@@ -64,12 +64,14 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
 
         mock_merge.assert_not_called()
         assert "Would merge" in caplog.text
+        assert "Would merge in worktree" in caplog.text
 
     def test_dry_run_json_output(self, tmp_path, capsys):
         specs, spec_dir = _setup_topic(tmp_path)
@@ -78,6 +80,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
              patch("branch.merge_branch", mock_merge):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
 
@@ -89,6 +92,9 @@ class TestDryRun:
         assert data["target"] == "main"
         assert data["archived"] is True
         assert data["errors"] == []
+        assert data["merge_cwd"] == str(tmp_path)
+        assert data["spex_worktree"] == ""
+        assert data["would_remove_worktree"] is False
 
     def test_dry_run_no_archive(self, tmp_path, capsys, caplog):
         specs, spec_dir = _setup_topic(tmp_path)
@@ -97,6 +103,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run", "--no-archive"])
@@ -104,9 +111,11 @@ class TestDryRun:
         mock_merge.assert_not_called()
         assert "Would merge" in caplog.text
         assert "Would archive" not in caplog.text
+        assert "Would remove worktree" not in caplog.text
         output = capsys.readouterr().out
         data = json.loads(output.strip())
         assert data["archived"] is False
+        assert data["would_remove_worktree"] is False
 
     def test_dry_run_short_flag(self, tmp_path, caplog):
         specs, spec_dir = _setup_topic(tmp_path)
@@ -115,6 +124,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "-n"])
@@ -305,6 +315,7 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=False), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
              patch("branch.create_and_switch_branch", side_effect=create_err), \
              patch("hooks.run_pre_action"), \
              caplog.at_level(logging.ERROR), \
