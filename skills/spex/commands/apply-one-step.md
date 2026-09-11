@@ -81,10 +81,11 @@ Apply a single step from a specification's todo list.
 ### Phase 2: Validate Branch
 
 - Load and follow `references/apply-task-phases.md` Phase 2 exactly
-- Side effects: this CMD creates and switches to `spex/<name>`
-  (base: `meta.branch`), writes `spex_branch` to `meta.json`,
-  sets the git branch description, and fires the `apply`
-  pre-action hook
+- Side effects: creates or reuses `spex/<name>` (base: `meta.branch`),
+  writes `spex_branch` to `meta.json`, sets the git branch description,
+  and fires the `apply` pre-action hook. When `meta.use_git_worktree`
+  is true, also binds `$spex_worktree` from precheck JSON (coding cwd;
+  do not switch IDE root)
 
 ### Phase 3: Build Prompt / Resume Gate
 

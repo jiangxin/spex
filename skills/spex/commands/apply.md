@@ -53,7 +53,7 @@ Phase 2. Branch base is guaranteed by Phase 2 precheck
 ```text
 Phase 1: resolve once (--all -> $specs list | single resolve)
 for each spec in $specs (or the one resolved spec):
-  Phase 2 validate + bind $spex_root
+  Phase 2 validate + bind $spex_root / $spex_worktree
   loop:                                                  # Phase 8 tasks
     Phase 3 prompt / resume
     IF all_done -> Phase 9 -> break
@@ -144,11 +144,14 @@ for outer loops; Phase bodies below do not restate the diagram.
 ### Phase 2: Validate Branch
 
 - Load and follow `references/apply-task-phases.md` Phase 2 exactly
-- Side effects: this CMD creates and switches to `spex/<name>`
-  (base: `meta.branch`), writes `spex_branch` to `meta.json`,
-  sets the git branch description, and fires the `apply`
-  pre-action hook
-- Pass `$spex_root` to Phases 4–5 sub-agent
+- Side effects: creates or reuses `spex/<name>` (base: `meta.branch`),
+  writes `spex_branch` to `meta.json`, sets the git branch description,
+  and fires the `apply` pre-action hook. When `meta.use_git_worktree`
+  is true, precheck also creates/reuses a linked worktree and prints
+  JSON with `spex_worktree` / `coding_path` (bind `$spex_worktree`);
+  otherwise may switch the main checkout in place. Do **not** switch
+  the user's IDE root
+- Pass `$spex_root` and `$spex_worktree` to Phases 4–5 sub-agent
 
 ### Phase 3: Build Prompt / Resume Gate
 

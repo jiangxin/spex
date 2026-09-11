@@ -50,6 +50,8 @@ def _make_context(**overrides):
             "branch_management": True,
             "main_branch_name": "",
             "submit_method": "merge",
+            "step_review": True,
+            "use_git_worktree": False,
         },
         "spex_tomls": [Path("/test/repo/.spex.toml")],
         "spex_roots": ["/test/repo/.spex"],
@@ -148,6 +150,7 @@ class TestBuildConfigSections:
         assert keys == [
             "spex_root", "branch_management",
             "main_branch_name", "submit_method",
+            "step_review", "use_git_worktree",
         ]
 
     def test_config_section_values(self):
@@ -306,7 +309,8 @@ class TestRunConfig:
         out = capsys.readouterr().out
         for key in ("branch", "remote_url", "user_name", "user_email",
                      "cwd", "top_workdir", "main_worktree", "spex_root",
-                     "branch_management", "submit_method"):
+                     "branch_management", "submit_method",
+                     "step_review", "use_git_worktree"):
             assert key in out, f"{key} not found in output"
 
     def test_get_subcommand_filters(self, capsys):

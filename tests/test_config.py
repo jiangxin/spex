@@ -313,6 +313,7 @@ class TestBranchConfig:
         assert result["submit_method"] == "merge"
         assert result["debug"] is False
         assert result["step_review"] is True
+        assert result["use_git_worktree"] is False
 
     def test_load_debug_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
@@ -345,6 +346,26 @@ class TestBranchConfig:
         result = load_config()
 
         assert result["step_review"] is True
+
+    def test_default_use_git_worktree_false(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
+
+        result = load_config()
+
+        assert result["use_git_worktree"] is False
+
+    def test_load_use_git_worktree_true(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
+        monkeypatch.setattr("config._get_main_worktree", lambda w=None: tmp_path)
+        (tmp_path / ".spex.toml").write_text(
+            '[spex]\nuse_git_worktree = true\n',
+            encoding="utf-8",
+        )
+
+        result = load_config()
+
+        assert result["use_git_worktree"] is True
 
 
 # ===================== _resolve_spex_roots =====================
@@ -815,6 +836,7 @@ class TestGenerateDefaultToml:
             "submit_method",
             "debug",
             "step_review",
+            "use_git_worktree",
         ):
             assert f"# {key} = " in result
         assert "skip_review" not in result
@@ -823,6 +845,7 @@ class TestGenerateDefaultToml:
         result = generate_default_toml()
         assert "# branch_management = true" in result
         assert "# step_review = true" in result
+        assert "# use_git_worktree = false" in result
         assert "True" not in result
 
     def test_string_formatting(self):
@@ -839,6 +862,8 @@ class TestGenerateDefaultToml:
         assert "# debug = false" in result
         assert "# Review each apply step commit before marking it done" in result
         assert "# step_review = true" in result
+        assert "# Create a linked git worktree per spec for apply" in result
+        assert "# use_git_worktree = false" in result
         assert "skip_review" not in result
 
     def test_blank_line_separators(self):
@@ -908,6 +933,7 @@ class TestGenerateUpdatedToml:
             "submit_method": "pr",
             "debug": True,
             "step_review": False,
+            "use_git_worktree": True,
         }
         result = generate_updated_toml(cfg)
         assert 'spex_root = "/my/root"' in result
@@ -916,6 +942,7 @@ class TestGenerateUpdatedToml:
         assert 'submit_method = "pr"' in result
         assert "debug = true" in result
         assert "step_review = false" in result
+        assert "use_git_worktree = true" in result
         assert "skip_review" not in result
 
     def test_comments_always_present(self):

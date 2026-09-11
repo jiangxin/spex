@@ -52,6 +52,7 @@ def _mock_ctx(
     branch="",
     user_name="",
     user_email="",
+    config=None,
 ):
     """Build a ProjectContext for _write_meta tests."""
     return ProjectContext(
@@ -62,6 +63,7 @@ def _mock_ctx(
         branch=branch,
         user_name=user_name,
         user_email=user_email,
+        config=config if config is not None else {},
     )
 
 
@@ -376,11 +378,13 @@ class TestWriteMeta:
         expected_keys = [
             "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
-            "prompts",
+            "prompts", "use_git_worktree",
         ]
         assert keys == expected_keys
+        assert meta["use_git_worktree"] is False
         assert "description" not in meta
         assert "spex_branch" not in meta
+        assert "spex_worktree" not in meta
 
     def test_json_field_order_with_description(self, tmp_path):
         """Verify description appears in correct position."""
@@ -404,6 +408,44 @@ class TestWriteMeta:
         keys = list(meta.keys())
         assert "description" in keys
         assert keys.index("description") == keys.index("prompts") + 1
+        assert keys.index("use_git_worktree") == keys.index("description") + 1
+
+    def test_write_meta_snapshots_use_git_worktree_false(self, tmp_path):
+        """Create meta snapshots use_git_worktree=false by default."""
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        ctx = _mock_ctx(
+            top_workdir=Path("/work"),
+            main_worktree=Path("/work"),
+            branch="main",
+            user_name="Alice",
+            user_email="a@e.com",
+        )
+        create_helper._write_meta(
+            spec_dir, ctx, "", "2026-01-01T10:00:00+08:00",
+        )
+        meta = json.loads((spec_dir / "meta.json").read_text())
+        assert meta["use_git_worktree"] is False
+        assert "spex_worktree" not in meta
+
+    def test_write_meta_snapshots_use_git_worktree_true(self, tmp_path):
+        """Create meta snapshots use_git_worktree from ctx.config."""
+        spec_dir = tmp_path / "topic"
+        spec_dir.mkdir()
+        ctx = _mock_ctx(
+            top_workdir=Path("/work"),
+            main_worktree=Path("/work"),
+            branch="main",
+            user_name="Alice",
+            user_email="a@e.com",
+            config={"use_git_worktree": True},
+        )
+        create_helper._write_meta(
+            spec_dir, ctx, "", "2026-01-01T10:00:00+08:00",
+        )
+        meta = json.loads((spec_dir / "meta.json").read_text())
+        assert meta["use_git_worktree"] is True
+        assert "spex_worktree" not in meta
 
 
 class TestCliPrepareSpec:

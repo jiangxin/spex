@@ -119,14 +119,25 @@ def set_branch_description(
 def merge_branch(
     target: str, source: str, cwd: str | Path | None = None,
 ) -> None:
-    """Merge source branch into target. Raises CalledProcessError on conflict."""
-    subprocess.run(
-        ["git", "switch", target],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=cwd,
-    )
+    """Merge source branch into target. Raises CalledProcessError on conflict.
+
+    If HEAD is already on ``target``, skip the switch. This allows merging
+    inside a worktree that already has the target branch checked out when
+    another worktree holds the source branch.
+    """
+    target = _strip_refs_prefix(target)
+    try:
+        current = get_current_branch(cwd=cwd)
+    except RuntimeError:
+        current = None
+    if current != target:
+        subprocess.run(
+            ["git", "switch", target],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=cwd,
+        )
     subprocess.run(
         ["git",
          "-c", "merge.branchdesc=true",

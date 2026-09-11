@@ -134,74 +134,29 @@ def _extract_spec_name_for_branch(spec_dir: Path, meta) -> str:
     return meta.name or spec_dir.name
 
 
-def validate_apply_branch(
-    config: dict, spec_dir: Path, cwd: str | Path | None = None,
-) -> None:
-    """Perform branch setup for applying a spec.
+def resolve_apply_git_cwd(
+    meta: SpecMeta | None,
+    fallback: str | Path | None,
+) -> str | Path | None:
+    """Prefer ``meta.spex_worktree`` when set; otherwise ``fallback``."""
+    if meta and meta.spex_worktree:
+        return meta.spex_worktree
+    return fallback
 
-    Steps:
-    1. If all spec tasks are completed, error and exit.
-    2. If branch_management is False in config, return immediately.
-    3. If meta.json has spex_branch, ensure current branch matches it;
-       switch if not (exit on failure).
-    4. If meta.json has no spex_branch, try creating a branch using
-       spex/<spec-name-without-date-prefix>, then spex/<spec-name-with-date-prefix>.
-       Exit on failure if both fail.
-    5. On success, switch to the branch, set git branch description from
-       the spec's description, and persist spex_branch to meta.json.
-    """
-    import common
-    from branch import (
-        branch_exists,
-        create_and_switch_branch,
-        get_current_branch,
-        set_branch_description,
-        switch_branch,
-    )
 
-    if common.is_spec_completed(spec_dir):
-        status = common.format_spec(spec_dir, verbose=2)
-        logger.error(f"Error: spec is already completed.\n{status}")
-        sys.exit(1)
-
-    if not bool(config["branch_management"]):
-        return
-
-    meta = common.load_meta(spec_dir) or SpecMeta()
-    spex_branch = meta.spex_branch
-
-    if spex_branch:
-        try:
-            current = get_current_branch(cwd)
-        except RuntimeError:
-            # Detached HEAD (e.g. review agent ran `git checkout <sha>`):
-            # treat as not on spex_branch and re-attach below.
-            current = None
-        if current != spex_branch:
-            if not branch_exists(spex_branch, cwd):
-                logger.error(
-                    f"Error: spex_branch '{spex_branch}' defined in meta.json "
-                    f"does not exist.",
-                )
-                sys.exit(1)
-            try:
-                switch_branch(spex_branch, cwd)
-            except subprocess.CalledProcessError as e:
-                logger.error(
-                    f"Error: failed to switch to '{spex_branch}': "
-                    f"{e.stderr.strip() or e}",
-                )
-                sys.exit(1)
-            if current is None:
-                logger.info(
-                    f"Re-attached detached HEAD to branch '{spex_branch}'.",
-                )
-            else:
-                logger.info(f"Switched to branch '{spex_branch}'.")
-        return
-
+def _branch_candidates(spec_dir: Path, meta: SpecMeta) -> list[str]:
+    """Return spex branch name candidates (short name, then full)."""
     spec_name = _extract_spec_name_for_branch(spec_dir, meta)
     short_name = strip_date_prefix(spec_name)
+    return [
+        f"{DEFAULT_SPEX_BRANCH_PREFIX}{short_name}",
+        f"{DEFAULT_SPEX_BRANCH_PREFIX}{spec_name}",
+    ]
+
+
+def _resolve_branch_base(meta: SpecMeta, cwd: str | Path | None) -> str | None:
+    """Resolve create-from base branch; None means current HEAD."""
+    from branch import branch_exists
 
     base = meta.branch or "main"
     if not branch_exists(base, cwd):
@@ -209,12 +164,241 @@ def validate_apply_branch(
             "Base branch '%s' does not exist; creating from current HEAD.",
             base,
         )
-        base = None
+        return None
+    return base
 
-    candidates = [
-        f"{DEFAULT_SPEX_BRANCH_PREFIX}{short_name}",
-        f"{DEFAULT_SPEX_BRANCH_PREFIX}{spec_name}",
-    ]
+
+def _persist_spex_branch_meta(
+    spec_dir: Path,
+    meta: SpecMeta,
+    spex_branch: str,
+    *,
+    spex_worktree: str | None = None,
+) -> None:
+    """Write spex_branch (and optional spex_worktree) to meta.json."""
+    import common
+
+    meta.spex_branch = spex_branch
+    if spex_worktree is not None:
+        meta.spex_worktree = spex_worktree
+    common.atomic_write_json(spec_dir / "meta.json", meta.to_dict())
+
+
+def _set_spex_branch_description(
+    branch: str,
+    spec_dir: Path,
+    cwd: str | Path | None,
+) -> None:
+    """Best-effort set git branch description from the spec."""
+    import common
+    from branch import set_branch_description
+
+    description = common.get_spec_description(spec_dir)
+    if not description:
+        return
+    try:
+        set_branch_description(branch, description, cwd)
+    except subprocess.CalledProcessError:
+        pass
+
+
+def _ensure_on_branch(branch: str, cwd: str | Path | None) -> None:
+    """Switch ``cwd`` to ``branch`` if not already there (handles detached)."""
+    from branch import branch_exists, get_current_branch, switch_branch
+
+    try:
+        current = get_current_branch(cwd)
+    except RuntimeError:
+        # Detached HEAD (e.g. review agent ran `git checkout <sha>`).
+        current = None
+    if current == branch:
+        return
+    if not branch_exists(branch, cwd):
+        logger.error(
+            f"Error: spex_branch '{branch}' defined in meta.json "
+            f"does not exist.",
+        )
+        sys.exit(1)
+    try:
+        switch_branch(branch, cwd)
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Error: failed to switch to '{branch}': "
+            f"{e.stderr.strip() or e}",
+        )
+        sys.exit(1)
+    if current is None:
+        logger.info(f"Re-attached detached HEAD to branch '{branch}'.")
+    else:
+        logger.info(f"Switched to branch '{branch}'.")
+
+
+def _prepare_worktree_path(
+    path: Path,
+    main: str | Path,
+) -> Path:
+    """Ensure ``path`` is free for ``git worktree add``."""
+    import shutil
+
+    from worktree import remove_worktree
+
+    # Reclaim registered or stale paths so callers can always add_worktree.
+    try:
+        remove_worktree(path, force=True, cwd=main)
+    except subprocess.CalledProcessError:
+        pass
+    if path.exists():
+        shutil.rmtree(path)
+    return path
+
+
+def _validate_apply_worktree(
+    spec_dir: Path,
+    meta: SpecMeta,
+    cwd: str | Path | None,
+) -> None:
+    """Create or reuse a linked worktree; never in-place switch on main."""
+    from branch import branch_exists
+    from worktree import (
+        add_worktree,
+        find_worktree_for_branch,
+        is_registered_worktree,
+        resolve_spex_worktree_path,
+    )
+
+    main = meta.main_worktree or cwd
+    if not main:
+        logger.error(
+            "Error: cannot resolve main worktree for spex worktree mode.",
+        )
+        sys.exit(1)
+    main = Path(main)
+
+    spex_branch = meta.spex_branch
+    if spex_branch and meta.spex_worktree:
+        if is_registered_worktree(meta.spex_worktree, cwd=main):
+            _ensure_on_branch(spex_branch, meta.spex_worktree)
+            logger.info(
+                "Reusing spex worktree '%s' for branch '%s'.",
+                meta.spex_worktree,
+                spex_branch,
+            )
+            return
+
+    if spex_branch:
+        found = find_worktree_for_branch(spex_branch, cwd=main)
+        if found is not None:
+            path_str = str(found.resolve())
+            _persist_spex_branch_meta(
+                spec_dir, meta, spex_branch, spex_worktree=path_str,
+            )
+            _ensure_on_branch(spex_branch, path_str)
+            logger.info(
+                "Reusing existing worktree '%s' for branch '%s'.",
+                path_str,
+                spex_branch,
+            )
+            return
+        if not branch_exists(spex_branch, cwd=main):
+            logger.error(
+                f"Error: spex_branch '{spex_branch}' defined in meta.json "
+                f"does not exist.",
+            )
+            sys.exit(1)
+        target = resolve_spex_worktree_path(main, spec_dir.name)
+        if meta.spex_worktree:
+            stale = Path(meta.spex_worktree)
+            if stale.resolve() != target.resolve():
+                target = stale
+        target = _prepare_worktree_path(Path(target), main)
+        try:
+            add_worktree(target, spex_branch, cwd=main)
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                "Error: failed to add worktree for '%s': %s",
+                spex_branch,
+                (e.stderr or str(e)).strip(),
+            )
+            sys.exit(1)
+        path_str = str(target.resolve())
+        _persist_spex_branch_meta(
+            spec_dir, meta, spex_branch, spex_worktree=path_str,
+        )
+        logger.info(
+            "Created worktree '%s' for branch '%s'.",
+            path_str,
+            spex_branch,
+        )
+        return
+
+    base = _resolve_branch_base(meta, main)
+    candidates = _branch_candidates(spec_dir, meta)
+    created_branch = None
+    target = resolve_spex_worktree_path(main, spec_dir.name)
+    target = _prepare_worktree_path(target, main)
+
+    for candidate in candidates:
+        if branch_exists(candidate, cwd=main):
+            found = find_worktree_for_branch(candidate, cwd=main)
+            if found is not None:
+                path_str = str(found.resolve())
+                _persist_spex_branch_meta(
+                    spec_dir, meta, candidate, spex_worktree=path_str,
+                )
+                _ensure_on_branch(candidate, path_str)
+                logger.info(
+                    "Reusing worktree '%s' for existing branch '%s'.",
+                    path_str,
+                    candidate,
+                )
+                return
+            try:
+                add_worktree(target, candidate, cwd=main)
+            except subprocess.CalledProcessError:
+                continue
+            created_branch = candidate
+            break
+        try:
+            add_worktree(target, candidate, base=base, cwd=main)
+            created_branch = candidate
+            break
+        except subprocess.CalledProcessError:
+            continue
+
+    if created_branch is None:
+        logger.error(
+            f"Error: failed to create worktree/branch. "
+            f"Tried: {', '.join(candidates)}",
+        )
+        sys.exit(1)
+
+    path_str = str(target.resolve())
+    _set_spex_branch_description(created_branch, spec_dir, main)
+    _persist_spex_branch_meta(
+        spec_dir, meta, created_branch, spex_worktree=path_str,
+    )
+    logger.info(
+        "Created worktree '%s' and branch '%s'.",
+        path_str,
+        created_branch,
+    )
+
+
+def _validate_apply_inplace(
+    spec_dir: Path,
+    meta: SpecMeta,
+    cwd: str | Path | None,
+) -> None:
+    """In-place switch/create on ``cwd`` (legacy path; never sets spex_worktree)."""
+    from branch import branch_exists, create_and_switch_branch
+
+    spex_branch = meta.spex_branch
+    if spex_branch:
+        _ensure_on_branch(spex_branch, cwd)
+        return
+
+    base = _resolve_branch_base(meta, cwd)
+    candidates = _branch_candidates(spec_dir, meta)
 
     created_branch = None
     for candidate in candidates:
@@ -234,21 +418,41 @@ def validate_apply_branch(
         )
         sys.exit(1)
 
-    # create_and_switch_branch already uses `git switch -c` which switches to the new
-    # branch, so no separate switch_branch call is needed here.
-
-    description = common.get_spec_description(spec_dir)
-    if description:
-        try:
-            set_branch_description(created_branch, description, cwd)
-        except subprocess.CalledProcessError:
-            pass
-
-    meta_path = spec_dir / "meta.json"
-    meta.spex_branch = created_branch
-    common.atomic_write_json(meta_path, meta.to_dict())
-
+    # create_and_switch_branch already switches; no separate switch needed.
+    _set_spex_branch_description(created_branch, spec_dir, cwd)
+    _persist_spex_branch_meta(spec_dir, meta, created_branch)
     logger.info(f"Created and switched to branch '{created_branch}'.")
+
+
+def validate_apply_branch(
+    config: dict, spec_dir: Path, cwd: str | Path | None = None,
+) -> None:
+    """Perform branch setup for applying a spec.
+
+    Steps:
+    1. If all spec tasks are completed, error and exit.
+    2. If branch_management is False in config, return immediately.
+    3. If meta.use_git_worktree: create/reuse linked worktree; persist
+       spex_branch + spex_worktree; do not in-place switch on main.
+    4. Else (legacy): if meta has spex_branch, ensure current branch
+       matches; otherwise create spex/* branch and switch in-place.
+       Never fill spex_worktree.
+    """
+    import common
+
+    if common.is_spec_completed(spec_dir):
+        status = common.format_spec(spec_dir, verbose=2)
+        logger.error(f"Error: spec is already completed.\n{status}")
+        sys.exit(1)
+
+    if not bool(config["branch_management"]):
+        return
+
+    meta = common.load_meta(spec_dir) or SpecMeta()
+    if meta.use_git_worktree:
+        _validate_apply_worktree(spec_dir, meta, cwd)
+        return
+    _validate_apply_inplace(spec_dir, meta, cwd)
 
 
 def _do_precheck(args):
@@ -259,18 +463,29 @@ def _do_precheck(args):
 
     ctx = cfg.get_project_context()
     spec_dir = common.resolve_spec_dir(args.name)
+    # Branch/worktree ops use main top_workdir; coding cwd may differ.
     validate_apply_branch(ctx.config, spec_dir, cwd=ctx.top_workdir)
 
     meta = common.load_meta(spec_dir) or SpecMeta()
+    git_cwd = resolve_apply_git_cwd(meta, ctx.top_workdir)
     hooks.run_pre_action(
         "apply",
         {
             "source_branch": meta.spex_branch or "",
             "target_branch": meta.branch or "main",
         },
-        workdir=ctx.top_workdir,
+        workdir=git_cwd,
         spec_name=spec_dir.name,
     )
+
+    if meta.spex_worktree:
+        coding_path = str(Path(meta.spex_worktree).resolve())
+        logger.info("Coding path (spex worktree): %s", coding_path)
+        print(json.dumps({
+            "spex_worktree": coding_path,
+            "spex_branch": meta.spex_branch or "",
+            "coding_path": coding_path,
+        }))
 
 
 def cli_precheck(argv=None):
@@ -295,7 +510,15 @@ def _do_ensure_branch(args):
 
     ctx = cfg.get_project_context()
     spec_dir = common.resolve_spec_dir(args.name)
-    cwd = ctx.top_workdir
+    meta = common.load_meta(spec_dir) or SpecMeta()
+    # Prefer spex worktree when set; else main top_workdir.
+    cwd = resolve_apply_git_cwd(meta, ctx.top_workdir)
+    # Worktree create/reuse still needs the main repo as fallback cwd.
+    validate_cwd = ctx.top_workdir
+    if meta.use_git_worktree:
+        validate_cwd = ctx.top_workdir or meta.main_worktree or cwd
+    else:
+        validate_cwd = cwd
 
     # Guard only for ensure-branch (not precheck): refuse discarding
     # detached commits that are not ancestors of spex_branch.
@@ -313,7 +536,6 @@ def _do_ensure_branch(args):
         except RuntimeError:
             detached = True
         if detached:
-            meta = common.load_meta(spec_dir) or SpecMeta()
             spex_branch = meta.spex_branch
             if spex_branch and branch_exists(spex_branch, cwd):
                 ancestor = subprocess.run(
@@ -340,7 +562,7 @@ def _do_ensure_branch(args):
                     )
                     sys.exit(1)
 
-    validate_apply_branch(ctx.config, spec_dir, cwd=cwd)
+    validate_apply_branch(ctx.config, spec_dir, cwd=validate_cwd)
 
 
 def cli_ensure_branch(argv=None):
@@ -366,7 +588,7 @@ def _do_post_action(args):
 
     target = meta.branch or "main"
     ctx = cfg.get_project_context()
-    workdir = ctx.top_workdir
+    workdir = resolve_apply_git_cwd(meta, ctx.top_workdir)
 
     hooks.run_post_action(
         "apply",
@@ -397,6 +619,7 @@ def cli_post_action(argv=None):
 
 def _do_dirty(args):
     """Compute working-tree dirtiness excluding spex_root (Phase 4)."""
+    import common
     import config as cfg
 
     ctx = cfg.get_project_context()
@@ -411,6 +634,11 @@ def _do_dirty(args):
         spex_root = str(Path(spex_root).expanduser().resolve())
 
     cwd = ctx.top_workdir or ctx.cwd
+    name = getattr(args, "name", None)
+    if name:
+        spec_dir = common.resolve_spec_dir(name)
+        meta = common.load_meta(spec_dir)
+        cwd = resolve_apply_git_cwd(meta, cwd)
 
     try:
         dirty, paths, spex_root_abs = collect_dirty(spex_root, cwd=cwd)
@@ -497,6 +725,11 @@ def _build_parser():
         dest="spex_root",
         default=None,
         help="Absolute or relative spex_root override",
+    )
+    p_dirty.add_argument(
+        "--name",
+        default=None,
+        help="Spec name (prefer meta.spex_worktree as git cwd when set)",
     )
 
     return parser

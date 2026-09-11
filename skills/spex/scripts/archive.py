@@ -43,6 +43,10 @@ class ArchiveItem:
     spec_name: str
     spec_path: Path | None = None
     detail: str = ""
+    spex_worktree: str = ""
+    worktree_remove_cwd: str = ""
+    worktree_remove_cmd: str = ""
+    would_remove_worktree: bool = False
 
     def to_dict(self) -> dict:
         item = {
@@ -52,7 +56,41 @@ class ArchiveItem:
         }
         if self.detail:
             item["detail"] = self.detail
+        if self.spex_worktree or self.would_remove_worktree:
+            item["spex_worktree"] = self.spex_worktree
+            item["worktree_remove_cwd"] = self.worktree_remove_cwd
+            item["worktree_remove_cmd"] = self.worktree_remove_cmd
+            item["would_remove_worktree"] = self.would_remove_worktree
         return item
+
+
+def _worktree_remove_plan(
+    spec_dir: Path, *, force: bool = False,
+) -> tuple[str, str, str, bool]:
+    """Return dry-run plan for removing a linked spex worktree.
+
+    Returns ``(spex_worktree, cwd, cmd, would_remove)``. Empty strings and
+    ``would_remove=False`` when ``meta.spex_worktree`` is unset.
+    """
+    meta = load_meta(spec_dir)
+    if not meta or not meta.spex_worktree:
+        return "", "", "", False
+    path = meta.spex_worktree
+    cwd = meta.main_worktree or ""
+    cmd_parts = ["git", "worktree", "remove"]
+    if force:
+        cmd_parts.append("--force")
+    cmd_parts.append(path)
+    return path, cwd, " ".join(cmd_parts), True
+
+
+def _log_worktree_remove_dry_run(
+    spex_wt: str, cwd: str, cmd: str,
+) -> None:
+    """Log the git worktree remove command that archive would run."""
+    logger.info("Would remove worktree: %s", spex_wt)
+    logger.info("Would run: %s", cmd)
+    logger.info("  (cwd: %s)", cwd or "(default)")
 
 
 def _emit_json(dry_run: bool, results: list[ArchiveItem]) -> None:
@@ -130,6 +168,21 @@ def move_spec(spec_dir: Path, archives_dir: Path) -> Path:
     return move_spec_with_conflict(spec_dir, archives_dir)
 
 
+def _remove_spex_worktree(spec_dir: Path, *, force: bool = False) -> None:
+    """Remove linked spex worktree when ``meta.spex_worktree`` is set.
+
+    Runs even if ``use_git_worktree`` is false, so leftover paths are cleaned.
+    ``force`` maps to ``git worktree remove --force`` (archive ``-f``).
+    """
+    meta = load_meta(spec_dir)
+    if not meta or not meta.spex_worktree:
+        return
+    from worktree import remove_worktree
+
+    cwd = meta.main_worktree or None
+    remove_worktree(meta.spex_worktree, force=force, cwd=cwd)
+
+
 def _archive_one(
     spec_name: str,
     specs_dir: Path,
@@ -179,12 +232,22 @@ def _archive_one(
         )
     if dry_run:
         logger.info("Would archive: %s", spec_dir.name)
+        spex_wt, wt_cwd, wt_cmd, would_remove = _worktree_remove_plan(
+            spec_dir, force=force,
+        )
+        if would_remove:
+            _log_worktree_remove_dry_run(spex_wt, wt_cwd, wt_cmd)
         return ArchiveItem(
             "would_archive",
             spec_dir.name,
             archives_dir / spec_dir.name,
+            spex_worktree=spex_wt,
+            worktree_remove_cwd=wt_cwd,
+            worktree_remove_cmd=wt_cmd,
+            would_remove_worktree=would_remove,
         )
     archives_dir.mkdir(parents=True, exist_ok=True)
+    _remove_spex_worktree(spec_dir, force=force)
     dest = move_spec(spec_dir, archives_dir)
     logger.info("Archived: %s -> %s", spec_dir.name, dest)
     return ArchiveItem("archived", spec_dir.name, dest)
@@ -391,10 +454,19 @@ def main(argv=None):
             logger.info("Would archive %d spec(s):", len(completed))
             for spec_dir in completed:
                 logger.info("  %s", spec_dir.name)
+                spex_wt, wt_cwd, wt_cmd, would_remove = (
+                    _worktree_remove_plan(spec_dir, force=args.force)
+                )
+                if would_remove:
+                    _log_worktree_remove_dry_run(spex_wt, wt_cwd, wt_cmd)
                 results.append(ArchiveItem(
                     "would_archive",
                     spec_dir.name,
                     archives_dir / spec_dir.name,
+                    spex_worktree=spex_wt,
+                    worktree_remove_cwd=wt_cwd,
+                    worktree_remove_cmd=wt_cmd,
+                    would_remove_worktree=would_remove,
                 ))
         else:
             logger.info("No completed specs to archive.")
@@ -438,6 +510,7 @@ def main(argv=None):
 
     archives_dir.mkdir(parents=True, exist_ok=True)
     for spec_dir in completed:
+        _remove_spex_worktree(spec_dir, force=args.force)
         dest = move_spec(spec_dir, archives_dir)
         logger.info("Archived: %s -> %s", spec_dir.name, dest)
         results.append(ArchiveItem("archived", spec_dir.name, dest))

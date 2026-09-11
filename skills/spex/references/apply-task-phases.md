@@ -27,6 +27,18 @@ $spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name"
 
 - IF non-zero exit -> STOP (cli-contract)
 - ELSE -> continue
+- **Coding worktree bind** (from precheck stdout when present):
+  - IF stdout is JSON with non-empty `"spex_worktree"` (alias
+    `"coding_path"`) → `$spex_worktree` ← that absolute path
+  - ELSE → `$spex_worktree` ← empty (legacy in-place apply on
+    the main checkout)
+  - When `$spex_worktree` is non-empty: implement / commit /
+    review / fix agents MUST use it as `working_directory`
+    (coding cwd). Do **not** switch the user's IDE root or
+    create a multi-root workspace — Agent cwd only
+  - Precheck creates or reuses a linked worktree when
+    `meta.use_git_worktree` is true; otherwise it may switch
+    the main checkout in place (legacy)
 - Bind `$spex_root`:
 
 ```bash
@@ -36,7 +48,8 @@ $spex_skill_dir/scripts/spex config
 - `$spex_root` ← **Paths** section `spex_root` (absolute path
   only). Do **not** use Config section's relative `spex_root`
 - Reuse for dirty filter + commit staging exclude; apply
-  passes `$spex_root` to Phases 4–5 sub-agent
+  passes `$spex_root` and `$spex_worktree` to Phases 4–5
+  sub-agent
 
 ## Phase 3: Build Prompt / Resume Gate
 
@@ -83,6 +96,9 @@ route as below.
   `prompt apply-one-task`), implement current task. Follow rendered
   prompt precisely (spec, completed steps, task description,
   guidelines)
+- When `$spex_worktree` is non-empty, run file edits and git
+  ops in that directory (`working_directory`); do not switch
+  the IDE root
 - Deliver production code + tests together when the step changes
   code; docs-only / no-op steps may leave the tree clean
 - Do NOT create git commit here — Phase 5 handles commit when
@@ -94,7 +110,7 @@ route as below.
 ### Dirty check (CLI)
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper dirty --json
+$spex_skill_dir/scripts/spex apply-helper dirty --json --name "$spec_name"
 ```
 
 - IF non-zero exit -> STOP (cli-contract)
@@ -102,6 +118,9 @@ $spex_skill_dir/scripts/spex apply-helper dirty --json
   `"paths"`, `"spex_root"` (absolute)
 - Prefer `--spex-root "$spex_root"` when the Paths bind must be
   forced; otherwise CLI uses Paths absolute `spex_root`
+- Always pass `--name "$spec_name"` so dirty uses
+  `meta.spex_worktree` as git cwd when set (linked worktree
+  dirtiness is invisible from the main checkout alone)
 - Clean skip (`auto`/`true` + not `$dirty`) still must satisfy
   the task acceptance criteria
 
@@ -160,7 +179,7 @@ $spex_skill_dir/scripts/spex prompt apply-commit --name "$spec_name"
   **not** re-run unless `$commit_prompt` was lost.
 
 - `$commit_prompt` ← output. Using `$commit_prompt`, stage and
-  commit:
+  commit (when `$spex_worktree` is set, run git in that cwd):
   - Prefer staging **all** dirty paths outside `$spex_root` so the
     tree is clean after this commit. Leftover dirty paths poison
     later `skip_commit=true|auto` steps (false STOP / unwanted
@@ -203,10 +222,10 @@ $spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
 - Returning to the main session is only allowed **after** persist
   succeeds
 - Recompute `$dirty` via the same Phase 4 dirty CLI
-  (`apply-helper dirty --json`). IF `$dirty` -> report leftover
-  paths excl. `$spex_root` -> STOP (do not Phase 6/7; do not set
-  `completed_at`). The commit already happened, so persist ran
-  first; do **not** skip persisting on residual dirty
+  (`apply-helper dirty --json --name "$spec_name"`). IF `$dirty`
+  -> report leftover paths excl. `$spex_root` -> STOP (do not
+  Phase 6/7; do not set `completed_at`). The commit already
+  happened, so persist ran first; do **not** skip persisting on residual dirty
 - When returning to main from Phases 4–5 sub-agent (persist OK
   and not residual-dirty STOP): report `outcome=committed`
 
@@ -216,7 +235,8 @@ ON_FAIL Phases 4–5 **execution** errors only (not intentional
 Phase 4 STOP — those are **not** retryable): report + retry
 **once**, with retry preconditions:
 
-1. Run `apply-helper dirty --json` to capture current state
+1. Run `apply-helper dirty --json --name "$spec_name"` to
+   capture current state
 2. Choose explicitly between:
    - **(a) default**: keep dirty changes; pass "partial implementation + dirty paths" as context to the retry (`apply`: fresh Phases 4–5 sub-agent; `apply-one-step`: in-session retry — same protocol, no new sub-agent)
    - **(b)**: `git restore` to a clean tree, then re-run

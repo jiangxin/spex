@@ -49,7 +49,7 @@ ICON_ARCHIVED = "\U0001f4e6"
 _SPEC_META_FIELD_ORDER = [
     "name", "workdir", "main_worktree", "remote_url", "branch",
     "user_name", "user_email", "created_at", "prompts", "description",
-    "spex_branch",
+    "spex_branch", "use_git_worktree", "spex_worktree",
 ]
 
 
@@ -68,6 +68,8 @@ class SpecMeta:
     prompts: list = field(default_factory=list)
     description: str = ""
     spex_branch: str = ""
+    use_git_worktree: bool = False
+    spex_worktree: str = ""
     extras: dict = field(default_factory=dict)
 
     @classmethod
@@ -93,7 +95,7 @@ class SpecMeta:
         result: dict = {}
         for key in _SPEC_META_FIELD_ORDER:
             value = getattr(self, key)
-            if key in ("description", "spex_branch") and not value:
+            if key in ("description", "spex_branch", "spex_worktree") and not value:
                 continue
             result[key] = value
         result.update(self.extras)

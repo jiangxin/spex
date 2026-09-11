@@ -19,6 +19,9 @@ Pass:
 
 - `$task_prompt` as Phase 4 guide
 - `$current_task_id`, `$spec_name`, `$skip_commit`, `$spex_root`
+- `$spex_worktree` (may be empty). When non-empty, instruct the
+  sub-agent to use it as `working_directory` for implement /
+  commit — do **not** switch the user's IDE root
 
 Implementation prompt must NOT create the commit — when a commit
 is required, sub-agent runs Phase 5 (`apply-commit`) after
@@ -80,7 +83,7 @@ Numbered steps — follow in order; do not skip:
    in **main** via:
 
    ```bash
-   $spex_skill_dir/scripts/spex apply-helper dirty --json
+   $spex_skill_dir/scripts/spex apply-helper dirty --json --name "$spec_name"
    ```
 
    - IF `$dirty` -> report unexpected handoff (skip claimed but

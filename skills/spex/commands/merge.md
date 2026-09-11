@@ -72,6 +72,11 @@ Submit completed work by merging the feature branch or creating a PR.
 
 - Forward any agent-supplied Usage flags unchanged.
 - Note: `spex merge` has **no** `--json` flag; stdout is always JSON.
+- Merge runs in the worktree that already has the **target** trunk
+  branch checked out (via `git worktree list`). It does not switch
+  into a trunk branch locked by a feature worktree. Successful
+  merge archives the spec, which removes `meta.spex_worktree` when
+  set.
 - CMD:
 
 ```bash
