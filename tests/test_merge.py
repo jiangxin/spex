@@ -95,6 +95,26 @@ class TestDryRun:
         assert data["merge_cwd"] == str(tmp_path)
         assert data["spex_worktree"] == ""
         assert data["would_remove_worktree"] is False
+        assert data["merge_cwd_head"] == ""
+        assert data["would_switch"] is True
+        assert data["target_checked_out"] is False
+
+    def test_dry_run_logs_switch_and_merge_steps(
+        self, tmp_path, caplog,
+    ):
+        specs, _spec_dir = _setup_topic(tmp_path)
+        ctx = _mock_project_context(top_workdir=str(tmp_path))
+
+        with patch("config.get_project_context", return_value=ctx), \
+             patch("common.get_specs_dir", return_value=specs), \
+             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("branch.merge_branch", MagicMock()), \
+             caplog.at_level(logging.INFO):
+            spex_merge.cli_submit(["my-topic", "--dry-run"])
+
+        assert "Would switch to main" in caplog.text
+        assert "Would git merge spex/test" in caplog.text
+        assert "current HEAD: unknown" in caplog.text
 
     def test_dry_run_no_archive(self, tmp_path, capsys, caplog):
         specs, spec_dir = _setup_topic(tmp_path)
@@ -131,6 +151,7 @@ class TestDryRun:
 
         mock_merge.assert_not_called()
         assert "Would merge" in caplog.text
+        assert "Would git merge" in caplog.text
 
 
 @pytest.mark.slow

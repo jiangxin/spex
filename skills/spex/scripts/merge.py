@@ -67,7 +67,13 @@ def cli_submit(argv=None, command="submit") -> None:
     import common
     import config as cfg
     import hooks
-    from branch import branch_exists, create_and_switch_branch, merge_branch, resolve_default_branch
+    from branch import (
+        branch_exists,
+        create_and_switch_branch,
+        get_current_branch,
+        merge_branch,
+        resolve_default_branch,
+    )
     from worktree import find_worktree_for_branch
 
     parser = _build_submit_parser()
@@ -134,17 +140,29 @@ def cli_submit(argv=None, command="submit") -> None:
     # Resolve target merge cwd the same way as a real merge (read-only
     # for --dry-run): prefer the worktree that already has target
     # checked out; fall back to main_worktree when target is free.
-    target_wt = find_worktree_for_branch(target, cwd=ctx.main_worktree)
-    if target_wt is None:
-        target_wt = ctx.main_worktree
+    found_target_wt = find_worktree_for_branch(target, cwd=ctx.main_worktree)
+    target_checked_out = found_target_wt is not None
+    target_wt = found_target_wt if target_checked_out else ctx.main_worktree
 
     if parsed.dry_run:
         merge_cwd = str(target_wt)
         spex_wt = (meta.spex_worktree if meta else "") or ""
         will_archive = not parsed.no_archive
         would_remove = will_archive and bool(spex_wt)
+        try:
+            merge_cwd_head = get_current_branch(cwd=target_wt) or ""
+        except RuntimeError:
+            merge_cwd_head = ""
+        would_switch = merge_cwd_head != target
         logger.info("Would merge: %s -> %s", source, target)
         logger.info("Would merge in worktree: %s", merge_cwd)
+        logger.info(
+            "  (current HEAD: %s)",
+            merge_cwd_head or "unknown",
+        )
+        if would_switch:
+            logger.info("Would switch to %s", target)
+        logger.info("Would git merge %s", source)
         if spex_wt:
             logger.info("Feature worktree: %s", spex_wt)
         if will_archive:
@@ -158,6 +176,9 @@ def cli_submit(argv=None, command="submit") -> None:
             "archived": will_archive,
             "dry_run": True,
             "merge_cwd": merge_cwd,
+            "merge_cwd_head": merge_cwd_head,
+            "would_switch": would_switch,
+            "target_checked_out": target_checked_out,
             "spex_worktree": spex_wt,
             "would_remove_worktree": would_remove,
             "errors": [],

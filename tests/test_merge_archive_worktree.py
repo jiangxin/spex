@@ -315,7 +315,12 @@ class TestMergeDryRunWorktree:
         assert Path(out["merge_cwd"]).resolve() == main.resolve()
         assert out["spex_worktree"] == str(wt_path)
         assert out["would_remove_worktree"] is True
+        assert out["merge_cwd_head"] == main_branch
+        assert out["would_switch"] is False
+        assert out["target_checked_out"] is True
         assert "Would merge in worktree" in caplog.text
+        assert "Would git merge" in caplog.text
+        assert "Would switch to" not in caplog.text
         assert "Feature worktree" in caplog.text
         assert "Would remove worktree" in caplog.text
 
@@ -391,10 +396,71 @@ class TestMergeDryRunWorktree:
         assert out["spex_worktree"] == ""
         assert out["would_remove_worktree"] is False
         assert out["archived"] is True
+        assert out["would_switch"] is False
+        assert out["target_checked_out"] is True
+        assert out["merge_cwd_head"] == main_branch
         assert "Would merge in worktree" in caplog.text
+        assert "Would git merge" in caplog.text
         assert "Feature worktree" not in caplog.text
         assert "Would remove worktree" not in caplog.text
         assert get_current_branch(main) == main_branch
+
+
+@pytest.mark.slow
+class TestArchiveDryRunWorktree:
+    def test_archive_dry_run_shows_worktree_remove_cmd(
+        self, tmp_path, monkeypatch, capsys, caplog,
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+
+        spex_root = tmp_path / "spex"
+        specs = spex_root / "specs"
+        archives = spex_root / "archives"
+        archives.mkdir(parents=True)
+
+        spec_name = "2026-09-10-19-36-archive-dry"
+        wt_path = resolve_spex_worktree_path(main, spec_name)
+        add_worktree(wt_path, "spex/archive-dry", cwd=main)
+
+        spec_dir = specs / spec_name
+        _write_completed_spec(
+            spec_dir,
+            main=main,
+            spex_branch="spex/archive-dry",
+            spex_worktree=str(wt_path),
+        )
+
+        import archive as spex_archive
+
+        with patch.object(
+            spex_archive, "get_specs_dir", return_value=specs,
+        ), patch.object(
+            spex_archive, "get_archives_dir", return_value=archives,
+        ), caplog.at_level(logging.INFO):
+            spex_archive.main([
+                "--json", "--name", spec_name, "-n", "-f",
+            ])
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["dry_run"] is True
+        item = data["results"][0]
+        assert item["action"] == "would_archive"
+        assert item["would_remove_worktree"] is True
+        assert item["spex_worktree"] == str(wt_path)
+        assert item["worktree_remove_cwd"] == str(main)
+        assert item["worktree_remove_cmd"] == (
+            f"git worktree remove --force {wt_path}"
+        )
+        assert "Would run: git worktree remove --force" in caplog.text
+        assert f"(cwd: {main})" in caplog.text
+        # Dry-run must not remove the worktree.
+        assert is_registered_worktree(wt_path, cwd=main)
+        assert (specs / spec_name).is_dir()
 
 
 @pytest.mark.slow
