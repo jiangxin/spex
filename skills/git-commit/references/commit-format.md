@@ -14,8 +14,9 @@ Quality bar aligned with `spex/templates/apply-commit.md` and se-insight
 Common types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`,
 `perf`, `style`, `ci`, `build`, `revert`.
 
-Subject is English ASCII. Do not put Chinese in the title (se-insight
-rule track penalizes non-ASCII titles).
+Subject and body are English. Subject is ASCII (se-insight rule track
+penalizes non-ASCII titles). Do not write Chinese or other non-English
+prose in the title or body.
 
 ## Length and wrapping
 

@@ -82,17 +82,36 @@ broken intermediate commits.
 
 Present a numbered plan. Do **not** `git add` or `git commit` yet.
 
+Write **confirmation UI only** in the user's preferred language
+(conversation language, user rules, or locale — not default
+English): the plan narrative, choices, and questions. One-line why
+in the plan is for the user and may use that language.
+
+The git commit message (title and body) is always English. Show the
+proposed Conventional Commits title as the English subject that will
+be committed; do not translate it.
+
 For each proposed commit:
 
 1. Short Conventional Commits title
 2. Paths / hunks included
 3. One-line why
 
-Ask the user to confirm, reorder, merge groups, or keep a single
-commit.
+Do **not** ask a free-form essay. Offer **selectable choices**:
 
-- IF user declines split -> one commit covering the intended set ->
-  Phase 5
+- IF a structured multiple-choice tool is available (e.g. AskQuestion)
+  -> use it so the user can click an option
+- ELSE list lettered options in chat (`A` / `B` / `C` …); the user
+  clicks nothing and replies with the letter (or a short edit)
+
+Include at least:
+
+- A: accept this split (commit in the listed order)
+- B: keep a single commit (no split)
+- C: I will describe a different grouping
+
+- IF user declines split / picks single commit -> one commit covering
+  the intended set -> Phase 5
 - IF user confirms or edits the plan -> Phase 5 per group, in order
 - IF user does not answer -> STOP (no commits)
 
@@ -103,9 +122,9 @@ For each commit in the plan:
 1. Stage only that commit's paths (`git add` listed files; never
    `git add -A` on a split plan)
 2. Draft message per `references/commit-format.md`
-3. CHECK title ≤ 72 bytes, blank line, body wrapped at 72, English ASCII
-   title; body is prose covering motivation, approach, and effect (no
-   axis labels)
+3. CHECK title ≤ 72 bytes, blank line, body wrapped at 72; title and
+   body are English (ASCII title); body is prose covering motivation,
+   approach, and effect (no axis labels)
 4. CMD:
 
 ```bash
