@@ -14,6 +14,11 @@ from common import (
 )
 from config import ProjectContext, generate_default_toml
 
+# Import at module scope: the autouse conftest fixture patches
+# init._install_cli before test bodies run; the dry-run test below
+# exercises the real function, so capture it at import time.
+from init import _install_cli as real_install_cli
+
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
@@ -1139,8 +1144,7 @@ class TestInstallCli:
     def test_dry_run_returns_early(self, caplog):
         """_install_cli(dry_run=True) shows 'Would install' and returns."""
         with caplog.at_level(logging.INFO):
-            from init import _install_cli
-            _install_cli(dry_run=True)
+            real_install_cli(dry_run=True)
         assert "Would install CLI:" in caplog.text
 
 

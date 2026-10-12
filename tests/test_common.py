@@ -1,7 +1,9 @@
 import json
+import logging
 import re
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from common import (
@@ -28,6 +30,11 @@ from common import (
     resolve_spec_dir,
     wrap_text,
 )
+
+# Import at module scope: the autouse conftest fixture patches
+# init._install_cli before test bodies run, so tests that exercise the
+# real install logic must capture it here.
+from init import _install_cli as real_install_cli
 
 
 def _init_git_repo(path):
@@ -301,11 +308,26 @@ class TestCreateDefaultToml:
         fakehome.mkdir()
         monkeypatch.setattr("common.Path.home", lambda: fakehome)
         monkeypatch.setattr("config.Path.home", lambda: fakehome)
+        install = MagicMock()
+        monkeypatch.setattr("init._install_cli", install)
 
         assert _create_default_toml() == "created"
         content = (fakehome / ".spex.toml").read_text()
         assert "[spex]" in content
         assert "# debug = false" in content
+        install.assert_called_once()
+
+    def test_skips_cli_install_when_toml_exists(self, monkeypatch, tmp_path):
+        fakehome = tmp_path / "fakehome"
+        fakehome.mkdir()
+        monkeypatch.setattr("common.Path.home", lambda: fakehome)
+        monkeypatch.setattr("config.Path.home", lambda: fakehome)
+        (fakehome / ".spex.toml").write_text("[spex]\n", encoding="utf-8")
+        install = MagicMock()
+        monkeypatch.setattr("init._install_cli", install)
+
+        assert _create_default_toml() in ("updated", "unchanged")
+        install.assert_not_called()
 
     def test_upgrades_existing_without_wipe(self, monkeypatch, tmp_path):
         fakehome = tmp_path / "fakehome"
@@ -324,6 +346,114 @@ class TestCreateDefaultToml:
         assert "debug = true" in content
         assert "extra = 1" in content
         assert "# branch_management = true" in content
+
+
+class TestEnsureCliInstalled:
+    """The CLI install hook fires only on first-time toml creation."""
+
+    def _fake_home(self, monkeypatch, tmp_path):
+        fakehome = tmp_path / "fakehome"
+        fakehome.mkdir()
+        monkeypatch.setattr("common.Path.home", lambda: fakehome)
+        monkeypatch.setattr("config.Path.home", lambda: fakehome)
+        return fakehome
+
+    def test_installs_symlink_and_warns_when_off_path(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+        monkeypatch.setattr("init._install_cli", real_install_cli)
+        monkeypatch.setattr("shutil.which", lambda name: None)
+
+        with caplog.at_level(logging.WARNING, logger="spex"):
+            assert _create_default_toml() == "created"
+
+        link = fakehome / ".local" / "bin" / "spex"
+        assert link.is_symlink()
+        scripts_spex = (
+            Path(__file__).resolve().parent.parent
+            / "skills" / "spex" / "scripts" / "spex"
+        )
+        assert link.resolve() == scripts_spex
+        assert "not found on PATH" in caplog.text
+
+    def test_no_warning_when_already_on_path(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+        monkeypatch.setattr("init._install_cli", real_install_cli)
+        monkeypatch.setattr(
+            "shutil.which",
+            lambda name: str(fakehome / ".local" / "bin" / name),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="spex"):
+            assert _create_default_toml() == "created"
+
+        assert (fakehome / ".local" / "bin" / "spex").is_symlink()
+        assert "not found on PATH" not in caplog.text
+
+    def test_install_failure_never_blocks_creation(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+
+        def boom(**kwargs):
+            raise RuntimeError("no network")
+
+        monkeypatch.setattr("init._install_cli", boom)
+
+        with caplog.at_level(logging.WARNING, logger="spex"):
+            assert _create_default_toml() == "created"
+
+        assert (fakehome / ".spex.toml").is_file()
+        assert "could not install spex CLI" in caplog.text
+
+
+    @pytest.mark.parametrize("kind", ["file", "foreign_link", "dangling", "correct_link"])
+    def test_auto_install_preserves_existing_target(self, monkeypatch, tmp_path, kind):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+        monkeypatch.setattr("init._install_cli", real_install_cli)
+        monkeypatch.setattr("shutil.which", lambda *a: None)
+        target = fakehome / ".local/bin/spex"
+        target.parent.mkdir(parents=True)
+        if kind == "file":
+            target.write_text("custom launcher")
+        else:
+            source = tmp_path / "other-cli"
+            if kind == "correct_link":
+                source = Path(__file__).resolve().parents[1] / "skills/spex/scripts/spex"
+            elif kind == "foreign_link":
+                source.write_text("another installation")
+            target.symlink_to(source)
+        before = target.lstat()
+        original = target.readlink() if target.is_symlink() else target.read_bytes()
+        assert _create_default_toml() == "created"
+        assert target.lstat().st_ino == before.st_ino
+        assert (target.readlink() if target.is_symlink() else target.read_bytes()) == original
+
+    def test_auto_install_preserves_other_path_installation(self, monkeypatch, tmp_path):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+        executable = tmp_path / "other-spex"
+        executable.write_text("existing installation")
+        monkeypatch.setattr("init._install_cli", real_install_cli)
+        monkeypatch.setattr("shutil.which", lambda *a: str(executable))
+        assert _create_default_toml() == "created"
+        assert not (fakehome / ".local/bin/spex").exists()
+        assert executable.read_text() == "existing installation"
+
+    def test_auto_install_does_not_clobber_a_racing_creator(self, monkeypatch, tmp_path):
+        fakehome = self._fake_home(monkeypatch, tmp_path)
+        monkeypatch.setattr("init._install_cli", real_install_cli)
+        monkeypatch.setattr("shutil.which", lambda *a: None)
+
+        def raced(path, *args, **kwargs):
+            path.write_text("concurrent launcher")
+            raise FileExistsError("created concurrently")
+
+        monkeypatch.setattr(Path, "symlink_to", raced)
+        assert _create_default_toml() == "created"
+        assert (fakehome / ".local/bin/spex").read_text() == "concurrent launcher"
 
 
 @pytest.mark.slow

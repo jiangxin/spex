@@ -304,7 +304,7 @@ def _install_single_wheel(pkg, site_packages, verbose=False):
         return False
 
 
-def _install_cli(verbose=False, dry_run=False):
+def _install_cli(verbose=False, dry_run=False, *, replace_existing=True):
     """Install spex CLI symlink to ~/.local/bin."""
     import shutil as _shutil
 
@@ -323,12 +323,23 @@ def _install_cli(verbose=False, dry_run=False):
         logger.info("CLI already installed: %s", found)
         return
 
+    if not replace_existing:
+        if link_path.is_symlink() and link_path.resolve() == script_path.resolve():
+            logger.info("CLI already installed: %s", link_path)
+            return
+        if found and Path(found).exists():
+            logger.warning("Keeping existing PATH installation: %s", found)
+            return
+
     try:
         link_dir.mkdir(parents=True, exist_ok=True)
-        if link_path.is_symlink() or link_path.exists():
+        if replace_existing and (link_path.is_symlink() or link_path.exists()):
             link_path.unlink()
+        # Creating the symlink itself arbitrates races with other installers.
         link_path.symlink_to(script_path)
         logger.info("Installed CLI: %s -> %s", link_path, script_path)
+    except FileExistsError:
+        logger.warning("Keeping existing CLI target: %s", link_path)
     except PermissionError:
         logger.warning(
             "Warning: cannot install CLI to %s (permission denied)", link_dir

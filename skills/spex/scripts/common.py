@@ -228,6 +228,33 @@ class Spec:
         return self.description or self.prompt
 
 
+def _ensure_cli_installed():
+    """Best-effort install of the spex CLI symlink on first auto-init.
+
+    Runs only when ~/.spex.toml is created for the first time, so the
+    one-off cost never affects normal command latency. Delegates the
+    symlink work to ``init._install_cli`` (creates ~/.local/bin when
+    missing) and warns when ``spex`` is still not found on PATH.
+    """
+    import shutil
+
+    try:
+        # Lazy import avoids a circular dependency (init imports common).
+        from init import _install_cli
+
+        _install_cli(replace_existing=False)
+    except Exception as e:  # never block first-run initialization
+        logger.warning("Warning: could not install spex CLI: %s", e)
+        return
+
+    if shutil.which("spex") is None:
+        logger.warning(
+            "Warning: 'spex' CLI installed to ~/.local/bin but not found "
+            'on PATH. Add it, e.g. export PATH="$HOME/.local/bin:$PATH" '
+            "(new login shells pick it up via ~/.profile)."
+        )
+
+
 def _create_default_toml():
     """Create or upgrade ~/.spex.toml with the latest config schema.
 
@@ -244,6 +271,7 @@ def _create_default_toml():
             return "updated"
         return "unchanged"
     target.write_text(generate_default_toml(), encoding="utf-8")
+    _ensure_cli_installed()
     return "created"
 
 
