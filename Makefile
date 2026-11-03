@@ -22,7 +22,7 @@ dev-env: .venv/.dev-ready
 
 lint: dev-env
 	@echo "==> Linting Python files..."
-	$(VENV_PYTHON) -m ruff check skills/spex/scripts/ tests/
+	$(VENV_PYTHON) -m ruff check skills/spex/scripts/ skills/git-commit/scripts/ tests/
 
 lint-md:
 	@echo "==> Linting Markdown files..."

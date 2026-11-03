@@ -125,15 +125,20 @@ For each commit in the plan:
 3. CHECK title ≤ 72 bytes, blank line, body wrapped at 72; title and
    body are English (ASCII title); body is prose covering motivation,
    approach, and effect (no axis labels)
-4. CMD:
+4. Add two `-c` options to run a commit-msg hook that post-processes
+   the commit message. Add other `git commit` options according to the
+   user's intent. Use `-F-` to read a multiline message from stdin:
 
-```bash
-git commit -F- <<'EOF'
-<title>
+   ```bash
+   hook_command=$(python3 "$skill_dir/scripts/filter_agent_signature.py" --command)
+   git -c hook.spex.event=commit-msg \
+       -c "hook.spex.command=$hook_command" \
+       commit -F- <<'EOF'
+   <title>
 
-<body>
-EOF
-```
+   <body>
+   EOF
+   ```
 
 5. ON_FAIL (hook / empty commit) -> report stderr -> STOP; do not
    `--no-verify` unless the user explicitly asked
