@@ -581,4 +581,7 @@ If apply stops because `apply-helper ensure-branch` failed on a detached HEAD, S
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
 - Scripts are in `skills/spex/scripts/`, written in Python 3.9+.
+- Run `make setup` to create `.venv` and install Python dev dependencies and Node.js dependencies.
+- Test, coverage, Python lint, and format targets automatically initialize `.venv` with `skills/spex/[dev]` and use its Python. No manual activation is needed; pre-commit uses the same environment through `make check`.
+- Use `make dev-env PYTHON=python3.13` to choose the Python interpreter when creating `.venv`. Delete `.venv` before switching interpreters. Dependency installation is repeated when `skills/spex/pyproject.toml` changes; remove `.venv/.dev-ready` to force a reinstall.
 - Run tests: `make test` (fast), `make test-all` (full, including slow tests).

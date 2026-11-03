@@ -20,12 +20,6 @@ jobs:
         with:
           node-version: "22"
 
-      - run: python -m pip install ./skills/spex[dev]
+      - run: make setup
 
-      - run: npm install
-
-      - run: ruff check skills/spex/scripts/ tests/
-
-      - run: npx markdownlint-cli2
-
-      - run: python -m pytest
+      - run: make check
