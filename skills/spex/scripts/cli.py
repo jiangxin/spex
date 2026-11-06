@@ -11,8 +11,8 @@ class ArgumentParser(argparse.ArgumentParser):
 
     Usage::
 
-        parser = ArgumentParser(prog="spex todo-helper xml2json")
-        parser.add_argument("xml_file")
+        parser = ArgumentParser(prog="spex todo-helper")
+        parser.add_argument("--todo-file")
         parser.add_argument("-a", "--append", action="store_true")
         args = parser.parse()  # defaults to sys.argv[1:]
     """

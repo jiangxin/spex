@@ -183,7 +183,7 @@ class TestTodoEditAnchors:
             name="my-spec",
         )
         with patch("debug_log.debug_enabled", return_value=True):
-            todo_helper.cmd_edit(todo, False, args)
+            todo_helper.cmd_edit(todo, args)
 
         assert (
             "===== APPLY task committed id=step-4 sha=abc1234 =====\n"
@@ -213,7 +213,7 @@ class TestTodoEditAnchors:
             name="my-spec",
         )
         with patch("debug_log.debug_enabled", return_value=True):
-            todo_helper.cmd_edit(todo, False, args)
+            todo_helper.cmd_edit(todo, args)
 
         content = _read_log(tmp_path)
         assert "===== APPLY task done id=step-4 =====\n" in content
@@ -242,7 +242,7 @@ class TestTodoEditAnchors:
             name=None,
         )
         with patch("debug_log.debug_enabled", return_value=False):
-            todo_helper.cmd_edit(todo, False, args)
+            todo_helper.cmd_edit(todo, args)
         assert not (tmp_path / DEBUG_LOG_NAME).exists()
 
 
@@ -335,7 +335,6 @@ class TestApplyAnchorSequence:
         with patch("debug_log.debug_enabled", return_value=True):
             todo_helper.cmd_edit(
                 todo,
-                False,
                 Namespace(
                     id="step-4",
                     step_name=None,
@@ -348,7 +347,6 @@ class TestApplyAnchorSequence:
             )
             todo_helper.cmd_edit(
                 todo,
-                False,
                 Namespace(
                     id="step-4",
                     step_name=None,

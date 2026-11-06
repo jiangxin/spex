@@ -3,23 +3,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from tests.e2e.conftest import run_spex
-
-TODO_XML = """\
-<todo>
-  <step>
-    <step-id>step-1</step-id>
-    <step-name>Test step</step-name>
-    <step-details>Test details</step-details>
-    <completed-at></completed-at>
-    <commit-title></commit-title>
-  </step>
-</todo>
-"""
 
 
 def _make_todo_json(done: bool = False) -> list[dict]:
@@ -100,19 +87,6 @@ class TestTodoHelperValidate:
         assert result.returncode == 0, result.stderr
         assert "OK" in result.stderr
 
-    def test_validate_xml_via_file(self, sandbox):
-        """Validate a todo.xml file via --todo-file."""
-        xml_path = sandbox.home / "test-todo.xml"
-        xml_path.write_text(TODO_XML, encoding="utf-8")
-
-        result = run_spex(
-            "todo-helper", "--todo-file", str(xml_path),
-            "validate",
-            sandbox=sandbox,
-        )
-        assert result.returncode == 0, result.stderr
-        assert "OK" in result.stderr
-
 
 @pytest.mark.e2e
 class TestTodoHelperAppendShow:
@@ -158,48 +132,6 @@ class TestTodoHelperAppendShow:
         ids = [item["id"] for item in items]
         assert "step-1" in ids
         assert "step-2" in ids
-
-
-@pytest.mark.e2e
-class TestTodoHelperConversion:
-    def test_xml2json_via_cli(self, sandbox):
-        """xml2json converts an XML todo file to JSON."""
-        xml_path = sandbox.home / "conv-todo.xml"
-        xml_path.write_text(TODO_XML, encoding="utf-8")
-
-        result = run_spex(
-            "todo-helper", "--todo-file", str(xml_path),
-            "xml2json",
-            sandbox=sandbox,
-        )
-        assert result.returncode == 0, result.stderr
-
-        json_path = xml_path.with_suffix(".json")
-        assert json_path.is_file()
-        items = json.loads(
-            json_path.read_text(encoding="utf-8"),
-        )
-        assert len(items) == 1
-        assert items[0]["id"] == "step-1"
-
-    def test_json2xml_via_cli(self, sandbox):
-        """json2xml converts a spec's todo.json to XML."""
-        data = _create_topic(sandbox, "j2x-test")
-        spec_name = data["spec_name"]
-        spec_path = Path(data["spec_path"])
-
-        result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "json2xml",
-            sandbox=sandbox,
-        )
-        assert result.returncode == 0, result.stderr
-
-        xml_path = spec_path / "todo.xml"
-        assert xml_path.is_file()
-        content = xml_path.read_text(encoding="utf-8")
-        assert "<todo>" in content
-        assert "<step-id>step-1</step-id>" in content
 
 
 @pytest.mark.e2e

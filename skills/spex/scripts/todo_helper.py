@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Unified CRUD operations for todo files (JSON and XML)."""
+"""CRUD operations for JSON todo files."""
 
 from __future__ import annotations
 
 import json
-import os
 import string
 import subprocess
 import sys
-import tempfile
 import textwrap
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
     atomic_write_json,
-    escape_xml_text,
     load_and_validate_todo_json,
     local_iso_timestamp,
     logger,
@@ -64,102 +60,8 @@ def _resolve_completed_at(value):
 
 
 # ---------------------------------------------------------------------------
-# Load / write dispatchers
+# JSON file loading
 # ---------------------------------------------------------------------------
-
-_XML_TO_DICT = {
-    "step-id": "id",
-    "step-name": "name",
-    "step-details": "details",
-    "completed-at": "completed_at",
-    "commit-title": "commit_title",
-    "skip-commit": "skip_commit",
-}
-_DICT_TO_XML = {v: k for k, v in _XML_TO_DICT.items()}
-_XML_REQUIRED_KEYS = (
-    "id", "name", "details", "completed_at", "commit_title",
-)
-
-
-def load_todo_xml(path):
-    """Load todo entries from an XML file."""
-    path = Path(path)
-    if not path.is_file():
-        return []
-    content = path.read_text(encoding="utf-8").strip()
-    if not content:
-        return []
-    try:
-        root = ET.fromstring(content)
-    except ET.ParseError as exc:
-        logger.error(
-            "Error: failed to parse XML '%s': %s", path, exc,
-        )
-        sys.exit(1)
-    if root.tag != "todo":
-        logger.error(
-            "Error: expected root element <todo>,"
-            " got <%s>.", root.tag,
-        )
-        sys.exit(1)
-    entries = []
-    for step in root.findall("step"):
-        entry = {}
-        for xml_name, dict_key in _XML_TO_DICT.items():
-            elem = step.find(xml_name)
-            if dict_key == "skip_commit":
-                # Optional: omit when element is absent or empty.
-                if elem is not None and elem.text:
-                    entry[dict_key] = elem.text
-                continue
-            entry[dict_key] = (
-                elem.text if elem is not None and elem.text
-                else ""
-            )
-        entries.append(entry)
-    return entries
-
-
-def write_todo_xml(path, data):
-    """Write todo entries to an XML file."""
-    path = Path(path)
-    lines = ["<todo>"]
-    for item in data:
-        lines.append("  <step>")
-        for dict_key in _XML_REQUIRED_KEYS:
-            xml_name = _DICT_TO_XML[dict_key]
-            value = escape_xml_text(str(item.get(dict_key, "")))
-            lines.append(
-                f"    <{xml_name}>{value}</{xml_name}>",
-            )
-        if "skip_commit" in item:
-            normalized = normalize_skip_commit(item["skip_commit"])
-            if normalized != _SKIP_COMMIT_FALSE:
-                xml_name = _DICT_TO_XML["skip_commit"]
-                value = escape_xml_text(normalized)
-                lines.append(
-                    f"    <{xml_name}>{value}</{xml_name}>",
-                )
-        lines.append("  </step>")
-    lines.append("</todo>\n")
-    content = "\n".join(lines)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fd = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        suffix=".tmp",
-        delete=False,
-    )
-    try:
-        tmp_fd.write(content)
-        tmp_fd.close()
-        os.replace(tmp_fd.name, str(path))
-    except BaseException:
-        tmp_fd.close()
-        if os.path.exists(tmp_fd.name):
-            os.unlink(tmp_fd.name)
-
 
 def load_todo_json(path):
     """Load todo entries from a JSON file.
@@ -175,28 +77,13 @@ def load_todo_json(path):
     return load_and_validate_todo_json(path, allow_empty=True)
 
 
-def load_todo_file(path, is_xml=False):
-    """Dispatch to the appropriate loader based on format."""
-    if is_xml:
-        return load_todo_xml(path)
-    return load_todo_json(path)
-
-
-def write_todo_file(path, data, is_xml=False):
-    """Dispatch to the appropriate writer based on format."""
-    if is_xml:
-        write_todo_xml(path, data)
-    else:
-        atomic_write_json(Path(path), data)
-
-
 # ---------------------------------------------------------------------------
 # Subcommands
 # ---------------------------------------------------------------------------
 
-def cmd_validate(todo_path, is_xml):
+def cmd_validate(todo_path):
     """Validate todo file format and check for duplicate IDs."""
-    data = load_todo_file(todo_path, is_xml)
+    data = load_todo_json(todo_path)
     validate_unique_ids(data)
     for i, item in enumerate(data):
         for field in REQUIRED_FIELDS:
@@ -211,7 +98,7 @@ def cmd_validate(todo_path, is_xml):
     logger.info("OK")
 
 
-def cmd_append(todo_path, is_xml, args):
+def cmd_append(todo_path, args):
     """Append a new entry to the todo file."""
     if args.details_from_stdin:
         details = sys.stdin.read()
@@ -223,7 +110,7 @@ def cmd_append(todo_path, is_xml, args):
         )
         sys.exit(1)
 
-    data = load_todo_file(todo_path, is_xml)
+    data = load_todo_json(todo_path)
 
     for item in data:
         if isinstance(item, dict) and item.get("id") == args.id:
@@ -246,7 +133,7 @@ def cmd_append(todo_path, is_xml, args):
         if normalized != _SKIP_COMMIT_FALSE:
             entry["skip_commit"] = normalized
     data.append(entry)
-    write_todo_file(todo_path, data, is_xml)
+    atomic_write_json(todo_path, data)
     logger.info("Appended '%s'.", args.id)
 
 
@@ -281,7 +168,7 @@ def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
     """Emit APPLY anchors for commit-title / completed_at edits."""
     from debug_log import emit_apply_anchor
 
-    # todo.json / todo.xml live directly under the spec directory.
+    # todo.json lives directly under the spec directory.
     spec_dir = Path(todo_path).parent
 
     if args.completed_at is not None and item.get("completed_at"):
@@ -307,7 +194,7 @@ def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
         )
 
 
-def cmd_edit(todo_path, is_xml, args):
+def cmd_edit(todo_path, args):
     """Edit an existing entry by ID."""
     details = args.details
     if args.details_from_stdin:
@@ -316,7 +203,7 @@ def cmd_edit(todo_path, is_xml, args):
     if args.completed_at is not None:
         args.completed_at = _resolve_completed_at(args.completed_at)
 
-    data = load_todo_file(todo_path, is_xml)
+    data = load_todo_json(todo_path)
 
     found = False
     updated_item = None
@@ -347,15 +234,15 @@ def cmd_edit(todo_path, is_xml, args):
         )
         sys.exit(1)
 
-    write_todo_file(todo_path, data, is_xml)
+    atomic_write_json(todo_path, data)
     logger.info("Updated '%s'.", args.id)
     if updated_item is not None:
         _emit_todo_edit_apply_anchor(todo_path, args, updated_item)
 
 
-def cmd_remove(todo_path, is_xml, args):
+def cmd_remove(todo_path, args):
     """Remove an entry by ID."""
-    data = load_todo_file(todo_path, is_xml)
+    data = load_todo_json(todo_path)
 
     new_data = [
         item for item in data
@@ -368,7 +255,7 @@ def cmd_remove(todo_path, is_xml, args):
         )
         sys.exit(1)
 
-    write_todo_file(todo_path, new_data, is_xml)
+    atomic_write_json(todo_path, new_data)
     logger.info("Removed '%s'.", args.id)
 
 
@@ -457,9 +344,9 @@ def _format_markdown(data, width=0):
     return "\n".join(lines)
 
 
-def cmd_show(todo_path, is_xml, args):
+def cmd_show(todo_path, args):
     """Display entries with optional filtering and format."""
-    data = load_todo_file(todo_path, is_xml)
+    data = load_todo_json(todo_path)
 
     if args.step_id:
         data = [
@@ -488,54 +375,21 @@ def cmd_show(todo_path, is_xml, args):
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def cmd_xml2json(todo_path, is_xml, args):
-    """Convert an XML todo file to JSON format."""
-    data = load_todo_xml(todo_path)
-    output_path = todo_path.with_suffix(".json")
-    atomic_write_json(output_path, data)
-    if args.rm:
-        todo_path.unlink()
-    logger.info("Converted %s -> %s", todo_path, output_path)
-
-
-def cmd_json2xml(todo_path, is_xml, args):
-    """Convert a JSON todo file to XML format."""
-    data = load_todo_json(todo_path)
-    output_path = todo_path.with_suffix(".xml")
-    write_todo_xml(output_path, data)
-    if args.rm:
-        todo_path.unlink()
-    logger.info("Converted %s -> %s", todo_path, output_path)
-
-
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
 def _resolve_todo_path(args):
-    """Resolve the todo file path from parsed global arguments.
-
-    Returns (todo_path, is_xml) tuple.
-    """
-    is_xml = args.xml
-
+    """Resolve the JSON todo file path from parsed global arguments."""
     if args.todo_file:
-        todo_path = Path(args.todo_file)
-        if not is_xml and todo_path.suffix == ".xml":
-            is_xml = True
-        return (todo_path, is_xml)
-
-    # --name mode: resolve spec dir for todo file
-    spec_dir = resolve_spec_dir(args.name)
-    filename = "todo.xml" if is_xml else "todo.json"
-    return (spec_dir / filename, is_xml)
+        return Path(args.todo_file)
+    return resolve_spec_dir(args.name) / "todo.json"
 
 
 _LOCATOR_FLAGS_WITH_VALUE = ("--name", "--todo-file")
-_LOCATOR_FLAGS_BOOL = ("--xml",)
 # Subcommand options that take a value. Their next argv token must
 # not be classified as a hoistable locator, even when it looks like
-# a flag (e.g. ``--commit-title --xml``).
+# a flag (e.g. ``--commit-title --name``).
 _VALUE_TAKING_SUB_FLAGS = frozenset({
     "--id",
     "--step-name",
@@ -549,7 +403,7 @@ _VALUE_TAKING_SUB_FLAGS = frozenset({
 def _hoist_locator_flags(argv):
     """Move locator flags before the subcommand for argparse.
 
-    Agents sometimes place ``--name`` / ``--todo-file`` / ``--xml``
+    Agents sometimes place ``--name`` / ``--todo-file``
     after the subcommand; argparse only accepts parent options before
     it. Hoisting keeps mutual exclusivity and existing parse paths.
 
@@ -577,10 +431,6 @@ def _hoist_locator_flags(argv):
                 i += 1
             continue
         if arg.startswith("--name=") or arg.startswith("--todo-file="):
-            hoisted.append(arg)
-            i += 1
-            continue
-        if arg in _LOCATOR_FLAGS_BOOL:
             hoisted.append(arg)
             i += 1
             continue
@@ -627,9 +477,6 @@ def _build_parser():
             "Direct path to todo file"
             " (accepted before or after the subcommand)"
         ),
-    )
-    parser.add_argument(
-        "--xml", action="store_true", help="Force XML format",
     )
 
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
@@ -767,28 +614,6 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
-    # xml2json
-    p_xml2json = subs.add_parser(
-        "xml2json",
-        description="Convert an XML todo file to JSON format.",
-        help="Convert XML todo file to JSON format",
-    )
-    p_xml2json.add_argument(
-        "--rm", action="store_true",
-        help="Remove the source XML file after conversion",
-    )
-
-    # json2xml
-    p_json2xml = subs.add_parser(
-        "json2xml",
-        description="Convert a JSON todo file to XML format.",
-        help="Convert JSON todo file to XML format",
-    )
-    p_json2xml.add_argument(
-        "--rm", action="store_true",
-        help="Remove the source JSON file after conversion",
-    )
-
     return parser
 
 
@@ -810,22 +635,18 @@ def main(argv=None):
         )
         sys.exit(2)
 
-    todo_path, is_xml = _resolve_todo_path(args)
+    todo_path = _resolve_todo_path(args)
 
     if args.subcmd == "validate":
-        cmd_validate(todo_path, is_xml)
+        cmd_validate(todo_path)
     elif args.subcmd == "append":
-        cmd_append(todo_path, is_xml, args)
+        cmd_append(todo_path, args)
     elif args.subcmd == "edit":
-        cmd_edit(todo_path, is_xml, args)
+        cmd_edit(todo_path, args)
     elif args.subcmd == "remove":
-        cmd_remove(todo_path, is_xml, args)
+        cmd_remove(todo_path, args)
     elif args.subcmd == "show":
-        cmd_show(todo_path, is_xml, args)
-    elif args.subcmd == "xml2json":
-        cmd_xml2json(todo_path, is_xml, args)
-    elif args.subcmd == "json2xml":
-        cmd_json2xml(todo_path, is_xml, args)
+        cmd_show(todo_path, args)
 
 
 if __name__ == "__main__":
