@@ -39,7 +39,11 @@ def plan_checks(repo, scenario):
     if scenario == "lifecycle-plan":
         name = lifecycle_name(repo)
     elif scenario == "new-plan":
-        candidates = set(p.name for p in root.iterdir()) - {FORMAT, DECORATION}
+        # Ignore orphan prepare-spec stubs (meta/debug only, no spec.md).
+        candidates = {
+            p.name for p in root.iterdir()
+            if p.is_dir() and (p / "spec.md").is_file()
+        } - {FORMAT, DECORATION}
         if len(candidates) != 1:
             return {"one-new-spec": False}
         name = candidates.pop()

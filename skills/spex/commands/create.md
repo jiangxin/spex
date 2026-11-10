@@ -131,7 +131,7 @@ EOF
   and clears the active pointer (merge-then-delete; no dual-write).
 - IF non-zero exit -> report stderr; session left intact; this phase
   **overrides** generic cli-contract STOP: return to Phase 3 and
-  retry with a different `$name`
+  retry with a different `$name` (no directory was kept on failure)
 - ELSE parse JSON stdout:
   - `$spec_name` ← `spec_name` (with date prefix,
     e.g. `2026-05-24-10-30-add-login-api`)
@@ -232,6 +232,16 @@ $spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
   until OK
 - ON_FAIL Phase 4 `prepare-spec` -> session kept; return Phase 3 with
   different `$name`
+- **Abandon / rename after a successful `prepare-spec` but before
+  `$spec_path/spec.md` exists** (retry Phase 3–4 with a new `$name`,
+  or STOP mid-design) -> discard the incomplete directory so meta-only
+  stubs do not accumulate:
+
+```bash
+$spex_skill_dir/scripts/spex create-helper discard-incomplete --name "$spec_name"
+```
+
+  Refuses to delete directories that already have `spec.md`.
 - ON_FAIL Phase 7 post-action -> fix `todo.json` -> re-run until OK
 
 ## STOP / Outputs

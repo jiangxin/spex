@@ -80,6 +80,28 @@ class TestCreateTopic:
         assert spec_dir == specs_dir / "2026-05-20-14-30-hello"
         assert spec_dir.is_dir()
 
+
+class TestDiscardIncompleteSpec:
+    def test_removes_meta_only_stub(self, tmp_path):
+        from create_helper import discard_incomplete_spec, is_incomplete_spec_dir
+
+        stub = tmp_path / "2026-05-20-14-30-orphan"
+        stub.mkdir()
+        (stub / "meta.json").write_text("{}", encoding="utf-8")
+        assert is_incomplete_spec_dir(stub) is True
+        assert discard_incomplete_spec(stub) is True
+        assert not stub.exists()
+
+    def test_refuses_complete_spec(self, tmp_path):
+        from create_helper import discard_incomplete_spec
+
+        spec = tmp_path / "2026-05-20-14-30-done"
+        spec.mkdir()
+        (spec / "spec.md").write_text("# ok\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="spec.md already exists"):
+            discard_incomplete_spec(spec)
+        assert spec.is_dir()
+
     def test_creates_specs_dir_if_missing(self, tmp_path):
         specs_dir = tmp_path / "specs"
 
