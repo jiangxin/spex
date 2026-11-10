@@ -374,7 +374,7 @@ Phase 6 review 循环：
 
 ### 4. 模板定制
 
-每个团队都有自己的规范：spec 文档的格式、提交说明的风格、代码评审的 checklist 等等。Spex 支持自定义模板——使用 Jinja2 模板引擎渲染的 Markdown 文件。例如，`templates/apply-commit.md` 中的以下片段展示了 `user_name` 和 `user_email` 变量如何控制 git commit 命令：提供这些变量时，`-c` 参数会将提交作者设置为 spec 中指定的身份。
+每个团队都有自己的规范：spec 文档的格式、提交说明的风格、代码评审的 checklist 等等。Spex 支持自定义模板——由标准库 Spex 模板引擎渲染的 Markdown 文件（`skills/spex/scripts/template.py`；方言说明见 `skills/spex/templates/AGENTS.md`）。例如，`templates/apply-commit.md` 中的以下片段展示了 `user_name` 和 `user_email` 变量如何控制 git commit 命令：提供这些变量时，`-c` 参数会将提交作者设置为 spec 中指定的身份。
 
 ```markdown
 {% if user_name and user_email -%}

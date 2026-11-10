@@ -379,7 +379,7 @@ Requirements change, and models may drift during requirements analysis, requirin
 
 ### 4. Template Customization
 
-Every team has its own standards: spec document format, commit message style, code review checklist, etc. Spex supports customizable templates — Markdown files rendered with the Jinja2 template engine. For example, the following snippet from `templates/apply-commit.md` shows how the `user_name` and `user_email` variables control the git commit command: when provided, the `-c` flag sets the commit author to match the spec's specified identity.
+Every team has its own standards: spec document format, commit message style, code review checklist, etc. Spex supports customizable templates — Markdown files rendered by the stdlib Spex template engine (`skills/spex/scripts/template.py`; dialect in `skills/spex/templates/AGENTS.md`). For example, the following snippet from `templates/apply-commit.md` shows how the `user_name` and `user_email` variables control the git commit command: when provided, the `-c` flag sets the commit author to match the spec's specified identity.
 
 ```markdown
 {% if user_name and user_email -%}
