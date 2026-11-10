@@ -141,6 +141,23 @@ def install_skill(source: Path, trial: Trial) -> None:
         raise ValueError(f"Spex skill missing at {trial.ref}")
 
 
+def verify_trial_workspace(trial: Trial) -> None:
+    git_dir = trial.repo / ".git"
+    if (
+        trial.repo.resolve() != trial.repo
+        or git_dir.is_symlink()
+        or not git_dir.is_dir()
+        or (git_dir / "commondir").exists()
+        or (git_dir / "commondir").is_symlink()
+    ):
+        raise ValueError("Expected a standalone Git repository in the trial workspace")
+    top = git(trial.repo, "rev-parse", "--show-toplevel", env=trial.env)
+    if Path(os.fsdecode(top.rstrip(b"\n"))).resolve() != trial.repo:
+        raise ValueError("Git worktree root differs from the trial workspace")
+
+    verify_spex_roots(trial)
+
+
 def verify_spex_roots(trial: Trial) -> None:
     result = subprocess.run(
         [sys.executable, "-I", "-c",
@@ -196,7 +213,7 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent=None) -
                 [sys.executable, "-I", str(script), str(trial.repo), case.definition["setup"]],
                 cwd=trial.repo, env=trial.env, capture_output=True, check=True, timeout=30,
             )
-        verify_spex_roots(trial)
+        verify_trial_workspace(trial)
     except BaseException:
         shutil.rmtree(directory)
         raise

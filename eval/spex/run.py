@@ -27,7 +27,7 @@ from transport import (
     parse_events,
     save_host_trace,
 )
-from workspace import IDENTIFIER, Case, Trial, prepare_trial, select_cases, verify_spex_roots
+from workspace import IDENTIFIER, Case, Trial, prepare_trial, select_cases, verify_trial_workspace
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parents[1]
@@ -141,7 +141,7 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn) -> No
     index = len(metadata["turn_results"])
     turn = metadata["case"]["turns"][index]
     previous = read_json(output / f"turn-{index}.json")
-    verify_spex_roots(trial)
+    verify_trial_workspace(trial)
     state = capture(trial)
     result = acceptance(trial, metadata["suite"], turn["acceptance"]) if turn.get(
         "acceptance"
@@ -284,7 +284,7 @@ def compare_runs(args: argparse.Namespace) -> dict:
 def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
     metadata = read_json(output / "trial.json")
     for index, turn in enumerate(metadata["case"]["turns"]):
-        verify_spex_roots(trial)
+        verify_trial_workspace(trial)
         message = turn["input"]
         if message.startswith("/spex "):
             message = f"$spex\n{message}"

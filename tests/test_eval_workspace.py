@@ -54,6 +54,9 @@ def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, mon
     first = workspace.prepare_trial(REPO, case, parent=tmp_path)
     second = workspace.prepare_trial(REPO, case, parent=tmp_path)
     assert first.directory != second.directory
+    (first.repo / ".spex").mkdir(exist_ok=True)
+    (first.repo / ".spex" / "trial-only").touch()
+    assert not (second.repo / ".spex" / "trial-only").exists()
     assert Path(first.env["TMPDIR"]).parent == first.repo
     assert Path(first.env["TMPDIR"]).is_dir()
     assert Path(first.env["TMPPREFIX"]).parent == Path(first.env["TMPDIR"])
@@ -70,6 +73,12 @@ def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, mon
     assert (first.skill / "SKILL.md").read_bytes() == expected
     assert workspace.git(second.repo, "remote", env=second.env) == b""
     assert workspace.git(second.repo, "status", "--porcelain", env=second.env) == b""
+
+    git_dir = second.repo / ".git"
+    shutil.rmtree(git_dir)
+    git_dir.symlink_to(first.repo / ".git", target_is_directory=True)
+    with pytest.raises(ValueError, match="standalone Git repository"):
+        workspace.verify_trial_workspace(second)
 
 
 @pytest.mark.slow
