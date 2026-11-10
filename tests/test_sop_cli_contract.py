@@ -102,7 +102,12 @@ def _sop_files() -> list[Path]:
     files = [SPEX_ROOT / "SKILL.md"]
     files.extend(sorted((SPEX_ROOT / "commands").glob("*.md")))
     files.extend(sorted((SPEX_ROOT / "references").glob("*.md")))
-    files.extend(sorted((SPEX_ROOT / "templates").glob("*.md")))
+    files.extend(
+        sorted(
+            p for p in (SPEX_ROOT / "templates").glob("*.md")
+            if p.name != "AGENTS.md"
+        )
+    )
     return [p for p in files if p.is_file()]
 
 
