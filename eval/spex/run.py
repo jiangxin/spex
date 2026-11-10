@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
+from judge import PROMPT, PROMPT_VERSION, final_verdict, grade, packet_for, rubric_for
 from transport import (
     SESSION_ID,
     HostTurn,
@@ -54,6 +56,7 @@ def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -
             "trial_directory": str(trial.directory), "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
             "invocation": args.invocation, "repeat": repeat, "session": "",
+            "judge_model": getattr(args, "judge_model", ""),
             "turn_results": [], "verdict": "pending",
         })
     except BaseException:
@@ -155,6 +158,29 @@ def trial_verdict(turn_results: list, final: bool) -> str:
     return "pass"
 
 
+def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
+    if not model or metadata["verdict"] in ("pending", "run_error"):
+        return
+    record = {
+        "model": model, "prompt_version": PROMPT_VERSION, "prompt_hash": digest(PROMPT.encode()),
+        "hard_verdict": metadata["verdict"],
+    }
+    try:
+        rubric = SUITES / metadata["suite"] / "rubrics.json"
+        version, criteria = rubric_for(rubric, metadata["case_id"])
+        packet = packet_for(output, metadata, criteria)
+        record.update(
+            rubric_version=version, rubric_hash=digest(encode(criteria)),
+            evidence_hash=digest(encode(packet["evidence"])),
+        )
+        record.update(grade(packet, model, timeout))
+    except (OSError, ValueError, TypeError, KeyError):
+        record.update(error="judge_input_error", results=[])
+    metadata["hard_verdict"] = record["hard_verdict"]
+    metadata["verdict"] = record["verdict"] = final_verdict(record["hard_verdict"], record)
+    write_json(output / "judge.json", record)
+
+
 def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
     metadata = read_json(output / "trial.json")
     for index, turn in enumerate(metadata["case"]["turns"]):
@@ -192,6 +218,7 @@ def automatic(case: Case, output: Path, args: argparse.Namespace, repeat: int) -
     finally:
         if trial is not None:
             shutil.rmtree(trial.directory)
+    judge_trial(output, result, getattr(args, "judge_model", ""), args.timeout)
     result["duration_ms"] = round((time.monotonic() - started) * 1000)
     write_json(output / "trial.json", result)
     return result
@@ -216,6 +243,9 @@ def manual_result(output: Path, args: argparse.Namespace) -> dict:
             raise ValueError("The supplied reply and trace disagree")
         host = trace
     store_turn(output, trial, metadata, host)
+    judge_model = getattr(args, "judge_model", "") or metadata.get("judge_model", "")
+    judge_trial(output, metadata, judge_model, TIMEOUT)
+    write_json(output / "trial.json", metadata)
     return instructions(output, trial, metadata)
 
 
@@ -244,6 +274,9 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--tag", default="")
         if name != "list":
             command.add_argument("--model", required=True)
+            command.add_argument(
+                "--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", "")
+            )
             command.add_argument("--spex-ref", default="HEAD")
         if name == "run":
             command.add_argument("--repeat", type=int, default=1)
@@ -257,6 +290,7 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--session", required=True)
     collect.add_argument("--reply", type=Path, required=True)
     collect.add_argument("--events", type=Path)
+    collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
     return root
 
 
