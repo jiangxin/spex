@@ -633,6 +633,28 @@ class TestSpexConfigFileOverride:
 
         assert result == [custom.resolve()]
 
+    def test_config_file_roots_ignore_parent_spex_dirs(self, tmp_path, monkeypatch):
+        """Override mode must not inherit existing parent ~/.spex-style dirs."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        monkeypatch.setenv("HOME", str(home))
+        (home / ".spex").mkdir()
+        host = tmp_path / "work"
+        (host / ".spex").mkdir(parents=True)
+        sandbox = host / "sandbox"
+        repo = sandbox / "workspace" / "repo"
+        repo.mkdir(parents=True)
+        (sandbox / ".git").mkdir()
+        (repo / ".git").mkdir()
+        toml = repo / ".spex.toml"
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(toml))
+
+        roots = _resolve_spex_roots([toml.resolve()], repo)
+
+        assert roots == [str((repo / ".spex").resolve())]
+
     def test_cli_override_takes_priority_over_env(self, tmp_path, monkeypatch):
         """set_spex_config_file (CLI) takes priority over SPEX_CONFIG_FILE env."""
         cli_file = tmp_path / "cli.toml"

@@ -27,8 +27,20 @@ def sandbox_timestamp(now: datetime | None = None) -> str:
     return stamp.strftime("%Y-%m-%d-%H-%M-%S")
 
 
+SANDBOX_TOML = (
+    "[spex]\n"
+    'spex_root = ".spex"\n'
+    "use_git_worktree = false\n"
+    "debug = true\n"
+)
+
+
 def allocate_sandbox(runs_root: Path, *, now: datetime | None = None) -> Path:
-    """Create `runs/YYYY-MM-DD-HH-MM-SS` (with -2, -3… on clash) and git-init it."""
+    """Create `runs/YYYY-MM-DD-HH-MM-SS` (with -2, -3… on clash) and git-init it.
+
+    Writes a sandbox-local ``.spex.toml`` and ``.spex/`` so Spex config and
+    roots stay inside the sandbox instead of inheriting host-level trees.
+    """
     root = Path(runs_root)
     root.mkdir(parents=True, exist_ok=True)
     base = sandbox_timestamp(now)
@@ -41,6 +53,11 @@ def allocate_sandbox(runs_root: Path, *, now: datetime | None = None) -> Path:
     try:
         git(path, "init", "--template=", "--initial-branch=main")
         (path / "_handoff").mkdir()
+        (path / ".spex.toml").write_text(SANDBOX_TOML, encoding="utf-8")
+        spex_root = path / ".spex"
+        spex_root.mkdir()
+        for subdir in ("specs", "archives", "hooks"):
+            (spex_root / subdir).mkdir()
     except BaseException:
         shutil.rmtree(path)
         raise
@@ -275,6 +292,14 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
         )
         initialize_repo(trial)
         install_skill(source, trial)
+        # HEAD pins install the committed skill; overlay worktree config.py so
+        # uncommitted isolation fixes still apply during local eval.
+        head = git(source, "rev-parse", "HEAD").decode("ascii").strip()
+        if trial.ref == head:
+            src_config = source / SKILL_PATH / "scripts" / "config.py"
+            dst_config = trial.skill / "scripts" / "config.py"
+            if src_config.is_file() and dst_config.is_file():
+                dst_config.write_bytes(src_config.read_bytes())
         if "setup" in case.definition:
             script = case.fixture.parents[1] / "setup.py"
             if not script.is_file() or script.is_symlink():

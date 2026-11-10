@@ -299,6 +299,16 @@ def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     return _find_spex_tomls(main_wt, workdir)
 
 
+def _root_from_toml(toml_path: Path) -> str:
+    """Resolve spex_root declared by a single .spex.toml (default .spex)."""
+    data = _load_toml_config(toml_path) or {}
+    spex_root_val = data.get("spex", {}).get("spex_root", _DEFAULTS["spex_root"])
+    expanded = Path(str(spex_root_val)).expanduser()
+    if expanded.is_absolute():
+        return str(expanded.resolve())
+    return str((toml_path.parent.resolve() / expanded).resolve())
+
+
 def _resolve_spex_roots(
     spex_tomls: list[Path],
     main_worktree: Path | None,
@@ -314,7 +324,16 @@ def _resolve_spex_roots(
     Same-level rule: if the directory being checked is the same directory
     where the governing .spex.toml lives, the candidate path is added
     unconditionally (even if it doesn't exist yet).
+
+    When SPEX_CONFIG_FILE / CLI override is set, only that file's spex_root
+    is used — parent directories and the home fallback are ignored so nested
+    eval sandboxes are not polluted by host-level ~/.spex trees.
     """
+    if _spex_config_file_override or os.environ.get("SPEX_CONFIG_FILE"):
+        if not spex_tomls:
+            return []
+        return [_root_from_toml(spex_tomls[0])]
+
     if main_worktree is not None:
         start = main_worktree.resolve()
     else:

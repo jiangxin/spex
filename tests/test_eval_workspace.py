@@ -53,11 +53,29 @@ def test_allocate_sandbox_uses_timestamp_and_isolates_git(tmp_path):
     assert workspace.SANDBOX_NAME.fullmatch(first.name)
     assert first != second
     assert (first / "_handoff").is_dir()
+    assert (first / ".spex.toml").is_file()
+    assert (first / ".spex" / "specs").is_dir()
+    assert 'spex_root = ".spex"' in (first / ".spex.toml").read_text(encoding="utf-8")
     workspace.verify_sandbox(first, REPO)
     top = workspace.git(first, "rev-parse", "--show-toplevel").rstrip(b"\n")
     assert Path(os.fsdecode(top)).resolve() == first
     source_top = workspace.git(REPO, "rev-parse", "--show-toplevel").rstrip(b"\n")
     assert Path(os.fsdecode(source_top)).resolve() != first
+
+
+@pytest.mark.slow
+def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
+    """Sandbox under a tree with parent .spex dirs must still prepare."""
+    host = tmp_path / "host"
+    (host / ".spex").mkdir(parents=True)
+    runs = host / "project" / "eval" / "spex" / "runs"
+    sandbox = workspace.allocate_sandbox(runs)
+    case = workspace.select_cases(manifest.parent.parent)[0]
+    trial = workspace.prepare_trial(
+        REPO, case, parent=workspace.case_dir(sandbox, "python-cli", "create"),
+    )
+    assert trial.directory.is_relative_to(sandbox)
+    workspace.verify_spex_roots(trial)
 
 
 def test_allocate_sandbox_adds_numeric_suffix_on_name_clash(tmp_path, monkeypatch):
