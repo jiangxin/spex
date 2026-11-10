@@ -26,6 +26,8 @@ for automated repeats):
 
 ```text
 eval/spex/runs/2026-11-10-15-11-12/
+  .spex.toml              # sandbox-local Spex config (isolates host trees)
+  .spex/
   manifest.json
   report.md
   report.json
@@ -57,14 +59,34 @@ agnostic. The default skill flow is `list` → `prepare` → execute in the
 current host → `collect` → semantic review → `summary`. Codex-only automation
 remains under `run`, `judge`, and `calibrate`.
 
+The runner does not open host sessions. The portable interface is:
+
+1. `prepare` / `prepare --sandbox` JSON (`workspace`, `environment`,
+   `next_input`, `trial`, `sandbox`).
+2. Reply files under `<sandbox>/_handoff/<suite>-<case>-turnN.txt`.
+3. `collect` / `export-packet` / `import-grades` / `summary`.
+
+### Host adapter checklist
+
+| Step | Any host |
+| --- | --- |
+| Isolate | One session (or equivalent) per trial; separate session for judge |
+| Env | Apply `environment` from prepare to tools/shell in that session |
+| Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
+| Input | Send `next_input` exactly; keep the same session for later turns |
+| Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
+| Collect | `collect --session ID --reply <handoff-file> [--events …]` |
+
+Without `--events`, checks such as `post-action` may be
+`insufficient_evidence`. `summary` classifies those as **evidence gaps**,
+distinct from **observed fails**.
+
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
-later turn of the trial. Ensure the host uses the pinned Spex skill path and
-limits writes to that workspace. Use `--invocation native` only when the host
-has the pinned skill registered for native `/spex` invocation. For a GUI host,
-apply the same environment to the session that launches tools. When the host
-cannot create the session automatically, use the returned paths and
-`next_input` for a manual handoff (`handoff` is `manual`).
+later turn of the trial. Use `--invocation native` only when the host has the
+pinned skill registered for native `/spex` invocation. When the host cannot
+create the session automatically, use the returned paths and `next_input` for
+a manual handoff (`handoff` is `manual`).
 
 Save the final reply under the sandbox `_handoff/` directory (not system
 `/tmp`), then collect it using a stable session ID for that trial. Use the
