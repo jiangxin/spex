@@ -5,7 +5,7 @@ Scan ``skills/spex/{SKILL.md,commands,references,templates}`` for
 backticks, and (3) same-line ``CMD:`` bodies — then assert every subcommand
 and flag exists on the real argparse parsers (reflection first; ``--help``
 only as fallback). Templates are rendered with placeholder metadata first
-so Jinja ``{{ var }}`` expands before scanning.
+so Spex ``{{ var }}`` expands before scanning.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from common import strip_front_matter
-from jinja2 import Template
+from template import render as render_template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEX_ROOT = REPO_ROOT / "skills" / "spex"
@@ -95,7 +95,7 @@ def _render_template_for_scan(path: Path) -> str:
     # are included; values look like shell placeholders to PLACEHOLDER_RE.
     meta = {k: f"${k}" for k in keys}
     body = strip_front_matter(raw)
-    return Template(body).render(**meta)
+    return render_template(body, meta)
 
 
 def _sop_files() -> list[Path]:

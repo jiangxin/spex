@@ -1068,13 +1068,14 @@ class TestDepsSatisfied:
             for a in uv_cmd
         )
 
-    def test_pyproject_pins_jinja2(self):
+    def test_pyproject_has_no_jinja2(self):
         pyproject = (
             Path(__file__).resolve().parent.parent
             / "skills" / "spex" / "pyproject.toml"
         )
         content = pyproject.read_text(encoding="utf-8")
-        assert '"jinja2>=3.1.0"' in content
+        assert "jinja2" not in content
+        assert "tomli" in content
 
     def test_dry_run_would_skip_when_satisfied(self, caplog, monkeypatch):
         monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)

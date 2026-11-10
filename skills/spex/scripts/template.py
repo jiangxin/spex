@@ -412,14 +412,15 @@ def _apply_filter(name: str, value: Any, args: list) -> Any:
     if name == "int":
         if args:
             raise TemplateError("int filter takes no arguments")
+        # Match Jinja2: undefined raises; failed conversion returns 0.
         if value is _UNDEFINED or isinstance(value, _Undefined):
             raise TemplateError("int filter: value is undefined")
         if value == "" or value is None:
             return 0
         try:
             return int(value)
-        except (TypeError, ValueError) as exc:
-            raise TemplateError(f"int filter: cannot convert {value!r}") from exc
+        except (TypeError, ValueError):
+            return 0
     raise TemplateError(f"Unsupported filter: {name!r}")
 
 

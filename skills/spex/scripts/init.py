@@ -35,7 +35,6 @@ from config import (
 
 # PyPI package name -> importable module name for presence checks.
 _PKG_TO_IMPORT = {
-    "jinja2": "jinja2",
     "tomli": "tomli",
 }
 
