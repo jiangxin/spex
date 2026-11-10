@@ -316,7 +316,10 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
             }
         ],
     })
-    result = run.execute(runner.parse_args(["summary", str(sandbox)]))
+    backlog = tmp_path / "IMPROVEMENTS.md"
+    result = run.execute(runner.parse_args([
+        "summary", str(sandbox), "--write-improvements", str(backlog),
+    ]))
     assert result["counts"] == {"pass": 1}
     assert result["classifications"] == {"evidence_gap": 1}
     assert result["trials"][0]["classification"] == "evidence_gap"
@@ -328,6 +331,11 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert Path(result["report"]).is_file()
     assert Path(result["report_json"]).is_file()
     assert Path(result["manifest"]).is_file()
+    assert result["improvements_path"] == str(backlog)
+    assert backlog.is_file()
+    backlog_text = backlog.read_text(encoding="utf-8")
+    assert "# Spex-eval improvement backlog" in backlog_text
+    assert "### P2" in backlog_text
     report = Path(result["report"]).read_text(encoding="utf-8")
     assert "example/clarify" in report
     assert "evidence_gap" in report

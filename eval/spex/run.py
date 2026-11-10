@@ -143,6 +143,63 @@ def aggregate_scores(trials: list[dict]) -> dict:
     }
 
 
+def render_improvements_markdown(report: dict) -> str:
+    """Render a backlog snippet from summary improvements + score totals."""
+    scores = report.get("scores") or {}
+    ratio = scores.get("score_ratio")
+    ratio_text = "n/a" if ratio is None else f"{ratio:.0%}"
+    lines = [
+        "# Spex-eval improvement backlog",
+        "",
+        f"Generated from sandbox `{Path(report['sandbox']).name}`.",
+        (
+            f"Semantic score: {scores.get('score_sum', 0)}/"
+            f"{scores.get('score_max', 0)} ({ratio_text}). "
+            f"Verdict counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}. "
+            f"Classifications: "
+            f"{json.dumps(report.get('classifications') or {}, sort_keys=True)}."
+        ),
+        "",
+        "## Prioritized items",
+        "",
+    ]
+    improvements = report.get("improvements") or []
+    if not improvements:
+        lines.append(
+            "No Spex-skill functionality or execution failures detected."
+        )
+        lines.append("")
+        return "\n".join(lines)
+    current = None
+    for item in improvements:
+        priority = item.get("priority") or "P2"
+        if priority != current:
+            current = priority
+            lines.append(f"### {priority}")
+            lines.append("")
+        lines.append(
+            f"- **{item.get('category')}** (`{item.get('case')}`) — "
+            f"{item.get('summary')}"
+        )
+    lines.append("")
+    lines.append(
+        "See the sandbox `report.md` for per-trial scores and evidence gaps."
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_improvements_backlog(report: dict, path: Path) -> Path:
+    """Write ``IMPROVEMENTS.md`` (or another path) from a summary report."""
+    target = Path(path)
+    if target.exists() and target.is_symlink():
+        raise ValueError(f"Refusing to write through symlink: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_improvements_markdown(report), encoding="utf-8")
+    return target
+
+
+
 def derive_skill_improvements(trials: list[dict]) -> list[dict]:
     """Prioritized Spex-skill issues derived from hard checks and verdicts.
 
@@ -374,7 +431,11 @@ def render_summary_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def summarize_sandbox(sandbox: Path) -> dict:
+def summarize_sandbox(
+    sandbox: Path,
+    *,
+    write_improvements: Path | None = None,
+) -> dict:
     sandbox = resolve_sandbox(sandbox)
     rows = []
     counts: dict[str, int] = {}
@@ -443,12 +504,16 @@ def summarize_sandbox(sandbox: Path) -> dict:
     })
     write_json(sandbox / "report.json", report)
     (sandbox / "report.md").write_text(render_summary_markdown(report), encoding="utf-8")
-    return {
+    result = {
         **report,
         "manifest": str(sandbox / "manifest.json"),
         "report": str(sandbox / "report.md"),
         "report_json": str(sandbox / "report.json"),
     }
+    if write_improvements is not None:
+        backlog = write_improvements_backlog(report, write_improvements)
+        result["improvements_path"] = str(backlog)
+    return result
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -1007,6 +1072,17 @@ def parser() -> argparse.ArgumentParser:
         "sandbox", type=Path,
         help="Sandbox directory under eval/spex/runs/YYYY-MM-DD-HH-MM-SS",
     )
+    summary.add_argument(
+        "--write-improvements",
+        nargs="?",
+        const=HERE / "IMPROVEMENTS.md",
+        type=Path,
+        default=None,
+        help=(
+            "Write prioritized Spex-skill backlog markdown "
+            "(default path: eval/spex/IMPROVEMENTS.md)"
+        ),
+    )
     rejudge = sub.add_parser("judge")
     rejudge.add_argument("run_id")
     calibration = sub.add_parser("calibrate")
@@ -1042,7 +1118,10 @@ def execute(args: argparse.Namespace) -> dict:
     if args.command == "import-grades":
         return import_judge(resolve_trial(args.trial), args.grades, args.model)
     if args.command == "summary":
-        return summarize_sandbox(args.sandbox)
+        return summarize_sandbox(
+            args.sandbox,
+            write_improvements=args.write_improvements,
+        )
     if args.command == "collect":
         return manual_result(resolve_trial(args.trial), args)
     cases = select_cases(SUITES, suite=args.suite, case_id=args.case, tag=args.tag)

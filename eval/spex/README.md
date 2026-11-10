@@ -139,7 +139,9 @@ timestamp directory manually when finished. `report.md` includes a
 **Score summary** (per-trial 0–2 rubric totals and sandbox `score_sum` /
 `score_max`) plus a prioritized **Spex skill improvements** section
 derived from hard fails, non-trace evidence gaps, weak semantic scores,
-and host trace friction.
+and host trace friction. Pass `--write-improvements` (optional path;
+default `eval/spex/IMPROVEMENTS.md`) to also write a backlog markdown
+file from the same items.
 
 Host adapter notes for Cursor / Codex / pure manual live under
 [`adapters/README.md`](adapters/README.md).
