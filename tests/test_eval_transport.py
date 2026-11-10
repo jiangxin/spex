@@ -10,6 +10,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "eval" / "spex"))
 try:
+    import collect_handoff
     import run
     import transport
     import workspace
@@ -514,6 +515,38 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
     assert len(results) == 2
     assert results[0]["checks"][1]["verdict"] == "insufficient_evidence"
     assert results[1]["checks"][0]["verdict"] == "pass"
+
+
+@pytest.mark.slow
+def test_collect_handoff_batch_runs_summary(runner, tmp_path):
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--model", "example", "--host", "cursor",
+        "--host-version", "1", "--invocation", "native",
+    ]))
+    sandbox = Path(info["sandbox"])
+    handoff = sandbox / "_handoff"
+    handoff.mkdir(exist_ok=True)
+    (handoff / "example-clarify-turn1.txt").write_text("What type?\n", encoding="utf-8")
+    (handoff / "example-clarify-turn2.txt").write_text("Done\n", encoding="utf-8")
+    payload = collect_handoff.collect_sandbox(sandbox, do_summary=True)
+    assert payload["missing"] == []
+    assert len(payload["collected"]) == 1
+    assert payload["collected"][0]["verdict"] == "pass"
+    assert Path(payload["report"]).is_file()
+    assert "Score summary" in Path(payload["report"]).read_text(encoding="utf-8")
+
+
+@pytest.mark.slow
+def test_collect_handoff_reports_missing_reply(runner, tmp_path):
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--model", "example", "--host", "cursor",
+        "--host-version", "1",
+    ]))
+    sandbox = Path(info["sandbox"])
+    payload = collect_handoff.collect_sandbox(sandbox, do_summary=False)
+    assert len(payload["missing"]) == 1
+    assert payload["missing"][0]["status"] == "missing_handoff"
+    assert "turn1" in payload["missing"][0]["missing"]
 
 
 @pytest.mark.slow

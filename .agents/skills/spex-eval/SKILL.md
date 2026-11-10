@@ -27,8 +27,16 @@ prose — read the JSON / `report.md` the runner prints.
 from `next_input`, and semantic grading of `judge-prompt.txt`. Hard
 verdicts from `collect` always override semantic pass/fail.
 
-When a batch already has `_handoff/` replies, run `collect` (and then
-`summary`) via the runner instead of narrating check results.
+When a batch already has `_handoff/` replies, run the deterministic helper
+instead of narrating check results:
+
+```sh
+.venv/bin/python eval/spex/collect_handoff.py eval/spex/runs/<timestamp>
+```
+
+It collects every `suite/case` with matching
+`_handoff/<suite>-<case>-turnN.txt` files and writes `summary` /
+`report.md`. Use `--no-summary` to collect only.
 
 1. Identify the requested suite, cases, target model, judge model, host, and
    Spex ref. Default to one smoke evaluation against HEAD for a generic

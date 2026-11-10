@@ -119,6 +119,13 @@ does not delete the sandbox.
 .venv/bin/python eval/spex/run.py summary "$sandbox"
 ```
 
+After agents have written `_handoff/<suite>-<case>-turnN.txt` for a whole
+sandbox, batch-collect and summarize with:
+
+```sh
+.venv/bin/python eval/spex/collect_handoff.py "$sandbox"
+```
+
 `export-packet` writes `judge-packet.json` and `judge-prompt.txt` beside the
 trial evidence and returns `prompt_bytes` plus a `judge_hint`. Open a
 **separate** judge session, read **only** `judge-prompt.txt` (do not
