@@ -43,7 +43,7 @@ Internal commands (used by skill):
   meta-helper <spec_name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <template> [--name <name>] [-o <file>]
-                Render a Jinja2 template with metadata
+                Render a Spex template with metadata
   run-hook <hook_name> --event-type <type> --name <name>
                 Execute a hook script with event data
   review-helper --name <name> <subcmd>
@@ -285,7 +285,7 @@ def _run_config(argv=None):
 
 
 def _run_prompt(argv=None):
-    """Render a Jinja2 template with metadata."""
+    """Render a Spex template with metadata."""
     import prompt
 
     prompt.main(argv)
