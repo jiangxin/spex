@@ -1,0 +1,37 @@
+[
+  {
+    "id": "edit-guide",
+    "fixture": "export-guide",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-00-export-guide",
+        "checks": [
+          "one-step",
+          "post-action"
+        ],
+        "acceptance": "edit-guide"
+      }
+    ]
+  },
+  {
+    "id": "analyze-incident",
+    "fixture": "export-guide",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-01-export-incident",
+        "checks": [
+          "one-step",
+          "no-code-change",
+          "post-action"
+        ],
+        "acceptance": "analyze-incident"
+      }
+    ]
+  }
+]

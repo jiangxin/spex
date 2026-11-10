@@ -1,0 +1,4 @@
+09:15:00 job=77 stage=write status=error code=ENOSPC
+09:15:01 job=77 stage=upload status=skipped reason=write_failed
+09:20:00 job=78 stage=write status=ok
+09:20:02 job=78 stage=upload status=ok

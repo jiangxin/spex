@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "cases": {
+    "edit-guide": [
+      {
+        "id": "runbook-coverage",
+        "turn": 1,
+        "requires": [
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The guide contradicts the requested command or recovery procedure, or is missing.",
+          "The guide covers the command and recovery but omits a requested detail or changes preview instructions.",
+          "The guide covers the command, default path, ENOSPC recognition and ordered recovery, and preserves preview instructions."
+        ]
+      }
+    ],
+    "analyze-incident": [
+      {
+        "id": "incident-evidence",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The reply attributes job 77 to the wrong stage or invents evidence.",
+          "The reply identifies the write error but omits a citation, upload dependency or qualification.",
+          "The reply cites the write failure and skipped upload for job 77, distinguishes observation from hypothesis, and proposes a practical recovery step."
+        ]
+      }
+    ]
+  }
+}
