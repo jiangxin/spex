@@ -63,6 +63,14 @@ def test_allocate_sandbox_uses_timestamp_and_isolates_git(tmp_path):
     assert Path(os.fsdecode(source_top)).resolve() != first
 
 
+def test_trial_env_prefers_runner_python_on_path(tmp_path):
+    workspace_root = tmp_path / "ws"
+    (workspace_root / "repo").mkdir(parents=True)
+    trial = workspace.Trial(workspace_root, "deadbeef")
+    first = Path(trial.env["PATH"].split(os.pathsep)[0]).resolve()
+    assert first == Path(sys.executable).resolve().parent
+
+
 @pytest.mark.slow
 def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     """Sandbox under a tree with parent .spex dirs must still prepare."""

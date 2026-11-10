@@ -189,6 +189,12 @@ class Trial:
             PYTHONNOUSERSITE="1",
         )
         env.pop("PYTHONPATH", None)
+        # Prefer the eval runner's interpreter on PATH so `#!/usr/bin/env python3`
+        # in spex scripts resolves to a Python that can import the skill modules.
+        python_bin = Path(sys.executable).resolve().parent
+        if python_bin.is_dir():
+            current = env.get("PATH", os.defpath)
+            env["PATH"] = str(python_bin) + os.pathsep + current
         return env
 
 
@@ -256,6 +262,31 @@ def verify_spex_roots(trial: Trial) -> None:
         raise ValueError(f"Spex roots escape the trial or differ from {expected}: {roots}")
 
 
+def probe_spex(trial: Trial) -> None:
+    """Fail fast when the pinned Spex CLI cannot start in the trial env."""
+    spex = trial.skill / "scripts" / "spex"
+    if not spex.is_file() or spex.is_symlink():
+        raise ValueError(f"Pinned Spex CLI missing: {spex}")
+    help_run = subprocess.run(
+        [sys.executable, "-I", str(spex), "--help"],
+        cwd=trial.repo, env=trial.env, capture_output=True, text=True, timeout=30,
+        check=False,
+    )
+    if help_run.returncode != 0:
+        detail = (help_run.stderr or help_run.stdout or "").strip()
+        raise ValueError(f"Spex --help probe failed: {detail}")
+    import_run = subprocess.run(
+        [sys.executable, "-I", "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]); import template; import prompt",
+         str(trial.skill / "scripts")],
+        cwd=trial.repo, env=trial.env, capture_output=True, text=True, timeout=30,
+        check=False,
+    )
+    if import_run.returncode != 0:
+        detail = (import_run.stderr or import_run.stdout or "").strip()
+        raise ValueError(f"Spex import probe failed: {detail}")
+
+
 def copy_fixture(case: Case, repo: Path) -> None:
     for path in case.fixture.rglob("*"):
         relative = path.relative_to(case.fixture)
@@ -309,6 +340,7 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
                 cwd=trial.repo, env=trial.env, capture_output=True, check=True, timeout=30,
             )
         verify_trial_workspace(trial)
+        probe_spex(trial)
     except BaseException:
         shutil.rmtree(directory)
         raise

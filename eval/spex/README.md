@@ -71,7 +71,7 @@ The runner does not open host sessions. The portable interface is:
 | Step | Any host |
 | --- | --- |
 | Isolate | One session (or equivalent) per trial; separate session for judge |
-| Env | Apply `environment` from prepare to tools/shell in that session |
+| Env | Apply `environment` from prepare (includes `PATH` with the eval runner's Python first) to tools/shell in that session |
 | Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
 | Input | Send `next_input` exactly; keep the same session for later turns |
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
