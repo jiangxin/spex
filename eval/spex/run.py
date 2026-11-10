@@ -17,7 +17,17 @@ from pathlib import Path
 from calibration import evaluate, load_samples
 from compare import calibration_keys, collection_mode, compare, diagnosis, load_run, markdown
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
-from judge import PROMPT, PROMPT_VERSION, codex_judge, final_verdict, grade, packet_for, rubric_for
+from judge import (
+    PROMPT,
+    PROMPT_VERSION,
+    apply_grades,
+    codex_judge,
+    export_packet,
+    final_verdict,
+    grade,
+    packet_for,
+    rubric_for,
+)
 from transport import (
     SESSION_ID,
     HostTurn,
@@ -212,6 +222,98 @@ def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
     metadata["hard_verdict"] = record["hard_verdict"]
     metadata["verdict"] = record["verdict"]
     write_json(output / "judge.json", record)
+
+
+def resolve_trial(path: Path) -> Path:
+    trial = path.resolve()
+    if (
+        not trial.is_relative_to(RUNS.resolve())
+        or trial.is_symlink()
+        or not trial.is_dir()
+        or not (trial / "trial.json").is_file()
+        or (trial / "trial.json").is_symlink()
+    ):
+        raise ValueError("Expected a trial path under eval/spex/runs")
+    return trial
+
+
+def trial_packet(output: Path, metadata: dict) -> tuple[dict, int, list]:
+    if not IDENTIFIER.fullmatch(metadata["suite"]):
+        raise ValueError("Invalid suite")
+    if metadata["verdict"] in ("pending", "run_error"):
+        raise ValueError("Trial is not ready for judging")
+    rubric = SUITES / metadata["suite"] / "rubrics.json"
+    version, criteria = rubric_for(rubric, metadata["case_id"])
+    return packet_for(output, metadata, criteria), version, criteria
+
+
+def export_judge(output: Path) -> dict:
+    metadata = read_json(output / "trial.json")
+    packet, version, criteria = trial_packet(output, metadata)
+    exported = export_packet(packet)
+    rubric = SUITES / metadata["suite"] / "rubrics.json"
+    hard = metadata.get("hard_verdict", metadata["verdict"])
+    payload = {
+        "schema_version": 1,
+        "suite": metadata["suite"],
+        "case_id": metadata["case_id"],
+        "hard_verdict": hard,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_hash": digest(PROMPT.encode()),
+        "rubric_version": version,
+        "rubric_hash": digest(encode(criteria)),
+        "suite_rubric_hash": digest(rubric.read_bytes()),
+        "evidence_hash": digest(encode(packet["evidence"])),
+        "packet": exported["packet"],
+        "insufficient": exported["insufficient"],
+    }
+    packet_path = output / "judge-packet.json"
+    prompt_path = output / "judge-prompt.txt"
+    write_json(packet_path, payload)
+    prompt_path.write_text(exported["prompt"], encoding="utf-8")
+    return {
+        "trial": str(output),
+        "packet": str(packet_path),
+        "prompt": str(prompt_path),
+        "hard_verdict": hard,
+        "criteria": len(exported["packet"]["criteria"]),
+        "insufficient": len(exported["insufficient"]),
+    }
+
+
+def import_judge(output: Path, grades: Path, model: str) -> dict:
+    metadata = read_json(output / "trial.json")
+    packet, version, criteria = trial_packet(output, metadata)
+    rubric = SUITES / metadata["suite"] / "rubrics.json"
+    hard = metadata.get("hard_verdict", metadata["verdict"])
+    record = {
+        "model": model or "external",
+        "source": "external",
+        "prompt_version": PROMPT_VERSION,
+        "prompt_hash": digest(PROMPT.encode()),
+        "hard_verdict": hard,
+        "rubric_version": version,
+        "rubric_hash": digest(encode(criteria)),
+        "suite_rubric_hash": digest(rubric.read_bytes()),
+        "evidence_hash": digest(encode(packet["evidence"])),
+    }
+    raw = grades.read_text(encoding="utf-8")
+    if not raw.strip():
+        raise ValueError("The grades file is empty")
+    record.update(apply_grades(packet, raw))
+    record["verdict"] = final_verdict(hard, record)
+    metadata["hard_verdict"] = hard
+    metadata["verdict"] = record["verdict"]
+    write_json(output / "judge.json", record)
+    write_json(output / "trial.json", metadata)
+    return {
+        "trial": str(output),
+        "verdict": record["verdict"],
+        "hard_verdict": hard,
+        "results": len(record["results"]),
+        "error": record.get("error"),
+        "judge": str(output / "judge.json"),
+    }
 
 
 def replay(run_id: str, model: str, timeout: int) -> dict:
@@ -413,6 +515,12 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--reply", type=Path, required=True)
     collect.add_argument("--events", type=Path)
     collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
+    export = sub.add_parser("export-packet")
+    export.add_argument("trial", type=Path)
+    imported = sub.add_parser("import-grades")
+    imported.add_argument("trial", type=Path)
+    imported.add_argument("--grades", type=Path, required=True)
+    imported.add_argument("--model", type=unknownable, default="external")
     rejudge = sub.add_parser("judge")
     rejudge.add_argument("run_id")
     calibration = sub.add_parser("calibrate")
@@ -440,11 +548,12 @@ def execute(args: argparse.Namespace) -> dict:
         if not 1 <= args.jobs <= 4:
             raise ValueError("Choose between one and four calibration workers")
         return calibrate(args)
+    if args.command == "export-packet":
+        return export_judge(resolve_trial(args.trial))
+    if args.command == "import-grades":
+        return import_judge(resolve_trial(args.trial), args.grades, args.model)
     if args.command == "collect":
-        path = args.trial.resolve()
-        if not path.is_relative_to(RUNS.resolve()):
-            raise ValueError("Expected a trial path under eval/spex/runs")
-        return manual_result(path, args)
+        return manual_result(resolve_trial(args.trial), args)
     cases = select_cases(SUITES, suite=args.suite, case_id=args.case, tag=args.tag)
     if args.command == "list":
         return {"cases": [{"suite": case.suite, "id": case.id,

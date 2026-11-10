@@ -69,9 +69,22 @@ turns, and proceed only while collection returns a next input.
 Use `--events FILE` only for a compatible Codex-style JSONL transcript whose
 session ID and final reply agree with the collected turn. Without compatible
 events, checks that require tool traces can report insufficient evidence.
-Collection records deterministic checks only; import semantic grades after the
-trial finishes. The prepared temporary workspace remains available after
-collection for inspection. Remove it when finished.
+Collection records deterministic checks only. After the trial finishes, export
+the semantic evidence packet, grade it in a separate current-host session, then
+import the JSON results. The prepared temporary workspace remains available
+after collection for inspection. Remove it when finished.
+
+```sh
+.venv/bin/python eval/spex/run.py export-packet "$trial"
+.venv/bin/python eval/spex/run.py import-grades "$trial" --grades "$grades" \
+  --model gpt-6.1-sol
+```
+
+`export-packet` writes `judge-packet.json` and `judge-prompt.txt` beside the
+trial evidence. Criteria that lack required artifacts, including missing tool
+traces, are already marked insufficient and are not sent to the judge.
+`import-grades` reuses the same score and evidence-reference checks as the
+automatic judge.
 
 ## Calibrate, replay, and compare
 

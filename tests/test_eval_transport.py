@@ -191,6 +191,54 @@ def test_prepare_accepts_current_hosts_and_unknown_labels(runner):
 
 
 @pytest.mark.slow
+def test_export_packet_and_import_external_grades(runner, tmp_path):
+    (run.SUITES / "example" / "rubrics.json").write_text(json.dumps({
+        "version": 1,
+        "cases": {
+            "clarify": [{
+                "id": "coverage", "turn": 1, "requires": ["state"], "threshold": 2,
+                "anchors": ["Missing", "Partial", "Complete"],
+            }, {
+                "id": "trace", "turn": 1, "requires": ["events"], "threshold": 1,
+                "anchors": ["Missing", "Partial", "Complete"],
+            }],
+        },
+    }), encoding="utf-8")
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "qoder", "--invocation", "native",
+    ]))
+    reply = tmp_path / "reply.txt"
+    reply.write_text("What type?", encoding="utf-8")
+    argv = ["collect", info["trial"], "--reply", str(reply), "--session", "host-1"]
+    assert run.execute(runner.parse_args(argv))["verdict"] == "pending"
+    reply.write_text("Done", encoding="utf-8")
+    assert run.execute(runner.parse_args(argv))["verdict"] == "pass"
+
+    exported = run.execute(runner.parse_args(["export-packet", info["trial"]]))
+    assert exported["criteria"] == 1
+    assert exported["insufficient"] == 1
+    packet = run.read_json(Path(exported["packet"]))
+    assert packet["insufficient"][0]["criterion_id"] == "trace"
+    assert "Grade the supplied criteria" in Path(exported["prompt"]).read_text(encoding="utf-8")
+
+    grades = tmp_path / "grades.json"
+    grades.write_text(json.dumps([{
+        "criterion_id": "coverage", "score": 2, "verdict": "pass",
+        "reason": "The first-turn state covers the clarification outcome.",
+        "evidence_refs": ["turn-1:state"],
+    }]), encoding="utf-8")
+    imported = run.execute(runner.parse_args([
+        "import-grades", info["trial"], "--grades", str(grades), "--model", "host-judge",
+    ]))
+    assert imported["hard_verdict"] == "pass"
+    assert imported["verdict"] == "insufficient_evidence"
+    judgment = run.read_json(Path(info["trial"]) / "judge.json")
+    assert judgment["source"] == "external"
+    assert judgment["model"] == "host-judge"
+    assert {row["criterion_id"] for row in judgment["results"]} == {"coverage", "trace"}
+
+
+@pytest.mark.slow
 def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
     manifest = run.SUITES / "example" / "cases.json"
     cases = run.read_json(manifest)

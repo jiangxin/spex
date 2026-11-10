@@ -11,7 +11,14 @@ EVAL = Path(__file__).resolve().parents[1] / "eval" / "spex"
 sys.path.insert(0, str(EVAL))
 
 from evidence import persist_turn  # noqa: E402
-from judge import codex_judge, final_verdict, grade, packet_for  # noqa: E402
+from judge import (  # noqa: E402
+    apply_grades,
+    codex_judge,
+    export_packet,
+    final_verdict,
+    grade,
+    packet_for,
+)
 from transport import TransportError  # noqa: E402
 
 CRITERION = {
@@ -92,6 +99,36 @@ def test_missing_evidence_and_exhausted_repair():
     assert len(result["raw_attempts"]) == 2
     assert final_verdict("pass", result) == "judge_error"
     assert final_verdict("fail", result) == "fail"
+
+
+def test_export_packet_and_apply_external_grades():
+    packet = {
+        "criteria": [
+            CRITERION,
+            {**CRITERION, "id": "events", "requires": ["events"]},
+        ],
+        "evidence": {"turn-1:state": {"specs": {}}},
+    }
+    exported = export_packet(packet)
+    assert [item["id"] for item in exported["packet"]["criteria"]] == ["coverage"]
+    assert exported["insufficient"][0]["criterion_id"] == "events"
+    assert exported["insufficient"][0]["verdict"] == "insufficient_evidence"
+    assert "Grade the supplied criteria" in exported["prompt"]
+
+    good = [{
+        "criterion_id": "coverage", "score": 2, "verdict": "pass",
+        "reason": "The specification covers the required behavior.",
+        "evidence_refs": ["turn-1:state"],
+    }]
+    accepted = apply_grades(packet, json.dumps(good))
+    assert accepted["source"] == "external"
+    assert accepted["results"][0]["criterion_id"] == "events"
+    assert accepted["results"][1] == good[0]
+    assert final_verdict("pass", accepted) == "insufficient_evidence"
+
+    rejected = apply_grades(packet, json.dumps([{**good[0], "evidence_refs": ["turn-2:state"]}]))
+    assert rejected["error"] == "judge_invalid_output"
+    assert rejected["invalid_reference_attempts"] == 1
 
 
 def test_repair_does_not_hide_invalid_reference_after_invalid_score():

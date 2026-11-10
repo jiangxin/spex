@@ -179,8 +179,7 @@ def codex_judge(prompt, model, timeout):
     return reply.reply
 
 
-def grade(packet, model, timeout, *, adapter=None):
-    adapter = adapter or codex_judge
+def partition_criteria(packet):
     evidence = packet["evidence"]
     ready, missing = [], []
     for item in packet["criteria"]:
@@ -192,6 +191,39 @@ def grade(packet, model, timeout, *, adapter=None):
                 "score": None, "reason": "Required artifacts are unavailable.",
                 "evidence_refs": sorted(required_refs(item) & evidence.keys()),
             })
+    return ready, missing
+
+
+def export_packet(packet):
+    """Build the prompt and ready evidence packet for an external judge session."""
+    ready, missing = partition_criteria(packet)
+    payload = {**packet, "criteria": ready}
+    return {
+        "prompt": PROMPT + json.dumps(payload, ensure_ascii=True),
+        "packet": payload,
+        "insufficient": missing,
+    }
+
+
+def apply_grades(packet, raw):
+    """Validate externally produced grades against the same evidence contract."""
+    ready, missing = partition_criteria(packet)
+    result = {"results": list(missing), "raw_attempts": [clean(raw, ())], "source": "external"}
+    if not ready:
+        return result
+    try:
+        result["results"].extend(clean(validate(raw, ready, packet["evidence"]), ()))
+    except InvalidReference:
+        result["error"] = "judge_invalid_output"
+        result["invalid_reference_attempts"] = 1
+    except (ValueError, TypeError, KeyError):
+        result["error"] = "judge_invalid_output"
+    return result
+
+
+def grade(packet, model, timeout, *, adapter=None):
+    adapter = adapter or codex_judge
+    ready, missing = partition_criteria(packet)
     result = {"results": missing, "raw_attempts": []}
     if not ready:
         return result
@@ -200,7 +232,7 @@ def grade(packet, model, timeout, *, adapter=None):
         try:
             raw = adapter(prompt, model, timeout)
             result["raw_attempts"].append(clean(raw, ()))
-            result["results"].extend(clean(validate(raw, ready, evidence), ()))
+            result["results"].extend(clean(validate(raw, ready, packet["evidence"]), ()))
             return result
         except (OSError, subprocess.SubprocessError, TransportError):
             result["error"] = "judge_transport_error"
