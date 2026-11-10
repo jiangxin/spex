@@ -26,10 +26,19 @@ def read_tasks(repo, name):
     return tasks
 
 
+def lifecycle_name(repo):
+    names = [path.name for path in (repo / SPECS).glob("*-lifecycle-greeting")]
+    if len(names) != 1:
+        raise ValueError("Expected exactly one lifecycle greeting spec")
+    return names[0]
+
+
 def plan_checks(repo, scenario):
     root = repo / SPECS
     name = FORMAT
-    if scenario == "new-plan":
+    if scenario == "lifecycle-plan":
+        name = lifecycle_name(repo)
+    elif scenario == "new-plan":
         candidates = set(p.name for p in root.iterdir()) - {FORMAT, DECORATION}
         if len(candidates) != 1:
             return {"one-new-spec": False}
@@ -49,6 +58,12 @@ def plan_checks(repo, scenario):
     if scenario == "modify-plan":
         checks["updated-option"] = "--punctuation" in spec and any(
             "--punctuation" in t["details"] for t in pending if isinstance(t.get("details"), str)
+        )
+    elif scenario == "lifecycle-plan":
+        checks["updated-tail-plan"] = (
+            "--tail" in spec and len(pending) == 2
+            and "--prefix" in pending[0].get("details", "")
+            and "--tail" in pending[1].get("details", "")
         )
     else:
         checks["planning-only"] = tasks == pending
@@ -101,8 +116,10 @@ def clean_worktree(repo):
 
 
 def decoration_checks(repo, scenario):
-    tasks = read_tasks(repo, DECORATION)
+    lifecycle = scenario.startswith("lifecycle-")
+    tasks = read_tasks(repo, lifecycle_name(repo) if lifecycle else DECORATION)
     done = [t for t in tasks if t.get("completed_at")]
+    suffix_flag = "--tail" if lifecycle else "--suffix"
     checks = {
         "default-compatible": output_is(repo, "Hello, Ada!\n"),
         "uppercase-compatible": output_is(repo, "HELLO, ADA!\n", "--upper"),
@@ -110,16 +127,23 @@ def decoration_checks(repo, scenario):
         "commits-in-step-order": bool(done) and commits_ordered(repo, done),
         "clean-worktree": clean_worktree(repo),
     }
-    if scenario == "prefix-only":
-        suffix = invoke(repo, "--suffix", " tail")
+    if scenario in ("prefix-only", "lifecycle-prefix"):
+        suffix = invoke(repo, suffix_flag, " tail")
         checks["suffix-not-implemented"] = suffix.returncode == 2 and suffix.stdout == ""
         checks["expected-completed-steps"] = [t.get("id") for t in done] == ["step-1"]
     else:
         checks["expected-completed-steps"] = [t.get("id") for t in done] == ["step-1", "step-2"]
         checks["suffix-verbatim"] = output_is(
-            repo, "[hi] HELLO, ADA! tail\n", "--upper", "--prefix", "[hi] ", "--suffix", " tail"
+            repo, "[hi] HELLO, ADA! tail\n", "--upper", "--prefix", "[hi] ", suffix_flag, " tail"
         )
-        checks["suffix-only"] = output_is(repo, "Hello, Ada! tail\n", "--suffix", " tail")
+        checks["suffix-only"] = output_is(repo, "Hello, Ada! tail\n", suffix_flag, " tail")
+    if scenario == "resumed-decoration":
+        seed = subprocess.check_output(
+            ["git", "-C", str(repo), "rev-parse", "refs/tags/eval-review-base"],
+            text=True, timeout=10,
+        ).strip()
+        prefix_sha = tasks[0].get("commit_title", "").partition(":")[0]
+        checks["resumed-original-commit"] = bool(prefix_sha) and seed.startswith(prefix_sha)
     return checks
 
 
@@ -127,7 +151,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=Path)
     parser.add_argument(
-        "scenario", choices=("new-plan", "modify-plan", "prefix-only", "all-decoration")
+        "scenario", choices=(
+            "new-plan", "modify-plan", "prefix-only", "all-decoration", "resumed-decoration",
+            "lifecycle-plan", "lifecycle-prefix", "lifecycle-all",
+        ),
     )
     args = parser.parse_args()
     repo = args.repo.resolve()
@@ -136,7 +163,7 @@ def main():
             checks = plan_checks(repo, args.scenario)
         else:
             checks = decoration_checks(repo, args.scenario)
-    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(json.dumps({"passed": False, "checks": {}, "error": str(error)}))
         return 1
     passed = all(checks.values())

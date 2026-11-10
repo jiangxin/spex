@@ -62,6 +62,9 @@ def load_case(manifest: Path, definition: dict) -> Case:
         raise ValueError(f"Invalid case or fixture identifier in {manifest}")
     tags = definition.get("tags")
     turns = definition.get("turns")
+    setup = definition.get("setup")
+    if setup is not None and (not isinstance(setup, str) or not IDENTIFIER.fullmatch(setup)):
+        raise ValueError(f"Invalid setup selector in {manifest}: {definition['id']}")
     if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
         raise ValueError(f"Invalid tags in {manifest}: {definition['id']}")
     if not isinstance(turns, list) or not turns or any(
@@ -181,6 +184,14 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent=None) -
         )
         initialize_repo(trial)
         install_skill(source, trial)
+        if "setup" in case.definition:
+            script = case.fixture.parents[1] / "setup.py"
+            if not script.is_file() or script.is_symlink():
+                raise ValueError(f"Expected a real suite setup script: {script}")
+            subprocess.run(
+                [sys.executable, "-I", str(script), str(trial.repo), case.definition["setup"]],
+                cwd=trial.repo, env=trial.env, capture_output=True, check=True, timeout=30,
+            )
         verify_spex_roots(trial)
     except BaseException:
         shutil.rmtree(directory)

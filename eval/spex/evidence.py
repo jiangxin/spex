@@ -109,6 +109,7 @@ def completed(state: dict) -> dict:
 EXPECTATIONS = {
     "no-code-change": "Git HEAD, index, status and workspace files are unchanged",
     "no-spec-write": "Spec artifacts are unchanged",
+    "one-spec-changed": "Exactly one spec changed, with no added or removed specs",
     "completed-preserved": "Previously completed tasks are unchanged",
     "one-step": "Exactly one additional task is completed and prior completions are preserved",
     "no-progress": "No additional task is completed and prior completions are preserved",
@@ -135,6 +136,10 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
                 old[key] == new[key] for key in ("head", "status", "index", "files")
             ),
             "no-spec-write": old["specs"] == new["specs"],
+            "one-spec-changed": old["specs"].keys() == new["specs"].keys() and sum(
+                artifacts != new["specs"].get(name)
+                for name, artifacts in old["specs"].items()
+            ) == 1,
             "completed-preserved": preserved,
             "one-step": preserved and len(now) == len(done) + 1,
             "no-progress": preserved and now == done,

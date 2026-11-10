@@ -89,6 +89,110 @@
           "Accurately summarizes the suffix step and completion of the target spec."
         ]
       }
+    ],
+    "create-clarification": [
+      {
+        "id": "clarification-relevant",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Invents an option or starts planning it.",
+          "Asks a generic question.",
+          "Asks what display behavior or option the user wants."
+        ]
+      },
+      {
+        "id": "requirements-covered",
+        "turn": 2,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Omits repetition.",
+          "Covers repetition but misses constraints.",
+          "Covers repeat, range, default, errors and compatibility."
+        ]
+      }
+    ],
+    "apply-ambiguous": [
+      {
+        "id": "selection-requested",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Selects a spec without confirmation.",
+          "Mentions ambiguity without a clear choice.",
+          "Offers both pending specs and asks the user to select."
+        ]
+      }
+    ],
+    "apply-review-resume": [
+      {
+        "id": "resume-reported",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims the prefix was newly implemented or the suffix remains pending.",
+          "Reports completion without identifying the resumed review.",
+          "Reports resuming prefix review and completing the remaining suffix step."
+        ]
+      }
+    ],
+    "apply-review-failure": [
+      {
+        "id": "failure-explained",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "events"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims success or hides the failure.",
+          "Reports a failure without its stage.",
+          "Identifies review as the failing stage and reports that execution stopped."
+        ]
+      }
+    ],
+    "workflow-lifecycle": [
+      {
+        "id": "revision-carried-forward",
+        "turn": 2,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Leaves suffix as the target option.",
+          "Renames the option without updating the task plan.",
+          "Updates the spec and second task to use tail and keeps the first task and compatibility requirements."
+        ]
+      },
+      {
+        "id": "lifecycle-complete",
+        "turn": 4,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims unsupported behavior.",
+          "Reports completion without verification detail.",
+          "Accurately reports both requested behaviors and verification."
+        ]
+      }
     ]
   }
 }
