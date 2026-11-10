@@ -31,8 +31,6 @@ def runner(tmp_path, monkeypatch):
     }]), encoding="utf-8")
     monkeypatch.setattr(run, "SUITES", suite.parent)
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
-    prepare = workspace.prepare_trial
-    monkeypatch.setattr(run, "prepare_trial", lambda *args: prepare(*args, parent=tmp_path))
     return run.parser()
 
 
@@ -207,7 +205,9 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     else:
         assert len(row["turn_results"]) == turns
         assert (output / f"turn-{turns}.json").is_file()
-    assert not Path(row["trial_directory"]).exists()
+    assert Path(row["trial_directory"]).is_dir()
+    assert Path(result["sandbox"]).is_dir()
+    assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
 @pytest.mark.slow

@@ -38,13 +38,40 @@ from transport import (
     prepare_codex_runtime,
     save_host_trace,
 )
-from workspace import IDENTIFIER, Case, Trial, prepare_trial, select_cases, verify_trial_workspace
+from workspace import (
+    IDENTIFIER,
+    Case,
+    Trial,
+    allocate_sandbox,
+    case_dir,
+    prepare_trial,
+    select_cases,
+    verify_sandbox,
+    verify_trial_workspace,
+)
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parents[1]
 SUITES = HERE / "suites"
 RUNS = HERE / "runs"
 TIMEOUT = 600
+
+
+def cleanup_hint(sandbox: Path) -> str:
+    return f"Please delete the sandbox manually when finished: {sandbox}"
+
+
+def resolve_sandbox(path: Path | None = None) -> Path:
+    """Return an existing sandbox under RUNS, or allocate a new timestamp sandbox."""
+    if path is None:
+        sandbox = allocate_sandbox(RUNS)
+        verify_sandbox(sandbox, SOURCE)
+        return sandbox
+    sandbox = Path(path).resolve()
+    if not sandbox.is_relative_to(RUNS.resolve()) or sandbox.is_symlink():
+        raise ValueError("Expected a sandbox path under eval/spex/runs")
+    verify_sandbox(sandbox, SOURCE)
+    return sandbox
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -66,18 +93,23 @@ def fixture_hash(case: Case) -> str:
                           for path in paths}))
 
 
-def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -> Trial:
+def setup(
+    case: Case, output: Path, args: argparse.Namespace, repeat: int = 1,
+    *, sandbox: Path,
+) -> Trial:
     for turn in case.definition["turns"]:
         if any(check not in EXPECTATIONS for check in turn["checks"]):
             raise ValueError(f"Unknown workflow check in {case.suite}/{case.id}")
-    trial = prepare_trial(SOURCE, case, args.spex_ref)
+    output.mkdir(parents=True, exist_ok=False)
+    trial = prepare_trial(SOURCE, case, args.spex_ref, parent=output)
     try:
         persist_turn(output, 0, capture(trial))
         write_json(output / "trial.json", {
             "schema_version": 1, "suite": case.suite, "case_id": case.id,
             "case": case.definition, "case_hash": digest(encode(case.definition)),
             "fixture_hash": fixture_hash(case),
-            "trial_directory": str(trial.directory), "spex_ref": trial.ref,
+            "sandbox": str(sandbox), "trial_directory": str(trial.directory),
+            "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
             "collection": "manual" if args.command == "prepare" else "automatic",
             "invocation": args.invocation, "repeat": repeat, "session": "",
@@ -86,6 +118,8 @@ def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -
         })
     except BaseException:
         shutil.rmtree(trial.directory)
+        if output.exists() and not any(output.iterdir()):
+            output.rmdir()
         raise
     return trial
 
@@ -420,12 +454,13 @@ def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
     return metadata
 
 
-def automatic(case: Case, output: Path, args: argparse.Namespace, repeat: int) -> dict:
+def automatic(
+    case: Case, output: Path, args: argparse.Namespace, repeat: int, *, sandbox: Path,
+) -> dict:
     trial = None
     started = time.monotonic()
-    output.mkdir(parents=True, exist_ok=False)
     try:
-        trial = setup(case, output, args, repeat)
+        trial = setup(case, output, args, repeat, sandbox=sandbox)
         result = drive(output, trial, args)
     except (OSError, ValueError, subprocess.SubprocessError, TransportError) as error:
         manifest = output / "trial.json"
@@ -435,9 +470,6 @@ def automatic(case: Case, output: Path, args: argparse.Namespace, repeat: int) -
         result.update(verdict="run_error", error=(
             str(error) if isinstance(error, TransportError) else "fixture_or_capture_error"
         ))
-    finally:
-        if trial is not None:
-            shutil.rmtree(trial.directory)
     judge_trial(
         output, result, getattr(args, "judge_model", ""), args.timeout,
         runtime=getattr(args, "codex_runtime", None),
@@ -493,12 +525,15 @@ def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
         message = metadata["case"]["turns"][len(metadata["turn_results"])]["input"]
         if message.startswith("/spex ") and metadata["invocation"] == "explicit":
             message = f"Use the Spex skill at {trial.skill / 'SKILL.md'}.\n{message}"
+    sandbox = Path(metadata["sandbox"])
     return {
-        "trial": str(output), "workspace": str(trial.repo), "skill": str(trial.skill),
+        "trial": str(output), "sandbox": str(sandbox),
+        "workspace": str(trial.repo), "skill": str(trial.skill),
         "host": metadata["host"], "host_version": metadata["host_version"],
         "model": metadata["model"], "session": metadata["session"],
         "verdict": metadata["verdict"], "next_input": message,
         "handoff": "manual",
+        "cleanup_hint": cleanup_hint(sandbox),
         "environment": {key: trial.env[key] for key in (
             "HOME", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE",
             "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
@@ -530,6 +565,10 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--host", type=host_name, required=True)
             command.add_argument("--host-version", type=unknownable, default="unknown")
             command.add_argument("--invocation", choices=("native", "explicit"), default="explicit")
+            command.add_argument(
+                "--sandbox", type=Path, default=None,
+                help="Existing runs/YYYY-MM-DD-HH-MM-SS sandbox; allocate one when omitted",
+            )
     collect = sub.add_parser("collect")
     collect.add_argument("trial", type=Path)
     collect.add_argument("--session", required=True)
@@ -585,8 +624,9 @@ def execute(args: argparse.Namespace) -> dict:
     if not cases or args.command == "prepare" and len(cases) != 1:
         raise ValueError("Select cases for run, or exactly one case for prepare")
     if args.command == "prepare":
-        output = RUNS / uuid.uuid4().hex
-        trial = setup(cases[0], output, args)
+        sandbox = resolve_sandbox(args.sandbox)
+        output = case_dir(sandbox, cases[0].suite, cases[0].id)
+        trial = setup(cases[0], output, args, sandbox=sandbox)
         return instructions(output, trial, read_json(output / "trial.json"))
     if args.repeat < 1 or args.timeout < 1:
         raise ValueError("Repeat and timeout must be positive")
@@ -595,12 +635,18 @@ def execute(args: argparse.Namespace) -> dict:
     runtime = prepare_codex_runtime(RUNS / ".codex-home", timeout=min(args.timeout, 60))
     args.codex_runtime = runtime
     args.host, args.host_version, args.invocation = "codex", runtime.version, "explicit"
-    output = RUNS / uuid.uuid4().hex
+    sandbox = resolve_sandbox(None)
     rows = [
-        automatic(case, output / case.suite / case.id / str(repeat), args, repeat)
+        automatic(
+            case, case_dir(sandbox, case.suite, case.id, repeat), args, repeat,
+            sandbox=sandbox,
+        )
         for case in cases for repeat in range(1, args.repeat + 1)
     ]
-    return {"run": str(output), "trials": rows, "codex_home": str(runtime.home)}
+    return {
+        "run": str(sandbox), "sandbox": str(sandbox), "trials": rows,
+        "codex_home": str(runtime.home), "cleanup_hint": cleanup_hint(sandbox),
+    }
 
 
 def main() -> int:
