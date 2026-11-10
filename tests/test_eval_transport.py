@@ -302,17 +302,64 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
             ],
         }],
     })
+    run.write_json(out / "judge.json", {
+        "verdict": "pass",
+        "hard_verdict": "pass",
+        "results": [
+            {
+                "criterion_id": "scope-correct",
+                "score": 2,
+                "verdict": "pass",
+                "reason": "ok",
+                "evidence_refs": ["turn-1:state"],
+            }
+        ],
+    })
     result = run.execute(runner.parse_args(["summary", str(sandbox)]))
     assert result["counts"] == {"pass": 1}
     assert result["classifications"] == {"evidence_gap": 1}
     assert result["trials"][0]["classification"] == "evidence_gap"
+    assert result["scores"]["score_sum"] == 2
+    assert result["scores"]["score_max"] == 2
+    assert result["scores"]["score_ratio"] == 1.0
+    assert result["improvements"]
+    assert result["improvements"][0]["category"] == "efficiency"
     assert Path(result["report"]).is_file()
     assert Path(result["report_json"]).is_file()
     assert Path(result["manifest"]).is_file()
     report = Path(result["report"]).read_text(encoding="utf-8")
     assert "example/clarify" in report
     assert "evidence_gap" in report
+    assert "## Score summary" in report
+    assert "Semantic score total: 2/2" in report
+    assert "## Spex skill improvements" in report
+    assert "### P2" in report
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
+
+
+def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "python-cli", "create")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "python-cli", "case_id": "create", "verdict": "fail",
+        "host": "cursor", "model": "unknown", "collection": "manual",
+        "turn_results": [{
+            "turn": 1,
+            "checks": [
+                {"check_id": "new-plan", "verdict": "fail", "phase": "acceptance"},
+                {"check_id": "post-action", "verdict": "insufficient_evidence"},
+            ],
+        }],
+    })
+    result = run.summarize_sandbox(sandbox)
+    assert result["improvements"][0]["priority"] == "P0"
+    assert result["improvements"][0]["category"] == "functionality"
+    assert "new-plan" in result["improvements"][0]["summary"]
+    report = Path(result["report"]).read_text(encoding="utf-8")
+    assert "### P0" in report
+    assert "functionality" in report
 
 
 @pytest.mark.slow

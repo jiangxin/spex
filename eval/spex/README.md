@@ -124,7 +124,11 @@ tool traces, are already marked insufficient and are not sent to the judge.
 `import-grades` reuses the same score and evidence-reference checks as the
 automatic judge. `summary` writes `manifest.json`, `report.json`, and
 `report.md` at the sandbox root and returns a `cleanup_hint`; delete the
-timestamp directory manually when finished.
+timestamp directory manually when finished. `report.md` includes a
+**Score summary** (per-trial 0–2 rubric totals and sandbox `score_sum` /
+`score_max`) plus a prioritized **Spex skill improvements** section
+derived from hard fails, non-trace evidence gaps, weak semantic scores,
+and host trace friction.
 
 Host adapter notes for Cursor / Codex / pure manual live under
 [`adapters/README.md`](adapters/README.md).

@@ -98,6 +98,149 @@ def earliest_non_pass(turn_results: list) -> str | None:
     return None
 
 
+def judge_score_summary(judge: dict) -> dict:
+    """Aggregate rubric scores from a trial ``judge.json`` record."""
+    results = [
+        row for row in (judge.get("results") or [])
+        if isinstance(row, dict)
+    ]
+    scored = [
+        row for row in results
+        if isinstance(row.get("score"), int)
+    ]
+    score_sum = sum(int(row["score"]) for row in scored)
+    # Each criterion is anchored 0–2.
+    score_max = 2 * len(scored)
+    return {
+        "criteria_total": len(results),
+        "criteria_scored": len(scored),
+        "score_sum": score_sum,
+        "score_max": score_max,
+        "scores": [
+            {
+                "criterion_id": row.get("criterion_id"),
+                "score": row.get("score"),
+                "verdict": row.get("verdict"),
+            }
+            for row in results
+        ],
+    }
+
+
+def aggregate_scores(trials: list[dict]) -> dict:
+    """Sandbox-level score totals across trials that have judge results."""
+    scored_trials = [row for row in trials if row.get("criteria_scored")]
+    score_sum = sum(int(row.get("score_sum") or 0) for row in scored_trials)
+    score_max = sum(int(row.get("score_max") or 0) for row in scored_trials)
+    return {
+        "trials_scored": len(scored_trials),
+        "trials_total": len(trials),
+        "score_sum": score_sum,
+        "score_max": score_max,
+        "score_ratio": (
+            round(score_sum / score_max, 4) if score_max else None
+        ),
+    }
+
+
+def derive_skill_improvements(trials: list[dict]) -> list[dict]:
+    """Prioritized Spex-skill issues derived from hard checks and verdicts.
+
+    Categories: functionality, execution, efficiency. Host-only trace gaps
+    are listed as efficiency/evidence friction for the eval harness, not as
+    Spex workflow proof-failures.
+    """
+    items: list[dict] = []
+    for row in trials:
+        case = f"{row.get('suite')}/{row.get('case_id')}"
+        hard = str(row.get("hard_verdict") or "")
+        if hard == "run_error":
+            items.append({
+                "priority": "P0",
+                "category": "execution",
+                "case": case,
+                "summary": (
+                    f"{case} ended in run_error"
+                    + (
+                        f" ({row.get('earliest_non_pass')})"
+                        if row.get("earliest_non_pass") else ""
+                    )
+                ),
+            })
+        for label in row.get("observed_fails") or []:
+            check_id = label.split(":", 1)[-1].split("=", 1)[0]
+            if check_id in TRACE_CHECK_IDS:
+                category = "efficiency"
+                priority = "P2"
+            else:
+                category = "functionality"
+                priority = "P0"
+            items.append({
+                "priority": priority,
+                "category": category,
+                "case": case,
+                "summary": f"{case} failed check {label}",
+            })
+        gaps = row.get("evidence_gaps") or []
+        non_trace_gaps = [
+            g for g in gaps
+            if g.split(":", 1)[-1].split("=", 1)[0] not in TRACE_CHECK_IDS
+        ]
+        trace_gaps = [
+            g for g in gaps
+            if g.split(":", 1)[-1].split("=", 1)[0] in TRACE_CHECK_IDS
+        ]
+        for label in non_trace_gaps:
+            items.append({
+                "priority": "P1",
+                "category": "execution",
+                "case": case,
+                "summary": (
+                    f"{case} missing evidence for {label} "
+                    "(not a pure tool-trace gap)"
+                ),
+            })
+        if trace_gaps and hard == "pass" and not (row.get("observed_fails") or []):
+            items.append({
+                "priority": "P2",
+                "category": "efficiency",
+                "case": case,
+                "summary": (
+                    f"{case} passed hard checks but lacked --events for "
+                    f"{', '.join(trace_gaps)}; supply traces or keep soft-fail"
+                ),
+            })
+        scores = row.get("scores") or []
+        weak = [
+            s for s in scores
+            if isinstance(s.get("score"), int) and s["score"] < 2
+            and s.get("verdict") != "insufficient_evidence"
+        ]
+        for entry in weak:
+            items.append({
+                "priority": "P1",
+                "category": "functionality",
+                "case": case,
+                "summary": (
+                    f"{case} semantic criterion {entry.get('criterion_id')} "
+                    f"scored {entry.get('score')}/2 ({entry.get('verdict')})"
+                ),
+            })
+
+    order = {"P0": 0, "P1": 1, "P2": 2}
+    items.sort(key=lambda item: (order.get(item["priority"], 9), item["case"]))
+    # De-dupe identical summaries while preserving order.
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for item in items:
+        key = item["summary"]
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def classify_checks(metadata: dict) -> dict:
     """Split non-pass checks into observed fails vs evidence gaps."""
     observed_fails: list[str] = []
@@ -132,6 +275,9 @@ def classify_checks(metadata: dict) -> dict:
 
 
 def render_summary_markdown(report: dict) -> str:
+    scores = report.get("scores") or {}
+    ratio = scores.get("score_ratio")
+    ratio_text = "n/a" if ratio is None else f"{ratio:.0%}"
     lines = [
         f"# Spex eval summary: {Path(report['sandbox']).name}",
         "",
@@ -139,11 +285,42 @@ def render_summary_markdown(report: dict) -> str:
         f"- Trials: {len(report['trials'])}",
         f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
         f"- Classifications: {json.dumps(report.get('classifications') or {}, sort_keys=True)}",
+        (
+            f"- Semantic score total: {scores.get('score_sum', 0)}/"
+            f"{scores.get('score_max', 0)} "
+            f"({ratio_text}; "
+            f"{scores.get('trials_scored', 0)}/"
+            f"{scores.get('trials_total', 0)} trials judged)"
+        ),
         f"- Cleanup: {report['cleanup_hint']}",
+        "",
+        "## Score summary",
+        "",
+        "| Case | Final | Hard | Score | Criteria |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for row in report["trials"]:
+        case = f"{row.get('suite')}/{row.get('case_id')}"
+        if row.get("criteria_scored"):
+            score = f"{row.get('score_sum')}/{row.get('score_max')}"
+            criteria = ", ".join(
+                f"{item.get('criterion_id')}={item.get('score')}"
+                for item in (row.get("scores") or [])
+            ) or "—"
+        else:
+            score = "—"
+            criteria = "ungraded"
+        lines.append(
+            f"| {case} | {row.get('final_verdict')} | {row.get('hard_verdict')} | "
+            f"{score} | {criteria} |"
+        )
+    lines.extend([
+        "",
+        "## Trial outcomes",
         "",
         "| Case | Final | Class | Observed fails | Evidence gaps | Path |",
         "| --- | --- | --- | --- | --- | --- |",
-    ]
+    ])
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
         fails = ", ".join(row.get("observed_fails") or []) or "—"
@@ -154,6 +331,34 @@ def render_summary_markdown(report: dict) -> str:
         )
     lines.extend([
         "",
+        "## Spex skill improvements",
+        "",
+        "Auto-derived from hard checks and semantic scores in this sandbox. "
+        "Categories: **functionality** (acceptance/workflow), **execution** "
+        "(runtime / non-trace evidence gaps), **efficiency** (trace/host "
+        "friction that slows re-runs).",
+        "",
+    ])
+    improvements = report.get("improvements") or []
+    if not improvements:
+        lines.append(
+            "No Spex-skill functionality or execution failures detected in "
+            "this sandbox."
+        )
+        lines.append("")
+    else:
+        current = None
+        for item in improvements:
+            priority = item.get("priority") or "P2"
+            if priority != current:
+                current = priority
+                lines.append(f"### {priority}")
+                lines.append("")
+            lines.append(
+                f"- **{item.get('category')}** — {item.get('summary')}"
+            )
+        lines.append("")
+    lines.extend([
         "## How to read results",
         "",
         "- **fail / observed fails**: deterministic or acceptance checks failed.",
@@ -161,6 +366,8 @@ def render_summary_markdown(report: dict) -> str:
         "tool traces via `--events`) were missing. Common for manual "
         "`collection` without a Codex-style transcript; not proof the workflow "
         "failed.",
+        "- **Semantic score**: each graded criterion is 0–2; sandbox total is "
+        "the sum of scores over twice the number of scored criteria.",
         "- Hard verdicts still take precedence over semantic judge scores.",
         "",
     ])
@@ -184,6 +391,13 @@ def summarize_sandbox(sandbox: Path) -> dict:
         hosts.add(str(metadata.get("host") or "unknown"))
         models.add(str(metadata.get("model") or "unknown"))
         split = classify_checks(metadata)
+        score = judge_score_summary(judge) if judge else {
+            "criteria_total": 0,
+            "criteria_scored": 0,
+            "score_sum": 0,
+            "score_max": 0,
+            "scores": [],
+        }
         row = {
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
@@ -195,12 +409,14 @@ def summarize_sandbox(sandbox: Path) -> dict:
             "collection": metadata.get("collection"),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             **split,
+            **score,
         }
         rows.append(row)
         counts[str(final)] = counts.get(str(final), 0) + 1
         classifications[split["classification"]] = (
             classifications.get(split["classification"], 0) + 1
         )
+    improvements = derive_skill_improvements(rows)
     report = {
         "schema_version": 1,
         "sandbox": str(sandbox),
@@ -209,6 +425,8 @@ def summarize_sandbox(sandbox: Path) -> dict:
         "trials": rows,
         "counts": counts,
         "classifications": classifications,
+        "scores": aggregate_scores(rows),
+        "improvements": improvements,
         "cleanup_hint": cleanup_hint(sandbox),
     }
     write_json(sandbox / "manifest.json", {
@@ -220,6 +438,7 @@ def summarize_sandbox(sandbox: Path) -> dict:
             {"suite": row["suite"], "case_id": row["case_id"], "path": row["trial"]}
             for row in rows
         ],
+        "scores": report["scores"],
         "cleanup_hint": report["cleanup_hint"],
     })
     write_json(sandbox / "report.json", report)
