@@ -15,8 +15,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from calibration import evaluate, load_samples
+from compare import calibration_keys, compare, diagnosis, load_run, markdown
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
-from judge import PROMPT, PROMPT_VERSION, final_verdict, grade, packet_for, rubric_for
+from judge import PROMPT, PROMPT_VERSION, codex_judge, final_verdict, grade, packet_for, rubric_for
 from transport import (
     SESSION_ID,
     HostTurn,
@@ -45,6 +46,15 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def fixture_hash(case: Case) -> str:
+    suite = case.fixture.parent.parent
+    paths = [path for path in case.fixture.rglob("*") if path.is_file()]
+    paths.extend(path for name in ("setup.py", "acceptance.py")
+                 if (path := suite / name).is_file())
+    return digest(encode({str(path.relative_to(suite)): digest(path.read_bytes())
+                          for path in paths}))
+
+
 def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -> Trial:
     for turn in case.definition["turns"]:
         if any(check not in EXPECTATIONS for check in turn["checks"]):
@@ -55,6 +65,7 @@ def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -
         write_json(output / "trial.json", {
             "schema_version": 1, "suite": case.suite, "case_id": case.id,
             "case": case.definition, "case_hash": digest(encode(case.definition)),
+            "fixture_hash": fixture_hash(case),
             "trial_directory": str(trial.directory), "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
             "invocation": args.invocation, "repeat": repeat, "session": "",
@@ -173,6 +184,7 @@ def score_trial(output: Path, metadata: dict, model: str, timeout: int) -> dict:
         packet = packet_for(output, metadata, criteria)
         record.update(
             rubric_version=version, rubric_hash=digest(encode(criteria)),
+            suite_rubric_hash=digest(rubric.read_bytes()),
             evidence_hash=digest(encode(packet["evidence"])),
         )
         record.update(grade(packet, model, timeout))
@@ -233,6 +245,29 @@ def calibrate(args: argparse.Namespace) -> dict:
     path = directory / f"{uuid.uuid4().hex}.json"
     write_json(path, report)
     return {**report, "report": str(path)}
+
+
+def compare_runs(args: argparse.Namespace) -> dict:
+    ids = (args.baseline, args.candidate, args.baseline_rejudge, args.candidate_rejudge)
+    if any(value and not re.fullmatch(r"[a-f0-9]{32}", value) for value in ids):
+        raise ValueError("Expected saved run and rejudge IDs")
+    if args.timeout < 1:
+        raise ValueError("Timeout must be positive")
+    left = load_run(RUNS, args.baseline, args.baseline_rejudge)
+    right = load_run(RUNS, args.candidate, args.candidate_rejudge)
+    keys = calibration_keys(RUNS / "calibrations", HERE / "calibration" / "frozen.json")
+    report = compare(left, right, keys)
+    report["runs"] = list(ids)
+    try:
+        report["diagnosis"] = diagnosis(report, codex_judge, args.judge_model, args.timeout)
+    except (ValueError, OSError, TypeError, KeyError, subprocess.SubprocessError, TransportError):
+        report.update(diagnosis=[], diagnostic_error="diagnostic_judge_error")
+    directory = RUNS / "comparisons" / uuid.uuid4().hex
+    directory.mkdir(parents=True)
+    write_json(directory / "report.json", report)
+    (directory / "report.md").write_text(markdown(report), encoding="utf-8")
+    return {**report, "report": str(directory / "report.json"),
+            "markdown": str(directory / "report.md")}
 
 
 def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
@@ -350,13 +385,20 @@ def parser() -> argparse.ArgumentParser:
     calibration = sub.add_parser("calibrate")
     calibration.add_argument("--split", choices=("frozen", "development"), default="frozen")
     calibration.add_argument("--jobs", type=int, default=2)
-    for command in (rejudge, calibration):
+    comparison = sub.add_parser("compare")
+    comparison.add_argument("baseline")
+    comparison.add_argument("candidate")
+    comparison.add_argument("--baseline-rejudge")
+    comparison.add_argument("--candidate-rejudge")
+    for command in (rejudge, calibration, comparison):
         command.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
         command.add_argument("--timeout", type=int, default=TIMEOUT)
     return root
 
 
 def execute(args: argparse.Namespace) -> dict:
+    if args.command == "compare":
+        return compare_runs(args)
     if args.command in ("judge", "calibrate"):
         if not args.judge_model or args.timeout < 1:
             raise ValueError("A judge model and positive timeout are required")
