@@ -210,6 +210,64 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
+def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "clarify")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "clarify", "verdict": "pass",
+        "host": "cursor", "model": "unknown",
+        "turn_results": [{
+            "turn": 1,
+            "checks": [{"check_id": "no-code-change", "verdict": "pass"}],
+        }],
+    })
+    result = run.execute(runner.parse_args(["summary", str(sandbox)]))
+    assert result["counts"] == {"pass": 1}
+    assert Path(result["report"]).is_file()
+    assert Path(result["report_json"]).is_file()
+    assert Path(result["manifest"]).is_file()
+    assert "example/clarify" in Path(result["report"]).read_text(encoding="utf-8")
+    assert "Please delete the sandbox manually" in result["cleanup_hint"]
+
+
+@pytest.mark.slow
+def test_prepare_uses_timestamp_sandbox_and_keeps_workspace(runner):
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "cursor", "--invocation", "native",
+    ]))
+    sandbox = Path(info["sandbox"])
+    trial = Path(info["trial"])
+    assert workspace.SANDBOX_NAME.fullmatch(sandbox.name)
+    assert trial == sandbox / "example" / "clarify"
+    assert Path(info["workspace"]).is_relative_to(sandbox / "example" / "clarify" / "workspace")
+    assert (trial / "workspace" / "repo").is_dir()
+    assert (trial / "trial.json").is_file()
+    assert "Please delete the sandbox manually" in info["cleanup_hint"]
+
+
+@pytest.mark.slow
+def test_prepare_reuses_sandbox_across_cases(runner):
+    suite = run.SUITES / "example"
+    cases = run.read_json(suite / "cases.json")
+    cases.append({
+        "id": "follow-up", "fixture": "example", "tags": ["smoke"], "turns": [
+            {"input": "/spex create Add another setting", "checks": ["no-code-change"]},
+        ],
+    })
+    (suite / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+    first = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "cursor", "--invocation", "native",
+    ]))
+    second = run.execute(runner.parse_args([
+        "prepare", "--case", "follow-up", "--host", "cursor", "--invocation", "native",
+        "--sandbox", first["sandbox"],
+    ]))
+    assert first["sandbox"] == second["sandbox"]
+    assert Path(second["trial"]) == Path(first["sandbox"]) / "example" / "follow-up"
+
+
 @pytest.mark.slow
 def test_manual_collection_requires_same_session(runner, tmp_path):
     info = run.execute(runner.parse_args([

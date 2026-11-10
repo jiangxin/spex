@@ -71,6 +71,20 @@ def test_allocate_sandbox_adds_numeric_suffix_on_name_clash(tmp_path, monkeypatc
     assert two.name == "2026-11-10-15-11-12-2"
 
 
+def test_case_dir_rejects_invalid_identifiers(tmp_path):
+    sandbox = tmp_path / "2026-11-10-15-11-12"
+    sandbox.mkdir()
+    with pytest.raises(ValueError, match="Invalid suite or case"):
+        workspace.case_dir(sandbox, "Bad", "create")
+    path = workspace.case_dir(sandbox, "python-cli", "create", repeat=2)
+    assert path == sandbox / "python-cli" / "create" / "2"
+
+
+def test_runs_directory_remains_gitignored():
+    lines = (REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "/eval/spex/runs/" in lines
+
+
 @pytest.mark.slow
 def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_DIR", "/bogus/global.git")
