@@ -10,7 +10,7 @@ from pathlib import Path
 from evidence import digest, encode
 from judge import KINDS, clean, project
 
-AXES = ("host", "host_version", "invocation", "model", "spex_ref")
+AXES = ("host", "host_version", "invocation", "collection", "model", "spex_ref")
 JUDGE = ("model", "prompt_hash", "rubric_hash")
 DECIDED = {"pass", "fail"}
 CATEGORIES = {
@@ -71,8 +71,14 @@ def tally(rows):
             "verdicts": dict(sorted(counts.items()))}
 
 
+def collection_mode(row):
+    return row.get("collection", "automatic" if row.get("host") == "codex" else "manual")
+
+
 def pair(key, left, right, calibrations):
-    changes = [axis for axis in AXES if left.get(axis) != right.get(axis)]
+    left_settings = {**left, "collection": collection_mode(left)}
+    right_settings = {**right, "collection": collection_mode(right)}
+    changes = [axis for axis in AXES if left_settings.get(axis) != right_settings.get(axis)]
     left_config, right_config = (
         tuple(row["judgment"].get(key) for key in JUDGE) for row in (left, right)
     )

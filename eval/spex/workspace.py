@@ -16,6 +16,7 @@ from pathlib import Path
 
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9-]*")
 SKILL_PATH = "skills/spex"
+TRIAL_TMP = ".spex-eval-tmp"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,8 @@ class Trial:
         env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
         env.update(
             HOME=str(self.directory / "home"),
+            TMPDIR=str(self.repo / TRIAL_TMP),
+            TMPPREFIX=str(self.repo / TRIAL_TMP / "zsh"),
             GIT_CONFIG_GLOBAL=os.devnull,
             GIT_CONFIG_NOSYSTEM="1",
             GIT_ATTR_NOSYSTEM="1",
@@ -164,7 +167,7 @@ def copy_fixture(case: Case, repo: Path) -> None:
             path.is_symlink()
             or not (path.is_dir() or path.is_file())
             or any(part.casefold() == ".git" for part in relative.parts)
-            or relative.parts[0].casefold() in {".agents", ".spex.toml"}
+            or relative.parts[0].casefold() in {".agents", ".spex.toml", TRIAL_TMP}
         ):
             raise ValueError(f"Unsupported fixture path: {path}")
     shutil.copytree(case.fixture, repo)
@@ -178,6 +181,7 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent=None) -
     try:
         (directory / "home").mkdir()
         copy_fixture(case, trial.repo)
+        (trial.repo / TRIAL_TMP).mkdir()
         (trial.repo / ".spex.toml").write_text(
             '[spex]\nspex_root = ".spex"\nuse_git_worktree = false\ndebug = true\n',
             encoding="utf-8",
@@ -206,7 +210,7 @@ def initialize_repo(trial: Trial) -> None:
         git(trial.repo, "config", key, value, env=env)
     (trial.repo / ".git" / "info").mkdir(exist_ok=True)
     (trial.repo / ".git" / "info" / "exclude").write_text(
-        "/.agents/\n/.spex/\n/.spex.toml\n", encoding="utf-8"
+        f"/.agents/\n/.spex/\n/.spex.toml\n/{TRIAL_TMP}/\n", encoding="utf-8"
     )
     git(trial.repo, "add", "--all", env=env)
     timestamp = "2000-01-01T00:00:00+00:00"

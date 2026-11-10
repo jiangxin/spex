@@ -16,6 +16,10 @@ SESSION_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,127}")
 SPEX_CALL = re.compile(
     r"(?:^|[\s/])spex['\"]?\s+(apply-helper|review-helper|todo-helper|prompt)\b([^\n]*)"
 )
+TRIAL_PERMISSIONS = (
+    '{":root"="read", ":workspace_roots"={"."="write", ".git"="write", '
+    '".agents"="read", ".codex"="read", ".aws"="read"}}'
+)
 
 
 class TransportError(RuntimeError):
@@ -133,12 +137,14 @@ def codex_turn(
     command += ["resume", session] if session else []
     command += [
         "--ignore-user-config", "--ignore-rules", "--json", "-m", model,
-        "-c", 'sandbox_mode="workspace-write"',
-        "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true",
-        "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+        "-c", 'default_permissions="spex-eval-trial"',
+        "-c", f"permissions.spex-eval-trial.filesystem={TRIAL_PERMISSIONS}",
+        "-c", "permissions.spex-eval-trial.network.enabled=false",
+        "-c", "allow_login_shell=false",
+        "-c", "features.shell_snapshot=false",
         "-c", 'shell_environment_policy.inherit="none"',
     ]
-    for name in ("HOME", "PATH", "SPEX_CONFIG_FILE", "GIT_CONFIG_GLOBAL",
+    for name in ("HOME", "PATH", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE", "GIT_CONFIG_GLOBAL",
                  "GIT_CONFIG_NOSYSTEM", "GIT_ATTR_NOSYSTEM", "PYTHONNOUSERSITE"):
         command += ["-c", f"shell_environment_policy.set.{name}={json.dumps(env[name])}"]
     try:

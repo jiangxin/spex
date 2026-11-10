@@ -45,6 +45,22 @@ def test_aligns_trials_and_flags_confounds():
     assert report["baseline_only"] == [("docs", "edit-guide", 2)]
 
 
+def test_collection_mode_is_a_comparison_axis_with_legacy_defaults():
+    baseline = {KEY: trial()}
+    candidate = {KEY: trial(model="new", collection="manual")}
+    report = compare(baseline, candidate, CALIBRATIONS)
+    assert report["pairs"][0]["changes"] == ["collection", "model"]
+
+    candidate = {KEY: trial(model="new", collection="automatic")}
+    report = compare(baseline, candidate, CALIBRATIONS)
+    assert report["pairs"][0]["changes"] == ["model"]
+
+    baseline = {KEY: trial(host="cursor")}
+    candidate = {KEY: trial(host="cursor", model="new", collection="manual")}
+    report = compare(baseline, candidate, CALIBRATIONS)
+    assert report["pairs"][0]["changes"] == ["model"]
+
+
 def test_missing_trace_is_excluded_and_ai_hypothesis_is_grounded(tmp_path):
     persist_turn(tmp_path, 1, {"specs": {"guide": {
         "spec.md": "Document export behavior. token=synthetic-secret",

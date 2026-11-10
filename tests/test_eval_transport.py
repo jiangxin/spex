@@ -102,7 +102,9 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
         "if '--version' in sys.argv:\n"
         "    print('fake 1.0'); raise SystemExit(0)\n"
         "assert '-a' in sys.argv and 'never' in sys.argv\n"
+        "assert 'allow_login_shell=false' in sys.argv\n"
         "assert os.environ['HOME'].endswith('/home')\n"
+        "assert os.environ['TMPPREFIX'] == os.environ['TMPDIR'] + '/zsh'\n"
         "assert os.environ['SPEX_CONFIG_FILE'].endswith('/repo/.spex.toml')\n"
         "prompt = sys.stdin.read()\n"
         "if 'resume' in sys.argv:\n"
@@ -148,7 +150,7 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
 @pytest.mark.slow
 def test_manual_collection_requires_same_session(runner, tmp_path):
     info = run.execute(runner.parse_args([
-        "prepare", "--case", "clarify", "--model", "example", "--host", "cursor",
+        "prepare", "--case", "clarify", "--model", "example", "--host", "codex",
         "--host-version", "1", "--invocation", "native",
     ]))
     assert info["next_input"] == "/spex create Add a setting"
@@ -196,10 +198,14 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
 
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "darwin", reason="Requires the macOS acceptance sandbox")
-def test_macos_acceptance_launches_real_python_fixture(tmp_path):
-    case = workspace.select_cases(run.SUITES, suite="python-cli", case_id="create")[0]
+@pytest.mark.parametrize(("suite", "case_id", "selector"), [
+    ("python-cli", "create", "new-plan"),
+    ("docs", "analyze-incident", "analyze-incident"),
+])
+def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, selector):
+    case = workspace.select_cases(run.SUITES, suite=suite, case_id=case_id)[0]
     trial = workspace.prepare_trial(REPO, case, parent=tmp_path)
-    result = run.acceptance(trial, "python-cli", "new-plan")
+    result = run.acceptance(trial, suite, selector)
     assert result["passed"] is False
     assert result["checks"]
 

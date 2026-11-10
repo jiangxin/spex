@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from calibration import evaluate, load_samples
-from compare import calibration_keys, compare, diagnosis, load_run, markdown
+from compare import calibration_keys, collection_mode, compare, diagnosis, load_run, markdown
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
 from judge import PROMPT, PROMPT_VERSION, codex_judge, final_verdict, grade, packet_for, rubric_for
 from transport import (
@@ -68,6 +68,7 @@ def setup(case: Case, output: Path, args: argparse.Namespace, repeat: int = 1) -
             "fixture_hash": fixture_hash(case),
             "trial_directory": str(trial.directory), "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
+            "collection": "manual" if args.command == "prepare" else "automatic",
             "invocation": args.invocation, "repeat": repeat, "session": "",
             "judge_model": getattr(args, "judge_model", ""),
             "turn_results": [], "verdict": "pending",
@@ -89,17 +90,27 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
         "GIT_ATTR_NOSYSTEM", "PYTHONNOUSERSITE",
     )}
     env.update(GIT_OPTIONAL_LOCKS="0", PYTHONDONTWRITEBYTECODE="1")
+    try:
+        located = subprocess.check_output(
+            ["/usr/bin/xcrun", "--find", "git"], env=env, text=True, timeout=10,
+        )
+        system_git = Path(located.strip()).resolve(strict=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise TransportError("acceptance_error") from error
+    env["PATH"] = str(system_git.parent) + os.pathsep + env["PATH"]
     paths = {
         trial.directory.resolve(), script.parent.resolve(), Path(sys.prefix).resolve(),
         Path(sys.base_prefix).resolve(), Path("/usr"), Path("/System"),
-        Path("/Library/Developer/CommandLineTools"), Path("/dev"),
+        Path("/dev"),
     }
     parents = {parent for path in paths for parent in path.parents}
     # Framework Python needs to open the ancestor directories during startup.
     # Literal rules allow those directories without allowing sibling files.
     allowed = " ".join(
         f"({kind} {json.dumps(str(path))})"
-        for kind, entries in (("subpath", paths), ("literal", parents))
+        for kind, entries in (
+            ("subpath", paths), ("literal", parents | {system_git, *system_git.parents}),
+        )
         for path in sorted(entries)
     )
     policy = f"""
@@ -315,7 +326,7 @@ def automatic(case: Case, output: Path, args: argparse.Namespace, repeat: int) -
 
 def manual_result(output: Path, args: argparse.Namespace) -> dict:
     metadata = read_json(output / "trial.json")
-    if metadata["host"] == "codex" or metadata["verdict"] != "pending":
+    if collection_mode(metadata) != "manual" or metadata["verdict"] != "pending":
         raise ValueError("Expected a pending manual trial")
     if not SESSION_ID.fullmatch(args.session) or metadata["session"] not in ("", args.session):
         raise ValueError("Use the same valid session ID for all turns of this trial")
@@ -348,7 +359,8 @@ def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
         "trial": str(output), "workspace": str(trial.repo), "skill": str(trial.skill),
         "session": metadata["session"], "verdict": metadata["verdict"], "next_input": message,
         "environment": {key: trial.env[key] for key in (
-            "HOME", "SPEX_CONFIG_FILE", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"
+            "HOME", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE",
+            "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
         )},
     }
 
@@ -371,7 +383,9 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--repeat", type=int, default=1)
             command.add_argument("--timeout", type=int, default=TIMEOUT)
         if name == "prepare":
-            command.add_argument("--host", choices=("cursor", "claude-code"), required=True)
+            command.add_argument(
+                "--host", choices=("codex", "cursor", "claude-code"), required=True,
+            )
             command.add_argument("--host-version", required=True)
             command.add_argument("--invocation", choices=("native", "explicit"), default="explicit")
     collect = sub.add_parser("collect")

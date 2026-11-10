@@ -54,6 +54,11 @@ def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, mon
     first = workspace.prepare_trial(REPO, case, parent=tmp_path)
     second = workspace.prepare_trial(REPO, case, parent=tmp_path)
     assert first.directory != second.directory
+    assert Path(first.env["TMPDIR"]).parent == first.repo
+    assert Path(first.env["TMPDIR"]).is_dir()
+    assert Path(first.env["TMPPREFIX"]).parent == Path(first.env["TMPDIR"])
+    assert workspace.git(first.repo, "branch", "trial-only", env=first.env) == b""
+    assert b"trial-only" not in workspace.git(second.repo, "branch", env=second.env)
     (first.repo / "cli.py").write_text("print('changed')\n", encoding="utf-8")
     assert (second.repo / "cli.py").read_text(encoding="utf-8") == "print('original')\n"
     assert (case.fixture / "cli.py").read_text(encoding="utf-8") == "print('original')\n"
