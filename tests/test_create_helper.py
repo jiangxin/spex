@@ -83,24 +83,83 @@ class TestCreateTopic:
 
 class TestDiscardIncompleteSpec:
     def test_removes_meta_only_stub(self, tmp_path):
-        from create_helper import discard_incomplete_spec, is_incomplete_spec_dir
+        from create_helper import (
+            discard_incomplete_spec,
+            is_incomplete_spec_dir,
+            is_incomplete_spec_stub,
+        )
 
-        stub = tmp_path / "2026-05-20-14-30-orphan"
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        stub = specs / "2026-05-20-14-30-orphan"
         stub.mkdir()
         (stub / "meta.json").write_text("{}", encoding="utf-8")
         assert is_incomplete_spec_dir(stub) is True
-        assert discard_incomplete_spec(stub) is True
+        assert is_incomplete_spec_stub(stub, specs_dir=specs) is True
+        assert discard_incomplete_spec(stub, specs_dir=specs) is True
+        assert not stub.exists()
+
+    def test_removes_empty_prepare_dir(self, tmp_path):
+        from create_helper import discard_incomplete_spec
+
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        stub = specs / "2026-05-20-14-30-empty"
+        stub.mkdir()
+        assert discard_incomplete_spec(stub, specs_dir=specs) is True
         assert not stub.exists()
 
     def test_refuses_complete_spec(self, tmp_path):
         from create_helper import discard_incomplete_spec
 
-        spec = tmp_path / "2026-05-20-14-30-done"
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        spec = specs / "2026-05-20-14-30-done"
         spec.mkdir()
         (spec / "spec.md").write_text("# ok\n", encoding="utf-8")
         with pytest.raises(ValueError, match="spec.md already exists"):
-            discard_incomplete_spec(spec)
+            discard_incomplete_spec(spec, specs_dir=specs)
         assert spec.is_dir()
+
+    def test_refuses_todo_without_spec(self, tmp_path):
+        from create_helper import discard_incomplete_spec, is_incomplete_spec_stub
+
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        stub = specs / "2026-05-20-14-30-partial"
+        stub.mkdir()
+        (stub / "meta.json").write_text("{}", encoding="utf-8")
+        (stub / "todo.json").write_text("[]", encoding="utf-8")
+        assert is_incomplete_spec_stub(stub, specs_dir=specs) is False
+        with pytest.raises(ValueError, match="not a prepare-spec stub"):
+            discard_incomplete_spec(stub, specs_dir=specs)
+        assert stub.is_dir()
+
+    def test_refuses_outside_specs_dir(self, tmp_path):
+        from create_helper import discard_incomplete_spec
+
+        specs = tmp_path / "specs"
+        other = tmp_path / "other"
+        specs.mkdir()
+        other.mkdir()
+        stub = other / "2026-05-20-14-30-orphan"
+        stub.mkdir()
+        (stub / "meta.json").write_text("{}", encoding="utf-8")
+        with pytest.raises(ValueError, match="not a prepare-spec stub"):
+            discard_incomplete_spec(stub, specs_dir=specs)
+        assert stub.is_dir()
+
+    def test_refuses_non_dated_name(self, tmp_path):
+        from create_helper import discard_incomplete_spec
+
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        stub = specs / "not-a-spec-name"
+        stub.mkdir()
+        (stub / "meta.json").write_text("{}", encoding="utf-8")
+        with pytest.raises(ValueError, match="not a prepare-spec stub"):
+            discard_incomplete_spec(stub, specs_dir=specs)
+        assert stub.is_dir()
 
     def test_creates_specs_dir_if_missing(self, tmp_path):
         specs_dir = tmp_path / "specs"

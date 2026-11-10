@@ -299,26 +299,74 @@ def create_spec(spec, specs_dir, auto_prefix=True):
     return (spec, spec_dir)
 
 
+# prepare-spec stubs may only contain meta plus optional debug tee files.
+_INCOMPLETE_STUB_ALLOWED = frozenset({
+    "meta.json",
+    "debug.log",
+    "debug.log.prev_end",
+})
+
+
 def is_incomplete_spec_dir(spec_dir: Path) -> bool:
-    """True when a spec directory exists but has no ``spec.md`` yet."""
+    """True when a directory exists but has no ``spec.md`` yet.
+
+    Prefer :func:`is_incomplete_spec_stub` before deleting; this helper only
+    answers whether ``spec.md`` is missing.
+    """
     path = Path(spec_dir)
     return path.is_dir() and not (path / "spec.md").is_file()
 
 
-def discard_incomplete_spec(spec_dir: Path) -> bool:
-    """Remove an incomplete spec directory (no ``spec.md``).
+def is_incomplete_spec_stub(
+    spec_dir: Path,
+    specs_dir: Path | str | None = None,
+) -> bool:
+    """True for a prepare-spec stub that is safe to discard.
+
+    Requires a dated spec directory name, no ``spec.md``, and either an empty
+    directory or only stub allowlist files with ``meta.json`` present. When
+    ``specs_dir`` is set, the path must be a direct child of that directory.
+    """
+    path = Path(spec_dir)
+    if not path.is_dir() or (path / "spec.md").is_file():
+        return False
+    if not SPEC_NAME_PATTERN.match(path.name):
+        return False
+    if specs_dir is not None:
+        parent = path.parent.resolve()
+        expected = Path(specs_dir).resolve()
+        if parent != expected:
+            return False
+    names = {entry.name for entry in path.iterdir()}
+    if not names:
+        return True
+    return "meta.json" in names and names <= _INCOMPLETE_STUB_ALLOWED
+
+
+def discard_incomplete_spec(
+    spec_dir: Path,
+    specs_dir: Path | str | None = None,
+) -> bool:
+    """Remove a prepare-spec stub directory.
 
     Returns True if the directory was removed. Raises ValueError when the
-    path exists but already has ``spec.md`` (refuses to delete a real plan).
+    path exists but is not a safe stub (has ``spec.md``, unexpected files,
+    bad name, or wrong parent under ``specs_dir``).
     """
     path = Path(spec_dir)
     if not path.exists():
         return False
     if not path.is_dir():
         raise ValueError(f"Not a spec directory: {path}")
-    if not is_incomplete_spec_dir(path):
+    if (path / "spec.md").is_file():
         raise ValueError(
             f"Refusing to discard '{path.name}': spec.md already exists"
+        )
+    if not is_incomplete_spec_stub(path, specs_dir=specs_dir):
+        raise ValueError(
+            f"Refusing to discard '{path.name}': not a prepare-spec stub "
+            "(require dated name under specs/, empty or meta.json-only "
+            "with optional debug.log files)"
         )
     shutil.rmtree(path)
     return True
@@ -499,8 +547,10 @@ def _do_prepare_spec(args):
     except BaseException:
         # prepare-spec owns the new directory until success; roll back stubs
         # so a retry with another name does not leave meta-only trees.
-        if is_incomplete_spec_dir(spec_dir):
-            shutil.rmtree(spec_dir, ignore_errors=True)
+        try:
+            discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+        except ValueError as err:
+            logger.warning("prepare-spec rollback skipped: %s", err)
         raise
 
 
@@ -512,7 +562,7 @@ def _do_discard_incomplete(args):
     # resolve_spec_dir exits on missing / ambiguous names.
     spec_dir = resolve_spec_dir(args.name, specs_dir)
     try:
-        removed = discard_incomplete_spec(spec_dir)
+        removed = discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
     except ValueError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
