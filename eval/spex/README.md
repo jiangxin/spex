@@ -17,9 +17,29 @@ the project Python environment. Run commands from the repository root.
   --host qoder
 ```
 
-Filter with `--suite python-cli`, `--suite docs`, or `--case CASE`. Use
-`--spex-ref REF` to pin another Git revision. Omit `--model` or
-`--host-version` when they are unknown; the runner records `unknown`.
+The first `prepare` or `run` creates a sandbox at
+`eval/spex/runs/YYYY-MM-DD-HH-MM-SS` (with `-2`, `-3`, … on name clash). That
+directory is git-ignored via `/eval/spex/runs/` and is itself `git init`'d so
+git commands inside the sandbox do not resolve to the Spex monorepo. Case
+evidence and workspaces live under `suite/case/` (and `suite/case/<repeat>/`
+for automated repeats):
+
+```text
+eval/spex/runs/2026-11-10-15-11-12/
+  manifest.json
+  report.md
+  report.json
+  _handoff/
+  docs/analyze-incident/
+    trial.json
+    workspace/home/
+    workspace/repo/
+```
+
+Pass `--sandbox PATH` on later `prepare` calls in the same batch. Filter with
+`--suite python-cli`, `--suite docs`, or `--case CASE`. Use `--spex-ref REF`
+to pin another Git revision. Omit `--model` or `--host-version` when they are
+unknown; the runner records `unknown`.
 
 To use natural language, ask a host to load
 [spex-eval](../../.agents/skills/spex-eval/SKILL.md) and run a request such as
@@ -31,8 +51,11 @@ checkout.
 ## Current-host trials
 
 Host identifiers are lowercase labels such as `codex`, `qoder`, `cursor`,
-`claude-code`, or `other`. The default skill flow is `list` → `prepare` →
-execute in the current host → `collect` → semantic review.
+`claude-code`, or `other`. Suites, acceptance checks, rubrics, and the
+`prepare` → `collect` → `export-packet` → `import-grades` path are host
+agnostic. The default skill flow is `list` → `prepare` → execute in the
+current host → `collect` → semantic review → `summary`. Codex-only automation
+remains under `run`, `judge`, and `calibrate`.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
@@ -43,9 +66,10 @@ apply the same environment to the session that launches tools. When the host
 cannot create the session automatically, use the returned paths and
 `next_input` for a manual handoff (`handoff` is `manual`).
 
-Save the final reply to a text file outside the workspace, then collect it
-using a stable session ID for that trial. Use the same session for subsequent
-turns, and proceed only while collection returns a next input.
+Save the final reply under the sandbox `_handoff/` directory (not system
+`/tmp`), then collect it using a stable session ID for that trial. Use the
+same session for subsequent turns, and proceed only while collection returns a
+next input.
 
 ```sh
 .venv/bin/python eval/spex/run.py collect "$trial" --session "$session" --reply "$reply"
@@ -56,20 +80,23 @@ session ID and final reply agree with the collected turn. Without compatible
 events, checks that require tool traces can report insufficient evidence.
 Collection records deterministic checks only. After the trial finishes, export
 the semantic evidence packet, grade it in a separate current-host session, then
-import the JSON results. The prepared temporary workspace remains available
-after collection for inspection. Remove it when finished.
+import the JSON results. Workspaces stay on disk for inspection; the runner
+does not delete the sandbox.
 
 ```sh
 .venv/bin/python eval/spex/run.py export-packet "$trial"
 .venv/bin/python eval/spex/run.py import-grades "$trial" --grades "$grades" \
   --model gpt-6.1-sol
+.venv/bin/python eval/spex/run.py summary "$sandbox"
 ```
 
 `export-packet` writes `judge-packet.json` and `judge-prompt.txt` beside the
 trial evidence. Criteria that lack required artifacts, including missing tool
 traces, are already marked insufficient and are not sent to the judge.
 `import-grades` reuses the same score and evidence-reference checks as the
-automatic judge.
+automatic judge. `summary` writes `manifest.json`, `report.json`, and
+`report.md` at the sandbox root and returns a `cleanup_hint`; delete the
+timestamp directory manually when finished.
 
 ## Automated Codex CLI
 
@@ -118,13 +145,14 @@ that difference. Use multiple repetitions to see whether it recurs.
 
 ## Read results and extend the suites
 
-Generated evidence lives in the Git-ignored `eval/spex/runs/`. A run ID is
-the basename of its run directory. Inspect `trial.json` for per-turn checks,
+Generated evidence lives in the Git-ignored `eval/spex/runs/` timestamp
+sandboxes. Inspect `suite/case/trial.json` for per-turn checks,
 `turn-N.json` for referenced artifacts, and `judge.json` for semantic grades.
-Reports under `runs/comparisons/` include Markdown and JSON with pair
-alignment, sample counts, per-check changes, and evidence-linked hypotheses
-when supported. Treat missing evidence and transport or judge errors
-separately from observed workflow failures.
+Batch outcomes are in the sandbox `report.md`. Comparison reports under
+`runs/comparisons/` still use their own directories with Markdown and JSON for
+pair alignment, sample counts, per-check changes, and evidence-linked
+hypotheses when supported. Treat missing evidence and transport or judge
+errors separately from observed workflow failures.
 
 To add a suite, follow the manifests under `suites/python-cli/` and
 `suites/docs/`. A case declares its fixture, ordered turns, checks, and
