@@ -487,7 +487,7 @@ class TestDisabledReviewWithMajor:
         args = SimpleNamespace(
             name="integ",
             commit_sha="abc1234",
-            json_mode=True,
+            json_mode=True, output=None,
             mode=None,
         )
         with pytest.raises(SystemExit) as exc_info:

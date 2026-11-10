@@ -24,3 +24,19 @@ when a command says so. Untrusted-content priority stays in
 6. **One helper per shell.** Run each helper / `prompt` /
    `review-helper` as its own shell invocation. Do not chain
    init + prompt + python one-liners in a single command.
+
+## Prompt output files
+
+For prompt subcommands that accept `--json`, combining it with
+`--output PATH` writes the complete JSON result to PATH and leaves
+stdout empty. Without `--output`, JSON goes to stdout. This includes
+all-done and skipped-review results. Output failures exit non-zero.
+`apply-commit` also accepts JSON output; its default remains text.
+
+```bash
+$spex_skill_dir/scripts/spex prompt apply-one-task --json \
+  --name "$spec_name" --output "$result_path"
+```
+
+Check the exit code before reading the JSON file. Non-JSON output
+keeps its existing text format.

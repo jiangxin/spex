@@ -2049,7 +2049,7 @@ class TestApplyReviewStepReviewGate:
             lambda *a, **k: {"current_task_id": "step-1"},
         )
         args = SimpleNamespace(
-            name="test-topic", commit_sha="deadbeef", json_mode=True,
+            name="test-topic", commit_sha="deadbeef", json_mode=True, output=None,
         )
         with pytest.raises(SystemExit) as exc_info:
             prompt_mod._do_apply_review(args)
@@ -2080,7 +2080,7 @@ class TestApplyReviewStepReviewGate:
 
         monkeypatch.setattr(prompt_mod, "_build_metadata", _fail)
         args = SimpleNamespace(
-            name="missing-spec", commit_sha="deadbeef", json_mode=True,
+            name="missing-spec", commit_sha="deadbeef", json_mode=True, output=None,
         )
         with pytest.raises(SystemExit) as exc_info:
             prompt_mod._do_apply_review(args)
@@ -2131,7 +2131,7 @@ class TestApplyReviewStepReviewGate:
             lambda *a, **k: "Review Checklist full prompt",
         )
         args = SimpleNamespace(
-            name="", commit_sha="deadbeef", json_mode=True, mode=None,
+            name="", commit_sha="deadbeef", json_mode=True, output=None, mode=None,
         )
         prompt_mod._do_apply_review(args)
         data = json.loads(capsys.readouterr().out)

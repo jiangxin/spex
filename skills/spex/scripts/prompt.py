@@ -887,8 +887,12 @@ def _output_rendered(rendered, output_path):
     """Write rendered content to file or stdout."""
     if output_path:
         out_path = Path(output_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(rendered, encoding="utf-8")
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(rendered, encoding="utf-8")
+        except OSError as exc:
+            logger.error("Error writing output '%s': %s", out_path, exc)
+            sys.exit(1)
     else:
         print(rendered)
 
@@ -932,6 +936,8 @@ def _build_parser():
     p.add_argument(
         "-o", "--output", help="Output file path (default: stdout)",
     )
+
+    p.add_argument("--json", action="store_true", dest="json_mode")
 
     # apply-review
     p = subs.add_parser(
@@ -1052,14 +1058,14 @@ def _do_apply_one_task(args):
 
         # Handle all-done in JSON mode
         if args.json_mode and not metadata.get("current_task_description"):
-            print(json.dumps({
+            _output_rendered(json.dumps({
                 "task_id": "",
                 "prompt": "",
                 "all_done": True,
                 "resume_phase": "",
                 "commit_title": "",
                 "skip_commit": "",
-            }))
+            }), args.output)
             sys.exit(0)
 
         # Handle all-done in non-JSON mode: exit(0) with empty stdout
@@ -1090,13 +1096,13 @@ def _do_apply_one_task(args):
         )
 
     if args.json_mode:
-        print(json.dumps({
+        _output_rendered(json.dumps({
             "task_id": metadata.get("current_task_id", ""),
             "prompt": rendered,
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
             "skip_commit": metadata.get("skip_commit", "false"),
-        }))
+        }), args.output)
     else:
         _output_rendered(rendered, args.output)
 
@@ -1138,6 +1144,9 @@ def _do_apply_commit(args):
 
         # Handle all-done: exit(0) with empty stdout
         if not metadata.get("current_task_description"):
+            if args.json_mode:
+                import json
+                _output_rendered(json.dumps({"prompt": "", "all_done": True}), args.output)
             sys.exit(0)
 
         rendered = render_prompt("apply-commit", args.name, metadata=metadata)
@@ -1148,7 +1157,11 @@ def _do_apply_commit(args):
         logger.error("Error rendering template: %s", e)
         sys.exit(1)
 
-    _output_rendered(rendered, args.output)
+    if args.json_mode:
+        import json
+        _output_rendered(json.dumps({"prompt": rendered}), args.output)
+    else:
+        _output_rendered(rendered, args.output)
 
 
 def cli_apply_commit(argv=None):
@@ -1177,7 +1190,7 @@ def _do_apply_review(args):
         }
         metadata = _build_metadata("apply-review", args.name)
         payload["task_id"] = metadata.get("current_task_id") or ""
-        print(json.dumps(payload))
+        _output_rendered(json.dumps(payload), args.output)
         sys.exit(0)
 
     try:
@@ -1190,9 +1203,9 @@ def _do_apply_review(args):
             or metadata.get("current_task_description")
         ):
             if args.json_mode:
-                print(json.dumps({
+                _output_rendered(json.dumps({
                     "prompt": "", "all_done": True,
-                }))
+                }), args.output)
             sys.exit(0)
 
         _enrich_review_metadata(
@@ -1213,7 +1226,7 @@ def _do_apply_review(args):
                 "has_major": False,
                 "prompt_bytes": 0,
             }
-            print(json.dumps(payload))
+            _output_rendered(json.dumps(payload), args.output)
             sys.exit(0)
 
         if not metadata.get("commit_sha"):
@@ -1283,7 +1296,7 @@ def _do_apply_review(args):
         )
 
     if args.json_mode:
-        print(json.dumps({
+        _output_rendered(json.dumps({
             "prompt": rendered,
             "task_id": metadata.get("step_id", ""),
             "commit_sha": metadata.get("commit_sha", ""),
@@ -1298,7 +1311,7 @@ def _do_apply_review(args):
             ),
             "prompt_bytes": prompt_bytes,
             "acceptance_criteria": metadata.get("acceptance_criteria", ""),
-        }))
+        }), args.output)
     else:
         _output_rendered(rendered, args.output)
 
@@ -1325,9 +1338,9 @@ def _do_apply_fix(args):
             or metadata.get("current_task_description")
         ):
             if args.json_mode:
-                print(json.dumps({
+                _output_rendered(json.dumps({
                     "prompt": "", "all_done": True,
-                }))
+                }), args.output)
             sys.exit(0)
 
         # Batch fix: render the full pending/open finding set. A legacy
@@ -1405,7 +1418,7 @@ def _do_apply_fix(args):
             )
 
     if args.json_mode:
-        print(json.dumps({
+        _output_rendered(json.dumps({
             "prompt": rendered,
             "task_id": metadata.get("step_id", ""),
             "finding_id": metadata.get("finding_id", ""),
@@ -1422,7 +1435,7 @@ def _do_apply_fix(args):
             ),
             "prompt_bytes": prompt_bytes,
             "acceptance_criteria": metadata.get("acceptance_criteria", ""),
-        }))
+        }), args.output)
     else:
         _output_rendered(rendered, args.output)
 
@@ -1468,7 +1481,7 @@ def _do_modify_spec(args):
         sys.exit(1)
 
     if args.json_mode:
-        print(json.dumps({"prompt": rendered}))
+        _output_rendered(json.dumps({"prompt": rendered}), args.output)
     else:
         _output_rendered(rendered, args.output)
 
@@ -1513,7 +1526,7 @@ def _do_modify_todo(args):
         sys.exit(1)
 
     if args.json_mode:
-        print(json.dumps({"prompt": rendered}))
+        _output_rendered(json.dumps({"prompt": rendered}), args.output)
     else:
         _output_rendered(rendered, args.output)
 
