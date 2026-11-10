@@ -111,12 +111,26 @@ def commits_ordered(repo, tasks):
     return True
 
 
+def _is_bytecode_noise(porcelain_line: bytes) -> bool:
+    """True for __pycache__ / *.pyc noise that should not fail clean-worktree."""
+    path = porcelain_line[3:].decode("utf-8", "replace").strip().strip('"')
+    if path.startswith("__pycache__/") or "/__pycache__/" in f"/{path}":
+        return True
+    return path.endswith((".pyc", ".pyo", ".pyd"))
+
+
 def clean_worktree(repo):
     status = subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
         capture_output=True, timeout=10, check=False,
     )
-    return status.returncode == 0 and not status.stdout
+    if status.returncode != 0:
+        return False
+    leftover = [
+        line for line in status.stdout.splitlines()
+        if line and not _is_bytecode_noise(line)
+    ]
+    return not leftover
 
 
 def decoration_checks(repo, scenario):
