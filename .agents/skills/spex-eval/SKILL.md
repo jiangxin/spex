@@ -9,6 +9,27 @@ Locate the Spex repository root and read [the operating guide](../../../eval/spe
 Use its runner commands from the repository root. Use the repository Python
 environment if present.
 
+## Deterministic pipeline (must use `run.py`)
+
+These steps are **scripts only**. Do not restate or invent their outcomes in
+prose — read the JSON / `report.md` the runner prints.
+
+| Step | Command | Deterministic? |
+| --- | --- | --- |
+| List cases | `list` | Yes |
+| Allocate fixture + skill | `prepare` / `prepare --sandbox` | Yes |
+| Hard checks | `collect` | Yes (acceptance / workflow / state) |
+| Build judge packet | `export-packet` | Yes |
+| Store grades | `import-grades` | Yes (validates; does not invent scores) |
+| Aggregate | `summary` | Yes |
+
+**Non-deterministic (agent / model):** executing Spex in the trial session
+from `next_input`, and semantic grading of `judge-prompt.txt`. Hard
+verdicts from `collect` always override semantic pass/fail.
+
+When a batch already has `_handoff/` replies, run `collect` (and then
+`summary`) via the runner instead of narrating check results.
+
 1. Identify the requested suite, cases, target model, judge model, host, and
    Spex ref. Default to one smoke evaluation against HEAD for a generic
    request. For a migration comparison, use both specified models and three

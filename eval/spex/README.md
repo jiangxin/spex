@@ -57,7 +57,11 @@ Host identifiers are lowercase labels such as `codex`, `qoder`, `cursor`,
 `prepare` → `collect` → `export-packet` → `import-grades` path are host
 agnostic. The default skill flow is `list` → `prepare` → execute in the
 current host → `collect` → semantic review → `summary`. Codex-only automation
-remains under `run`, `judge`, and `calibrate`.
+remains under `run`, `judge`, and `calibrate`. Treat `list` / `prepare` /
+`collect` / `export-packet` / `import-grades` / `summary` as the
+**deterministic** pipeline (always invoke `eval/spex/run.py`); only the
+trial Spex session and semantic judge scores are model-dependent. Hard
+checks from `collect` take precedence over AI grades.
 
 The runner does not open host sessions. The portable interface is:
 
