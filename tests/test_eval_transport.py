@@ -57,6 +57,65 @@ def test_trace_identifies_workflow_commands_and_transport_errors():
         transport.parse_events('{"type":"turn.failed","error":{"message":"429 rate limit"}}')
 
 
+def test_startup_probes_classify_state_app_server_and_auth(tmp_path, monkeypatch):
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    blocked.chmod(0o500)
+    try:
+        with pytest.raises(transport.TransportError, match="state_dir_unwritable"):
+            transport.ensure_state_home(blocked / "nested")
+    finally:
+        blocked.chmod(0o700)
+
+    home = transport.ensure_state_home(tmp_path / "codex-home")
+    calls = []
+
+    def launch(command, **kwargs):
+        calls.append(command)
+        if "--version" in command:
+            return subprocess.CompletedProcess(command, 0, "fake 1.0\n", "")
+        return subprocess.CompletedProcess(
+            command, 1, "", "Failed to initialize app-server: Operation not permitted",
+        )
+
+    monkeypatch.setattr(transport.subprocess, "run", launch)
+    runtime = transport.CodexRuntime(str(tmp_path / "codex"), home, "fake 1.0")
+    with pytest.raises(transport.TransportError, match="app_server_init"):
+        transport.probe_app_server(runtime)
+    assert any("--ephemeral" in command for command in calls)
+
+    def auth_launch(command, **kwargs):
+        if "--version" in command:
+            return subprocess.CompletedProcess(command, 0, "fake 1.0\n", "")
+        return subprocess.CompletedProcess(command, 1, "", "401 unauthorized not logged in")
+
+    monkeypatch.setattr(transport.subprocess, "run", auth_launch)
+    with pytest.raises(transport.TransportError, match="authentication"):
+        transport.probe_app_server(runtime)
+    assert transport.failure_reason("cannot open goals_1.sqlite: Operation not permitted") == (
+        "state_dir_unwritable"
+    )
+
+
+@pytest.mark.slow
+def test_run_reports_startup_failure_once(runner, tmp_path, monkeypatch):
+    fake = tmp_path / "fake-codex"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if '--version' in sys.argv:\n"
+        "    print('fake 1.0'); raise SystemExit(0)\n"
+        "print('Failed to initialize app-server: Operation not permitted', file=sys.stderr)\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("SPEX_EVAL_CODEX", str(fake))
+    with pytest.raises(transport.TransportError, match="app_server_init"):
+        run.execute(runner.parse_args(["run", "--model", "example", "--tag", "smoke"]))
+    assert not any(path.name != ".codex-home" for path in run.RUNS.glob("*"))
+
+
 @pytest.mark.parametrize("mode,reason", [
     ("nonzero", "rate_limit"), ("malformed", "invalid_jsonl"), ("timeout", "timeout"),
 ])
@@ -102,18 +161,22 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
         "if '--version' in sys.argv:\n"
         "    print('fake 1.0'); raise SystemExit(0)\n"
         "assert '-a' in sys.argv and 'never' in sys.argv\n"
-        "assert 'allow_login_shell=false' in sys.argv\n"
-        "assert os.environ['HOME'].endswith('/home')\n"
-        "assert os.environ['TMPPREFIX'] == os.environ['TMPDIR'] + '/zsh'\n"
-        "assert os.environ['SPEX_CONFIG_FILE'].endswith('/repo/.spex.toml')\n"
         "prompt = sys.stdin.read()\n"
-        "if 'resume' in sys.argv:\n"
-        "    assert sys.argv[sys.argv.index('resume') + 1] == 'example-1'\n"
-        "    assert prompt == 'Use a boolean setting'\n"
-        "    reply = 'Done'\n"
+        "if '--ephemeral' in sys.argv:\n"
+        "    reply = 'OK'\n"
         "else:\n"
-        "    assert prompt.startswith('$spex\\n/spex create')\n"
-        f"    reply = {reply!r}\n"
+        "    assert 'allow_login_shell=false' in sys.argv\n"
+        "    assert os.environ['HOME'].endswith('/home')\n"
+        "    assert os.environ['TMPPREFIX'] == os.environ['TMPDIR'] + '/zsh'\n"
+        "    assert os.environ['SPEX_CONFIG_FILE'].endswith('/repo/.spex.toml')\n"
+        "    assert os.environ['CODEX_HOME']\n"
+        "    if 'resume' in sys.argv:\n"
+        "        assert sys.argv[sys.argv.index('resume') + 1] == 'example-1'\n"
+        "        assert prompt == 'Use a boolean setting'\n"
+        "        reply = 'Done'\n"
+        "    else:\n"
+        "        assert prompt.startswith('$spex\\n/spex create')\n"
+        f"        reply = {reply!r}\n"
         "for event in [\n"
         "    {'type': 'thread.started', 'thread_id': 'example-1'},\n"
         "    {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': reply}},\n"

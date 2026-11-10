@@ -10,6 +10,14 @@ sys.path.insert(0, str(EVAL))
 import run  # noqa: E402
 from calibration import evaluate, load_samples  # noqa: E402
 from evidence import persist_turn  # noqa: E402
+from transport import CodexRuntime  # noqa: E402
+
+
+def _stub_runtime(tmp_path, monkeypatch):
+    runtime = CodexRuntime("codex", tmp_path / "codex-home", "fake 1.0")
+    runtime.home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(run, "prepare_codex_runtime", lambda *args, **kwargs: runtime)
+    return runtime
 
 
 def test_replay_preserves_original_and_uses_hard_verdict(tmp_path, monkeypatch):
@@ -22,9 +30,10 @@ def test_replay_preserves_original_and_uses_hard_verdict(tmp_path, monkeypatch):
     run.write_json(output / "trial.json", metadata)
     run.write_json(output / "judge.json", {"verdict": "fail"})
     monkeypatch.setattr(run, "RUNS", tmp_path)
+    _stub_runtime(tmp_path, monkeypatch)
     calls = []
 
-    def mock_grade(packet, model, timeout):
+    def mock_grade(packet, model, timeout, adapter=None):
         calls.append((packet, model, timeout))
         return {"results": [{"verdict": "pass"}]}
 
@@ -64,7 +73,10 @@ def test_calibration_gates_on_critical_failures_and_invalid_references():
 
 def test_calibrate_command_writes_report(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path)
-    monkeypatch.setattr(run, "grade", lambda *_: {"results": [], "error": "judge_host_error"})
+    _stub_runtime(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        run, "grade", lambda *args, **kwargs: {"results": [], "error": "judge_host_error"},
+    )
     report = run.execute(run.parser().parse_args(["calibrate", "--judge-model", "example"]))
     assert report["judge_errors"] == len(report["samples"])
     assert not report["calibrated"]

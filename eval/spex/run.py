@@ -30,11 +30,12 @@ from judge import (
 )
 from transport import (
     SESSION_ID,
+    CodexRuntime,
     HostTurn,
     TransportError,
     codex_turn,
-    host_version,
     parse_events,
+    prepare_codex_runtime,
     save_host_trace,
 )
 from workspace import IDENTIFIER, Case, Trial, prepare_trial, select_cases, verify_trial_workspace
@@ -192,7 +193,10 @@ def trial_verdict(turn_results: list, final: bool) -> str:
     return "pass"
 
 
-def score_trial(output: Path, metadata: dict, model: str, timeout: int) -> dict:
+def score_trial(
+    output: Path, metadata: dict, model: str, timeout: int,
+    *, runtime: CodexRuntime | None = None,
+) -> dict:
     record = {
         "model": model, "prompt_version": PROMPT_VERSION, "prompt_hash": digest(PROMPT.encode()),
         "hard_verdict": metadata.get("hard_verdict", metadata["verdict"]),
@@ -208,17 +212,24 @@ def score_trial(output: Path, metadata: dict, model: str, timeout: int) -> dict:
             suite_rubric_hash=digest(rubric.read_bytes()),
             evidence_hash=digest(encode(packet["evidence"])),
         )
-        record.update(grade(packet, model, timeout))
+        adapter = None
+        if runtime is not None:
+            def adapter(prompt, judge_model, judge_timeout, current=runtime):
+                return codex_judge(prompt, judge_model, judge_timeout, runtime=current)
+        record.update(grade(packet, model, timeout, adapter=adapter))
     except (OSError, ValueError, TypeError, KeyError):
         record.update(error="judge_input_error", results=[])
     record["verdict"] = final_verdict(record["hard_verdict"], record)
     return record
 
 
-def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
+def judge_trial(
+    output: Path, metadata: dict, model: str, timeout: int,
+    *, runtime: CodexRuntime | None = None,
+) -> None:
     if not model or metadata["verdict"] in ("pending", "run_error"):
         return
-    record = score_trial(output, metadata, model, timeout)
+    record = score_trial(output, metadata, model, timeout, runtime=runtime)
     metadata["hard_verdict"] = record["hard_verdict"]
     metadata["verdict"] = record["verdict"]
     write_json(output / "judge.json", record)
@@ -316,7 +327,7 @@ def import_judge(output: Path, grades: Path, model: str) -> dict:
     }
 
 
-def replay(run_id: str, model: str, timeout: int) -> dict:
+def replay(run_id: str, model: str, timeout: int, *, runtime: CodexRuntime | None = None) -> dict:
     if not re.fullmatch(r"[a-f0-9]{32}", run_id):
         raise ValueError("Expected a saved run ID")
     output = RUNS.resolve() / run_id
@@ -333,7 +344,7 @@ def replay(run_id: str, model: str, timeout: int) -> dict:
         hard = metadata.get("hard_verdict", metadata["verdict"])
         record = (
             {"verdict": hard, "skipped": True} if hard in ("pending", "run_error")
-            else score_trial(path.parent, metadata, model, timeout)
+            else score_trial(path.parent, metadata, model, timeout, runtime=runtime)
         )
         results.append({"trial": str(path.parent.relative_to(output)), **record})
     directory = output / "rejudges" / uuid.uuid4().hex
@@ -344,12 +355,18 @@ def replay(run_id: str, model: str, timeout: int) -> dict:
     return {**report, "report": str(path)}
 
 
-def calibrate(args: argparse.Namespace) -> dict:
+def calibrate(args: argparse.Namespace, *, runtime: CodexRuntime | None = None) -> dict:
     suite_path = HERE / "calibration" / f"{args.split}.json"
     calibration = load_samples(suite_path, SUITES)
+    adapter = None
+    if runtime is not None:
+        def adapter(prompt, judge_model, judge_timeout, current=runtime):
+            return codex_judge(prompt, judge_model, judge_timeout, runtime=current)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         grades = list(pool.map(
-            lambda sample: grade(sample["packet"], args.judge_model, args.timeout),
+            lambda sample: grade(
+                sample["packet"], args.judge_model, args.timeout, adapter=adapter,
+            ),
             calibration["samples"],
         ))
     report = evaluate(calibration, grades, args.judge_model, args.split)
@@ -385,6 +402,7 @@ def compare_runs(args: argparse.Namespace) -> dict:
 
 def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
     metadata = read_json(output / "trial.json")
+    runtime = getattr(args, "codex_runtime", None)
     for index, turn in enumerate(metadata["case"]["turns"]):
         verify_trial_workspace(trial)
         message = turn["input"]
@@ -394,7 +412,7 @@ def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
                 message += f"\nUse the Spex skill at {trial.skill / 'SKILL.md'}."
         host = codex_turn(
             trial, message, args.model, args.timeout, metadata["session"],
-            trace_path=output / f"host-{index + 1}.jsonl",
+            trace_path=output / f"host-{index + 1}.jsonl", runtime=runtime,
         )
         store_turn(output, trial, metadata, host)
         if metadata["verdict"] != "pending":
@@ -420,7 +438,10 @@ def automatic(case: Case, output: Path, args: argparse.Namespace, repeat: int) -
     finally:
         if trial is not None:
             shutil.rmtree(trial.directory)
-    judge_trial(output, result, getattr(args, "judge_model", ""), args.timeout)
+    judge_trial(
+        output, result, getattr(args, "judge_model", ""), args.timeout,
+        runtime=getattr(args, "codex_runtime", None),
+    )
     result["duration_ms"] = round((time.monotonic() - started) * 1000)
     write_json(output / "trial.json", result)
     return result
@@ -543,11 +564,14 @@ def execute(args: argparse.Namespace) -> dict:
     if args.command in ("judge", "calibrate"):
         if not args.judge_model or args.timeout < 1:
             raise ValueError("A judge model and positive timeout are required")
+        runtime = prepare_codex_runtime(
+            RUNS / ".codex-home", timeout=min(args.timeout, 60),
+        )
         if args.command == "judge":
-            return replay(args.run_id, args.judge_model, args.timeout)
+            return replay(args.run_id, args.judge_model, args.timeout, runtime=runtime)
         if not 1 <= args.jobs <= 4:
             raise ValueError("Choose between one and four calibration workers")
-        return calibrate(args)
+        return calibrate(args, runtime=runtime)
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
     if args.command == "import-grades":
@@ -560,18 +584,23 @@ def execute(args: argparse.Namespace) -> dict:
                            "tags": case.definition["tags"]} for case in cases]}
     if not cases or args.command == "prepare" and len(cases) != 1:
         raise ValueError("Select cases for run, or exactly one case for prepare")
-    output = RUNS / uuid.uuid4().hex
     if args.command == "prepare":
+        output = RUNS / uuid.uuid4().hex
         trial = setup(cases[0], output, args)
         return instructions(output, trial, read_json(output / "trial.json"))
     if args.repeat < 1 or args.timeout < 1:
         raise ValueError("Repeat and timeout must be positive")
-    args.host, args.host_version, args.invocation = "codex", host_version(), "explicit"
+    # Probe Codex once for the whole batch so the same startup failure is not
+    # repeated for every trial or judge call.
+    runtime = prepare_codex_runtime(RUNS / ".codex-home", timeout=min(args.timeout, 60))
+    args.codex_runtime = runtime
+    args.host, args.host_version, args.invocation = "codex", runtime.version, "explicit"
+    output = RUNS / uuid.uuid4().hex
     rows = [
         automatic(case, output / case.suite / case.id / str(repeat), args, repeat)
         for case in cases for repeat in range(1, args.repeat + 1)
     ]
-    return {"run": str(output), "trials": rows}
+    return {"run": str(output), "trials": rows, "codex_home": str(runtime.home)}
 
 
 def main() -> int:

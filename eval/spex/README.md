@@ -15,7 +15,12 @@ automatic path requires a Codex CLI that supports named permissions profiles.
 The profile permits writes to the trial repository, including its Git
 metadata and a trial-local temporary directory. The runner supplies its
 Python environment and shell temporary paths without login shell startup.
-Run these examples from the repository root and
+Before a `run`, `judge`, or `calibrate` batch, the runner probes a writable
+Codex state directory, app-server startup, and authentication once, then
+reuses that home for trial execution and judging. Override the state
+directory with `SPEX_EVAL_CODEX_HOME` when needed. Classified startup failures
+such as `state_dir_unwritable`, `app_server_init`, or `authentication` are
+reported once for the batch. Run these examples from the repository root and
 substitute model IDs available to your account.
 
 ```sh

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,8 +22,6 @@ TRIAL_PERMISSIONS = (
     '{":root"="read", ":workspace_roots"={"."="write", ".git"="write", '
     '".agents"="read", ".codex"="read", ".aws"="read"}}'
 )
-
-
 class TransportError(RuntimeError):
     """A host or transport error separate from model behavior."""
 
@@ -32,6 +32,13 @@ class HostTurn:
     reply: str
     events: list
     raw: str
+
+
+@dataclass(frozen=True)
+class CodexRuntime:
+    binary: str
+    home: Path
+    version: str
 
 
 def command_event(item: dict) -> dict:
@@ -53,8 +60,17 @@ def failure_reason(output: str) -> str:
     message = output.lower()
     if any(word in message for word in ("429", "rate limit", "usage limit")):
         return "rate_limit"
-    if any(word in message for word in ("401", "unauthorized", "not logged in", "authentication")):
+    if any(word in message for word in ("401", "unauthorized", "not logged in", "authentication",
+                                        "not authenticated", "login required")):
         return "authentication"
+    if any(word in message for word in (
+        "app-server", "app server", "appserver", "failed to initialize", "initialize app",
+    )):
+        return "app_server_init"
+    if any(word in message for word in (
+        "goals_", ".sqlite", "operation not permitted", "permission denied", "read-only file",
+    )):
+        return "state_dir_unwritable"
     return "host_error"
 
 
@@ -125,15 +141,117 @@ def parse_events(raw: str, expected: str = "") -> HostTurn:
     return HostTurn(session, reply, events, raw)
 
 
+def codex_binary() -> str:
+    return os.environ.get("SPEX_EVAL_CODEX", "codex")
+
+
+def ensure_state_home(path: Path) -> Path:
+    """Create a writable Codex state directory or raise a classified error."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".spex-eval-write-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        database = path / "goals_probe.sqlite"
+        with sqlite3.connect(database) as connection:
+            connection.execute("create table if not exists probe (id integer primary key)")
+        database.unlink(missing_ok=True)
+    except OSError as error:
+        raise TransportError("state_dir_unwritable") from error
+    return path.resolve()
+
+
+def resolve_codex_home(preferred: Path | None = None) -> Path:
+    configured = os.environ.get("SPEX_EVAL_CODEX_HOME") or os.environ.get("CODEX_HOME")
+    candidates = []
+    if preferred is not None:
+        candidates.append(Path(preferred))
+    if configured:
+        candidates.append(Path(configured))
+    candidates.append(Path(tempfile.gettempdir()) / "spex-eval-codex-home")
+    errors = []
+    for candidate in candidates:
+        try:
+            return ensure_state_home(candidate)
+        except TransportError as error:
+            errors.append(error)
+    raise errors[-1] if errors else TransportError("state_dir_unwritable")
+
+
+def host_version(binary: str | None = None) -> str:
+    try:
+        result = subprocess.run(
+            [binary or codex_binary(), "--version"],
+            capture_output=True, text=True, timeout=10, check=True,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise TransportError("host_unavailable") from error
+    return result.stdout.strip() or "unknown"
+
+
+def probe_app_server(runtime: CodexRuntime, timeout: int = 20) -> None:
+    """Exercise app-server startup without running a full scored trial turn."""
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(runtime.home)
+    command = [
+        runtime.binary, "-a", "never", "exec", "--json", "--ephemeral",
+        "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
+        "-s", "read-only", "--disable", "shell_tool",
+        "-c", 'web_search="disabled"',
+        "-c", 'shell_environment_policy.inherit="none"',
+        "-",
+    ]
+    try:
+        result = subprocess.run(
+            command, input="Reply with OK.", cwd=tempfile.gettempdir(), env=env,
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise TransportError("app_server_init") from error
+    except OSError as error:
+        raise TransportError("host_unavailable") from error
+    output = result.stderr + result.stdout
+    if result.returncode == 0:
+        return
+    reason = failure_reason(output)
+    if reason == "host_error":
+        reason = "app_server_init"
+    raise TransportError(reason)
+
+
+def prepare_codex_runtime(
+    preferred_home: Path | None = None, *, probe: bool = True, timeout: int = 20,
+) -> CodexRuntime:
+    """Shared startup preflight for trial execution and judging."""
+    binary = codex_binary()
+    version = host_version(binary)
+    home = resolve_codex_home(preferred_home)
+    runtime = CodexRuntime(binary, home, version)
+    if probe:
+        probe_app_server(runtime, timeout=timeout)
+    return runtime
+
+
+def codex_env(trial: Trial | None, runtime: CodexRuntime) -> dict[str, str]:
+    if trial is None:
+        env = os.environ.copy()
+    else:
+        env = trial.env
+        env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", os.defpath)
+    env["CODEX_HOME"] = str(runtime.home)
+    return env
+
+
 def codex_turn(
     trial: Trial, prompt: str, model: str, timeout: int, session: str = "",
-    *, trace_path: Path | None = None,
+    *, trace_path: Path | None = None, runtime: CodexRuntime | None = None,
 ) -> HostTurn:
-    env = trial.env
-    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", os.defpath)
-    env["CODEX_HOME"] = os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
-    codex = os.environ.get("SPEX_EVAL_CODEX", "codex")
-    command = [codex, "-a", "never", "exec"]
+    if runtime is None:
+        runtime = CodexRuntime(
+            codex_binary(), resolve_codex_home(trial.directory / "codex-home"), "unknown",
+        )
+    env = codex_env(trial, runtime)
+    command = [runtime.binary, "-a", "never", "exec"]
     command += ["resume", session] if session else []
     command += [
         "--ignore-user-config", "--ignore-rules", "--json", "-m", model,
@@ -164,14 +282,3 @@ def codex_turn(
     if failure:
         raise TransportError(failure)
     return parse_events(result.stdout, session)
-
-
-def host_version() -> str:
-    try:
-        result = subprocess.run(
-            [os.environ.get("SPEX_EVAL_CODEX", "codex"), "--version"],
-            capture_output=True, text=True, timeout=10, check=True,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        raise TransportError("host_unavailable") from error
-    return result.stdout.strip()
