@@ -5,24 +5,32 @@ description: "Use when a maintainer asks to run Spex smoke tests, evaluate a Spe
 
 # Evaluate Spex workflows
 
-Locate the Spex repository root and read [the operating guide](../../eval/spex/README.md).
+Locate the Spex repository root and read [the operating guide](../../../eval/spex/README.md).
 Use its runner commands from the repository root. Use the repository Python
 environment if present.
 
-1. Identify the requested suite, cases, target model, judge model, and Spex
-   ref. Default to one smoke run against HEAD for a generic request. For a
-   migration comparison, use both specified models and three repetitions
-   per case. Resolve model IDs from available host configuration or ask if
-   required IDs are unavailable. Use one explicit judge across both runs.
-2. Run `list` to verify the requested cases. Use `run` for automated Codex
-   trials. For Cursor or Claude Code, use `prepare`, hand the user the
-   workspace and next input, then use `collect` with the reply and any
-   compatible transcript. Continue only when the runner supplies a next
-   input. Keep evaluation coordination separate from each tested session.
-3. Use `judge` to regrade saved evidence, `calibrate` to qualify the judge,
-   and `compare` to generate a paired report. Read the trial metadata and
-   check results before summarizing. If a rerun is requested, use the
-   saved suite, case, model, judge and pinned Spex commit.
+1. Identify the requested suite, cases, target model, judge model, host, and
+   Spex ref. Default to one smoke evaluation against HEAD for a generic
+   request. For a migration comparison, use both specified models and three
+   repetitions per case. Resolve model IDs from available host configuration
+   or record `unknown` when they are unavailable. Use one explicit judge
+   across both runs.
+2. Default to the current host. Run `list` to verify the requested cases.
+   For each trial, use `prepare` with the current host label (`codex`,
+   `qoder`, `cursor`, `claude-code`, or another lowercase identifier), open
+   an independent session in the returned workspace, and send the exact
+   `next_input`. Keep that same session for later turns. Use `collect` with
+   the reply and any compatible transcript, and continue only while the
+   runner returns a next input. After deterministic checks finish, use
+   `export-packet`, grade the prompt in a separate current-host judge
+   session, then `import-grades`. Keep evaluation coordination separate
+   from each tested session.
+3. Use `run` only when the requester explicitly wants automated Codex CLI
+   trials. Use `judge` to regrade saved evidence with the CLI judge,
+   `calibrate` to qualify the judge, and `compare` to generate a paired
+   report. Read the trial metadata and check results before summarizing.
+   If a rerun is requested, use the saved suite, case, model, judge and
+   pinned Spex commit.
 4. Report scope, model and host, evaluated sample counts, passed and
    failed trials, evidence gaps, and runner or judge errors. Link to
    the evidence, earliest failed check and report. Distinguish observed

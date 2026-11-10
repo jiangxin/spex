@@ -8,51 +8,31 @@ score.
 
 ## Quick start
 
-Use macOS, Git, the project Python environment, and an authenticated Codex
-CLI. The acceptance harness uses the macOS sandbox to constrain code written
-by the evaluated model, with system Git resolved through `xcrun`. The
-automatic path requires a Codex CLI that supports named permissions profiles.
-The profile permits writes to the trial repository, including its Git
-metadata and a trial-local temporary directory. The runner supplies its
-Python environment and shell temporary paths without login shell startup.
-Before a `run`, `judge`, or `calibrate` batch, the runner probes a writable
-Codex state directory, app-server startup, and authentication once, then
-reuses that home for trial execution and judging. Override the state
-directory with `SPEX_EVAL_CODEX_HOME` when needed. Classified startup failures
-such as `state_dir_unwritable`, `app_server_init`, or `authentication` are
-reported once for the batch. Run these examples from the repository root and
-substitute model IDs available to your account.
+The default path evaluates Spex from the current host. Use macOS, Git, and
+the project Python environment. Run commands from the repository root.
 
 ```sh
 .venv/bin/python eval/spex/run.py list --tag smoke
-.venv/bin/python eval/spex/run.py run --tag smoke \
-  --model gpt-6.1-sol --judge-model gpt-6.1-sol
-```
-
-Filter with `--suite python-cli`, `--suite docs`, or `--case CASE`. Use
-`--spex-ref REF` to pin another Git revision. `--timeout` bounds each turn
-and `--repeat` requests independent repetitions. Set `SPEX_EVAL_JUDGE_MODEL`
-to supply a default judge. Specify the same judge for both sides of a
-comparison.
-
-To use natural language, ask a host to load
-[spex-eval](../../.skills/spex-eval/SKILL.md) and run a request such as
-“Run Spex smoke on python-cli using gpt-6.1-sol for execution and judging.”
-The repository keeps the skill in `.skills/`. For automatic discovery,
-install it through the host's skill mechanism. A host can also read the
-file directly from this checkout.
-
-## Current-host trials
-
-Prepare one trial for the host that will execute Spex. Host identifiers are
-lowercase labels such as `codex`, `qoder`, `cursor`, `claude-code`, or
-`other`. Omit `--model` or `--host-version` when they are unknown; the runner
-records `unknown`.
-
-```sh
 .venv/bin/python eval/spex/run.py prepare --suite docs --case analyze-incident \
   --host qoder
 ```
+
+Filter with `--suite python-cli`, `--suite docs`, or `--case CASE`. Use
+`--spex-ref REF` to pin another Git revision. Omit `--model` or
+`--host-version` when they are unknown; the runner records `unknown`.
+
+To use natural language, ask a host to load
+[spex-eval](../../.agents/skills/spex-eval/SKILL.md) and run a request such as
+“Run Spex smoke on python-cli.” The repository keeps the skill in
+`.agents/skills/spex-eval/`. For automatic discovery, install it through the
+host's skill mechanism. A host can also read the file directly from this
+checkout.
+
+## Current-host trials
+
+Host identifiers are lowercase labels such as `codex`, `qoder`, `cursor`,
+`claude-code`, or `other`. The default skill flow is `list` → `prepare` →
+execute in the current host → `collect` → semantic review.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
@@ -90,6 +70,31 @@ trial evidence. Criteria that lack required artifacts, including missing tool
 traces, are already marked insufficient and are not sent to the judge.
 `import-grades` reuses the same score and evidence-reference checks as the
 automatic judge.
+
+## Automated Codex CLI
+
+Use `run` only for explicit Codex CLI automation. It requires an authenticated
+Codex CLI that supports named permissions profiles. The profile permits writes
+to the trial repository, including its Git metadata and a trial-local
+temporary directory. The runner supplies its Python environment and shell
+temporary paths without login shell startup. Before a `run`, `judge`, or
+`calibrate` batch, the runner probes a writable Codex state directory,
+app-server startup, and authentication once, then reuses that home for trial
+execution and judging. Override the state directory with
+`SPEX_EVAL_CODEX_HOME` when needed. Classified startup failures such as
+`state_dir_unwritable`, `app_server_init`, or `authentication` are reported
+once for the batch. The acceptance harness uses the macOS sandbox to constrain
+code written by the evaluated model, with system Git resolved through
+`xcrun`.
+
+```sh
+.venv/bin/python eval/spex/run.py run --tag smoke \
+  --model gpt-6.1-sol --judge-model gpt-6.1-sol
+```
+
+`--timeout` bounds each turn and `--repeat` requests independent repetitions.
+Set `SPEX_EVAL_JUDGE_MODEL` to supply a default judge. Specify the same judge
+for both sides of a comparison.
 
 ## Calibrate, replay, and compare
 
