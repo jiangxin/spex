@@ -79,7 +79,10 @@ The runner does not open host sessions. The portable interface is:
 
 Without `--events`, checks such as `post-action` may be
 `insufficient_evidence`. `summary` classifies those as **evidence gaps**,
-distinct from **observed fails**.
+distinct from **observed fails**. For **manual** `collection`, those pure
+trace gaps no longer force a hard trial verdict of
+`insufficient_evidence` when every other check passed (acceptance
+included); supply `--events` when you need hard proof of post-action.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every

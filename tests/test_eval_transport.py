@@ -234,6 +234,22 @@ def test_classify_checks_splits_fails_and_evidence_gaps():
     assert gap_only["classification"] == "evidence_gap"
 
 
+def test_manual_trace_gaps_do_not_force_hard_insufficient_verdict():
+    turns = [{
+        "turn": 1,
+        "checks": [
+            {"check_id": "one-step", "verdict": "pass"},
+            {"check_id": "post-action", "verdict": "insufficient_evidence"},
+            {"check_id": "edit-guide", "verdict": "pass"},
+        ],
+    }]
+    assert run.trial_verdict(turns, True, collection="manual") == "pass"
+    assert run.trial_verdict(turns, True, collection="automatic") == (
+        "insufficient_evidence"
+    )
+    assert run.trial_verdict(turns, True, collection="") == "insufficient_evidence"
+
+
 def test_cleanup_failed_case_removes_fresh_sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)

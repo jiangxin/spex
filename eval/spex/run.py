@@ -389,17 +389,35 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn) -> No
         })
     metadata["session"] = host.session
     metadata["turn_results"].append({"turn": index + 1, "checks": checks})
-    metadata["verdict"] = trial_verdict(metadata["turn_results"], index + 1 == len(turns))
+    metadata["verdict"] = trial_verdict(
+        metadata["turn_results"],
+        index + 1 == len(turns),
+        collection=str(metadata.get("collection") or ""),
+    )
     write_json(output / "trial.json", metadata)
 
 
-def trial_verdict(turn_results: list, final: bool) -> str:
-    verdicts = {check["verdict"] for turn in turn_results for check in turn["checks"]}
-    if "fail" in verdicts:
+def trial_verdict(
+    turn_results: list, final: bool, *, collection: str = "",
+) -> str:
+    """Aggregate check verdicts into a trial hard verdict.
+
+    For manual collection without Codex-style ``--events``, pure tool-trace
+    checks (``post-action`` / ``no-post-action``) that are only
+    ``insufficient_evidence`` do not force a hard ``insufficient_evidence``
+    verdict — they remain visible as evidence gaps in ``summary``.
+    """
+    checks = [check for turn in turn_results for check in turn.get("checks") or []]
+    if any(check.get("verdict") == "fail" for check in checks):
         return "fail"
     if not final:
         return "pending"
-    if "insufficient_evidence" in verdicts:
+    soft_trace = collection == "manual"
+    for check in checks:
+        if check.get("verdict") != "insufficient_evidence":
+            continue
+        if soft_trace and check.get("check_id") in TRACE_CHECK_IDS:
+            continue
         return "insufficient_evidence"
     return "pass"
 
