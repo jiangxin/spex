@@ -67,8 +67,11 @@ def test_trial_env_prefers_runner_python_on_path(tmp_path):
     workspace_root = tmp_path / "ws"
     (workspace_root / "repo").mkdir(parents=True)
     trial = workspace.Trial(workspace_root, "deadbeef")
-    first = Path(trial.env["PATH"].split(os.pathsep)[0]).resolve()
-    assert first == Path(sys.executable).resolve().parent
+    first = Path(trial.env["PATH"].split(os.pathsep)[0])
+    # Keep the venv bin dir even when sys.executable is a symlink into
+    # Frameworks/Homebrew; resolving would hide the runner environment.
+    assert first == Path(sys.executable).parent
+    assert first.is_dir()
 
 
 @pytest.mark.slow

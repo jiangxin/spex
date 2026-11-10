@@ -191,7 +191,9 @@ class Trial:
         env.pop("PYTHONPATH", None)
         # Prefer the eval runner's interpreter on PATH so `#!/usr/bin/env python3`
         # in spex scripts resolves to a Python that can import the skill modules.
-        python_bin = Path(sys.executable).resolve().parent
+        # Do not resolve() the executable: a .venv/bin/python symlink would
+        # collapse to the base Frameworks/Homebrew prefix and hide the venv.
+        python_bin = Path(sys.executable).parent
         if python_bin.is_dir():
             current = env.get("PATH", os.defpath)
             env["PATH"] = str(python_bin) + os.pathsep + current
