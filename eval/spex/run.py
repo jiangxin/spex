@@ -510,14 +510,21 @@ def export_judge(output: Path) -> dict:
     packet_path = output / "judge-packet.json"
     prompt_path = output / "judge-prompt.txt"
     write_json(packet_path, payload)
-    prompt_path.write_text(exported["prompt"], encoding="utf-8")
+    prompt_text = exported["prompt"]
+    prompt_path.write_text(prompt_text, encoding="utf-8")
     return {
         "trial": str(output),
         "packet": str(packet_path),
         "prompt": str(prompt_path),
+        "prompt_bytes": len(prompt_text.encode("utf-8")),
         "hard_verdict": hard,
         "criteria": len(exported["packet"]["criteria"]),
         "insufficient": len(exported["insufficient"]),
+        "judge_hint": (
+            "Open a separate judge session. Read only judge-prompt.txt; "
+            "do not re-summarize trial evidence. Return grades JSON for "
+            "import-grades."
+        ),
     }
 
 

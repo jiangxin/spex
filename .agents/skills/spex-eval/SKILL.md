@@ -13,8 +13,12 @@ environment if present.
    Spex ref. Default to one smoke evaluation against HEAD for a generic
    request. For a migration comparison, use both specified models and three
    repetitions per case. Resolve model IDs from available host configuration
-   or record `unknown` when they are unavailable. Use one explicit judge
-   across both runs.
+   (Cursor model picker / settings, Codex profile, CLI flags). Pass the
+   resolved id as `prepare --model <id>` and `import-grades --model <id>`;
+   if none is available, record `unknown` and state that explicitly in the
+   final summary. Use one explicit judge across both runs. See
+   [`adapters/README.md`](../../../eval/spex/adapters/README.md) for the
+   host checklist.
 2. Default to the current host. Run `list` to verify the requested cases.
    The first `prepare` allocates a sandbox under
    `eval/spex/runs/YYYY-MM-DD-HH-MM-SS` (git-ignored; the sandbox itself is
@@ -32,9 +36,10 @@ environment if present.
    as `_handoff/<suite>-<case>-turnN.txt` (never under system `/tmp`). Use
    `collect` with that reply and any compatible transcript; continue only
    while the runner returns a next input. After deterministic checks finish,
-   use `export-packet`, grade the prompt in a separate current-host judge
-   session, then `import-grades`. Keep evaluation coordination separate from
-   each tested session.
+   run `export-packet`. In a **separate** judge session, read **only** the
+   returned `judge-prompt.txt` (ignore trial workspace files and do not
+   restate evidence yourself), produce grades JSON, then `import-grades`.
+   Keep evaluation coordination separate from each tested session.
 4. Use `run` only when the requester explicitly wants automated Codex CLI
    trials. Use `judge` to regrade saved evidence with the CLI judge,
    `calibrate` to qualify the judge, and `compare` to generate a paired

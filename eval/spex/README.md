@@ -116,12 +116,18 @@ does not delete the sandbox.
 ```
 
 `export-packet` writes `judge-packet.json` and `judge-prompt.txt` beside the
-trial evidence. Criteria that lack required artifacts, including missing tool
-traces, are already marked insufficient and are not sent to the judge.
+trial evidence and returns `prompt_bytes` plus a `judge_hint`. Open a
+**separate** judge session, read **only** `judge-prompt.txt` (do not
+re-summarize workspace evidence), then feed the grades JSON to
+`import-grades`. Criteria that lack required artifacts, including missing
+tool traces, are already marked insufficient and are not sent to the judge.
 `import-grades` reuses the same score and evidence-reference checks as the
 automatic judge. `summary` writes `manifest.json`, `report.json`, and
 `report.md` at the sandbox root and returns a `cleanup_hint`; delete the
 timestamp directory manually when finished.
+
+Host adapter notes for Cursor / Codex / pure manual live under
+[`adapters/README.md`](adapters/README.md).
 
 ## Automated Codex CLI
 
