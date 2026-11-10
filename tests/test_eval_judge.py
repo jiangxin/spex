@@ -92,3 +92,23 @@ def test_missing_evidence_and_exhausted_repair():
     assert len(result["raw_attempts"]) == 2
     assert final_verdict("pass", result) == "judge_error"
     assert final_verdict("fail", result) == "fail"
+
+
+def test_repair_does_not_hide_invalid_reference_after_invalid_score():
+    packet = {
+        "criteria": [CRITERION, {**CRITERION, "id": "clarity"}],
+        "evidence": {"turn-1:state": {}},
+    }
+    good = {
+        "criterion_id": "coverage", "score": 2, "verdict": "pass",
+        "reason": "The specification covers the required behavior.",
+        "evidence_refs": ["turn-1:state"],
+    }
+    second = {**good, "criterion_id": "clarity"}
+    attempts = iter([
+        [{**good, "score": 3}, {**second, "evidence_refs": ["turn-1:fabricated"]}],
+        [good, second],
+    ])
+    result = grade(packet, "judge", 30, adapter=lambda *_: json.dumps(next(attempts)))
+    assert result["results"] == [good, second]
+    assert result["invalid_reference_attempts"] == 1

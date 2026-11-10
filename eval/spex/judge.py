@@ -21,6 +21,12 @@ for each criterion. Cite only evidence IDs from its turn, including each require
 kind for scored items. Explain the specific evidence behind each judgment.
 """
 KINDS = {"input", "reply", "state", "events", "acceptance"}
+
+
+class InvalidReference(ValueError):
+    """A judgment cites evidence outside the allowed scope."""
+
+
 SECRETS = re.compile(
     r"(?i)(?:bearer\s+[\w.\-]+|(?:api[_ -]?key|password|token|secret)\s*[:=]\s*"
     r"[\"']?[^\s\"',;]+|\b(?:sk-[\w-]+|ghp_[\w-]+|github_pat_[\w-]+)|"
@@ -105,9 +111,27 @@ def required_refs(item):
     return {f"turn-{item['turn']}:{kind}" for kind in item["requires"]}
 
 
+def validate_references(rows, expected, evidence):
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict) or "evidence_refs" not in row:
+            continue
+        identifier = row.get("criterion_id")
+        item = expected.get(identifier) if isinstance(identifier, str) else None
+        allowed = evidence.keys() if item is None else {
+            key for key in evidence if key.startswith(f"turn-{item['turn']}:")
+        }
+        refs = row["evidence_refs"]
+        if (not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs)
+                or not set(refs) <= allowed):
+            raise InvalidReference("Invalid evidence references")
+
+
 def validate(raw, criteria, evidence):
     rows = json.loads(raw)
     expected = {item["id"]: item for item in criteria}
+    validate_references(rows, expected, evidence)
     if not isinstance(rows, list) or len(rows) != len(expected):
         raise ValueError("Expected one result per criterion")
     for row in rows:
@@ -120,10 +144,8 @@ def validate(raw, criteria, evidence):
             raise ValueError("Unexpected or duplicate criterion")
         refs, reason = row["evidence_refs"], row["reason"]
         score, verdict = row["score"], row["verdict"]
-        allowed = {key for key in evidence if key.startswith(f"turn-{item['turn']}:")}
-        if (not isinstance(refs, list) or not set(refs) <= allowed
-                or not isinstance(reason, str) or not reason.strip()):
-            raise ValueError("Invalid evidence references or reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Missing reason")
         if verdict == "insufficient_evidence" and score is None:
             continue
         if (type(score) is not int or score not in range(3) or not refs
@@ -183,7 +205,10 @@ def grade(packet, model, timeout, *, adapter=None):
         except (OSError, subprocess.SubprocessError, TransportError):
             result["error"] = "judge_transport_error"
             return result
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError) as error:
+            if isinstance(error, InvalidReference):
+                count = result.get("invalid_reference_attempts", 0)
+                result["invalid_reference_attempts"] = count + 1
             if attempt == 0:
                 prompt += (
                     "\nThe previous result was invalid. Check the JSON contract and evidence IDs."

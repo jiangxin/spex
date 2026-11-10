@@ -11,8 +11,10 @@ import subprocess
 import sys
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from calibration import evaluate, load_samples
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
 from judge import PROMPT, PROMPT_VERSION, final_verdict, grade, packet_for, rubric_for
 from transport import (
@@ -158,14 +160,14 @@ def trial_verdict(turn_results: list, final: bool) -> str:
     return "pass"
 
 
-def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
-    if not model or metadata["verdict"] in ("pending", "run_error"):
-        return
+def score_trial(output: Path, metadata: dict, model: str, timeout: int) -> dict:
     record = {
         "model": model, "prompt_version": PROMPT_VERSION, "prompt_hash": digest(PROMPT.encode()),
-        "hard_verdict": metadata["verdict"],
+        "hard_verdict": metadata.get("hard_verdict", metadata["verdict"]),
     }
     try:
+        if not IDENTIFIER.fullmatch(metadata["suite"]):
+            raise ValueError("Invalid suite")
         rubric = SUITES / metadata["suite"] / "rubrics.json"
         version, criteria = rubric_for(rubric, metadata["case_id"])
         packet = packet_for(output, metadata, criteria)
@@ -176,9 +178,61 @@ def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
         record.update(grade(packet, model, timeout))
     except (OSError, ValueError, TypeError, KeyError):
         record.update(error="judge_input_error", results=[])
+    record["verdict"] = final_verdict(record["hard_verdict"], record)
+    return record
+
+
+def judge_trial(output: Path, metadata: dict, model: str, timeout: int) -> None:
+    if not model or metadata["verdict"] in ("pending", "run_error"):
+        return
+    record = score_trial(output, metadata, model, timeout)
     metadata["hard_verdict"] = record["hard_verdict"]
-    metadata["verdict"] = record["verdict"] = final_verdict(record["hard_verdict"], record)
+    metadata["verdict"] = record["verdict"]
     write_json(output / "judge.json", record)
+
+
+def replay(run_id: str, model: str, timeout: int) -> dict:
+    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise ValueError("Expected a saved run ID")
+    output = RUNS.resolve() / run_id
+    if output.is_symlink() or not output.is_dir():
+        raise ValueError("Saved run does not exist")
+    files = sorted({*output.glob("trial.json"), *output.glob("*/*/*/trial.json")})
+    if not files:
+        raise ValueError("No saved trials in run")
+    results = []
+    for path in files:
+        if path.resolve() != path:
+            raise ValueError("Unexpected linked trial")
+        metadata = read_json(path)
+        hard = metadata.get("hard_verdict", metadata["verdict"])
+        record = (
+            {"verdict": hard, "skipped": True} if hard in ("pending", "run_error")
+            else score_trial(path.parent, metadata, model, timeout)
+        )
+        results.append({"trial": str(path.parent.relative_to(output)), **record})
+    directory = output / "rejudges" / uuid.uuid4().hex
+    directory.mkdir(parents=True, exist_ok=False)
+    report = {"run": str(output), "model": model, "judgments": results}
+    path = directory / "report.json"
+    write_json(path, report)
+    return {**report, "report": str(path)}
+
+
+def calibrate(args: argparse.Namespace) -> dict:
+    suite_path = HERE / "calibration" / f"{args.split}.json"
+    calibration = load_samples(suite_path, SUITES)
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        grades = list(pool.map(
+            lambda sample: grade(sample["packet"], args.judge_model, args.timeout),
+            calibration["samples"],
+        ))
+    report = evaluate(calibration, grades, args.judge_model, args.split)
+    directory = RUNS / "calibrations"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{uuid.uuid4().hex}.json"
+    write_json(path, report)
+    return {**report, "report": str(path)}
 
 
 def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
@@ -291,10 +345,26 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--reply", type=Path, required=True)
     collect.add_argument("--events", type=Path)
     collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
+    rejudge = sub.add_parser("judge")
+    rejudge.add_argument("run_id")
+    calibration = sub.add_parser("calibrate")
+    calibration.add_argument("--split", choices=("frozen", "development"), default="frozen")
+    calibration.add_argument("--jobs", type=int, default=2)
+    for command in (rejudge, calibration):
+        command.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
+        command.add_argument("--timeout", type=int, default=TIMEOUT)
     return root
 
 
 def execute(args: argparse.Namespace) -> dict:
+    if args.command in ("judge", "calibrate"):
+        if not args.judge_model or args.timeout < 1:
+            raise ValueError("A judge model and positive timeout are required")
+        if args.command == "judge":
+            return replay(args.run_id, args.judge_model, args.timeout)
+        if not 1 <= args.jobs <= 4:
+            raise ValueError("Choose between one and four calibration workers")
+        return calibrate(args)
     if args.command == "collect":
         path = args.trial.resolve()
         if not path.is_relative_to(RUNS.resolve()):
