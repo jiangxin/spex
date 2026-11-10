@@ -40,6 +40,7 @@ from transport import (
 )
 from workspace import (
     IDENTIFIER,
+    WORKSPACE_NAME,
     Case,
     Trial,
     allocate_sandbox,
@@ -72,6 +73,106 @@ def resolve_sandbox(path: Path | None = None) -> Path:
         raise ValueError("Expected a sandbox path under eval/spex/runs")
     verify_sandbox(sandbox, SOURCE)
     return sandbox
+
+
+def iter_trial_paths(sandbox: Path) -> list[Path]:
+    trials = []
+    for path in sorted(sandbox.rglob("trial.json")):
+        if path.is_symlink() or not path.is_file() or path.parent.is_symlink():
+            continue
+        # Evidence lives beside workspace/, never inside the trial workspace tree.
+        if WORKSPACE_NAME in path.relative_to(sandbox).parts:
+            continue
+        trials.append(path)
+    return trials
+
+
+def earliest_non_pass(turn_results: list) -> str | None:
+    for turn in turn_results or []:
+        for check in turn.get("checks") or []:
+            if check.get("verdict") != "pass":
+                return f"turn{turn.get('turn')}:{check.get('check_id')}={check.get('verdict')}"
+    return None
+
+
+def render_summary_markdown(report: dict) -> str:
+    lines = [
+        f"# Spex eval summary: {Path(report['sandbox']).name}",
+        "",
+        f"- Sandbox: `{report['sandbox']}`",
+        f"- Trials: {len(report['trials'])}",
+        f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
+        f"- Cleanup: {report['cleanup_hint']}",
+        "",
+        "| Case | Final | Hard | Earliest non-pass | Path |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for row in report["trials"]:
+        case = f"{row.get('suite')}/{row.get('case_id')}"
+        lines.append(
+            f"| {case} | {row.get('final_verdict')} | {row.get('hard_verdict')} | "
+            f"{row.get('earliest_non_pass') or '—'} | `{row.get('trial')}` |"
+        )
+    lines.extend(["", "Evidence gaps (for example missing tool traces) remain "
+                   "`insufficient_evidence` and are distinct from observed fails.", ""])
+    return "\n".join(lines)
+
+
+def summarize_sandbox(sandbox: Path) -> dict:
+    sandbox = resolve_sandbox(sandbox)
+    rows = []
+    counts: dict[str, int] = {}
+    hosts: set[str] = set()
+    models: set[str] = set()
+    for path in iter_trial_paths(sandbox):
+        metadata = read_json(path)
+        judge_path = path.parent / "judge.json"
+        judge = {}
+        if judge_path.is_file() and not judge_path.is_symlink():
+            judge = read_json(judge_path)
+        final = judge.get("verdict") or metadata.get("verdict")
+        hosts.add(str(metadata.get("host") or "unknown"))
+        models.add(str(metadata.get("model") or "unknown"))
+        row = {
+            "suite": metadata.get("suite"),
+            "case_id": metadata.get("case_id"),
+            "trial": str(path.parent.relative_to(sandbox)),
+            "hard_verdict": metadata.get("verdict"),
+            "final_verdict": final,
+            "host": metadata.get("host"),
+            "model": metadata.get("model"),
+            "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
+        }
+        rows.append(row)
+        counts[str(final)] = counts.get(str(final), 0) + 1
+    report = {
+        "schema_version": 1,
+        "sandbox": str(sandbox),
+        "hosts": sorted(hosts),
+        "models": sorted(models),
+        "trials": rows,
+        "counts": counts,
+        "cleanup_hint": cleanup_hint(sandbox),
+    }
+    write_json(sandbox / "manifest.json", {
+        "schema_version": 1,
+        "sandbox": str(sandbox),
+        "hosts": report["hosts"],
+        "models": report["models"],
+        "trials": [
+            {"suite": row["suite"], "case_id": row["case_id"], "path": row["trial"]}
+            for row in rows
+        ],
+        "cleanup_hint": report["cleanup_hint"],
+    })
+    write_json(sandbox / "report.json", report)
+    (sandbox / "report.md").write_text(render_summary_markdown(report), encoding="utf-8")
+    return {
+        **report,
+        "manifest": str(sandbox / "manifest.json"),
+        "report": str(sandbox / "report.md"),
+        "report_json": str(sandbox / "report.json"),
+    }
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -581,6 +682,11 @@ def parser() -> argparse.ArgumentParser:
     imported.add_argument("trial", type=Path)
     imported.add_argument("--grades", type=Path, required=True)
     imported.add_argument("--model", type=unknownable, default="external")
+    summary = sub.add_parser("summary")
+    summary.add_argument(
+        "sandbox", type=Path,
+        help="Sandbox directory under eval/spex/runs/YYYY-MM-DD-HH-MM-SS",
+    )
     rejudge = sub.add_parser("judge")
     rejudge.add_argument("run_id")
     calibration = sub.add_parser("calibrate")
@@ -615,6 +721,8 @@ def execute(args: argparse.Namespace) -> dict:
         return export_judge(resolve_trial(args.trial))
     if args.command == "import-grades":
         return import_judge(resolve_trial(args.trial), args.grades, args.model)
+    if args.command == "summary":
+        return summarize_sandbox(args.sandbox)
     if args.command == "collect":
         return manual_result(resolve_trial(args.trial), args)
     cases = select_cases(SUITES, suite=args.suite, case_id=args.case, tag=args.tag)
