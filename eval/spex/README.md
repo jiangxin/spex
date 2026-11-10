@@ -37,22 +37,26 @@ The repository keeps the skill in `.skills/`. For automatic discovery,
 install it through the host's skill mechanism. A host can also read the
 file directly from this checkout.
 
-## Manual hosts
+## Current-host trials
 
-Prepare one trial with the actual host and model settings. Manual collection
-supports Codex, Cursor, and Claude Code.
+Prepare one trial for the host that will execute Spex. Host identifiers are
+lowercase labels such as `codex`, `qoder`, `cursor`, `claude-code`, or
+`other`. Omit `--model` or `--host-version` when they are unknown; the runner
+records `unknown`.
 
 ```sh
 .venv/bin/python eval/spex/run.py prepare --suite docs --case analyze-incident \
-  --host claude-code --host-version VERSION --model MODEL \
-  --judge-model gpt-6.1-sol
+  --host qoder
 ```
 
-Open a fresh session in the returned workspace with the returned environment
-and use its exact `next_input`. Ensure the host uses the pinned Spex skill
-path and limits writes to that workspace. Use `--invocation native` only
-when the host has the pinned skill registered for native `/spex` invocation.
-For a GUI host, apply the same environment to the session that launches tools.
+Open an independent session in the returned `workspace` with the returned
+environment and paste the exact `next_input`. Keep that same session for every
+later turn of the trial. Ensure the host uses the pinned Spex skill path and
+limits writes to that workspace. Use `--invocation native` only when the host
+has the pinned skill registered for native `/spex` invocation. For a GUI host,
+apply the same environment to the session that launches tools. When the host
+cannot create the session automatically, use the returned paths and
+`next_input` for a manual handoff (`handoff` is `manual`).
 
 Save the final reply to a text file outside the workspace, then collect it
 using a stable session ID for that trial. Use the same session for subsequent
@@ -65,8 +69,9 @@ turns, and proceed only while collection returns a next input.
 Use `--events FILE` only for a compatible Codex-style JSONL transcript whose
 session ID and final reply agree with the collected turn. Without compatible
 events, checks that require tool traces can report insufficient evidence.
-The prepared temporary workspace remains available after collection for
-inspection. Remove it when finished.
+Collection records deterministic checks only; import semantic grades after the
+trial finishes. The prepared temporary workspace remains available after
+collection for inspection. Remove it when finished.
 
 ## Calibrate, replay, and compare
 

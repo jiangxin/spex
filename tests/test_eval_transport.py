@@ -154,6 +154,7 @@ def test_manual_collection_requires_same_session(runner, tmp_path):
         "--host-version", "1", "--invocation", "native",
     ]))
     assert info["next_input"] == "/spex create Add a setting"
+    assert info["handoff"] == "manual"
     reply = tmp_path / "reply.txt"
     reply.write_text("What type?", encoding="utf-8")
     argv = ["collect", info["trial"], "--reply", str(reply), "--session"]
@@ -167,6 +168,26 @@ def test_manual_collection_requires_same_session(runner, tmp_path):
     assert result["next_input"] is None
     turn = run.read_json(Path(info["trial"]) / "turn-2.json")
     assert "events" not in turn["artifacts"]
+
+
+@pytest.mark.slow
+def test_prepare_accepts_current_hosts_and_unknown_labels(runner):
+    for host in ("qoder", "cursor", "other", "codex"):
+        info = run.execute(runner.parse_args([
+            "prepare", "--case", "clarify", "--host", host, "--invocation", "native",
+        ]))
+        metadata = run.read_json(Path(info["trial"]) / "trial.json")
+        assert info["host"] == host
+        assert info["host_version"] == "unknown"
+        assert info["model"] == "unknown"
+        assert info["handoff"] == "manual"
+        assert info["workspace"].endswith("/repo")
+        assert info["next_input"] == "/spex create Add a setting"
+        assert (Path(info["skill"]) / "SKILL.md").is_file()
+        assert metadata["collection"] == "manual"
+        assert metadata["host"] == host
+    with pytest.raises(SystemExit):
+        runner.parse_args(["prepare", "--case", "clarify", "--host", "Qoder"])
 
 
 @pytest.mark.slow

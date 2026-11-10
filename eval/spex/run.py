@@ -343,10 +343,25 @@ def manual_result(output: Path, args: argparse.Namespace) -> dict:
             raise ValueError("The supplied reply and trace disagree")
         host = trace
     store_turn(output, trial, metadata, host)
-    judge_model = getattr(args, "judge_model", "") or metadata.get("judge_model", "")
-    judge_trial(output, metadata, judge_model, TIMEOUT)
+    # Manual / current-host collection keeps deterministic checks only. Semantic
+    # grades are imported separately so judging does not require Codex CLI.
     write_json(output / "trial.json", metadata)
     return instructions(output, trial, metadata)
+
+
+def host_name(value: str) -> str:
+    if not IDENTIFIER.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            "Host must be a lowercase identifier such as codex, qoder, cursor, or other"
+        )
+    return value
+
+
+def unknownable(value: str) -> str:
+    text = value.strip() or "unknown"
+    if not text or "\n" in text or "\0" in text:
+        raise argparse.ArgumentTypeError("Expected a single-line model or version label")
+    return text[:128]
 
 
 def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
@@ -357,7 +372,10 @@ def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
             message = f"Use the Spex skill at {trial.skill / 'SKILL.md'}.\n{message}"
     return {
         "trial": str(output), "workspace": str(trial.repo), "skill": str(trial.skill),
-        "session": metadata["session"], "verdict": metadata["verdict"], "next_input": message,
+        "host": metadata["host"], "host_version": metadata["host_version"],
+        "model": metadata["model"], "session": metadata["session"],
+        "verdict": metadata["verdict"], "next_input": message,
+        "handoff": "manual",
         "environment": {key: trial.env[key] for key in (
             "HOME", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE",
             "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
@@ -374,7 +392,10 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--case", default="")
         command.add_argument("--tag", default="")
         if name != "list":
-            command.add_argument("--model", required=True)
+            if name == "run":
+                command.add_argument("--model", type=unknownable, required=True)
+            else:
+                command.add_argument("--model", type=unknownable, default="unknown")
             command.add_argument(
                 "--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", "")
             )
@@ -383,10 +404,8 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--repeat", type=int, default=1)
             command.add_argument("--timeout", type=int, default=TIMEOUT)
         if name == "prepare":
-            command.add_argument(
-                "--host", choices=("codex", "cursor", "claude-code"), required=True,
-            )
-            command.add_argument("--host-version", required=True)
+            command.add_argument("--host", type=host_name, required=True)
+            command.add_argument("--host-version", type=unknownable, default="unknown")
             command.add_argument("--invocation", choices=("native", "explicit"), default="explicit")
     collect = sub.add_parser("collect")
     collect.add_argument("trial", type=Path)
