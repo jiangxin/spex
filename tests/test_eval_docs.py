@@ -36,7 +36,7 @@ def test_docs_smoke_has_evidence_rubrics():
 @pytest.mark.parametrize("case_id,skip_commit", [("edit-guide", False), ("analyze-incident", True)])
 def test_docs_acceptance_rejects_unrelated_changes(tmp_path, case_id, skip_commit):
     case = select_cases(EVAL / "suites", suite="docs", case_id=case_id)[0]
-    trial = prepare_trial(REPO, case, parent=tmp_path)
+    trial = prepare_trial(REPO, case, parent=tmp_path / "case")
     target = case.definition["turns"][0]["input"].split()[-1]
     prompt = subprocess.check_output(
         [sys.executable, str(trial.skill / "scripts" / "spex"),

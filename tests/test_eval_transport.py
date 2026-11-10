@@ -336,7 +336,7 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
 ])
 def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, selector):
     case = workspace.select_cases(run.SUITES, suite=suite, case_id=case_id)[0]
-    trial = workspace.prepare_trial(REPO, case, parent=tmp_path)
+    trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case")
     result = run.acceptance(trial, suite, selector)
     assert result["passed"] is False
     assert result["checks"]
@@ -346,7 +346,7 @@ def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, select
 @pytest.mark.skipif(sys.platform != "darwin", reason="Requires the macOS acceptance sandbox")
 def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
     case = workspace.select_cases(run.SUITES)[0]
-    trial = workspace.prepare_trial(REPO, case, parent=tmp_path)
+    trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case")
     canary = tmp_path / "other-trial" / "evidence.json"
     canary.parent.mkdir()
     canary.write_text("fixture canary", encoding="utf-8")

@@ -10,13 +10,75 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9-]*")
+SANDBOX_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?:-\d+)?$")
 SKILL_PATH = "skills/spex"
 TRIAL_TMP = ".spex-eval-tmp"
+WORKSPACE_NAME = "workspace"
+
+
+def sandbox_timestamp(now: datetime | None = None) -> str:
+    """Return a filesystem-safe local timestamp for sandbox directory names."""
+    stamp = now or datetime.now().astimezone()
+    return stamp.strftime("%Y-%m-%d-%H-%M-%S")
+
+
+def allocate_sandbox(runs_root: Path, *, now: datetime | None = None) -> Path:
+    """Create `runs/YYYY-MM-DD-HH-MM-SS` (with -2, -3… on clash) and git-init it."""
+    root = Path(runs_root)
+    root.mkdir(parents=True, exist_ok=True)
+    base = sandbox_timestamp(now)
+    path = root / base
+    suffix = 2
+    while path.exists():
+        path = root / f"{base}-{suffix}"
+        suffix += 1
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        git(path, "init", "--template=", "--initial-branch=main")
+        (path / "_handoff").mkdir()
+    except BaseException:
+        shutil.rmtree(path)
+        raise
+    return path.resolve()
+
+
+def case_dir(
+    sandbox: Path, suite: str, case_id: str, repeat: int | None = None
+) -> Path:
+    """Return the evidence directory for one case under a sandbox."""
+    if not IDENTIFIER.fullmatch(suite) or not IDENTIFIER.fullmatch(case_id):
+        raise ValueError(f"Invalid suite or case id: {suite}/{case_id}")
+    path = Path(sandbox) / suite / case_id
+    if repeat is not None:
+        if repeat < 1:
+            raise ValueError("Repeat must be a positive integer")
+        path = path / str(repeat)
+    return path
+
+
+def verify_sandbox(sandbox: Path, source: Path) -> None:
+    """Ensure the sandbox git toplevel is itself and not the Spex source repo."""
+    sandbox = Path(sandbox).resolve()
+    source = Path(source).resolve()
+    if not SANDBOX_NAME.fullmatch(sandbox.name):
+        raise ValueError(f"Unexpected sandbox directory name: {sandbox.name}")
+    if not (sandbox / ".git").is_dir() or (sandbox / ".git").is_symlink():
+        raise ValueError(f"Sandbox is missing a real git directory: {sandbox}")
+    sand_top = Path(
+        os.fsdecode(git(sandbox, "rev-parse", "--show-toplevel").rstrip(b"\n"))
+    ).resolve()
+    source_top = Path(
+        os.fsdecode(git(source, "rev-parse", "--show-toplevel").rstrip(b"\n"))
+    ).resolve()
+    if sand_top != sandbox:
+        raise ValueError(f"Sandbox git toplevel differs from sandbox: {sand_top}")
+    if sand_top == source_top:
+        raise ValueError("Sandbox git toplevel must not be the Spex source repository")
 
 
 @dataclass(frozen=True)
@@ -190,10 +252,18 @@ def copy_fixture(case: Case, repo: Path) -> None:
     shutil.copytree(case.fixture, repo)
 
 
-def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent=None) -> Trial:
-    """Create a trial whose lifetime is owned by the caller."""
+def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) -> Trial:
+    """Create a trial under ``parent/workspace``. Lifetime is owned by the caller."""
+    if parent is None:
+        raise TypeError("prepare_trial requires parent= under an eval sandbox case directory")
     commit = git(source, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}")
-    directory = Path(tempfile.mkdtemp(prefix="spex-eval-", dir=parent)).resolve()
+    parent = Path(parent).resolve()
+    directory = (parent / WORKSPACE_NAME).resolve()
+    if directory.exists():
+        raise ValueError(f"Trial workspace already exists: {directory}")
+    if not directory.is_relative_to(parent):
+        raise ValueError("Trial workspace escaped the case directory")
+    directory.mkdir(parents=True, exist_ok=False)
     trial = Trial(directory, commit.decode("ascii").strip())
     try:
         (directory / "home").mkdir()

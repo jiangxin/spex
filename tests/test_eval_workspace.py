@@ -1,6 +1,7 @@
 """Tests for Spex eval case discovery and trial preparation."""
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -46,14 +47,40 @@ def test_case_selection_and_manifest_validation(manifest):
         workspace.select_cases(suites)
 
 
+def test_allocate_sandbox_uses_timestamp_and_isolates_git(tmp_path):
+    first = workspace.allocate_sandbox(tmp_path / "runs")
+    second = workspace.allocate_sandbox(tmp_path / "runs")
+    assert workspace.SANDBOX_NAME.fullmatch(first.name)
+    assert first != second
+    assert (first / "_handoff").is_dir()
+    workspace.verify_sandbox(first, REPO)
+    top = workspace.git(first, "rev-parse", "--show-toplevel").rstrip(b"\n")
+    assert Path(os.fsdecode(top)).resolve() == first
+    source_top = workspace.git(REPO, "rev-parse", "--show-toplevel").rstrip(b"\n")
+    assert Path(os.fsdecode(source_top)).resolve() != first
+
+
+def test_allocate_sandbox_adds_numeric_suffix_on_name_clash(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        workspace, "sandbox_timestamp", lambda now=None: "2026-11-10-15-11-12",
+    )
+    root = tmp_path / "runs"
+    one = workspace.allocate_sandbox(root)
+    assert one.name == "2026-11-10-15-11-12"
+    two = workspace.allocate_sandbox(root)
+    assert two.name == "2026-11-10-15-11-12-2"
+
+
 @pytest.mark.slow
 def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_DIR", "/bogus/global.git")
     monkeypatch.setenv("SPEX_CONFIG_FILE", "/bogus/global.toml")
     case = workspace.select_cases(manifest.parent.parent)[0]
-    first = workspace.prepare_trial(REPO, case, parent=tmp_path)
-    second = workspace.prepare_trial(REPO, case, parent=tmp_path)
+    first = workspace.prepare_trial(REPO, case, parent=tmp_path / "case-a")
+    second = workspace.prepare_trial(REPO, case, parent=tmp_path / "case-b")
     assert first.directory != second.directory
+    assert first.directory == (tmp_path / "case-a" / "workspace").resolve()
+    assert second.directory == (tmp_path / "case-b" / "workspace").resolve()
     (first.repo / ".spex").mkdir(exist_ok=True)
     (first.repo / ".spex" / "trial-only").touch()
     assert not (second.repo / ".spex" / "trial-only").exists()
@@ -84,7 +111,7 @@ def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, mon
 @pytest.mark.slow
 def test_trial_rejects_external_root_and_fixture_symlink(manifest, tmp_path):
     case = workspace.select_cases(manifest.parent.parent)[0]
-    trial = workspace.prepare_trial(REPO, case, parent=tmp_path)
+    trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case-a")
     outside = tmp_path / ".spex"
     outside.mkdir()
     with pytest.raises(ValueError, match="Spex roots escape"):
@@ -93,5 +120,5 @@ def test_trial_rejects_external_root_and_fixture_symlink(manifest, tmp_path):
     shutil.rmtree(trial.directory)
     (case.fixture / ".spex").symlink_to(tmp_path, target_is_directory=True)
     with pytest.raises(ValueError, match="Unsupported fixture path"):
-        workspace.prepare_trial(REPO, case, parent=tmp_path)
-    assert not list(tmp_path.glob("spex-eval-*"))
+        workspace.prepare_trial(REPO, case, parent=tmp_path / "case-b")
+    assert not (tmp_path / "case-b" / "workspace").exists()

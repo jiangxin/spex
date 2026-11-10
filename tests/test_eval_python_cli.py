@@ -55,7 +55,7 @@ def acceptance(trial, scenario):
 @pytest.mark.slow
 def test_python_cli_seeded_fixture_and_acceptance(tmp_path):
     case = select_cases(EVAL / "suites", suite="python-cli", case_id="apply-one-step")[0]
-    trial = prepare_trial(REPO, case, parent=tmp_path)
+    trial = prepare_trial(REPO, case, parent=tmp_path / "case")
     listing = subprocess.run(
         [sys.executable, str(trial.skill / "scripts" / "spex"), "list", "--json", "--must-undone"],
         cwd=trial.repo, env=trial.env, capture_output=True, text=True, check=True,
@@ -142,7 +142,7 @@ def test_ambiguous_apply_rejects_completing_an_unselected_spec(tmp_path):
 ])
 def test_seeded_review_reaches_review_status(tmp_path, case_id, review_exit):
     case = select_cases(EVAL / "suites", suite="python-cli", case_id=case_id)[0]
-    trial = prepare_trial(REPO, case, parent=tmp_path)
+    trial = prepare_trial(REPO, case, parent=tmp_path / "case")
     name = "2000-01-01-00-01-greeting-decoration"
 
     def spex(*args):
