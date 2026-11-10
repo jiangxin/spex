@@ -87,12 +87,48 @@ def iter_trial_paths(sandbox: Path) -> list[Path]:
     return trials
 
 
+TRACE_CHECK_IDS = frozenset({"post-action", "no-post-action"})
+
+
 def earliest_non_pass(turn_results: list) -> str | None:
     for turn in turn_results or []:
         for check in turn.get("checks") or []:
             if check.get("verdict") != "pass":
                 return f"turn{turn.get('turn')}:{check.get('check_id')}={check.get('verdict')}"
     return None
+
+
+def classify_checks(metadata: dict) -> dict:
+    """Split non-pass checks into observed fails vs evidence gaps."""
+    observed_fails: list[str] = []
+    evidence_gaps: list[str] = []
+    manual = metadata.get("collection") == "manual"
+    for turn in metadata.get("turn_results") or []:
+        index = turn.get("turn")
+        for check in turn.get("checks") or []:
+            check_id = str(check.get("check_id") or "")
+            label = f"turn{index}:{check_id}={check.get('verdict')}"
+            verdict = check.get("verdict")
+            if verdict == "fail":
+                observed_fails.append(label)
+            elif verdict == "insufficient_evidence":
+                evidence_gaps.append(label)
+                if manual and check_id in TRACE_CHECK_IDS:
+                    # Manual hosts often omit Codex-style --events; treat as gap.
+                    pass
+    if observed_fails and evidence_gaps:
+        kind = "mixed"
+    elif observed_fails:
+        kind = "fail"
+    elif evidence_gaps:
+        kind = "evidence_gap"
+    else:
+        kind = "pass"
+    return {
+        "classification": kind,
+        "observed_fails": observed_fails,
+        "evidence_gaps": evidence_gaps,
+    }
 
 
 def render_summary_markdown(report: dict) -> str:
@@ -102,19 +138,32 @@ def render_summary_markdown(report: dict) -> str:
         f"- Sandbox: `{report['sandbox']}`",
         f"- Trials: {len(report['trials'])}",
         f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
+        f"- Classifications: {json.dumps(report.get('classifications') or {}, sort_keys=True)}",
         f"- Cleanup: {report['cleanup_hint']}",
         "",
-        "| Case | Final | Hard | Earliest non-pass | Path |",
-        "| --- | --- | --- | --- | --- |",
+        "| Case | Final | Class | Observed fails | Evidence gaps | Path |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
+        fails = ", ".join(row.get("observed_fails") or []) or "—"
+        gaps = ", ".join(row.get("evidence_gaps") or []) or "—"
         lines.append(
-            f"| {case} | {row.get('final_verdict')} | {row.get('hard_verdict')} | "
-            f"{row.get('earliest_non_pass') or '—'} | `{row.get('trial')}` |"
+            f"| {case} | {row.get('final_verdict')} | {row.get('classification')} | "
+            f"{fails} | {gaps} | `{row.get('trial')}` |"
         )
-    lines.extend(["", "Evidence gaps (for example missing tool traces) remain "
-                   "`insufficient_evidence` and are distinct from observed fails.", ""])
+    lines.extend([
+        "",
+        "## How to read results",
+        "",
+        "- **fail / observed fails**: deterministic or acceptance checks failed.",
+        "- **evidence_gap / insufficient_evidence**: required artifacts (often "
+        "tool traces via `--events`) were missing. Common for manual "
+        "`collection` without a Codex-style transcript; not proof the workflow "
+        "failed.",
+        "- Hard verdicts still take precedence over semantic judge scores.",
+        "",
+    ])
     return "\n".join(lines)
 
 
@@ -122,6 +171,7 @@ def summarize_sandbox(sandbox: Path) -> dict:
     sandbox = resolve_sandbox(sandbox)
     rows = []
     counts: dict[str, int] = {}
+    classifications: dict[str, int] = {}
     hosts: set[str] = set()
     models: set[str] = set()
     for path in iter_trial_paths(sandbox):
@@ -133,6 +183,7 @@ def summarize_sandbox(sandbox: Path) -> dict:
         final = judge.get("verdict") or metadata.get("verdict")
         hosts.add(str(metadata.get("host") or "unknown"))
         models.add(str(metadata.get("model") or "unknown"))
+        split = classify_checks(metadata)
         row = {
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
@@ -141,10 +192,15 @@ def summarize_sandbox(sandbox: Path) -> dict:
             "final_verdict": final,
             "host": metadata.get("host"),
             "model": metadata.get("model"),
+            "collection": metadata.get("collection"),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
+            **split,
         }
         rows.append(row)
         counts[str(final)] = counts.get(str(final), 0) + 1
+        classifications[split["classification"]] = (
+            classifications.get(split["classification"], 0) + 1
+        )
     report = {
         "schema_version": 1,
         "sandbox": str(sandbox),
@@ -152,6 +208,7 @@ def summarize_sandbox(sandbox: Path) -> dict:
         "models": sorted(models),
         "trials": rows,
         "counts": counts,
+        "classifications": classifications,
         "cleanup_hint": cleanup_hint(sandbox),
     }
     write_json(sandbox / "manifest.json", {
@@ -194,6 +251,26 @@ def fixture_hash(case: Case) -> str:
                           for path in paths}))
 
 
+def prune_empty_parents(path: Path, stop: Path) -> None:
+    """Remove empty directories from path up to (but not including) stop."""
+    stop = stop.resolve()
+    current = path.resolve()
+    while current != stop and stop in current.parents:
+        if not current.is_dir() or any(current.iterdir()):
+            break
+        current.rmdir()
+        current = current.parent
+
+
+def cleanup_failed_case(sandbox: Path, output: Path, *, remove_sandbox: bool) -> None:
+    """Remove a failed case directory; drop a fresh empty sandbox when unused."""
+    if output.exists():
+        shutil.rmtree(output, ignore_errors=True)
+    prune_empty_parents(output.parent, sandbox)
+    if remove_sandbox and sandbox.exists() and not iter_trial_paths(sandbox):
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
 def setup(
     case: Case, output: Path, args: argparse.Namespace, repeat: int = 1,
     *, sandbox: Path,
@@ -202,8 +279,8 @@ def setup(
         if any(check not in EXPECTATIONS for check in turn["checks"]):
             raise ValueError(f"Unknown workflow check in {case.suite}/{case.id}")
     output.mkdir(parents=True, exist_ok=False)
-    trial = prepare_trial(SOURCE, case, args.spex_ref, parent=output)
     try:
+        trial = prepare_trial(SOURCE, case, args.spex_ref, parent=output)
         persist_turn(output, 0, capture(trial))
         write_json(output / "trial.json", {
             "schema_version": 1, "suite": case.suite, "case_id": case.id,
@@ -218,9 +295,8 @@ def setup(
             "turn_results": [], "verdict": "pending",
         })
     except BaseException:
-        shutil.rmtree(trial.directory)
-        if output.exists() and not any(output.iterdir()):
-            output.rmdir()
+        if output.exists():
+            shutil.rmtree(output, ignore_errors=True)
         raise
     return trial
 
@@ -732,9 +808,14 @@ def execute(args: argparse.Namespace) -> dict:
     if not cases or args.command == "prepare" and len(cases) != 1:
         raise ValueError("Select cases for run, or exactly one case for prepare")
     if args.command == "prepare":
+        allocated = args.sandbox is None
         sandbox = resolve_sandbox(args.sandbox)
         output = case_dir(sandbox, cases[0].suite, cases[0].id)
-        trial = setup(cases[0], output, args, sandbox=sandbox)
+        try:
+            trial = setup(cases[0], output, args, sandbox=sandbox)
+        except BaseException:
+            cleanup_failed_case(sandbox, output, remove_sandbox=allocated)
+            raise
         return instructions(output, trial, read_json(output / "trial.json"))
     if args.repeat < 1 or args.timeout < 1:
         raise ValueError("Repeat and timeout must be positive")
@@ -762,7 +843,18 @@ def main() -> int:
     try:
         result = execute(args)
     except (ValueError, OSError, TransportError, subprocess.SubprocessError) as error:
-        print(str(error), file=sys.stderr)
+        payload: dict = {"error": str(error)}
+        sandbox = getattr(args, "sandbox", None)
+        if sandbox is not None:
+            try:
+                payload["sandbox"] = str(Path(sandbox).resolve())
+            except OSError:
+                payload["sandbox"] = str(sandbox)
+        elif getattr(args, "command", None) in ("prepare", "run", "summary"):
+            payload["cleanup_hint"] = (
+                f"Please delete unused sandboxes under {RUNS} manually if any remain"
+            )
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
         return 2
     print(json.dumps(result, ensure_ascii=True, indent=2))
     return 0

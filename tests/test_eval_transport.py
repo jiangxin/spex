@@ -210,6 +210,66 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
+def test_classify_checks_splits_fails_and_evidence_gaps():
+    mixed = run.classify_checks({
+        "collection": "manual",
+        "turn_results": [{
+            "turn": 1,
+            "checks": [
+                {"check_id": "one-step", "verdict": "fail"},
+                {"check_id": "post-action", "verdict": "insufficient_evidence"},
+            ],
+        }],
+    })
+    assert mixed["classification"] == "mixed"
+    assert mixed["observed_fails"] == ["turn1:one-step=fail"]
+    assert mixed["evidence_gaps"] == ["turn1:post-action=insufficient_evidence"]
+    gap_only = run.classify_checks({
+        "collection": "manual",
+        "turn_results": [{
+            "turn": 2,
+            "checks": [{"check_id": "post-action", "verdict": "insufficient_evidence"}],
+        }],
+    })
+    assert gap_only["classification"] == "evidence_gap"
+
+
+def test_cleanup_failed_case_removes_fresh_sandbox(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    output = workspace.case_dir(sandbox, "example", "clarify")
+    output.mkdir(parents=True)
+    (output / "workspace").mkdir()
+    run.cleanup_failed_case(sandbox, output, remove_sandbox=True)
+    assert not output.exists()
+    assert not sandbox.exists()
+
+
+def test_cleanup_failed_case_keeps_shared_sandbox(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    keep = workspace.case_dir(sandbox, "example", "clarify")
+    keep.mkdir(parents=True)
+    run.write_json(keep / "trial.json", {"suite": "example", "case_id": "clarify"})
+    failed = workspace.case_dir(sandbox, "example", "follow-up")
+    failed.mkdir(parents=True)
+    run.cleanup_failed_case(sandbox, failed, remove_sandbox=False)
+    assert not failed.exists()
+    assert sandbox.exists()
+    assert (keep / "trial.json").is_file()
+
+
+def test_main_prints_json_error_on_failure(runner, monkeypatch, capsys):
+    monkeypatch.setattr(
+        sys, "argv",
+        ["run.py", "prepare", "--suite", "missing", "--host", "cursor"],
+    )
+    assert run.main() == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert "error" in payload
+    assert "cleanup_hint" in payload
+
+
 def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)
@@ -217,18 +277,25 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     out.mkdir(parents=True)
     run.write_json(out / "trial.json", {
         "suite": "example", "case_id": "clarify", "verdict": "pass",
-        "host": "cursor", "model": "unknown",
+        "host": "cursor", "model": "unknown", "collection": "manual",
         "turn_results": [{
             "turn": 1,
-            "checks": [{"check_id": "no-code-change", "verdict": "pass"}],
+            "checks": [
+                {"check_id": "no-code-change", "verdict": "pass"},
+                {"check_id": "post-action", "verdict": "insufficient_evidence"},
+            ],
         }],
     })
     result = run.execute(runner.parse_args(["summary", str(sandbox)]))
     assert result["counts"] == {"pass": 1}
+    assert result["classifications"] == {"evidence_gap": 1}
+    assert result["trials"][0]["classification"] == "evidence_gap"
     assert Path(result["report"]).is_file()
     assert Path(result["report_json"]).is_file()
     assert Path(result["manifest"]).is_file()
-    assert "example/clarify" in Path(result["report"]).read_text(encoding="utf-8")
+    report = Path(result["report"]).read_text(encoding="utf-8")
+    assert "example/clarify" in report
+    assert "evidence_gap" in report
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
