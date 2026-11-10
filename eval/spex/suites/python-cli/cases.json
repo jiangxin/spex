@@ -1,0 +1,76 @@
+[
+  {
+    "id": "create",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Add --repeat COUNT to greet.py. COUNT must be an integer from 1 through 5, default 1. Print the formatted greeting on COUNT separate lines. For an invalid count, argparse should report an error to stderr, exit 2 and leave stdout empty. Keep the existing name and --upper behavior. Plan tests for default, repeated output and invalid counts.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      }
+    ]
+  },
+  {
+    "id": "modify",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex modify 2000-01-01-00-00-greeting-format 保留已完成的 --upper 及其测试。仅将尚未实现的 --separator 需求改为 --punctuation，允许用户选择 ! 或 .，默认 !，非法选项由 argparse 拒绝并返回退出码 2。保持现有用法兼容。",
+        "checks": [
+          "no-code-change",
+          "completed-preserved"
+        ],
+        "acceptance": "modify-plan"
+      }
+    ]
+  },
+  {
+    "id": "apply",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "post-action"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ]
+  },
+  {
+    "id": "apply-one-step",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "one-step",
+          "no-post-action"
+        ],
+        "acceptance": "prefix-only"
+      },
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "one-step",
+          "post-action"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ]
+  }
+]

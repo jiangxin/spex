@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "cases": {
+    "create": [
+      {
+        "id": "requirements-covered",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Omits the repeat behavior or contradicts it.",
+          "Covers successful repetition but misses the default, boundary, or failure behavior.",
+          "Covers default and range, repetition, invalid input behavior, and compatibility."
+        ]
+      },
+      {
+        "id": "verifiable-plan",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Missing or unrelated tasks.",
+          "Relevant tasks omit default, error, or repeated-output validation.",
+          "A task pairs the implementation with checks of default, repeated output and invalid inputs."
+        ]
+      }
+    ],
+    "modify": [
+      {
+        "id": "scope-correct",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Retains the superseded separator as a requirement or reopens uppercasing.",
+          "Changes to punctuation but omits a choice, default, or invalid behavior.",
+          "Replaces separator with punctuation choices, default and error behavior while preserving --upper."
+        ]
+      }
+    ],
+    "apply": [
+      {
+        "id": "accurate-summary",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims behavior that contradicts the evidence.",
+          "Reports some results but omits a feature or validation result.",
+          "Accurately summarizes both features and their verification."
+        ]
+      }
+    ],
+    "apply-one-step": [
+      {
+        "id": "first-step-boundary",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims the suffix step is done or contradicts the evidence.",
+          "Reports the prefix step without stating what remains.",
+          "Accurately reports the prefix step completed and suffix step remaining."
+        ]
+      },
+      {
+        "id": "accurate-summary",
+        "turn": 2,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims behavior that contradicts the evidence.",
+          "Reports a result but omits the final scope or verification.",
+          "Accurately summarizes the suffix step and completion of the target spec."
+        ]
+      }
+    ]
+  }
+}

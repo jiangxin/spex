@@ -1,0 +1,16 @@
+[
+  {
+    "id": "step-1",
+    "name": "Add uppercase formatting",
+    "details": "Add --upper and verify both uppercase and unchanged default output.",
+    "completed_at": "2000-01-01T00:00:00+00:00",
+    "commit_title": ""
+  },
+  {
+    "id": "step-2",
+    "name": "Add a custom separator",
+    "details": "Add --separator to replace the comma and space after Hello. Preserve --upper. Test both custom and default outputs.",
+    "completed_at": "",
+    "commit_title": ""
+  }
+]

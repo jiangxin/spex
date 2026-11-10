@@ -1,0 +1,16 @@
+[
+  {
+    "id": "step-1",
+    "name": "Add an optional prefix",
+    "details": "Add --prefix TEXT, default empty. Prepend TEXT verbatim after any --upper conversion. Extend test_greet.py for the prefix and unchanged defaults.",
+    "completed_at": "",
+    "commit_title": ""
+  },
+  {
+    "id": "step-2",
+    "name": "Add an optional suffix",
+    "details": "Add --suffix TEXT, default empty. Append TEXT verbatim after any --upper conversion. Extend test_greet.py for suffix and combined prefix and suffix.",
+    "completed_at": "",
+    "commit_title": ""
+  }
+]
