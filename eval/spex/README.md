@@ -61,6 +61,19 @@ successful preparation's `--sandbox` for the remaining cases.
 
 ## Current-host trials
 
+The default is serial execution. Each worker runs a whole trial through
+grading, with ordered turns and one session per trial. Pass `--jobs N`
+(1–4) to `prepare`, `run`, `judge`, or `calibrate` to configure the
+limit explicitly. Current-host adapters enforce the limit returned by
+`prepare`, and the runner enforces it in automatic execution. Later
+`prepare --sandbox` calls inherit the first setting. Start a new
+sandbox to change it.
+
+Reports record the configured mode and worker limit. Historical runs
+without that setting display `unknown`. Performance summaries group
+repeated samples by execution configuration, and comparisons report
+configuration changes.
+
 Host identifiers are lowercase labels such as `codex`, `qoder`, `cursor`,
 `claude-code`, or `other`. Suites, acceptance checks, rubrics, and the
 `prepare` → `collect` → `export-packet` → `import-grades` path are host
@@ -207,6 +220,8 @@ Set `SPEX_EVAL_JUDGE_MODEL` to supply a default judge. Specify the same judge
 for both sides of a comparison.
 
 ## Calibrate, replay, and compare
+
+Use the sandbox directory name as the run ID for saved evaluations.
 
 ```sh
 .venv/bin/python eval/spex/run.py calibrate --judge-model gpt-6.1-sol

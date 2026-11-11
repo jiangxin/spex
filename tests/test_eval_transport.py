@@ -3,7 +3,9 @@
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -54,6 +56,115 @@ def test_trace_identifies_workflow_commands_and_transport_errors():
         transport.parse_events(trace, "wrong-session")
     with pytest.raises(transport.TransportError, match="rate_limit"):
         transport.parse_events('{"type":"turn.failed","error":{"message":"429 rate limit"}}')
+
+
+@pytest.mark.parametrize("options,limit", [([], 1), (["--jobs", "2"], 2)])
+def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, options, limit):
+    active = set()
+    events = []
+    peak = 0
+    lock = threading.Lock()
+    first_started = threading.Event()
+    second_finished = threading.Event()
+
+    def setup(case, output, args, repeat, **kwargs):
+        nonlocal peak
+        output.mkdir(parents=True)
+        run.write_json(output / "trial.json", {
+            "case": case.definition, "suite": case.suite, "case_id": case.id,
+            "session": "", "turn_results": [], "verdict": "pending", "repeat": repeat,
+            "execution": args.execution,
+        })
+        with lock:
+            active.add(repeat)
+            events.append(("start", repeat))
+            peak = max(peak, len(active))
+        if repeat == 1:
+            first_started.set()
+        return SimpleNamespace(skill=output, repeat=repeat)
+
+    def host(trial, message, *args, **kwargs):
+        return trial.repeat, message
+
+    def collect(output, trial, metadata, host, **kwargs):
+        repeat, message = host
+        with lock:
+            events.append(("first" if message.startswith("$spex") else "second", repeat))
+        metadata["turn_results"].append({})
+        if len(metadata["turn_results"]) == 2:
+            metadata["verdict"] = "pass"
+
+    def judge(output, metadata, *args, **kwargs):
+        repeat = metadata["repeat"]
+        if repeat == 1 and limit == 2:
+            assert second_finished.wait(timeout=5)
+        if repeat == 2 and limit == 2:
+            assert first_started.wait(timeout=5)
+        with lock:
+            events.append(("judged", repeat))
+            active.remove(repeat)
+        if repeat == 2:
+            second_finished.set()
+
+    monkeypatch.setattr(run, "prepare_codex_runtime",
+                        lambda *a, **kw: SimpleNamespace(version="fake", home="fake"))
+    monkeypatch.setattr(run, "verify_trial_workspace", lambda _: None)
+    monkeypatch.setattr(run, "setup", setup)
+    monkeypatch.setattr(run, "codex_turn", host)
+    monkeypatch.setattr(run, "store_turn", collect)
+    monkeypatch.setattr(run, "judge_trial", judge)
+    result = run.execute(runner.parse_args([
+        "run", "--model", "fake", "--judge-model", "fake", "--repeat", "3", *options,
+    ]))
+    assert peak == limit
+    assert [row["repeat"] for row in result["trials"]] == [1, 2, 3]
+    assert events.index(("judged", 1 if limit == 1 else 2)) < events.index(
+        ("start", 2) if limit == 1 else ("judged", 1)
+    )
+    for repeat in range(1, 4):
+        assert [stage for stage, number in events if number == repeat] == [
+            "start", "first", "second", "judged",
+        ]
+    report = run.summarize_sandbox(Path(result["sandbox"]))
+    assert report["execution"] == result["execution"] == run.execution(limit)
+    assert all(row["execution"] == run.execution(limit) for row in report["trials"])
+    assert run.read_json(Path(report["manifest"]))["execution"] == run.execution(limit)
+
+
+@pytest.mark.slow
+def test_prepare_inherits_worker_limit_and_rejects_conflicts(runner):
+    path = run.SUITES / "example" / "cases.json"
+    case, = run.read_json(path)
+    run.write_json(path, [case, {**case, "id": "second"}])
+    command = ["prepare", "--host", "cursor"]
+    first = run.execute(runner.parse_args([*command, "--case", "clarify", "--jobs", "2"]))
+    existing = [*command, "--sandbox", first["sandbox"]]
+    inherited = run.execute(runner.parse_args([*existing, "--case", "second"]))
+    assert first["execution"] == inherited["execution"] == run.execution(2)
+    with pytest.raises(ValueError, match="Use a new sandbox"):
+        run.execute(runner.parse_args([*existing, "--case", "clarify", "--jobs", "1"]))
+    assert Path(first["trial"], "trial.json").is_file()
+
+
+def test_worker_limit_validation(runner):
+    for command in (["prepare", "--host", "cursor"], ["run", "--model", "fake"],
+                    ["judge", "fake"], ["calibrate"]):
+        for count in ("0", "5"):
+            with pytest.raises(SystemExit):
+                runner.parse_args([*command, "--jobs", count])
+
+
+def test_failed_setup_keeps_execution_metadata(runner, monkeypatch):
+    def fail_setup(*args, **kwargs):
+        raise ValueError("bad fixture")
+
+    monkeypatch.setattr(run, "setup", fail_setup)
+    monkeypatch.setattr(run, "prepare_codex_runtime",
+                        lambda *a, **kw: SimpleNamespace(version="fake", home="fake"))
+    result = run.execute(runner.parse_args(["run", "--model", "fake", "--jobs", "2"]))
+    report = run.summarize_sandbox(Path(result["sandbox"]))
+    assert report["counts"] == {"run_error": 1}
+    assert report["trials"][0]["execution"] == run.execution(2)
 
 
 def test_startup_probes_classify_state_app_server_and_auth(tmp_path, monkeypatch):
@@ -323,6 +434,7 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
         "summary", str(sandbox), "--write-improvements", str(backlog),
     ]))
     assert result["counts"] == {"pass": 1}
+    assert result["execution"] == run.execution(None)
     assert result["classifications"] == {"evidence_gap": 1}
     assert result["trials"][0]["classification"] == "evidence_gap"
     assert result["trials"][0]["judge_host"] == "unknown"

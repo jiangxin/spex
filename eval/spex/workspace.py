@@ -21,6 +21,15 @@ TRIAL_TMP = ".spex-eval-tmp"
 WORKSPACE_NAME = "workspace"
 
 
+def saved_run_id(value: str) -> bool:
+    return bool(SANDBOX_NAME.fullmatch(value) or re.fullmatch(r"[a-f0-9]{32}", value))
+
+
+def saved_trial_paths(directory: Path) -> set[Path]:
+    return {path for pattern in ("trial.json", "*/*/trial.json", "*/*/*/trial.json")
+            for path in directory.glob(pattern)}
+
+
 def sandbox_timestamp(now: datetime | None = None) -> str:
     """Return a filesystem-safe local timestamp for sandbox directory names."""
     stamp = now or datetime.now().astimezone()

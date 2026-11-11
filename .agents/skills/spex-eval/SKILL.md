@@ -17,6 +17,12 @@ environment is available.
 ## 1. Resolve the request
 
 - **Default:** all cases in all suites, Spex ref `HEAD`, current Agent host.
+- **Execution:** default to one worker. Finish all turns, collection, and
+  separate grading of the current trial before starting the next trial.
+  Enable multiple workers only when explicitly requested in this
+  invocation. Use two for a request for parallel execution without a
+  count, or use the requested count from one to four. Each worker owns
+  one whole trial. Apply the same rule to regrading and calibration.
 - **Scope args:** translate natural language or explicit args to runner filters.
 
   | Request | Filters |
@@ -40,14 +46,16 @@ Run `list` with the resolved filters. Use every returned `suite/id` pair.
 If the list is empty, report the original filters and stop.
 
 For explicitly requested Codex CLI automation, run `run` with the same
-filters, ref, and models, then go to step 6. For current-host evaluation,
-continue to step 3. Read `eval/spex/adapters/README.md` for host setup.
+filters, ref, models, and `--jobs` setting, then go to step 6. Pass the
+resolved `--jobs` to `judge` or `calibrate` when invoked. For current-host
+evaluation, continue to step 3. Read `eval/spex/adapters/README.md` for setup.
 
 ## 3. Prepare each case
 
 Run `prepare --suite <suite> --case <id> --host <agent> --model <trial-model>`
-with `--spex-ref <ref>`. The first successful prepare returns the batch
-`sandbox`. Pass it to every later prepare with `--sandbox`. Use the
+with `--spex-ref <ref>` and the resolved `--jobs`. The first successful
+prepare returns the batch `sandbox`. Pass it to every later prepare
+with `--sandbox`. Use the
 returned `workspace`, `environment`, `skill`, `trial`, and `next_input`.
 Record preparation errors with their case IDs and continue the batch.
 
@@ -76,6 +84,8 @@ read only the returned `judge-prompt.txt` and produce grades JSON.
 Run `import-grades <trial> --grades <file> --host <judge-agent> --model <judge-model>`.
 Pass `--judge-duration-ms` when the adapter measured the judge session.
 The runner validates grades. The hard verdict takes precedence.
+Keep the worker occupied through grade import or terminal failure.
+Run each trial's turns in order within that worker.
 
 ## 6. Summarize the batch
 
@@ -86,6 +96,8 @@ sandbox was allocated, report the runner errors.
 - Report scope, pinned Spex ref, sample counts, scores, and each trial's
   Agent and model alongside the judge Agent and model. Use `unknown`
   for unavailable identities and `ungraded` when no grading ran.
+- Report the configured execution mode and worker limit. For current-host
+  runs, describe this as the adapter's scheduling configuration.
 - Report observed failures, evidence gaps such as missing tool traces,
   and runner or judge errors. Note missing matching judge calibration
   and any comparison settings that differ.

@@ -12,6 +12,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Step | Requirement |
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
+| Schedule | Respect `execution.jobs` from `prepare`. By default finish every trial, including grading, before starting the next one |
 | Env | Export every key in prepare `environment` (especially `PATH`, `HOME`, `SPEX_CONFIG_FILE`) before invoking Spex |
 | Skill | Follow the pinned `skill` path; write only under `workspace` |
 | Input | Send `next_input` exactly; keep the same session for later turns |

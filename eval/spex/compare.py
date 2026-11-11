@@ -9,8 +9,11 @@ from pathlib import Path
 
 from evidence import digest, encode
 from judge import KINDS, clean, project
+from scheduling import execution, execution_label
+from workspace import saved_trial_paths
 
-AXES = ("host", "host_version", "invocation", "collection", "model", "spex_ref")
+AXES = ("host", "host_version", "invocation", "collection", "model", "spex_ref",
+        "execution", "rejudge_execution")
 JUDGE = ("model", "prompt_hash", "rubric_hash")
 DECIDED = {"pass", "fail"}
 CATEGORIES = {
@@ -23,7 +26,7 @@ def load_run(root, run_id, rejudge_id=None):
     directory = root.resolve() / run_id
     if directory.resolve() != directory:
         raise ValueError("Unexpected linked run")
-    paths = sorted({*directory.glob("trial.json"), *directory.glob("*/*/*/trial.json")})
+    paths = sorted(saved_trial_paths(directory))
     if not paths:
         raise ValueError(f"No saved trials in {run_id}")
     regraded = None
@@ -31,7 +34,8 @@ def load_run(root, run_id, rejudge_id=None):
         path = directory / "rejudges" / rejudge_id / "report.json"
         if path.resolve() != path:
             raise ValueError("Unexpected linked rejudge report")
-        regraded = {row["trial"]: row for row in read(path)["judgments"]}
+        rejudge_report = read(path)
+        regraded = {row["trial"]: row for row in rejudge_report["judgments"]}
     rows = {}
     for path in paths:
         if path.resolve() != path:
@@ -43,6 +47,7 @@ def load_run(root, run_id, rejudge_id=None):
             raise ValueError("Unexpected linked judgment or duplicate trial")
         if regraded is not None:
             judgment = regraded[str(path.parent.relative_to(directory))]
+            row["rejudge_execution"] = rejudge_report.get("execution", execution(None))
         else:
             judgment = read(judge_path) if judge_path.is_file() else {}
         rows[key] = {**row, "judgment": judgment, "path": str(path.parent)}
@@ -78,6 +83,9 @@ def collection_mode(row):
 def pair(key, left, right, calibrations):
     left_settings = {**left, "collection": collection_mode(left)}
     right_settings = {**right, "collection": collection_mode(right)}
+    for settings in (left_settings, right_settings):
+        settings.setdefault("execution", execution(None))
+        settings.setdefault("rejudge_execution", execution(None))
     changes = [axis for axis in AXES if left_settings.get(axis) != right_settings.get(axis)]
     left_config, right_config = (
         tuple(row["judgment"].get(key) for key in JUDGE) for row in (left, right)
@@ -110,6 +118,10 @@ def pair(key, left, right, calibrations):
                          if turn["input"].startswith("/spex ") and len(turn["input"].split()) > 1),
                         "unknown"),
         "changes": changes, "incomparable": issues, "calibrated": calibrated,
+        "execution": [left_settings["execution"], right_settings["execution"]],
+        "rejudge_execution": [
+            left_settings["rejudge_execution"], right_settings["rejudge_execution"],
+        ],
         "verdicts": [row["judgment"].get("verdict", row["verdict"]) for row in (left, right)],
         "paths": [left["path"], right["path"]], "deltas": deltas,
         "hidden": [[row.get(field) for field in ("model", "spex_ref", "trial_directory")]
@@ -260,6 +272,11 @@ def markdown(report):
     for pair in report["pairs"]:
         name = f"{pair['suite']}/{pair['case']} #{pair['repeat']}"
         lines.append(f"- {name}: {' → '.join(pair['verdicts'])}")
+        for field, label in (
+            ("execution", "Trial execution"), ("rejudge_execution", "Rejudge execution"),
+        ):
+            if field in pair["changes"]:
+                lines.append(f"  - {label}: " + " → ".join(map(execution_label, pair[field])))
         if pair["incomparable"]:
             lines.append(f"  - Incomparable: {', '.join(pair['incomparable'])}")
         if len(pair["changes"]) > 1:

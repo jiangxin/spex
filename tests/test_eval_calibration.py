@@ -42,6 +42,7 @@ def test_replay_preserves_original_and_uses_hard_verdict(tmp_path, monkeypatch):
     second = run.replay(run_id, "example", run.TIMEOUT)
     assert calls[0] == calls[1]
     assert first["judgments"] == second["judgments"]
+    assert first["execution"] == second["execution"] == run.execution(1)
     assert first["report"] != second["report"]
     assert first["judgments"][0]["verdict"] == "pass"
     assert run.read_json(output / "trial.json") == metadata
@@ -82,3 +83,4 @@ def test_calibrate_command_writes_report(tmp_path, monkeypatch):
     assert not report["calibrated"]
     path = Path(report.pop("report"))
     assert json.loads(path.read_text()) == report
+    assert report["execution"] == run.execution(1)

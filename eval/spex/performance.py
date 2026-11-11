@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from statistics import median
 
+from scheduling import execution, execution_label
+
 LOG = logging.getLogger(__name__)
 USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
 TIMELINE = re.compile(r"^===== APPLY (task (?:begin|committed|done)|"
@@ -475,7 +477,8 @@ def report_lines(rows: list[dict]) -> list[str]:
                   display(perf["parent_usage"].values()), detail]
         cells = ["unknown" if value is None else str(value) for value in fields]
         lines.append("| " + " | ".join(cells) + " |")
-        key = (case, row["host"], row["model"], row["collection"], row["spex_ref"])
+        setting = execution_label(row.get("execution", execution(None)))
+        key = (case, row["host"], row["model"], row["collection"], row["spex_ref"], setting)
         samples.setdefault(key, []).append(perf["host_duration_ms"])
     lines.extend(["", "Model requests are unknown when the host lacks request-level events. "
                   "Review, fix and checks may overlap.", ""])
@@ -484,10 +487,11 @@ def report_lines(rows: list[dict]) -> list[str]:
         if gaps:
             lines.append(f"- {row['suite']}/{row['case_id']} diagnostics gaps: "
                          + ", ".join(gaps) + ".")
-    for (case, host, model, collection, ref), values in samples.items():
+    for (case, host, model, collection, ref, setting), values in samples.items():
         measured = [value for value in values if value is not None]
         if len(values) > 1 and measured:
-            lines.append(f"- {case} ({host}/{model}, {collection}, {(ref or 'unknown')[:8]}): "
+            lines.append(f"- {case} ({host}/{model}, {collection}, {(ref or 'unknown')[:8]}, "
+                         f"{setting}): "
                          f"host latency for {len(measured)}/{len(values)} samples, "
                          f"median {median(measured)} ms, max {max(measured)} ms.")
     return lines

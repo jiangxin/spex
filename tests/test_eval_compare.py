@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 
 import run  # noqa: E402
-from compare import compare, diagnosis  # noqa: E402
+from compare import compare, diagnosis, markdown  # noqa: E402
 from evidence import persist_turn  # noqa: E402
 
 
@@ -59,6 +59,32 @@ def test_collection_mode_is_a_comparison_axis_with_legacy_defaults():
     candidate = {KEY: trial(host="cursor", model="new", collection="manual")}
     report = compare(baseline, candidate, CALIBRATIONS)
     assert report["pairs"][0]["changes"] == ["model"]
+
+
+def test_comparison_reports_execution_changes():
+    report = compare(
+        {KEY: trial(execution=run.execution(1))},
+        {KEY: trial(execution=run.execution(2), rejudge_execution=run.execution(3))},
+    )
+    assert report["pairs"][0]["changes"] == ["execution", "rejudge_execution"]
+    text = markdown(report)
+    assert "serial (max workers: 1) → parallel (max workers: 2)" in text
+    assert "unknown → parallel (max workers: 3)" in text
+
+
+def test_cli_compares_timestamp_sandboxes(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path)
+    baseline, candidate = "2026-11-11-10-00-00", "2026-11-11-10-01-00"
+    for name, jobs, relative in (
+        (baseline, 1, "docs/edit-guide"),
+        (candidate, 2, "docs/edit-guide/1"),
+    ):
+        directory = tmp_path / name / relative
+        directory.mkdir(parents=True)
+        run.write_json(directory / "trial.json", trial(execution=run.execution(jobs)))
+    report = run.execute(run.parser().parse_args(["compare", baseline, candidate]))
+    assert report["pairs"][0]["changes"] == ["execution"]
+    assert report["pairs"][0]["execution"] == [run.execution(1), run.execution(2)]
 
 
 def test_missing_trace_is_excluded_and_ai_hypothesis_is_grounded(tmp_path):

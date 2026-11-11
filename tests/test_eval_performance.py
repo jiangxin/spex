@@ -140,7 +140,7 @@ def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
 
 def test_report_aggregates_only_available_matching_samples(tmp_path):
     rows = []
-    for index, duration in enumerate((10, 30, None), 1):
+    for index, (duration, jobs) in enumerate(((10, 1), (30, 1), (None, 1), (900, 2)), 1):
         output = tmp_path / str(index)
         output.mkdir()
         host = performance.host_metrics(None, duration, "adapter")
@@ -148,11 +148,13 @@ def test_report_aggregates_only_available_matching_samples(tmp_path):
         rows.append({
             "suite": "suite", "case_id": "case", "trial": str(index),
             "host": "cursor", "model": "model", "collection": "manual", "spex_ref": "abc",
+            "execution": run.execution(jobs),
             "performance": performance.trial_summary(output, {"turn_results": [{}]}),
         })
     report = "\n".join(performance.report_lines(rows))
     assert "[metrics](1/performance.json)" in report
     assert "2/3 samples, median 20.0 ms, max 30 ms" in report
+    assert "3/4 samples" not in report
 
 
 def test_timeout_keeps_host_duration_and_partial_metrics(tmp_path, monkeypatch):

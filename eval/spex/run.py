@@ -9,9 +9,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import performance
@@ -29,6 +29,7 @@ from judge import (
     packet_for,
     rubric_for,
 )
+from scheduling import execution, execution_label, ordered_map, worker_count
 from transport import (
     SESSION_ID,
     CodexRuntime,
@@ -47,6 +48,8 @@ from workspace import (
     allocate_sandbox,
     case_dir,
     prepare_trial,
+    saved_run_id,
+    saved_trial_paths,
     select_cases,
     verify_sandbox,
     verify_trial_workspace,
@@ -85,7 +88,12 @@ def iter_trial_paths(sandbox: Path) -> list[Path]:
         if WORKSPACE_NAME in path.relative_to(sandbox).parts:
             continue
         trials.append(path)
-    return trials
+    return sorted(trials, key=lambda path: trial_order(path.relative_to(sandbox)))
+
+
+def trial_order(relative: Path) -> tuple:
+    return tuple((0, int(part)) if part.isascii() and part.isdecimal() else (1, part)
+                 for part in relative.parts)
 
 
 TRACE_CHECK_IDS = frozenset({"post-action", "no-post-action"})
@@ -341,6 +349,7 @@ def render_summary_markdown(report: dict) -> str:
         "",
         f"- Sandbox: `{report['sandbox']}`",
         f"- Trials: {len(report['trials'])}",
+        f"- Configured execution: {execution_label(report.get('execution', execution(None)))}",
         f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
         f"- Classifications: {json.dumps(report.get('classifications') or {}, sort_keys=True)}",
         (
@@ -377,8 +386,8 @@ def render_summary_markdown(report: dict) -> str:
         "## Trial outcomes",
         "",
         "| Case | Trial agent | Trial model | Judge agent | Judge model | "
-        "Final | Class | Observed fails | Evidence gaps | Path |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "Final | Class | Observed fails | Evidence gaps | Path | Configured execution |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
@@ -390,8 +399,11 @@ def render_summary_markdown(report: dict) -> str:
         gaps = ", ".join(row.get("evidence_gaps") or []) or "—"
         lines.append(
             f"| {case} | {identities} | {row.get('final_verdict')} | {row.get('classification')} | "
-            f"{fails} | {gaps} | `{row.get('trial')}` |"
+            f"{fails} | {gaps} | `{row.get('trial')}` | "
+            f"{execution_label(row.get('execution', execution(None)))} |"
         )
+    if any(row.get("collection") == "manual" for row in report["trials"]):
+        lines.extend(["", "For manual trials, execution describes the adapter's configured limit."])
     performance_rows = [row for row in report["trials"] if "performance" in row]
     if performance_rows:
         lines.extend(performance.report_lines(performance_rows))
@@ -485,6 +497,7 @@ def summarize_sandbox(
             "judge_model": judge_model if judge else "ungraded",
             "collection": metadata.get("collection"),
             "spex_ref": metadata.get("spex_ref"),
+            "execution": metadata.get("execution", execution(None)),
             "performance": performance.trial_summary(path.parent, metadata),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             **split,
@@ -502,6 +515,7 @@ def summarize_sandbox(
         "hosts": sorted(hosts),
         "models": sorted(models),
         "trials": rows,
+        "execution": read_execution(sandbox),
         "counts": counts,
         "classifications": classifications,
         "scores": aggregate_scores(rows),
@@ -513,8 +527,10 @@ def summarize_sandbox(
         "sandbox": str(sandbox),
         "hosts": report["hosts"],
         "models": report["models"],
+        "execution": report["execution"],
         "trials": [
-            {"suite": row["suite"], "case_id": row["case_id"], "path": row["trial"]}
+            {"suite": row["suite"], "case_id": row["case_id"], "path": row["trial"],
+             "execution": row["execution"]}
             for row in rows
         ],
         "scores": report["scores"],
@@ -584,6 +600,37 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def read_execution(sandbox: Path) -> dict:
+    path = sandbox / "execution.json"
+    if path.is_symlink():
+        raise ValueError("Unexpected linked execution configuration")
+    try:
+        config = read_json(path)
+    except FileNotFoundError:
+        return execution(None)
+    jobs = config.get("jobs") if isinstance(config, dict) else None
+    if type(jobs) is not int or not 1 <= jobs <= 4 or config != execution(jobs):
+        raise ValueError("Invalid sandbox execution configuration")
+    return config
+
+
+def configure_execution(sandbox: Path, jobs: int | None) -> dict:
+    config = read_execution(sandbox)
+    if config["jobs"] is None:
+        # Publish a complete file before any other prepare can read it.
+        with tempfile.NamedTemporaryFile(dir=sandbox) as temporary:
+            temporary.write(encode(execution(jobs if jobs is not None else 1)))
+            temporary.flush()
+            try:
+                os.link(temporary.name, sandbox / "execution.json")
+            except FileExistsError:
+                pass
+        config = read_execution(sandbox)
+    if jobs is not None and jobs != config["jobs"]:
+        raise ValueError("Conflicting --jobs for this sandbox. Use a new sandbox.")
+    return config
+
+
 def fixture_hash(case: Case) -> str:
     suite = case.fixture.parent.parent
     paths = [path for path in case.fixture.rglob("*") if path.is_file()]
@@ -633,6 +680,7 @@ def setup(
             "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
             "collection": "manual" if args.command == "prepare" else "automatic",
+            "execution": getattr(args, "execution", execution(None)),
             "invocation": args.invocation, "repeat": repeat, "session": "",
             "judge_model": getattr(args, "judge_model", ""),
             "turn_results": [], "verdict": "pending",
@@ -940,17 +988,20 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
     }
 
 
-def replay(run_id: str, model: str, timeout: int, *, runtime: CodexRuntime | None = None) -> dict:
-    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+def replay(run_id: str, model: str, timeout: int, *, jobs: int = 1,
+           runtime: CodexRuntime | None = None) -> dict:
+    if not saved_run_id(run_id):
         raise ValueError("Expected a saved run ID")
     output = RUNS.resolve() / run_id
     if output.is_symlink() or not output.is_dir():
         raise ValueError("Saved run does not exist")
-    files = sorted({*output.glob("trial.json"), *output.glob("*/*/*/trial.json")})
+    files = sorted(
+        saved_trial_paths(output),
+        key=lambda path: trial_order(path.relative_to(output)),
+    )
     if not files:
         raise ValueError("No saved trials in run")
-    results = []
-    for path in files:
+    def regrade(path):
         if path.resolve() != path:
             raise ValueError("Unexpected linked trial")
         metadata = read_json(path)
@@ -959,10 +1010,14 @@ def replay(run_id: str, model: str, timeout: int, *, runtime: CodexRuntime | Non
             {"verdict": hard, "skipped": True} if hard in ("pending", "run_error")
             else score_trial(path.parent, metadata, model, timeout, runtime=runtime)
         )
-        results.append({"trial": str(path.parent.relative_to(output)), **record})
+        return {"trial": str(path.parent.relative_to(output)), **record}
+
+    results = ordered_map(regrade, files, jobs)
     directory = output / "rejudges" / uuid.uuid4().hex
     directory.mkdir(parents=True, exist_ok=False)
-    report = {"run": str(output), "model": model, "judgments": results}
+    report = {
+        "run": str(output), "model": model, "judgments": results, "execution": execution(jobs),
+    }
     path = directory / "report.json"
     write_json(path, report)
     return {**report, "report": str(path)}
@@ -975,14 +1030,12 @@ def calibrate(args: argparse.Namespace, *, runtime: CodexRuntime | None = None) 
     if runtime is not None:
         def adapter(prompt, judge_model, judge_timeout, current=runtime):
             return codex_judge(prompt, judge_model, judge_timeout, runtime=current)
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        grades = list(pool.map(
-            lambda sample: grade(
-                sample["packet"], args.judge_model, args.timeout, adapter=adapter,
-            ),
-            calibration["samples"],
-        ))
+    grades = ordered_map(
+        lambda sample: grade(sample["packet"], args.judge_model, args.timeout, adapter=adapter),
+        calibration["samples"], args.jobs,
+    )
     report = evaluate(calibration, grades, args.judge_model, args.split)
+    report["execution"] = execution(args.jobs)
     directory = RUNS / "calibrations"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{uuid.uuid4().hex}.json"
@@ -992,7 +1045,8 @@ def calibrate(args: argparse.Namespace, *, runtime: CodexRuntime | None = None) 
 
 def compare_runs(args: argparse.Namespace) -> dict:
     ids = (args.baseline, args.candidate, args.baseline_rejudge, args.candidate_rejudge)
-    if any(value and not re.fullmatch(r"[a-f0-9]{32}", value) for value in ids):
+    if (not all(saved_run_id(value) for value in ids[:2])
+            or any(value and not re.fullmatch(r"[a-f0-9]{32}", value) for value in ids[2:])):
         raise ValueError("Expected saved run and rejudge IDs")
     if args.timeout < 1:
         raise ValueError("Timeout must be positive")
@@ -1055,6 +1109,8 @@ def automatic(
         manifest = output / "trial.json"
         result = read_json(manifest) if manifest.is_file() else {
             "suite": case.suite, "case_id": case.id, "repeat": repeat, "model": args.model,
+            "host": args.host, "spex_ref": args.spex_ref, "collection": "automatic",
+            "execution": args.execution,
         }
         result.update(verdict="run_error", error=(
             str(error) if isinstance(error, TransportError) else "fixture_or_capture_error"
@@ -1064,6 +1120,7 @@ def automatic(
         runtime=getattr(args, "codex_runtime", None),
     )
     result["duration_ms"] = round((time.monotonic() - started) * 1000)
+    output.mkdir(parents=True, exist_ok=True)
     write_json(output / "trial.json", result)
     performance.update(output, automatic_total_ms=result["duration_ms"])
     return result
@@ -1134,6 +1191,7 @@ def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
         "model": metadata["model"], "session": metadata["session"],
         "verdict": metadata["verdict"], "next_input": message,
         "handoff": "manual",
+        "execution": metadata.get("execution", execution(None)),
         "cleanup_hint": cleanup_hint(sandbox),
         "environment": {key: trial.env[key] for key in (
             "HOME", "PATH", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE",
@@ -1162,6 +1220,8 @@ def parser() -> argparse.ArgumentParser:
         if name == "run":
             command.add_argument("--repeat", type=int, default=1)
             command.add_argument("--timeout", type=int, default=TIMEOUT)
+        if name in ("run", "prepare"):
+            command.add_argument("--jobs", type=worker_count, default=1 if name == "run" else None)
         if name == "prepare":
             command.add_argument("--host", type=host_name, required=True)
             command.add_argument("--host-version", type=unknownable, default="unknown")
@@ -1205,7 +1265,8 @@ def parser() -> argparse.ArgumentParser:
     rejudge.add_argument("run_id")
     calibration = sub.add_parser("calibrate")
     calibration.add_argument("--split", choices=("frozen", "development"), default="frozen")
-    calibration.add_argument("--jobs", type=int, default=2)
+    for command in (rejudge, calibration):
+        command.add_argument("--jobs", type=worker_count, default=1)
     comparison = sub.add_parser("compare")
     comparison.add_argument("baseline")
     comparison.add_argument("candidate")
@@ -1227,9 +1288,9 @@ def execute(args: argparse.Namespace) -> dict:
             RUNS / ".codex-home", timeout=min(args.timeout, 60),
         )
         if args.command == "judge":
-            return replay(args.run_id, args.judge_model, args.timeout, runtime=runtime)
-        if not 1 <= args.jobs <= 4:
-            raise ValueError("Choose between one and four calibration workers")
+            return replay(
+                args.run_id, args.judge_model, args.timeout, jobs=args.jobs, runtime=runtime,
+            )
         return calibrate(args, runtime=runtime)
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
@@ -1254,9 +1315,13 @@ def execute(args: argparse.Namespace) -> dict:
         sandbox = resolve_sandbox(args.sandbox)
         output = case_dir(sandbox, cases[0].suite, cases[0].id)
         try:
+            args.execution = configure_execution(sandbox, args.jobs)
             trial = setup(cases[0], output, args, sandbox=sandbox)
         except BaseException:
-            cleanup_failed_case(sandbox, output, remove_sandbox=allocated)
+            if allocated:
+                cleanup_failed_case(sandbox, output, remove_sandbox=True)
+            else:
+                prune_empty_parents(output.parent, sandbox)
             raise
         return instructions(output, trial, read_json(output / "trial.json"))
     if args.repeat < 1 or args.timeout < 1:
@@ -1267,15 +1332,20 @@ def execute(args: argparse.Namespace) -> dict:
     args.codex_runtime = runtime
     args.host, args.host_version, args.invocation = "codex", runtime.version, "explicit"
     sandbox = resolve_sandbox(None)
-    rows = [
-        automatic(
+    args.execution = configure_execution(sandbox, args.jobs)
+
+    def run_trial(item):
+        case, repeat = item
+        return automatic(
             case, case_dir(sandbox, case.suite, case.id, repeat), args, repeat,
             sandbox=sandbox,
         )
-        for case in cases for repeat in range(1, args.repeat + 1)
-    ]
+
+    items = ((case, repeat) for case in cases for repeat in range(1, args.repeat + 1))
+    rows = ordered_map(run_trial, items, args.jobs)
     return {
         "run": str(sandbox), "sandbox": str(sandbox), "trials": rows,
+        "execution": args.execution,
         "codex_home": str(runtime.home), "cleanup_hint": cleanup_hint(sandbox),
     }
 
