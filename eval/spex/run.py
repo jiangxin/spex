@@ -489,7 +489,7 @@ def summarize_sandbox(
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
             "trial": str(path.parent.relative_to(sandbox)),
-            "hard_verdict": metadata.get("verdict"),
+            "hard_verdict": metadata.get("hard_verdict", metadata.get("verdict")),
             "final_verdict": final,
             "host": metadata.get("host"),
             "model": metadata.get("model"),

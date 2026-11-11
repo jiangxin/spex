@@ -404,7 +404,8 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     out = workspace.case_dir(sandbox, "example", "clarify")
     out.mkdir(parents=True)
     run.write_json(out / "trial.json", {
-        "suite": "example", "case_id": "clarify", "verdict": "pass",
+        "suite": "example", "case_id": "clarify", "verdict": "fail",
+        "hard_verdict": "pass",
         "host": "cursor", "model": "unknown", "collection": "manual",
         "turn_results": [{
             "turn": 1,
@@ -417,14 +418,14 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     run.write_json(out / "judge.json", {
         "source": "external",
         "model": "external",
-        "verdict": "pass",
+        "verdict": "fail",
         "hard_verdict": "pass",
         "results": [
             {
                 "criterion_id": "scope-correct",
-                "score": 2,
-                "verdict": "pass",
-                "reason": "ok",
+                "score": 1,
+                "verdict": "fail",
+                "reason": "The reply omitted the scope of the change.",
                 "evidence_refs": ["turn-1:state"],
             }
         ],
@@ -433,17 +434,19 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     result = run.execute(runner.parse_args([
         "summary", str(sandbox), "--write-improvements", str(backlog),
     ]))
-    assert result["counts"] == {"pass": 1}
+    assert result["counts"] == {"fail": 1}
     assert result["execution"] == run.execution(None)
     assert result["classifications"] == {"evidence_gap": 1}
     assert result["trials"][0]["classification"] == "evidence_gap"
+    assert result["trials"][0]["hard_verdict"] == "pass"
     assert result["trials"][0]["judge_host"] == "unknown"
     assert result["trials"][0]["judge_model"] == "unknown"
-    assert result["scores"]["score_sum"] == 2
+    assert result["scores"]["score_sum"] == 1
     assert result["scores"]["score_max"] == 2
-    assert result["scores"]["score_ratio"] == 1.0
-    assert result["improvements"]
-    assert result["improvements"][0]["category"] == "efficiency"
+    assert result["scores"]["score_ratio"] == 0.5
+    assert [item["category"] for item in result["improvements"]] == [
+        "functionality", "efficiency",
+    ]
     assert Path(result["report"]).is_file()
     assert Path(result["report_json"]).is_file()
     assert Path(result["manifest"]).is_file()
@@ -456,7 +459,7 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert "example/clarify" in report
     assert "evidence_gap" in report
     assert "## Score summary" in report
-    assert "Semantic score total: 2/2" in report
+    assert "Semantic score total: 1/2" in report
     assert "## Spex skill improvements" in report
     assert "### P2" in report
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
