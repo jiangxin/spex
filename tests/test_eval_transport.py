@@ -304,6 +304,8 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
         }],
     })
     run.write_json(out / "judge.json", {
+        "source": "external",
+        "model": "external",
         "verdict": "pass",
         "hard_verdict": "pass",
         "results": [
@@ -323,6 +325,8 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert result["counts"] == {"pass": 1}
     assert result["classifications"] == {"evidence_gap": 1}
     assert result["trials"][0]["classification"] == "evidence_gap"
+    assert result["trials"][0]["judge_host"] == "unknown"
+    assert result["trials"][0]["judge_model"] == "unknown"
     assert result["scores"]["score_sum"] == 2
     assert result["scores"]["score_max"] == 2
     assert result["scores"]["score_ratio"] == 1.0
@@ -346,6 +350,45 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
+def test_summary_reports_trial_and_judge_identities(runner, monkeypatch):
+    sandbox = run.resolve_sandbox(None)
+    automatic = workspace.case_dir(sandbox, "example", "automatic")
+    manual = workspace.case_dir(sandbox, "example", "manual")
+    trials = [
+        (automatic, "codex", "trial-one"),
+        (manual, "cursor", "trial-two"),
+    ]
+    for directory, host, model in trials:
+        directory.mkdir(parents=True)
+        run.write_json(directory / "trial.json", {
+            "suite": "example", "case_id": directory.name, "verdict": "pass",
+            "host": host, "model": model,
+        })
+
+    rubric = run.SUITES / "example" / "rubrics.json"
+    run.write_json(rubric, {})
+    monkeypatch.setattr(run, "rubric_for", lambda *_: (1, []))
+    monkeypatch.setattr(run, "packet_for", lambda *_: {"evidence": {}})
+    monkeypatch.setattr(run, "grade", lambda *_, **__: {"results": []})
+    metadata = run.read_json(automatic / "trial.json")
+    run.judge_trial(automatic, metadata, "judge-one", 30)
+    run.write_json(manual / "judge.json", {
+        "host": "qoder", "model": "judge-two", "source": "external",
+    })
+
+    result = run.summarize_sandbox(sandbox)
+    rows = run.read_json(Path(result["report_json"]))["trials"]
+    assert [
+        (row["host"], row["model"], row["judge_host"], row["judge_model"]) for row in rows
+    ] == [
+        ("codex", "trial-one", "codex", "judge-one"),
+        ("cursor", "trial-two", "qoder", "judge-two"),
+    ]
+    report = Path(result["report"]).read_text(encoding="utf-8")
+    assert "| example/automatic | codex | trial-one | codex | judge-one |" in report
+    assert "| example/manual | cursor | trial-two | qoder | judge-two |" in report
+
+
 def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)
@@ -366,6 +409,8 @@ def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch)
     assert result["improvements"][0]["priority"] == "P0"
     assert result["improvements"][0]["category"] == "functionality"
     assert "new-plan" in result["improvements"][0]["summary"]
+    assert result["trials"][0]["judge_host"] == "ungraded"
+    assert result["trials"][0]["judge_model"] == "ungraded"
     report = Path(result["report"]).read_text(encoding="utf-8")
     assert "### P0" in report
     assert "functionality" in report
@@ -488,12 +533,14 @@ def test_export_packet_and_import_external_grades(runner, tmp_path):
         "evidence_refs": ["turn-1:state"],
     }]), encoding="utf-8")
     imported = run.execute(runner.parse_args([
-        "import-grades", info["trial"], "--grades", str(grades), "--model", "host-judge",
+        "import-grades", info["trial"], "--grades", str(grades),
+        "--host", "codex", "--model", "host-judge",
     ]))
     assert imported["hard_verdict"] == "pass"
     assert imported["verdict"] == "insufficient_evidence"
     judgment = run.read_json(Path(info["trial"]) / "judge.json")
     assert judgment["source"] == "external"
+    assert judgment["host"] == "codex"
     assert judgment["model"] == "host-judge"
     assert {row["criterion_id"] for row in judgment["results"]} == {"coverage", "trace"}
 

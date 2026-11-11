@@ -44,11 +44,20 @@ to pin another Git revision. Omit `--model` or `--host-version` when they are
 unknown; the runner records `unknown`.
 
 To use natural language, ask a host to load
-[spex-eval](../../.agents/skills/spex-eval/SKILL.md) and run a request such as
-“Run Spex smoke on python-cli.” The repository keeps the skill in
-`.agents/skills/spex-eval/`. For automatic discovery, install it through the
-host's skill mechanism. A host can also read the file directly from this
-checkout.
+[spex-eval](../../.agents/skills/spex-eval/SKILL.md). The skill defaults to all
+cases in all suites against HEAD on the current host. Narrow the scope with
+natural language such as “Run Spex smoke on python-cli” or explicit filters.
+Filters match by intersection.
+
+| Scope | Runner command after `.venv/bin/python eval/spex/run.py` |
+| --- | --- |
+| All suites and cases | `list` |
+| All docs cases | `list --suite docs` |
+| One case | `list --suite docs --case analyze-incident` |
+| All smoke cases | `list --tag smoke` |
+
+For current-host runs, call `prepare` once per listed case and reuse the first
+successful preparation's `--sandbox` for the remaining cases.
 
 ## Current-host trials
 
@@ -115,7 +124,7 @@ does not delete the sandbox.
 ```sh
 .venv/bin/python eval/spex/run.py export-packet "$trial"
 .venv/bin/python eval/spex/run.py import-grades "$trial" --grades "$grades" \
-  --model gpt-6.1-sol
+  --host codex --model gpt-6.1-sol
 .venv/bin/python eval/spex/run.py summary "$sandbox"
 ```
 
@@ -135,8 +144,11 @@ tool traces, are already marked insufficient and are not sent to the judge.
 `import-grades` reuses the same score and evidence-reference checks as the
 automatic judge. `summary` writes `manifest.json`, `report.json`, and
 `report.md` at the sandbox root and returns a `cleanup_hint`; delete the
-timestamp directory manually when finished. `report.md` includes a
-**Score summary** (per-trial 0–2 rubric totals and sandbox `score_sum` /
+timestamp directory manually when finished. Both reports list the trial and
+judge Agent hosts and model IDs for each case. Use `import-grades --host`
+and `--model` for the judge's identity. Missing identities appear as
+`unknown`, and trials without a judge record show `ungraded`.
+`report.md` includes a **Score summary** (per-trial 0–2 rubric totals and sandbox `score_sum` /
 `score_max`) plus a prioritized **Spex skill improvements** section
 derived from hard fails, non-trace evidence gaps, weak semantic scores,
 and host trace friction. Pass `--write-improvements` (optional path;

@@ -375,15 +375,20 @@ def render_summary_markdown(report: dict) -> str:
         "",
         "## Trial outcomes",
         "",
-        "| Case | Final | Class | Observed fails | Evidence gaps | Path |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Case | Trial agent | Trial model | Judge agent | Judge model | "
+        "Final | Class | Observed fails | Evidence gaps | Path |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
+        identities = " | ".join(
+            str(row.get(field) or "unknown").replace("|", r"\|")
+            for field in ("host", "model", "judge_host", "judge_model")
+        )
         fails = ", ".join(row.get("observed_fails") or []) or "—"
         gaps = ", ".join(row.get("evidence_gaps") or []) or "—"
         lines.append(
-            f"| {case} | {row.get('final_verdict')} | {row.get('classification')} | "
+            f"| {case} | {identities} | {row.get('final_verdict')} | {row.get('classification')} | "
             f"{fails} | {gaps} | `{row.get('trial')}` |"
         )
     lines.extend([
@@ -448,6 +453,10 @@ def summarize_sandbox(
         judge = {}
         if judge_path.is_file() and not judge_path.is_symlink():
             judge = read_json(judge_path)
+        judge_host = judge.get("host") or "unknown"
+        judge_model = judge.get("model") or "unknown"
+        if judge.get("source") == "external" and judge_model == "external":
+            judge_model = "unknown"
         final = judge.get("verdict") or metadata.get("verdict")
         hosts.add(str(metadata.get("host") or "unknown"))
         models.add(str(metadata.get("model") or "unknown"))
@@ -467,6 +476,8 @@ def summarize_sandbox(
             "final_verdict": final,
             "host": metadata.get("host"),
             "model": metadata.get("model"),
+            "judge_host": judge_host if judge else "ungraded",
+            "judge_model": judge_model if judge else "ungraded",
             "collection": metadata.get("collection"),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             **split,
@@ -711,7 +722,8 @@ def score_trial(
     *, runtime: CodexRuntime | None = None,
 ) -> dict:
     record = {
-        "model": model, "prompt_version": PROMPT_VERSION, "prompt_hash": digest(PROMPT.encode()),
+        "host": "codex", "model": model,
+        "prompt_version": PROMPT_VERSION, "prompt_hash": digest(PROMPT.encode()),
         "hard_verdict": metadata.get("hard_verdict", metadata["verdict"]),
     }
     try:
@@ -812,13 +824,14 @@ def export_judge(output: Path) -> dict:
     }
 
 
-def import_judge(output: Path, grades: Path, model: str) -> dict:
+def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown") -> dict:
     metadata = read_json(output / "trial.json")
     packet, version, criteria = trial_packet(output, metadata)
     rubric = SUITES / metadata["suite"] / "rubrics.json"
     hard = metadata.get("hard_verdict", metadata["verdict"])
     record = {
-        "model": model or "external",
+        "host": host,
+        "model": model or "unknown",
         "source": "external",
         "prompt_version": PROMPT_VERSION,
         "prompt_hash": digest(PROMPT.encode()),
@@ -1066,7 +1079,8 @@ def parser() -> argparse.ArgumentParser:
     imported = sub.add_parser("import-grades")
     imported.add_argument("trial", type=Path)
     imported.add_argument("--grades", type=Path, required=True)
-    imported.add_argument("--model", type=unknownable, default="external")
+    imported.add_argument("--host", type=host_name, default="unknown", help="Judge agent host")
+    imported.add_argument("--model", type=unknownable, default="unknown", help="Judge model ID")
     summary = sub.add_parser("summary")
     summary.add_argument(
         "sandbox", type=Path,
@@ -1116,7 +1130,7 @@ def execute(args: argparse.Namespace) -> dict:
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
     if args.command == "import-grades":
-        return import_judge(resolve_trial(args.trial), args.grades, args.model)
+        return import_judge(resolve_trial(args.trial), args.grades, args.model, host=args.host)
     if args.command == "summary":
         return summarize_sandbox(
             args.sandbox,
