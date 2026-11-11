@@ -9,7 +9,8 @@ score.
 ## Quick start
 
 The default path evaluates Spex from the current host. Use macOS, Git, and
-system Python 3.11 or newer. Run commands from the repository root.
+system Python 3.9 or newer. Python 3.11+ is recommended for full TOML
+support. Run commands from the repository root.
 
 ```sh
 python3 eval/spex/run.py list --tag smoke

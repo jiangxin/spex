@@ -26,7 +26,7 @@ Specification documented in `references/SKILLS-SPEC.md`.
 
 - `skills/spex/SKILL.md` — Skill entry point (front-matter + instructions).
 - `skills/spex/commands/` — Sub-command definitions (Markdown).
-- `skills/spex/scripts/` — Executable helper scripts, written in Python (3.11+).
+- `skills/spex/scripts/` — Executable helper scripts, written in Python (3.9+).
 - `skills/spex/scripts/common.py` — Shared library (see API below).
 - `skills/spex/references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
@@ -34,7 +34,8 @@ Specification documented in `references/SKILLS-SPEC.md`.
 ## Python Environments
 
 - Run repository skills, including `spex`, `git-commit`, and `spex-eval`,
-  with the system `python3` (3.11+) and the Python standard library. Do not
+  with the system `python3` (3.9+, with 3.11+ recommended for full TOML
+  support) and the Python standard library. Do not
   introduce third-party Python runtime dependencies or require the project
   `.venv` to run a skill.
 - Create and use `.venv` on demand for repository tests, coverage, Python lint,

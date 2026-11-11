@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
+
+
+class ConfigParseError(ValueError):
+    """A configuration file could not be read by the fallback parser."""
 
 
 class SpexConfig(TypedDict, total=False):
@@ -220,9 +229,26 @@ def _find_spex_tomls(
 
 
 def _load_toml_config(path: Path) -> dict | None:
-    """Read a single TOML file. Return None if missing or unparseable."""
+    """Read a TOML file, raising on syntax the fallback cannot parse."""
     if not path.is_file():
         return None
+    if tomllib is None:
+        from toml_subset import ParseError, loads
+
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            return None
+        try:
+            return loads(raw.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            line = raw.count(b"\n", 0, exc.start) + 1
+            detail = f"line {line}: invalid UTF-8"
+        except ParseError as exc:
+            detail = str(exc)
+        raise ConfigParseError(
+            f"{path}: {detail}. Use Python 3.11 or newer for full TOML support."
+        )
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
@@ -489,7 +515,7 @@ def _render_toml_value(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        return f'"{value}"'
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", r"\u007f")
     return str(value)
 
 
@@ -540,11 +566,11 @@ def safe_update_toml(toml_path, dry_run=False):
     Returns True if the file was (or would be) modified.
     """
     existing = _load_toml_config(toml_path)
-    user_config = (existing or {}).get("spex", {})
+    if existing is None:
+        return False
+    user_config = existing.get("spex", {})
     force = {"spex_root"} if "spex_root" in user_config else set()
     new_content = generate_updated_toml(user_config, force_keys=force)
-    if not toml_path.is_file():
-        return False
     old_content = toml_path.read_text(encoding="utf-8")
     if new_content != old_content:
         if not dry_run:

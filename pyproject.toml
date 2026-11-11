@@ -3,7 +3,7 @@
 # Version is stored in skills/spex/pyproject.toml and SKILL.md — do not edit here.
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py39"
 line-length = 100
 extend-include = ["skills/spex/scripts/spex"]
 

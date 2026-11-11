@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from config import (
+    ConfigParseError,
     ProjectContext,
     _deep_merge,
     _find_spex_tomls,
@@ -21,6 +22,7 @@ from config import (
     get_project_context,
     load_config,
     resolve_spex_root_and_roots,
+    safe_update_toml,
     set_spex_config_file,
 )
 
@@ -61,6 +63,59 @@ class TestLoadTomlConfig:
 
         result = _load_toml_config(p)
         assert result == {}
+
+    def test_fallback_matches_tomllib(self, tmp_path, monkeypatch):
+        tomllib = pytest.importorskip("tomllib")
+        config_file = tmp_path / ".spex.toml"
+        settings = r"""[spex] # active settings
+spex_root = "dir#name/\u4e2d/\"quoted\"/\\tmp" # trailing comment
+main_branch_name = 'release#2026'
+debug = true
+branch_management = false
+retries = +1_000
+[other]
+offset = -12
+emoji = "\U0001F600"
+"""
+        monkeypatch.setattr("config.tomllib", None)
+        for content in (generate_default_toml(), settings):
+            config_file.write_bytes(content.replace("\n", "\r\n").encode("utf-8"))
+            assert _load_toml_config(config_file) == tomllib.loads(content)
+
+        assert safe_update_toml(config_file)
+        updated = config_file.read_text(encoding="utf-8")
+        assert _load_toml_config(config_file) == tomllib.loads(updated)
+        assert tomllib.loads(updated)["spex"] == tomllib.loads(settings)["spex"]
+
+    @pytest.mark.parametrize(
+        "invalid",
+        [
+            'extra = ["one"]',
+            "extra = {enabled = true}",
+            'extra = """multi',
+            "extra.key = true",
+            "[[extra]]",
+            "[spex]",
+            "debug = false",
+            'extra = "unclosed',
+            'extra = "closed"junk"',
+            r'extra = "\/"',
+            r'extra = "\uD800"',
+            "extra = 01",
+        ],
+    )
+    def test_fallback_rejects_unparseable_config_without_rewriting(
+        self, tmp_path, monkeypatch, invalid,
+    ):
+        config_file = tmp_path / ".spex.toml"
+        original = f"[spex]\ndebug = true\n{invalid}\n".encode()
+        config_file.write_bytes(original)
+        monkeypatch.setattr("config.tomllib", None)
+
+        with pytest.raises(ConfigParseError, match=r"\.spex\.toml: line 3: .+Python 3\.11"):
+            safe_update_toml(config_file)
+
+        assert config_file.read_bytes() == original
 
 
 # ===================== _deep_merge =====================

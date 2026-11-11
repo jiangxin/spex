@@ -550,9 +550,6 @@ def _build_parser():
 
 def main(argv=None):
     """CLI entry point."""
-    if sys.version_info < (3, 11):
-        sys.exit("Spex requires Python 3.11 or newer. Update python3 on PATH.")
-
     if argv is None:
         argv = sys.argv[1:]
 
@@ -595,4 +592,12 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    if sys.version_info < (3, 9):
+        sys.exit("Spex requires Python 3.9 or newer. Update python3 on PATH.")
+
+    from config import ConfigParseError
+
+    try:
+        main()
+    except ConfigParseError as exc:
+        sys.exit(str(exc))

@@ -11,7 +11,8 @@ If either check fails, ask the user to start from a Spex checkout.
 
 Use the verified repository root as the working directory for all runner
 commands and as the base for paths in this SOP. Read `eval/spex/README.md`.
-Run `python3 eval/spex/run.py` with Python 3.11 or newer.
+Run `python3 eval/spex/run.py` with Python 3.9 or newer. Python 3.11+
+is recommended for full TOML support.
 
 ## 1. Resolve the request
 

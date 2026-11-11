@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spex"
 version = "0.8.0"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = []
 
 [tool.setuptools]

@@ -15,6 +15,7 @@ from common import (
     logger,
 )
 from config import (
+    ConfigParseError,
     clear_config_cache,
     generate_updated_toml,
     get_main_worktree,
@@ -247,4 +248,7 @@ def main(argv=None):
 if __name__ == "__main__":
     from common import setup_logging
     setup_logging()
-    main()
+    try:
+        main()
+    except ConfigParseError as exc:
+        sys.exit(str(exc))

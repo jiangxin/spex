@@ -156,7 +156,7 @@ disable-model-invocation: true
 
 After installing the skill, run `/spex init` in your coding agent to set up the configuration and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
 
-**Note**: The spex CLI requires Python 3.11+. It uses the Python standard library.
+**Note**: The Spex CLI runs on Python 3.9+ using the standard library. Python 3.11+ is recommended for full TOML support.
 
 ### spex init
 
@@ -530,7 +530,9 @@ Unsafe hooks are skipped (treated as missing) with a warning.
 
 ### Python Version Requirement
 
-The Spex CLI requires Python 3.11+. Check with `python3 --version`. macOS users can install via `brew install python`.
+Spex supports Python 3.9 and newer. On Python 3.9–3.10, the built-in parser supports single-level tables such as `[spex]`, bare keys, single-line strings, booleans, decimal integers, and comments. Use Python 3.11+ for configuration that uses arrays, inline tables, dotted keys, or multiline strings.
+
+Check your version with `python3 --version`. macOS users can install a newer version via `brew install python`.
 
 ### spex command not found
 
@@ -577,7 +579,7 @@ If apply stops because `apply-helper ensure-branch` failed on a detached HEAD, S
 - **Repository**: [https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
-- Scripts are in `skills/spex/scripts/`, written in Python 3.11+.
+- Scripts are in `skills/spex/scripts/`, written in Python 3.9+.
 - Run `make setup` to install Node.js dependencies.
 - Test, coverage, Python lint, and format targets automatically initialize `.venv` with `skills/spex/[dev]` and use its Python. No manual activation is needed; pre-commit uses the same environment through `make check`.
 - Use `make dev-env PYTHON=python3.13` to choose the Python interpreter when creating `.venv`. Delete `.venv` before switching interpreters. Dependency installation is repeated when `skills/spex/pyproject.toml` changes; remove `.venv/.dev-ready` to force a reinstall.

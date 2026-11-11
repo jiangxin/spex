@@ -156,7 +156,7 @@ disable-model-invocation: true
 
 Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置并将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
 
-**注意**：spex 命令行工具依赖 Python 3.11+，运行时仅使用 Python 标准库。
+**注意**：Spex 命令行工具支持 Python 3.9+，运行时仅使用标准库。建议使用 Python 3.11+ 以获得完整的 TOML 支持。
 
 ### spex init
 
@@ -525,7 +525,9 @@ Spex 支持 pre-action 和 post-action 两种 hook。它们是项目本地的，
 
 ### Python 版本要求
 
-Spex 的命令行工具依赖 Python 3.11+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python` 安装。
+Spex 支持 Python 3.9 及以上版本。在 Python 3.9–3.10 上，内置解析器支持 `[spex]` 等单层表、裸键、单行字符串、布尔值、十进制整数和注释。配置中使用数组、内联表、点分键或多行字符串时，请使用 Python 3.11+。
+
+可用 `python3 --version` 检查版本。macOS 用户可通过 `brew install python` 安装较新版本。
 
 ### spex 命令找不到
 
@@ -572,7 +574,7 @@ export PATH="$HOME/.local/bin:$PATH"
 - **仓库地址**：[https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
-- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.11+ 编写。
+- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
 - 执行 `make setup` 安装 Node.js 依赖。
 - 测试、覆盖率、Python lint 和格式化目标会自动初始化 `.venv`，安装 `skills/spex/[dev]` 并使用其中的 Python，无需手动激活；pre-commit 通过 `make check` 使用同一环境。
 - 首次创建 `.venv` 时可用 `make dev-env PYTHON=python3.13` 选择解释器；切换解释器前删除 `.venv`。`skills/spex/pyproject.toml` 变化后会重新安装依赖；删除 `.venv/.dev-ready` 可强制重新安装。
