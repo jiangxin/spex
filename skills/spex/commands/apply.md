@@ -213,6 +213,11 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
 ```
 
 - Display output to user
+- If a step entered Phase 6 through `resume_phase=review`, summarize
+  the recovery for the current spec. Identify the resumed step, state
+  whether review kept or amended its existing commit, and identify
+  any steps completed after it. In `--all` mode, include this
+  summary before advancing to the next spec.
 - IF `--all` mode -> continue to next `$specs` item at Phase 2, or
   **STOP** if none remain
 - ELSE -> **STOP.** Do NOT implement additional steps or modify
