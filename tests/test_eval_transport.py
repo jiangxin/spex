@@ -167,6 +167,19 @@ def test_failed_setup_keeps_execution_metadata(runner, monkeypatch):
     assert report["trials"][0]["execution"] == run.execution(2)
 
 
+def test_automatic_batch_resolves_ref_once(runner, monkeypatch):
+    resolved = iter(["a" * 40, "b" * 40])
+    monkeypatch.setattr(run, "resolve_spex_ref", lambda *_: next(resolved))
+    monkeypatch.setattr(run, "prepare_codex_runtime",
+                        lambda *a, **kw: SimpleNamespace(version="fake", home="fake"))
+    monkeypatch.setattr(run, "automatic", lambda *args, **kwargs: args[2].spex_ref)
+
+    result = run.execute(runner.parse_args(["run", "--model", "fake", "--repeat", "2"]))
+
+    assert result["trials"] == ["a" * 40, "a" * 40]
+    assert next(resolved) == "b" * 40
+
+
 def test_startup_probes_classify_state_app_server_and_auth(tmp_path, monkeypatch):
     blocked = tmp_path / "blocked"
     blocked.mkdir()

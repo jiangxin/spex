@@ -48,6 +48,7 @@ from workspace import (
     allocate_sandbox,
     case_dir,
     prepare_trial,
+    resolve_spex_ref,
     saved_run_id,
     saved_trial_paths,
     select_cases,
@@ -1325,6 +1326,7 @@ def execute(args: argparse.Namespace) -> dict:
         return instructions(output, trial, read_json(output / "trial.json"))
     if args.repeat < 1 or args.timeout < 1:
         raise ValueError("Repeat and timeout must be positive")
+    args.spex_ref = resolve_spex_ref(SOURCE, args.spex_ref)
     # Probe Codex once for the whole batch so the same startup failure is not
     # repeated for every trial or judge call.
     runtime = prepare_codex_runtime(RUNS / ".codex-home", timeout=min(args.timeout, 60))

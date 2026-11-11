@@ -45,6 +45,9 @@ is recommended for full TOML support.
 Run `list` with the resolved filters. Use every returned `suite/id` pair.
 If the list is empty, report the original filters and stop.
 
+Resolve the selected Spex ref to a commit once and use that commit for
+every trial in the batch.
+
 For explicitly requested Codex CLI automation, run `run` with the same
 filters, ref, models, and `--jobs` setting, then go to step 6. Pass the
 resolved `--jobs` to `judge` or `calibrate` when invoked. For current-host

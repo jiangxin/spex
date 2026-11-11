@@ -308,11 +308,16 @@ def copy_fixture(case: Case, repo: Path) -> None:
     shutil.copytree(case.fixture, repo)
 
 
+def resolve_spex_ref(source: Path, ref: str) -> str:
+    commit = git(source, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}")
+    return commit.decode("ascii").strip()
+
+
 def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) -> Trial:
     """Create a trial under ``parent/workspace``. Lifetime is owned by the caller."""
     if parent is None:
         raise TypeError("prepare_trial requires parent= under an eval sandbox case directory")
-    commit = git(source, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}")
+    commit = resolve_spex_ref(source, ref)
     parent = Path(parent).resolve()
     directory = (parent / WORKSPACE_NAME).resolve()
     if directory.exists():
@@ -320,7 +325,7 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
     if not directory.is_relative_to(parent):
         raise ValueError("Trial workspace escaped the case directory")
     directory.mkdir(parents=True, exist_ok=False)
-    trial = Trial(directory, commit.decode("ascii").strip())
+    trial = Trial(directory, commit)
     try:
         (directory / "home").mkdir()
         copy_fixture(case, trial.repo)
@@ -331,14 +336,6 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
         )
         initialize_repo(trial)
         install_skill(source, trial)
-        # HEAD pins install the committed skill; overlay worktree config.py so
-        # uncommitted isolation fixes still apply during local eval.
-        head = git(source, "rev-parse", "HEAD").decode("ascii").strip()
-        if trial.ref == head:
-            src_config = source / SKILL_PATH / "scripts" / "config.py"
-            dst_config = trial.skill / "scripts" / "config.py"
-            if src_config.is_file() and dst_config.is_file():
-                dst_config.write_bytes(src_config.read_bytes())
         if "setup" in case.definition:
             script = case.fixture.parents[1] / "setup.py"
             if not script.is_file() or script.is_symlink():
