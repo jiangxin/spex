@@ -211,10 +211,13 @@ def ensure_state_home(path: Path) -> Path:
 
 
 def resolve_codex_home(preferred: Path | None = None) -> Path:
-    configured = os.environ.get("SPEX_EVAL_CODEX_HOME") or os.environ.get("CODEX_HOME")
     candidates = []
+    override = os.environ.get("SPEX_EVAL_CODEX_HOME")
+    if override:
+        candidates.append(Path(override))
     if preferred is not None:
         candidates.append(Path(preferred))
+    configured = os.environ.get("CODEX_HOME")
     if configured:
         candidates.append(Path(configured))
     candidates.append(Path(tempfile.gettempdir()) / "spex-eval-codex-home")

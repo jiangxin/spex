@@ -322,6 +322,15 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
+def test_codex_home_override_takes_precedence(tmp_path, monkeypatch):
+    override = tmp_path / "authenticated-home"
+    preferred = tmp_path / "batch-home"
+    monkeypatch.setenv("SPEX_EVAL_CODEX_HOME", str(override))
+
+    assert transport.resolve_codex_home(preferred) == override.resolve()
+    assert not preferred.exists()
+
+
 def test_classify_checks_splits_fails_and_evidence_gaps():
     mixed = run.classify_checks({
         "collection": "manual",
