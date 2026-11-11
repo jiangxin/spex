@@ -260,3 +260,27 @@ acceptance selector. Define semantic criteria in the suite's
 threshold, and three anchored scores. Keep acceptance scripts and rubrics
 outside the evaluated workspace. Include fixture and check regressions
 before using a new case in a comparison.
+
+### Extended batch import cases
+
+The `batch-import` suite uses a standalone CSV-to-SQLite importer. It checks
+checkpoint compatibility, transactional progress, CLI resume, and input
+identity across four ordered Git commits.
+
+- `apply-all` starts with four pending tasks.
+- `apply-resume` starts with a real checkpoint compatibility commit and
+  three pending tasks. The initial completion record and commit must survive.
+
+List these cases with `python3 eval/spex/run.py list --suite batch-import`.
+For Codex CLI automation, run both with the same target and judge:
+
+```sh
+python3 eval/spex/run.py run --suite batch-import \
+  --model gpt-6.1-sol --judge-model gpt-6.1-sol
+```
+
+Use `--tag smoke` to select the short regression cases. For a formal
+comparison, repeat the same extended cases three times per target and
+hold the Spex ref and judge constant. The acceptance artifact records
+individual milestone checks and failures. It executes Git snapshots with
+in-memory SQLite in the runner's read-only acceptance sandbox.
