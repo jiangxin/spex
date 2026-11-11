@@ -213,6 +213,11 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
 ```
 
 - Display output to user
+- Summarize the delivered behavior and verification for the current spec.
+  For partially completed specs, identify the prior completed work that was
+  preserved and the steps completed in this run. Include any verified
+  failure and recovery behavior specified by the tasks, including what
+  rolls back, what persists, and the conditions for retry or resume.
 - If a step entered Phase 6 through `resume_phase=review`, summarize
   the recovery for the current spec. Identify the resumed step, state
   whether review kept or amended its existing commit, and identify
