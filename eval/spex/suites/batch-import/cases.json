@@ -10,5 +10,18 @@
         "acceptance": "apply-all"
       }
     ]
+  },
+  {
+    "id": "apply-resume",
+    "fixture": "csv-import",
+    "setup": "checkpoint-completed",
+    "tags": ["extended", "recovery"],
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-00-batch-import",
+        "checks": ["completed-preserved", "post-action"],
+        "acceptance": "apply-resume"
+      }
+    ]
   }
 ]
