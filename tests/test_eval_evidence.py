@@ -1,6 +1,7 @@
 """Offline tests for Spex workflow evidence and gates."""
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 try:
     import evidence
+    from transport import command_event
     from workspace import Trial, initialize_repo
 finally:
     sys.path.pop(0)
@@ -53,6 +55,40 @@ def test_one_step_rejects_two_completions_and_rewritten_tasks(tmp_path):
     assert evidence.check_gate("one-step", before, after)["verdict"] == "pass"
     assert evidence.check_gate("one-step", before, overstep)["verdict"] == "fail"
     assert evidence.check_gate("completed-preserved", before, rewritten)["verdict"] == "fail"
+
+
+@pytest.mark.parametrize(
+    ("start", "amend_base", "final", "verdict"),
+    [
+        ("92590d9", None, "92590d9", "pass"),
+        ("92590d9", "92590d9", "63d5bac", "pass"),
+        ("92590d9", None, "63d5bac", "fail"),
+        ("92590d9", "7777777", "63d5bac", "fail"),
+        ("7777777", "92590d9", "63d5bac", "fail"),
+        ("92590d9", "92590d9", "7777777", "fail"),
+    ],
+)
+def test_resumed_review_binds_final_commit_to_seed(tmp_path, start, amend_base, final, verdict):
+    original = state(task("step-1", commit_title="92590d9: Prefix"))
+    original["head"] = "92590d94072433285b225f79e51fec80de172381"
+    before = evidence.persist_turn(tmp_path, 0, original)
+
+    def event(command):
+        return command_event({"command": f"/bin/zsh -c {shlex.quote(command)}", "exit_code": 0})
+
+    events = [
+        event(f"./scripts/spex prompt apply-review --name eval-spec --mode full --commit {start}"),
+    ]
+    if amend_base:
+        events.append(event(
+            './scripts/spex review-helper --name "eval-spec" complete-batch --step "step-1" '
+            f'--base-commit "{amend_base}" --new-commit "63d5bac" --evidence-from-stdin '
+            "<<'EOF'\n{}\nEOF"
+        ))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task("step-1", "done", commit_title=f"{final}: Prefix")), events=events,
+    )
+    assert evidence.check_gate("resumed-review", before, after)["verdict"] == verdict
 
 
 def test_review_failure_requires_stop_and_trace(tmp_path):

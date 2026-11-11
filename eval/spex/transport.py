@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -53,7 +54,49 @@ def command_event(item: dict) -> dict:
             action = "apply.review"
         else:
             action = "apply.workflow"
-    return {"action": action, "exit_code": item.get("exit_code")}
+    event = {"action": action, "exit_code": item.get("exit_code")}
+    if action == "apply.review":
+        event.update(review_arguments(command))
+    return event
+
+
+def shell_command(command: str) -> str:
+    """Unwrap the shell invocation reported by Codex."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return ""
+    if (len(words) == 3 and Path(words[0]).name in {"bash", "sh", "zsh"}
+            and words[1] in {"-c", "-lc"}):
+        return words[2]
+    return command
+
+
+def review_arguments(command: str) -> dict:
+    line, newline, body = shell_command(command).partition("\n")
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        words = list(lexer)
+    except ValueError:
+        return {}
+    if any(re.fullmatch(r"[();<>|&]+", word) and word not in {"<<", "<<-"} for word in words):
+        return {}
+    if newline:
+        if len(words) < 2 or words[-2] != "<<" or not body.rstrip("\n").endswith("\n" + words[-1]):
+            return {}
+    if len(words) < 3 or Path(words[0]).name != "spex":
+        return {}
+    if words[1:3] == ["prompt", "apply-review"]:
+        options = {"--name": "spec", "--commit": "commit", "--mode": "mode"}
+    elif words[1] == "review-helper" and "complete-batch" in words:
+        options = {"--name": "spec", "--step": "step", "--base-commit": "base_commit",
+                   "--new-commit": "new_commit"}
+    else:
+        return {}
+    return {key: words[index + 1] for index, word in enumerate(words[:-1])
+            if (key := options.get(word))}
 
 
 def failure_reason(output: str) -> str:

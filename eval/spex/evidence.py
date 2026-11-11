@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from workspace import Trial, git
@@ -93,17 +94,16 @@ def persist_turn(
 
 
 def completed(state: dict) -> dict:
-    records = {}
+    return {key: task for key, task in spec_tasks(state) if task.get("completed_at")}
+
+
+def spec_tasks(state: dict):
     for spec, artifacts in state["specs"].items():
         tasks = artifacts.get("todo.json")
         if isinstance(tasks, list):
-            records.update({
-                (spec, task["id"]): task
-                for task in tasks
-                if isinstance(task, dict) and isinstance(task.get("id"), str)
-                and task.get("completed_at")
-            })
-    return records
+            for task in tasks:
+                if isinstance(task, dict) and isinstance(task.get("id"), str):
+                    yield (spec, task["id"]), task
 
 
 EXPECTATIONS = {
@@ -116,6 +116,7 @@ EXPECTATIONS = {
     "no-post-action": "No apply post-action was invoked",
     "post-action": "Apply post-action succeeded",
     "review-failure-stop": "A review failure ended the turn without further workflow activity",
+    "resumed-review": "Review started at the existing step commit and tracked any fixes",
 }
 
 
@@ -127,8 +128,10 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
     old, new = previous["value"], current["value"]
     done, now = completed(old), completed(new)
     preserved = all(now.get(task) == value for task, value in done.items())
-    trace_gate = check in {"no-post-action", "post-action", "review-failure-stop"}
-    if trace_gate:
+    trace_gate = check in {"no-post-action", "post-action", "review-failure-stop", "resumed-review"}
+    if check == "resumed-review":
+        passed = resumed_review(old, now, trace)
+    elif trace_gate:
         passed = trace_check(check, trace, preserved and now == done)
     else:
         passed = {
@@ -155,6 +158,47 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
         "verdict": verdict,
         "evidence_refs": refs,
     }
+
+
+def same_commit(left: str, right: str) -> bool:
+    return bool(
+        re.fullmatch(r"[0-9a-f]{7,40}", left)
+        and re.fullmatch(r"[0-9a-f]{7,40}", right)
+        and (left.startswith(right) or right.startswith(left))
+    )
+
+
+def resumed_review(before: dict, completed_after: dict, trace: dict | None) -> bool | None:
+    if trace is None:
+        return None
+    seed = before["head"]
+    pending = [
+        key for key, task in spec_tasks(before)
+        if not task.get("completed_at")
+        and same_commit(seed, str(task.get("commit_title", "")).partition(":")[0])
+    ]
+    if len(pending) != 1:
+        return False
+    spec, step = pending[0]
+    final = completed_after.get((spec, step), {})
+    final_sha = str(final.get("commit_title", "")).partition(":")[0]
+    events = [
+        event for event in trace["value"]
+        if event.get("action") == "apply.review" and event.get("exit_code") == 0
+        and event.get("spec") == spec
+    ]
+    start = next((i for i, event in enumerate(events) if event.get("mode") == "full"), None)
+    if start is None:
+        return False
+    if not same_commit(seed, events[start].get("commit", "")):
+        return False
+    current_sha = seed
+    for event in events[start + 1:]:
+        if event.get("step") == step and "new_commit" in event:
+            if not same_commit(current_sha, event.get("base_commit", "")):
+                return False
+            current_sha = event["new_commit"]
+    return same_commit(current_sha, final_sha)
 
 
 def trace_check(check: str, trace: dict | None, no_progress: bool) -> bool | None:

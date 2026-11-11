@@ -129,9 +129,10 @@
       {
         "input": "/spex apply 2000-01-01-00-01-greeting-decoration",
         "checks": [
-          "post-action"
+          "post-action",
+          "resumed-review"
         ],
-        "acceptance": "resumed-decoration"
+        "acceptance": "all-decoration"
       }
     ],
     "fixture": "greeting",

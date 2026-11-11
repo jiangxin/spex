@@ -155,13 +155,6 @@ def decoration_checks(repo, scenario):
             repo, "[hi] HELLO, ADA! tail\n", "--upper", "--prefix", "[hi] ", suffix_flag, " tail"
         )
         checks["suffix-only"] = output_is(repo, "Hello, Ada! tail\n", suffix_flag, " tail")
-    if scenario == "resumed-decoration":
-        seed = subprocess.check_output(
-            ["git", "-C", str(repo), "rev-parse", "refs/tags/eval-review-base"],
-            text=True, timeout=10,
-        ).strip()
-        prefix_sha = tasks[0].get("commit_title", "").partition(":")[0]
-        checks["resumed-original-commit"] = bool(prefix_sha) and seed.startswith(prefix_sha)
     return checks
 
 
@@ -170,7 +163,7 @@ def main():
     parser.add_argument("repo", type=Path)
     parser.add_argument(
         "scenario", choices=(
-            "new-plan", "modify-plan", "prefix-only", "all-decoration", "resumed-decoration",
+            "new-plan", "modify-plan", "prefix-only", "all-decoration",
             "lifecycle-plan", "lifecycle-prefix", "lifecycle-all",
         ),
     )
