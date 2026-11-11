@@ -48,5 +48,5 @@ different path are valid. Legacy whole-file mode does not use checkpoints.
 ## Delivery
 
 Complete the four todo entries in order, with one Git commit per step.
-Include a regression test for each step. Run the existing legacy tests
+Include a regression test in a `test_*.py` file for each step. Run the existing legacy tests
 and keep the working tree clean.

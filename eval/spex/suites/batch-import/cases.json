@@ -1,0 +1,14 @@
+[
+  {
+    "id": "apply-all",
+    "fixture": "csv-import",
+    "tags": ["extended"],
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-00-batch-import",
+        "checks": ["post-action"],
+        "acceptance": "apply-all"
+      }
+    ]
+  }
+]

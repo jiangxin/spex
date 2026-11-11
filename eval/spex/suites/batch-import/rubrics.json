@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "cases": {
+    "apply-all": [
+      {
+        "id": "accurate-delivery-summary",
+        "turn": 1,
+        "requires": ["reply", "acceptance"],
+        "threshold": 2,
+        "anchors": [
+          "The reply claims unsupported results or misstates the completion status.",
+          "The reply describes the result but omits verification or the recovery boundary.",
+          "The reply accurately describes the scope completed and verified, including rollback and the requirement to resume with identical input."
+        ]
+      }
+    ]
+  }
+}
