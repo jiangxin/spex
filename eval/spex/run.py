@@ -175,7 +175,7 @@ def render_improvements_markdown(report: dict) -> str:
     improvements = report.get("improvements") or []
     if not improvements:
         lines.append(
-            "No Spex-skill functionality or execution failures detected."
+            "No improvement items derived from available trial evidence."
         )
         lines.append("")
         return "\n".join(lines)
@@ -311,7 +311,7 @@ def classify_checks(metadata: dict) -> dict:
     """Split non-pass checks into observed fails vs evidence gaps."""
     observed_fails: list[str] = []
     evidence_gaps: list[str] = []
-    manual = metadata.get("collection") == "manual"
+    hard = metadata.get("hard_verdict", metadata.get("verdict"))
     for turn in metadata.get("turn_results") or []:
         index = turn.get("turn")
         for check in turn.get("checks") or []:
@@ -322,10 +322,9 @@ def classify_checks(metadata: dict) -> dict:
                 observed_fails.append(label)
             elif verdict == "insufficient_evidence":
                 evidence_gaps.append(label)
-                if manual and check_id in TRACE_CHECK_IDS:
-                    # Manual hosts often omit Codex-style --events; treat as gap.
-                    pass
-    if observed_fails and evidence_gaps:
+    if hard in ("pending", "run_error"):
+        kind = hard
+    elif observed_fails and evidence_gaps:
         kind = "mixed"
     elif observed_fails:
         kind = "fail"
@@ -420,8 +419,7 @@ def render_summary_markdown(report: dict) -> str:
     improvements = report.get("improvements") or []
     if not improvements:
         lines.append(
-            "No Spex-skill functionality or execution failures detected in "
-            "this sandbox."
+            "No improvement items derived from available trial evidence."
         )
         lines.append("")
     else:
@@ -439,6 +437,7 @@ def render_summary_markdown(report: dict) -> str:
     lines.extend([
         "## How to read results",
         "",
+        "- **pending / run_error**: the trial has no completed hard verdict.",
         "- **fail / observed fails**: deterministic or acceptance checks failed.",
         "- **evidence_gap / insufficient_evidence**: required artifacts (often "
         "tool traces via `--events`) were missing. Common for manual "

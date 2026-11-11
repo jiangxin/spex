@@ -513,6 +513,20 @@ def test_summary_reports_trial_and_judge_identities(runner, monkeypatch):
     assert "| example/manual | cursor | trial-two | qoder | judge-two |" in report
 
 
+def test_summary_does_not_classify_unfinished_trials_as_passes(runner):
+    sandbox = run.resolve_sandbox(None)
+    for verdict in ("pending", "run_error"):
+        directory = workspace.case_dir(sandbox, "example", verdict.replace("_", "-"))
+        directory.mkdir(parents=True)
+        run.write_json(directory / "trial.json", {
+            "suite": "example", "case_id": directory.name, "verdict": verdict,
+        })
+
+    result = run.summarize_sandbox(sandbox)
+
+    assert result["classifications"] == {"pending": 1, "run_error": 1}
+
+
 def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)
