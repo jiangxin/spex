@@ -228,5 +228,5 @@ def trace_check(check: str, trace: dict | None, no_progress: bool) -> bool | Non
                 isinstance(action, str) and action.startswith("apply.") for action in later_actions
             ):
                 return False
-            return None if later_actions else True
+            return None if any(action != "git.read-head" for action in later_actions) else True
     return None if review_unknown else False

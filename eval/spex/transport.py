@@ -46,6 +46,8 @@ def command_event(item: dict) -> dict:
     command = item.get("command", "")
     matches = list(SPEX_CALL.finditer(command))
     action = "command"
+    if shell_command(command) == "git rev-parse --short HEAD":
+        action = "git.read-head"
     if len(matches) == 1:
         helper, args = matches[0].groups()
         if helper == "apply-helper" and re.match(r"\s+post-action\b", args):

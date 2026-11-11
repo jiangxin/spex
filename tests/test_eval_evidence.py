@@ -110,6 +110,14 @@ def test_review_failure_requires_stop_and_trace(tmp_path):
     unknown_result = evidence.persist_turn(
         tmp_path, 7, pending, events=[{"action": "apply.review"}]
     )
+    head_probe = command_event({
+        "command": "/bin/zsh -c 'git rev-parse --short HEAD'", "exit_code": 0,
+    })
+    after_probe = evidence.persist_turn(tmp_path, 8, pending, events=[*failure, head_probe])
+    compound = command_event({
+        "command": "/bin/zsh -c 'git rev-parse --short HEAD && echo unknown'", "exit_code": 0,
+    })
+    after_compound = evidence.persist_turn(tmp_path, 9, pending, events=[*failure, compound])
     check = "review-failure-stop"
     assert evidence.check_gate(check, before, absent)["verdict"] == "insufficient_evidence"
     assert evidence.check_gate(check, before, stopped)["verdict"] == "pass"
@@ -118,6 +126,8 @@ def test_review_failure_requires_stop_and_trace(tmp_path):
     assert evidence.check_gate(check, before, reviewed_again)["verdict"] == "fail"
     assert evidence.check_gate(check, before, unclassified)["verdict"] == "insufficient_evidence"
     assert evidence.check_gate(check, before, unknown_result)["verdict"] == "insufficient_evidence"
+    assert evidence.check_gate(check, before, after_probe)["verdict"] == "pass"
+    assert evidence.check_gate(check, before, after_compound)["verdict"] == "insufficient_evidence"
     assert evidence.check_gate("post-action", before, post)["verdict"] == "pass"
 
 
