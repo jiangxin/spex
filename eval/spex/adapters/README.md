@@ -17,6 +17,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Input | Send `next_input` exactly; keep the same session for later turns |
 | Output | Write `_handoff/<suite>-<case>-turnN.txt` |
 | Events | Optional Codex-style JSONL via `collect --events`; without it, manual collection softens pure `post-action` / `no-post-action` hard verdicts |
+| Timing | Pass `collect --host-duration-ms` and `import-grades --judge-duration-ms` when the adapter measures the respective session turn |
 | Collect | `collect --session ID --reply <file> [--events …]` |
 
 ## Cursor (manual / Task)

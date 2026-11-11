@@ -26,6 +26,10 @@ TRIAL_PERMISSIONS = (
 class TransportError(RuntimeError):
     """A host or transport error separate from model behavior."""
 
+    def __init__(self, reason: str, *, partial_events: str | bytes | None = None):
+        super().__init__(reason)
+        self.partial_events = partial_events
+
 
 @dataclass(frozen=True)
 class HostTurn:
@@ -318,12 +322,16 @@ def codex_turn(
     except subprocess.TimeoutExpired as error:
         if trace_path is not None:
             save_host_trace(trace_path, error.stdout, error="timeout")
-        raise TransportError("timeout") from error
+        raise TransportError("timeout", partial_events=error.stdout) from error
     except OSError as error:
         raise TransportError("host_unavailable") from error
     failure = failure_reason(result.stderr + result.stdout) if result.returncode else None
     if trace_path is not None:
         save_host_trace(trace_path, result.stdout, error=failure)
     if failure:
-        raise TransportError(failure)
-    return parse_events(result.stdout, session)
+        raise TransportError(failure, partial_events=result.stdout)
+    try:
+        return parse_events(result.stdout, session)
+    except TransportError as error:
+        error.partial_events = result.stdout
+        raise

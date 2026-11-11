@@ -158,6 +158,29 @@ file from the same items.
 Host adapter notes for Cursor / Codex / pure manual live under
 [`adapters/README.md`](adapters/README.md).
 
+## Performance diagnostics
+
+Each trial records timing and activity in `performance.json`. The batch
+report links to the details and summarizes host latency, the slowest Spex
+step, full and delta reviews, observed subagent starts, and parent-session
+token usage. Repeated comparable samples show coverage, median, and max.
+
+- For manual collection, pass `collect --host-duration-ms N` if the host
+  measured elapsed time from sending input through receiving the final
+  reply. Pass `import-grades --judge-duration-ms N` for separately measured
+  judge time. Both accept non-negative integer milliseconds.
+- Automatic runs record each host attempt, including partial traces on
+  timeout. Preparation, collection, acceptance, and grading have separate
+  measurements. The existing trial `duration_ms` covers the full automatic
+  run, including grading.
+- Spex debug anchors provide step and review timings. Fix and check spans
+  can overlap. Existing runs can recover available debug anchors and
+  verified manual handoff traces during summary.
+- A host turn, a Spex review round, and a model request are different
+  counters. Codex JSONL provides turn-level usage and tool activity.
+  Request-level counts and separately attributed subagent usage are
+  unknown with this trace format. Missing measurements do not affect grades.
+
 ## Automated Codex CLI
 
 Use `run` only for explicit Codex CLI automation. It requires an authenticated

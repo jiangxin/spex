@@ -1087,11 +1087,13 @@ def _do_apply_one_task(args):
 
     task_id = metadata.get("current_task_id", "")
     if task_id and args.name:
-        from debug_log import emit_apply_anchor
+        from debug_log import emit_apply_task
 
-        emit_apply_anchor(
+        emit_apply_task(
             resolve_spec_dir(args.name),
-            f"===== APPLY task begin id={task_id} =====",
+            "begin",
+            id=task_id,
+            resume_phase=metadata.get("resume_phase"),
         )
 
     if args.json_mode:

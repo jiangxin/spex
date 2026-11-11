@@ -131,6 +131,14 @@ def format_apply_event(event: str, **fields) -> str:
     return " ".join(parts) + " ====="
 
 
+def emit_apply_task(spec_dir: str | Path, event: str, **fields) -> None:
+    emit_apply_anchor(spec_dir, format_apply_event(f"task {event}", **fields, ts=apply_timestamp()))
+
+
+def apply_timestamp() -> str:
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
 def apply_span_state_path(spec_dir: str | Path) -> Path:
     """Sidecar path for open review-flow spans beside ``debug.log``."""
     return Path(spec_dir) / f"{DEBUG_LOG_NAME}.apply_span"
@@ -188,7 +196,7 @@ def start_apply_span(
     if not debug_enabled(argv if argv is not None else sys.argv):
         return None
 
-    started_at = local_iso_timestamp()
+    started_at = apply_timestamp()
     span = {
         "kind": kind,
         "started_at": started_at,
@@ -236,7 +244,7 @@ def end_apply_span(
         return None
     _write_apply_spans(spec_dir, spans)
 
-    ended_at = local_iso_timestamp()
+    ended_at = apply_timestamp()
     if duration_ms is None:
         started_mono = span.get("started_mono")
         if isinstance(started_mono, (int, float)):

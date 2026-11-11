@@ -166,16 +166,13 @@ def _sha_from_commit_title(commit_title) -> str:
 
 def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
     """Emit APPLY anchors for commit-title / completed_at edits."""
-    from debug_log import emit_apply_anchor
+    from debug_log import emit_apply_task
 
     # todo.json lives directly under the spec directory.
     spec_dir = Path(todo_path).parent
 
     if args.completed_at is not None and item.get("completed_at"):
-        emit_apply_anchor(
-            spec_dir,
-            f"===== APPLY task done id={args.id} =====",
-        )
+        emit_apply_task(spec_dir, "done", id=args.id)
         return
 
     if (
@@ -188,10 +185,7 @@ def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
             _sha_from_commit_title(args.commit_title)
             or _short_head_sha()
         )
-        emit_apply_anchor(
-            spec_dir,
-            f"===== APPLY task committed id={args.id} sha={sha} =====",
-        )
+        emit_apply_task(spec_dir, "committed", id=args.id, sha=sha)
 
 
 def cmd_edit(todo_path, args):

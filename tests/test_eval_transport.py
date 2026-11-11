@@ -565,11 +565,14 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
     next_turn = run.execute(args)
     assert next_turn["verdict"] == "pending"
     assert next_turn["next_input"] == "/spex apply-one-step example"
-    assert run.execute(args)["verdict"] == "insufficient_evidence"
+    assert run.execute(args)["verdict"] == "pass"
     results = run.read_json(Path(info["trial"]) / "trial.json")["turn_results"]
     assert len(results) == 2
     assert results[0]["checks"][1]["verdict"] == "insufficient_evidence"
     assert results[1]["checks"][0]["verdict"] == "pass"
+    metrics = run.read_json(Path(info["trial"]) / "performance.json")
+    assert metrics["turns"]["1"]["host"]["trace"] == "missing"
+    assert metrics["turns"]["1"]["host"]["duration_ms"] is None
 
 
 @pytest.mark.slow

@@ -59,8 +59,10 @@ Record preparation errors with their case IDs and continue the batch.
 2. Save each reply under the sandbox as
    `_handoff/<suite>-<case>-turnN.txt`.
 3. Run `collect <trial> --session <id> --reply <file>`. Add `--events`
-   only when a compatible transcript is available. Repeat while the
-   runner returns another `next_input`.
+   only when a compatible transcript is available. Pass
+   `--host-duration-ms` when the adapter measured elapsed time from input
+   dispatch through final reply. Repeat while the runner returns another
+   `next_input`.
 
 The workspace and file handoff work across hosts. When all replies already
 exist and no collection session has been recorded for pending trials, use
@@ -72,6 +74,7 @@ Python to collect those replies before grading.
 Run `export-packet <trial>` after collection. In a separate judge session,
 read only the returned `judge-prompt.txt` and produce grades JSON.
 Run `import-grades <trial> --grades <file> --host <judge-agent> --model <judge-model>`.
+Pass `--judge-duration-ms` when the adapter measured the judge session.
 The runner validates grades. The hard verdict takes precedence.
 
 ## 6. Summarize the batch
@@ -86,6 +89,9 @@ sandbox was allocated, report the runner errors.
 - Report observed failures, evidence gaps such as missing tool traces,
   and runner or judge errors. Note missing matching judge calibration
   and any comparison settings that differ.
+- Report measured host latency, slow steps, review rounds, and diagnostics
+  coverage. Link `performance.json` when available. Keep host turns,
+  review rounds, and model requests distinct.
 - Link the report, trial directories, and earliest failed check when
   available. Use `--write-improvements` when the user requests a backlog.
   Preserve the sandbox and include the runner's `cleanup_hint`.

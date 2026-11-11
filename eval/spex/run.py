@@ -14,6 +14,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import performance
 from calibration import evaluate, load_samples
 from compare import calibration_keys, collection_mode, compare, diagnosis, load_run, markdown
 from evidence import EXPECTATIONS, capture, check_gate, digest, encode, persist_turn
@@ -391,6 +392,9 @@ def render_summary_markdown(report: dict) -> str:
             f"| {case} | {identities} | {row.get('final_verdict')} | {row.get('classification')} | "
             f"{fails} | {gaps} | `{row.get('trial')}` |"
         )
+    performance_rows = [row for row in report["trials"] if "performance" in row]
+    if performance_rows:
+        lines.extend(performance.report_lines(performance_rows))
     lines.extend([
         "",
         "## Spex skill improvements",
@@ -461,6 +465,7 @@ def summarize_sandbox(
         hosts.add(str(metadata.get("host") or "unknown"))
         models.add(str(metadata.get("model") or "unknown"))
         split = classify_checks(metadata)
+        recover_performance(sandbox, path.parent, metadata)
         score = judge_score_summary(judge) if judge else {
             "criteria_total": 0,
             "criteria_scored": 0,
@@ -479,6 +484,8 @@ def summarize_sandbox(
             "judge_host": judge_host if judge else "ungraded",
             "judge_model": judge_model if judge else "ungraded",
             "collection": metadata.get("collection"),
+            "spex_ref": metadata.get("spex_ref"),
+            "performance": performance.trial_summary(path.parent, metadata),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             **split,
             **score,
@@ -527,6 +534,46 @@ def summarize_sandbox(
     return result
 
 
+def recover_performance(sandbox: Path, output: Path, metadata: dict) -> None:
+    """Summarize available diagnostics for trials saved before performance collection."""
+    repo = output / WORKSPACE_NAME / "repo"
+    if not repo.is_dir() or repo.resolve() != repo:
+        return
+    data = performance.read_performance(output)
+    if "workflow" in data or "prepare_ms" in data:
+        return
+    turns = dict(data["turns"])
+    suite, case = str(metadata.get("suite") or ""), str(metadata.get("case_id") or "")
+    session = metadata.get("session", "")
+    handoff = sandbox / "_handoff"
+    if (collection_mode(metadata) == "manual" and session
+            and IDENTIFIER.fullmatch(suite) and IDENTIFIER.fullmatch(case)
+            and handoff.resolve() == handoff):
+        for item in metadata.get("turn_results", []):
+            index = item.get("turn")
+            if type(index) is not int or index < 1:
+                continue
+            events = handoff / f"{suite}-{case}-turn{index}.events.jsonl"
+            try:
+                if str(index) in turns or events.is_symlink() or not events.is_file():
+                    continue
+                if events.stat().st_size > performance.MAX_LOG_BYTES:
+                    continue
+                raw = events.read_text(encoding="utf-8")
+                host = parse_events(raw, session)
+                saved = read_json(output / f"turn-{index}.json")
+                if host.reply != saved["artifacts"]["reply"]["value"].strip():
+                    continue
+                turns[str(index)] = {
+                    "host": performance.host_metrics(raw, None, "historical"),
+                    "collect_ms": None,
+                    "acceptance_ms": None,
+                }
+            except (OSError, ValueError, KeyError, TypeError, TransportError):
+                continue
+    performance.update(output, repo=repo, turns=turns)
+
+
 def write_json(path: Path, value: dict) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_bytes(encode(value) + b"\n")
@@ -570,6 +617,7 @@ def setup(
     case: Case, output: Path, args: argparse.Namespace, repeat: int = 1,
     *, sandbox: Path,
 ) -> Trial:
+    started = time.monotonic()
     for turn in case.definition["turns"]:
         if any(check not in EXPECTATIONS for check in turn["checks"]):
             raise ValueError(f"Unknown workflow check in {case.suite}/{case.id}")
@@ -593,6 +641,7 @@ def setup(
         if output.exists():
             shutil.rmtree(output, ignore_errors=True)
         raise
+    performance.update(output, prepare_ms=performance.elapsed_ms(started))
     return trial
 
 
@@ -654,15 +703,37 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     return data
 
 
-def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn) -> None:
+def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
+               host_duration_ms: int | None = None, host_source: str = "runner",
+               collect_started: float | None = None) -> None:
     index = len(metadata["turn_results"])
+    if collect_started is None:
+        collect_started = time.monotonic()
     turn = metadata["case"]["turns"][index]
     previous = read_json(output / f"turn-{index}.json")
-    verify_trial_workspace(trial)
-    state = capture(trial)
-    result = acceptance(trial, metadata["suite"], turn["acceptance"]) if turn.get(
-        "acceptance"
-    ) else None
+    acceptance_ms = None
+    result = None
+
+    def record_performance():
+        performance.update(
+            output, turn=index + 1, repo=trial.repo,
+            host=performance.host_metrics(host.raw, host_duration_ms, host_source),
+            collect_ms=performance.elapsed_ms(collect_started) - (acceptance_ms or 0),
+            acceptance_ms=acceptance_ms,
+        )
+
+    try:
+        verify_trial_workspace(trial)
+        state = capture(trial)
+        if turn.get("acceptance"):
+            acceptance_started = time.monotonic()
+            try:
+                result = acceptance(trial, metadata["suite"], turn["acceptance"])
+            finally:
+                acceptance_ms = performance.elapsed_ms(acceptance_started)
+    except (OSError, ValueError, TransportError):
+        record_performance()
+        raise
     current = persist_turn(
         output, index + 1, state, user_input=turn["input"], reply=host.reply,
         events=host.events, acceptance=result,
@@ -690,6 +761,7 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn) -> No
         collection=str(metadata.get("collection") or ""),
     )
     write_json(output / "trial.json", metadata)
+    record_performance()
 
 
 def trial_verdict(
@@ -754,10 +826,13 @@ def judge_trial(
 ) -> None:
     if not model or metadata["verdict"] in ("pending", "run_error"):
         return
+    started = time.monotonic()
     record = score_trial(output, metadata, model, timeout, runtime=runtime)
     metadata["hard_verdict"] = record["hard_verdict"]
     metadata["verdict"] = record["verdict"]
     write_json(output / "judge.json", record)
+    performance.update(output, judge={"duration_ms": performance.elapsed_ms(started),
+                                      "source": "runner", "import_ms": None})
 
 
 def resolve_trial(path: Path) -> Path:
@@ -824,7 +899,9 @@ def export_judge(output: Path) -> dict:
     }
 
 
-def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown") -> dict:
+def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown",
+                 duration_ms: int | None = None) -> dict:
+    started = time.monotonic()
     metadata = read_json(output / "trial.json")
     packet, version, criteria = trial_packet(output, metadata)
     rubric = SUITES / metadata["suite"] / "rubrics.json"
@@ -850,6 +927,9 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
     metadata["verdict"] = record["verdict"]
     write_json(output / "judge.json", record)
     write_json(output / "trial.json", metadata)
+    performance.update(output, judge={"duration_ms": duration_ms,
+                                      "source": "adapter" if duration_ms is not None else None,
+                                      "import_ms": performance.elapsed_ms(started)})
     return {
         "trial": str(output),
         "verdict": record["verdict"],
@@ -943,11 +1023,21 @@ def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
             message = f"$spex\n{message}"
             if index == 0:
                 message += f"\nUse the Spex skill at {trial.skill / 'SKILL.md'}."
-        host = codex_turn(
-            trial, message, args.model, args.timeout, metadata["session"],
-            trace_path=output / f"host-{index + 1}.jsonl", runtime=runtime,
-        )
-        store_turn(output, trial, metadata, host)
+        started = time.monotonic()
+        try:
+            host = codex_turn(
+                trial, message, args.model, args.timeout, metadata["session"],
+                trace_path=output / f"host-{index + 1}.jsonl", runtime=runtime,
+            )
+        except TransportError as error:
+            performance.update(
+                output, turn=index + 1, repo=trial.repo,
+                host=performance.host_metrics(error.partial_events, performance.elapsed_ms(started),
+                                              "runner", str(error)),
+                collect_ms=None, acceptance_ms=None,
+            )
+            raise
+        store_turn(output, trial, metadata, host, host_duration_ms=performance.elapsed_ms(started))
         if metadata["verdict"] != "pending":
             break
     return metadata
@@ -975,10 +1065,12 @@ def automatic(
     )
     result["duration_ms"] = round((time.monotonic() - started) * 1000)
     write_json(output / "trial.json", result)
+    performance.update(output, automatic_total_ms=result["duration_ms"])
     return result
 
 
 def manual_result(output: Path, args: argparse.Namespace) -> dict:
+    started = time.monotonic()
     metadata = read_json(output / "trial.json")
     if collection_mode(metadata) != "manual" or metadata["verdict"] != "pending":
         raise ValueError("Expected a pending manual trial")
@@ -996,7 +1088,10 @@ def manual_result(output: Path, args: argparse.Namespace) -> dict:
         if trace.reply != reply.strip():
             raise ValueError("The supplied reply and trace disagree")
         host = trace
-    store_turn(output, trial, metadata, host)
+    store_turn(
+        output, trial, metadata, host, host_duration_ms=getattr(args, "host_duration_ms", None),
+        host_source="adapter", collect_started=started,
+    )
     # Manual / current-host collection keeps deterministic checks only. Semantic
     # grades are imported separately so judging does not require Codex CLI.
     write_json(output / "trial.json", metadata)
@@ -1016,6 +1111,13 @@ def unknownable(value: str) -> str:
     if not text or "\n" in text or "\0" in text:
         raise argparse.ArgumentTypeError("Expected a single-line model or version label")
     return text[:128]
+
+
+def duration_argument(value: str) -> int:
+    result = int(value)
+    if result < 0:
+        raise argparse.ArgumentTypeError("Expected a non-negative duration in milliseconds")
+    return result
 
 
 def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
@@ -1073,6 +1175,7 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--session", required=True)
     collect.add_argument("--reply", type=Path, required=True)
     collect.add_argument("--events", type=Path)
+    collect.add_argument("--host-duration-ms", type=duration_argument)
     collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
     export = sub.add_parser("export-packet")
     export.add_argument("trial", type=Path)
@@ -1081,6 +1184,7 @@ def parser() -> argparse.ArgumentParser:
     imported.add_argument("--grades", type=Path, required=True)
     imported.add_argument("--host", type=host_name, default="unknown", help="Judge agent host")
     imported.add_argument("--model", type=unknownable, default="unknown", help="Judge model ID")
+    imported.add_argument("--judge-duration-ms", type=duration_argument)
     summary = sub.add_parser("summary")
     summary.add_argument(
         "sandbox", type=Path,
@@ -1130,7 +1234,8 @@ def execute(args: argparse.Namespace) -> dict:
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
     if args.command == "import-grades":
-        return import_judge(resolve_trial(args.trial), args.grades, args.model, host=args.host)
+        return import_judge(resolve_trial(args.trial), args.grades, args.model, host=args.host,
+                            duration_ms=args.judge_duration_ms)
     if args.command == "summary":
         return summarize_sandbox(
             args.sandbox,

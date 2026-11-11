@@ -1,0 +1,497 @@
+"""Collect timing and activity separately from scored trial evidence."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+import time
+from datetime import datetime
+from pathlib import Path
+from statistics import median
+
+LOG = logging.getLogger(__name__)
+USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
+TIMELINE = re.compile(r"^===== APPLY (task (?:begin|committed|done)|"
+                      r"(?:review|fix|checks) (?:begin|end)|route|post-action ok)(?: (.*))? =====$")
+CLI_END = re.compile(r"^===== END exit=(-?\d+) duration_ms=(\d+) =====$")
+IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+MAX_LOG_BYTES = 16 * 1024 * 1024
+SPEX_COMMANDS = frozenset(
+    "apply-helper archive branch config create-helper init list merge-helper modify-helper "
+    "prompt review-helper spec todo-helper".split()
+)
+ROUTES = frozenset(
+    "phase7_no_findings batch_fix minor_direct_complete major_delta new_major_next_full_round "
+    "hard_cap_batch_fix".split()
+)
+
+
+def elapsed_ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
+
+
+def nonnegative(value):
+    return value if type(value) is int and value >= 0 else None
+
+
+def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
+                 error: str | None = None) -> dict:
+    record = {
+        "duration_ms": duration_ms, "duration_source": source if duration_ms is not None else None,
+        "model_requests": None, "parent_usage": None, "subagent_usage": None,
+        "commands": None, "command_failures": None, "subagent_starts": None,
+        "subagent_failures": None, "subagent_spawn_failures": None, "trace": "missing",
+        "gaps": ["missing_request_events", "missing_subagent_usage"],
+    }
+    if error:
+        record["error"] = error if re.fullmatch(r"[a-z_]{1,64}", error) else "host_error"
+    if not raw:
+        record["gaps"].append("missing_host_trace")
+        return record
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    counts = dict.fromkeys(
+        ("commands", "command_failures", "subagent_starts", "subagent_spawn_failures"), 0,
+    )
+    seen = set()
+    collab = False
+    failed_agents = set()
+    agent_states_observed = False
+    complete = malformed = False
+    for line in raw.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            malformed = True
+            continue
+        if not isinstance(event, dict):
+            malformed = True
+            continue
+        if event.get("type") == "turn.completed":
+            complete = True
+            usage = event.get("usage")
+            if isinstance(usage, dict):
+                record["parent_usage"] = {key: nonnegative(usage.get(key)) for key in USAGE_FIELDS}
+        item = event.get("item")
+        if event.get("type") != "item.completed" or not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        if isinstance(item_id, str):
+            if item_id in seen:
+                continue
+            seen.add(item_id)
+        if item.get("type") == "command_execution":
+            counts["commands"] += 1
+            counts["command_failures"] += int(
+                item.get("status") == "failed" or type(item.get("exit_code")) is int
+                and item["exit_code"] != 0
+            )
+        if item.get("type") == "collab_tool_call":
+            collab = True
+            if item.get("tool") == "spawn_agent":
+                counts["subagent_starts"] += int(item.get("status") == "completed")
+                counts["subagent_spawn_failures"] += int(item.get("status") == "failed")
+            states = item.get("agents_states")
+            if isinstance(states, dict):
+                for agent, state in states.items():
+                    if isinstance(state, dict) and isinstance(state.get("status"), str):
+                        agent_states_observed = True
+                        if state["status"] in {"failed", "errored"}:
+                            failed_agents.add(agent)
+    if collab and not (counts["subagent_starts"] or counts["subagent_spawn_failures"]):
+        counts["subagent_starts"] = counts["subagent_spawn_failures"] = None
+        record["gaps"].append("missing_subagent_spawn_events")
+    counts["subagent_failures"] = len(failed_agents) if agent_states_observed else None
+    record.update(counts, trace="complete" if complete and not malformed else "partial",
+                  trace_source="codex_jsonl")
+    if record["parent_usage"] is None:
+        record["gaps"].append("missing_token_usage")
+    return record
+
+
+def timestamp(value):
+    if value:
+        try:
+            stamp = datetime.fromisoformat(value)
+            return stamp if stamp.tzinfo is not None else None
+        except ValueError:
+            pass
+    return None
+
+
+def delta_ms(start, end):
+    if start is not None and end is not None and end >= start:
+        return round((end - start).total_seconds() * 1000)
+    return None
+
+
+def parse_log(segments: list[str]) -> dict:
+    """Read helper-owned anchors, keeping only recognized fields."""
+    tasks = []
+    task = None
+    active_spans = {}
+    previous_turn_spans = set()
+    spans = []
+    routes = []
+    commands = []
+    command = None
+    last_stamp = None
+    gaps = set()
+    for line in log_lines(segments):
+        if line is None:
+            if command is not None:
+                gaps.add("incomplete_cli_log")
+            command = task = None
+            previous_turn_spans.update(active_spans)
+            active_spans.clear()
+            continue
+        if line.startswith("===== BEGIN "):
+            if command is not None:
+                gaps.add("incomplete_cli_log")
+            command = {"stamp": line.removeprefix("===== BEGIN ").removesuffix(" =====")}
+            continue
+        if command is not None:
+            if line.startswith("argv: spex ") and "command" not in command:
+                parts = line.split()
+                name = next((word for word in parts[2:] if not word.startswith("-")), "")
+                command["command"] = name if name in SPEX_COMMANDS else None
+            end = CLI_END.fullmatch(line)
+            if end:
+                command.update(exit_code=int(end[1]), duration_ms=int(end[2]))
+                stamp = timestamp(command.pop("stamp"))
+                if stamp:
+                    command["logged_at"] = stamp.isoformat()
+                commands.append(command)
+                command = None
+            continue
+        match = TIMELINE.fullmatch(line)
+        if not match:
+            continue
+        kind, fields = match.groups()
+        fields = dict(re.findall(r"\b([a-z_]+)=([^\s]+)", fields or ""))
+        step = fields.get("step") or fields.get("id")
+        if step and not IDENTIFIER.fullmatch(step):
+            continue
+        at = timestamp(fields.get("ts"))
+        if at:
+            last_stamp = at
+        mode = fields.get("mode") if fields.get("mode") in {"full", "delta"} else None
+        round_no = number_field(fields, "round")
+        if kind == "task begin":
+            if task is not None and task["step"] == step:
+                if at and task.get("started_at") != at.isoformat():
+                    gaps.add("repeated_task_begin")
+                continue
+            phase = fields.get("resume_phase")
+            task = {"step": step, "status": "interrupted",
+                    "resume_phase": phase if phase in {"implement", "review"} else None,
+                    "last_phase": phase if phase in {"implement", "review"} else None,
+                    "duration_ms": None, "implementation_and_commit_ms": None}
+            if at:
+                task["started_at"] = at.isoformat()
+            tasks.append(task)
+        elif kind in {"task committed", "task done"} and task is not None and task["step"] == step:
+            start = timestamp(task.get("started_at"))
+            if kind == "task committed":
+                task["implementation_and_commit_ms"] = delta_ms(start, at)
+                task["last_phase"] = "review"
+            else:
+                task.update(status="complete", duration_ms=delta_ms(start, at))
+                if at:
+                    task["ended_at"] = at.isoformat()
+                task = None
+        elif kind.endswith((" begin", " end")) and not kind.startswith("task "):
+            phase = kind.split()[0]
+            key = (phase, step, round_no, mode)
+            if kind.endswith(" begin"):
+                span = {"phase": phase, "step": step, "round": round_no, "mode": mode,
+                        "status": "interrupted", "duration_ms": None}
+                if at:
+                    span["started_at"] = at.isoformat()
+                if key in active_spans and active_spans[key] == span:
+                    continue
+                active_spans[key] = span
+                spans.append(span)
+                if task is not None and task["step"] == step:
+                    task["last_phase"] = phase
+                continue
+            duration = number_field(fields, "duration_ms")
+            if phase == "checks":
+                measured = number_field(fields, "timed_count")
+                count = number_field(fields, "count")
+                if ((measured is not None and measured != count)
+                        or (measured is None and not duration)):
+                    duration = None
+                    gaps.add("missing_check_timings")
+            span = active_spans.pop(key, None)
+            if span is None:
+                if key in previous_turn_spans:
+                    gaps.add("cross_turn_span")
+                    duration = None
+                    previous_turn_spans.discard(key)
+                if spans and spans[-1].get("status") == "complete" and at and (
+                    spans[-1].get("ended_at"), spans[-1]["phase"], spans[-1]["step"]
+                ) == (at.isoformat(), phase, step):
+                    continue
+                span = {"phase": phase, "step": step, "round": round_no, "mode": mode}
+                spans.append(span)
+            span.update(status="complete", duration_ms=duration)
+            if at:
+                span["ended_at"] = at.isoformat()
+            if task is not None and task["step"] == step and phase == "review":
+                if task["resume_phase"] == "review" and span.get("started_at"):
+                    task.setdefault("review_started_at", span["started_at"])
+        elif kind == "route":
+            result = fields.get("result", "")
+            if result in ROUTES:
+                routes.append({"step": step, "round": round_no, "mode": mode, "result": result})
+    if command is not None:
+        gaps.add("incomplete_cli_log")
+    if not (tasks or spans or routes or commands):
+        gaps.add("unrecognized_debug_log")
+    for item in tasks:
+        if item.get("review_started_at") and item.get("ended_at"):
+            item["duration_ms"] = delta_ms(
+                timestamp(item["review_started_at"]), timestamp(item["ended_at"]),
+            )
+    if any(item["duration_ms"] is None for item in tasks if item["status"] == "complete"):
+        gaps.add("missing_task_timestamps")
+    return {
+        "tasks": tasks, "spans": spans, "routes": routes, "commands": commands,
+        "gaps": sorted(gaps), "last_event_at": last_stamp.isoformat() if last_stamp else None,
+    }
+
+
+def number_field(fields: dict, key: str) -> int | None:
+    value = fields.get(key, "")
+    return int(value) if value.isascii() and value.isdigit() and len(value) < 15 else None
+
+
+def log_lines(segments: list[str]):
+    for index, segment in enumerate(segments):
+        if index:
+            yield None
+        yield from segment.splitlines()
+
+
+def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool = False) -> dict:
+    root = repo / ".spex"
+    logs, gaps = [], []
+    prior = {log["source"]: log for log in (previous or {}).get("logs", [])}
+    paths = [root / "debug.log"]
+    for directory in ("specs", "archives", "sessions"):
+        parent = root / directory
+        if parent.resolve() == parent:
+            paths.extend(parent.glob("*/debug.log"))
+    for path in sorted(paths):
+        if not path.exists() and not path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if len(relative.parts) not in (1, 3) or (
+            len(relative.parts) == 3 and relative.parts[0] not in {"specs", "archives", "sessions"}
+        ):
+            continue
+        if len(relative.parts) == 3 and not IDENTIFIER.fullmatch(relative.parts[1]):
+            continue
+        try:
+            if path.resolve() != path or not path.is_file():
+                gaps.append("unsafe_debug_log")
+                continue
+            with path.open("rb") as stream:
+                content = stream.read(MAX_LOG_BYTES + 1)
+            if len(content) > MAX_LOG_BYTES:
+                gaps.append("oversized_debug_log")
+                continue
+            source = relative.as_posix()
+            earlier = prior.get(source, {})
+            offsets = list(earlier.get("turn_offsets", []))
+            size = earlier.get("size_bytes")
+            if new_turn and size:
+                offsets.append(size)
+            # A truncated or replaced log cannot be safely split at old offsets.
+            prior_hash = earlier.get("content_sha256")
+            replaced = bool(prior_hash and hashlib.sha256(content[:size]).hexdigest() != prior_hash)
+            if replaced or any(offset > len(content) or content[offset - 1:offset] != b"\n"
+                               for offset in offsets):
+                offsets = []
+                gaps.append("debug_log_replaced")
+            offsets = sorted({offset for offset in offsets if offset > 0})
+            bounds = [0, *offsets, len(content)]
+            segments = [
+                content[start:end].decode("utf-8") for start, end in zip(bounds, bounds[1:])
+            ]
+            parsed = parse_log(segments)
+            gaps.extend(parsed.pop("gaps"))
+            for task in parsed["tasks"]:
+                task["spec"] = relative.parts[1] if len(relative.parts) == 3 else None
+            logs.append({
+                "source": source, "size_bytes": len(content), "turn_offsets": offsets,
+                "content_sha256": hashlib.sha256(content).hexdigest(), **parsed,
+            })
+        except (OSError, ValueError, OverflowError):
+            gaps.append("unreadable_debug_log")
+    if not logs:
+        gaps.append("missing_debug_log")
+    return {"logs": logs, "gaps": sorted(set(gaps))}
+
+
+def read_performance(output: Path) -> dict:
+    path = output / "performance.json"
+    try:
+        if path.is_symlink():
+            raise ValueError("Unsafe performance file")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(data, dict) or data.get("schema_version") != 1
+                or not isinstance(data.get("turns"), dict)
+                or any(not isinstance(turn, dict) or not isinstance(turn.get("host"), dict)
+                       for turn in data["turns"].values())):
+            raise ValueError("Invalid performance data")
+        return data
+    except FileNotFoundError:
+        return {"schema_version": 1, "turns": {}}
+    except (OSError, ValueError):
+        return {"schema_version": 1, "turns": {}, "gaps": ["unreadable_performance_file"]}
+
+
+def update(output: Path, *, turn: int | None = None, repo: Path | None = None, **metrics) -> None:
+    data = read_performance(output)
+    try:
+        new_turn = turn is not None and str(turn) not in data["turns"]
+        if turn is None:
+            data.update(metrics)
+        else:
+            data["turns"][str(turn)] = metrics
+        if repo is not None:
+            try:
+                data["workflow"] = workflow_metrics(repo, data.get("workflow"), new_turn=new_turn)
+            except (OSError, ValueError, TypeError, OverflowError, KeyError):
+                data["workflow"] = {"logs": [], "gaps": ["unreadable_workflow_metrics"]}
+        if (output / "performance.json").is_symlink():
+            raise ValueError("Unsafe performance file")
+        temp = output / "performance.tmp"
+        if temp.is_symlink():
+            raise ValueError("Unsafe temporary file")
+        temp.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        temp.replace(output / "performance.json")
+    except (OSError, ValueError, TypeError, KeyError):
+        LOG.warning("Could not save trial performance diagnostics")
+
+
+def complete_sum(values):
+    return sum(values) if values and all(value is not None for value in values) else None
+
+
+def trial_summary(output: Path, metadata: dict) -> dict:
+    try:
+        return summarize_metrics(output, metadata, read_performance(output))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return summarize_metrics(output, metadata, {
+            "gaps": ["unreadable_performance_file"],
+        })
+
+
+def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
+    turns = list(data.get("turns", {}).values())
+    hosts = [turn["host"] for turn in turns]
+    workflow = data.get("workflow", {})
+    tasks = [task for log in workflow.get("logs", []) for task in log["tasks"]]
+    reviews = [dict(span, source=log["source"]) for log in workflow.get("logs", [])
+               for span in log["spans"] if span["phase"] == "review"]
+    timed = [task for task in tasks if task["duration_ms"] is not None]
+    interrupted = [task for task in tasks if task["status"] == "interrupted"]
+    host_turns = max(len(turns), len(metadata.get("turn_results", [])))
+    all_turns_measured = bool(hosts) and len(hosts) == host_turns
+    complete_traces = all_turns_measured and all(host["trace"] == "complete" for host in hosts)
+    return {
+        "detail": "performance.json" if (output / "performance.json").is_file() else None,
+        "host_turns": host_turns,
+        "recorded_host_turns": len(turns),
+        "host_duration_ms": (
+            complete_sum([host["duration_ms"] for host in hosts]) if all_turns_measured else None
+        ),
+        "automatic_total_ms": nonnegative(
+            data.get("automatic_total_ms", metadata.get("duration_ms")),
+        ),
+        "model_requests": None,
+        "review_rounds": (
+            len({(span["source"], span["step"], span["round"]) for span in reviews
+                 if span["round"] is not None}) if workflow.get("logs") else None
+        ),
+        "slowest_step": max(timed, key=lambda task: task["duration_ms"], default=None),
+        "interrupted_steps": interrupted,
+        "full_reviews": (
+            sum(span["mode"] == "full" for span in reviews) if workflow.get("logs") else None
+        ),
+        "delta_reviews": (
+            sum(span["mode"] == "delta" for span in reviews) if workflow.get("logs") else None
+        ),
+        "subagent_starts": (
+            complete_sum([host["subagent_starts"] for host in hosts]) if complete_traces else None
+        ),
+        "parent_usage": {
+            key: complete_sum([(host["parent_usage"] or {}).get(key) for host in hosts])
+            if all_turns_measured else None
+            for key in USAGE_FIELDS
+        },
+        "gaps": sorted(set(data.get("gaps", []) + workflow.get("gaps", []) + [
+            reason for condition, reason in (
+                (not all_turns_measured, "missing_turn_metrics"),
+                (not workflow, "missing_workflow_metrics"),
+                (any(host["duration_ms"] is None for host in hosts), "missing_host_duration"),
+                (bool(hosts) and not complete_traces, "incomplete_host_trace"),
+                (any(host["subagent_starts"] is None for host in hosts), "missing_subagent_starts"),
+                (any(host["parent_usage"] is None for host in hosts), "missing_token_usage"),
+            ) if condition
+        ] + [gap for host in hosts for gap in host.get("gaps", [])])),
+    }
+
+
+def report_lines(rows: list[dict]) -> list[str]:
+    lines = [
+        "", "## Performance", "",
+        "| Case | Host turns | Host ms | Slowest step | Rounds; full / delta passes | Subagents | "
+        "Input / cached / output / reasoning tokens | Detail |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    samples = {}
+    for row in rows:
+        perf = row["performance"]
+        case = f"{row['suite']}/{row['case_id']}"
+        step = perf["slowest_step"]
+        slowest = f"{step['step']} ({step['duration_ms']} ms)" if step else None
+        if perf["interrupted_steps"]:
+            stopped = ", ".join(
+                f"{task['step']} ({task.get('last_phase') or task['resume_phase'] or 'unknown'})"
+                for task in perf["interrupted_steps"]
+            )
+            slowest = f"{slowest or 'unknown'} / interrupted {stopped}"
+        detail = f"[metrics]({row['trial']}/{perf['detail']})" if perf["detail"] else "—"
+        fields = [case, perf["host_turns"], perf["host_duration_ms"], slowest,
+                  f"{display([perf['review_rounds']])}; "
+                  f"{display((perf['full_reviews'], perf['delta_reviews']))}",
+                  perf["subagent_starts"],
+                  display(perf["parent_usage"].values()), detail]
+        cells = ["unknown" if value is None else str(value) for value in fields]
+        lines.append("| " + " | ".join(cells) + " |")
+        key = (case, row["host"], row["model"], row["collection"], row["spex_ref"])
+        samples.setdefault(key, []).append(perf["host_duration_ms"])
+    lines.extend(["", "Model requests are unknown when the host lacks request-level events. "
+                  "Review, fix and checks may overlap.", ""])
+    for row in rows:
+        gaps = row["performance"]["gaps"]
+        if gaps:
+            lines.append(f"- {row['suite']}/{row['case_id']} diagnostics gaps: "
+                         + ", ".join(gaps) + ".")
+    for (case, host, model, collection, ref), values in samples.items():
+        measured = [value for value in values if value is not None]
+        if len(values) > 1 and measured:
+            lines.append(f"- {case} ({host}/{model}, {collection}, {(ref or 'unknown')[:8]}): "
+                         f"host latency for {len(measured)}/{len(values)} samples, "
+                         f"median {median(measured)} ms, max {max(measured)} ms.")
+    return lines
+
+
+def display(values) -> str:
+    return " / ".join("unknown" if value is None else str(value) for value in values)
