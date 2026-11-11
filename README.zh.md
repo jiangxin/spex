@@ -113,11 +113,10 @@ spex/
 
 打开 Coding Agent 工具，输入 `/spex init`。这将会：
 
-1. 仅安装本 skill 在本地 skill 目录中声明的 Python 依赖（解析这些依赖时使用官方 PyPI）。
-2. 创建 `~/.spex.toml` 配置文件。
-3. 在 `~/.spex/` 目录下初始化规格存储目录。
-4. 同步模板文件。
-5. 将 spex 命令行工具安装（链接）到 `~/.local/bin/` 下。
+1. 创建 `~/.spex.toml` 配置文件。
+2. 在 `~/.spex/` 目录下初始化规格存储目录。
+3. 同步模板文件。
+4. 将 spex 命令行工具安装（链接）到 `~/.local/bin/` 下。
 
 ---
 
@@ -155,15 +154,13 @@ disable-model-invocation: true
 
 ## 使用 spex 命令行
 
-Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置、安装 Python 依赖，以及将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
+Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置并将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
 
-**注意**：spex 命令行工具依赖 Python 3.9+，请确保系统中已安装。
+**注意**：spex 命令行工具依赖 Python 3.11+，运行时仅使用 Python 标准库。
 
 ### spex init
 
 除了执行与 `/spex init` 技能命令相同的设置之外，还支持以路径为参数，在指定仓库的根目录下创建 `.spex.toml` 和本地 `.spex/` 目录。
-
-依赖安装仅使用本 skill 的 `pyproject.toml`：本地 skill 目录加上官方 PyPI（仅 `pypi.org` / `files.pythonhosted.org` 的 https）。不会拉取或执行任意远程脚本。
 
 ### spex config
 
@@ -528,7 +525,7 @@ Spex 支持 pre-action 和 post-action 两种 hook。它们是项目本地的，
 
 ### Python 版本要求
 
-Spex 的命令行工具依赖 Python 3.9+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python` 安装。
+Spex 的命令行工具依赖 Python 3.11+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python` 安装。
 
 ### spex 命令找不到
 
@@ -575,8 +572,8 @@ export PATH="$HOME/.local/bin:$PATH"
 - **仓库地址**：[https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
-- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
-- 执行 `make setup` 创建 `.venv`，并安装 Python dev 依赖和 Node.js 依赖。
+- 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.11+ 编写。
+- 执行 `make setup` 安装 Node.js 依赖。
 - 测试、覆盖率、Python lint 和格式化目标会自动初始化 `.venv`，安装 `skills/spex/[dev]` 并使用其中的 Python，无需手动激活；pre-commit 通过 `make check` 使用同一环境。
 - 首次创建 `.venv` 时可用 `make dev-env PYTHON=python3.13` 选择解释器；切换解释器前删除 `.venv`。`skills/spex/pyproject.toml` 变化后会重新安装依赖；删除 `.venv/.dev-ready` 可强制重新安装。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。

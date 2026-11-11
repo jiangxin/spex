@@ -113,11 +113,10 @@ spex/
 
 Open your coding agent tool and type `/spex init`. This will:
 
-1. Install only this skill's declared Python dependencies from the local skill directory, plus official PyPI when resolving those deps.
-2. Create the `~/.spex.toml` configuration file.
-3. Initialize the spec storage directory under `~/.spex/`.
-4. Sync template files.
-5. Install (symlink) the spex CLI to `~/.local/bin/`.
+1. Create the `~/.spex.toml` configuration file.
+2. Initialize the spec storage directory under `~/.spex/`.
+3. Sync template files.
+4. Install (symlink) the spex CLI to `~/.local/bin/`.
 
 ---
 
@@ -155,15 +154,13 @@ disable-model-invocation: true
 
 ## Using the spex CLI
 
-After installing the skill, run `/spex init` in your coding agent to set up the configuration, install Python dependencies, and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
+After installing the skill, run `/spex init` in your coding agent to set up the configuration and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
 
-**Note**: The spex CLI requires Python 3.9+. Ensure it is installed on your system.
+**Note**: The spex CLI requires Python 3.11+. It uses the Python standard library.
 
 ### spex init
 
 In addition to performing the same setup as the `/spex init` skill command, it also accepts a path argument to create `.spex.toml` and a local `.spex/` directory at the root of the specified repository.
-
-Dependency installation uses only this skill's `pyproject.toml`: the local skill directory plus official PyPI (`pypi.org` / `files.pythonhosted.org` over https). It does not fetch or run arbitrary remote scripts.
 
 ### spex config
 
@@ -533,7 +530,7 @@ Unsafe hooks are skipped (treated as missing) with a warning.
 
 ### Python Version Requirement
 
-The Spex CLI requires Python 3.9+. Check with `python3 --version`. macOS users can install via `brew install python`.
+The Spex CLI requires Python 3.11+. Check with `python3 --version`. macOS users can install via `brew install python`.
 
 ### spex command not found
 
@@ -580,8 +577,8 @@ If apply stops because `apply-helper ensure-branch` failed on a detached HEAD, S
 - **Repository**: [https://github.com/jiangxin/spex](https://github.com/jiangxin/spex)
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
-- Scripts are in `skills/spex/scripts/`, written in Python 3.9+.
-- Run `make setup` to create `.venv` and install Python dev dependencies and Node.js dependencies.
+- Scripts are in `skills/spex/scripts/`, written in Python 3.11+.
+- Run `make setup` to install Node.js dependencies.
 - Test, coverage, Python lint, and format targets automatically initialize `.venv` with `skills/spex/[dev]` and use its Python. No manual activation is needed; pre-commit uses the same environment through `make check`.
 - Use `make dev-env PYTHON=python3.13` to choose the Python interpreter when creating `.venv`. Delete `.venv` before switching interpreters. Dependency installation is repeated when `skills/spex/pyproject.toml` changes; remove `.venv/.dev-ready` to force a reinstall.
 - Run tests: `make test` (fast), `make test-all` (full, including slow tests).

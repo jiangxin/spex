@@ -9,11 +9,11 @@ score.
 ## Quick start
 
 The default path evaluates Spex from the current host. Use macOS, Git, and
-the project Python environment. Run commands from the repository root.
+system Python 3.11 or newer. Run commands from the repository root.
 
 ```sh
-.venv/bin/python eval/spex/run.py list --tag smoke
-.venv/bin/python eval/spex/run.py prepare --suite docs --case analyze-incident \
+python3 eval/spex/run.py list --tag smoke
+python3 eval/spex/run.py prepare --suite docs --case analyze-incident \
   --host qoder
 ```
 
@@ -49,7 +49,7 @@ cases in all suites against HEAD on the current host. Narrow the scope with
 natural language such as “Run Spex smoke on python-cli” or explicit filters.
 Filters match by intersection.
 
-| Scope | Runner command after `.venv/bin/python eval/spex/run.py` |
+| Scope | Runner command after `python3 eval/spex/run.py` |
 | --- | --- |
 | All suites and cases | `list` |
 | All docs cases | `list --suite docs` |
@@ -123,7 +123,7 @@ same session for subsequent turns, and proceed only while collection returns a
 next input.
 
 ```sh
-.venv/bin/python eval/spex/run.py collect "$trial" --session "$session" --reply "$reply"
+python3 eval/spex/run.py collect "$trial" --session "$session" --reply "$reply"
 ```
 
 Use `--events FILE` only for a compatible Codex-style JSONL transcript whose
@@ -135,17 +135,17 @@ import the JSON results. Workspaces stay on disk for inspection; the runner
 does not delete the sandbox.
 
 ```sh
-.venv/bin/python eval/spex/run.py export-packet "$trial"
-.venv/bin/python eval/spex/run.py import-grades "$trial" --grades "$grades" \
+python3 eval/spex/run.py export-packet "$trial"
+python3 eval/spex/run.py import-grades "$trial" --grades "$grades" \
   --host codex --model gpt-6.1-sol
-.venv/bin/python eval/spex/run.py summary "$sandbox"
+python3 eval/spex/run.py summary "$sandbox"
 ```
 
 After agents have written `_handoff/<suite>-<case>-turnN.txt` for a whole
 sandbox, batch-collect and summarize with:
 
 ```sh
-.venv/bin/python eval/spex/collect_handoff.py "$sandbox"
+python3 eval/spex/collect_handoff.py "$sandbox"
 ```
 
 `export-packet` writes `judge-packet.json` and `judge-prompt.txt` beside the
@@ -211,7 +211,7 @@ code written by the evaluated model, with system Git resolved through
 `xcrun`.
 
 ```sh
-.venv/bin/python eval/spex/run.py run --tag smoke \
+python3 eval/spex/run.py run --tag smoke \
   --model gpt-6.1-sol --judge-model gpt-6.1-sol
 ```
 
@@ -224,9 +224,9 @@ for both sides of a comparison.
 Use the sandbox directory name as the run ID for saved evaluations.
 
 ```sh
-.venv/bin/python eval/spex/run.py calibrate --judge-model gpt-6.1-sol
-.venv/bin/python eval/spex/run.py judge RUN_ID --judge-model gpt-6.1-sol
-.venv/bin/python eval/spex/run.py compare BASELINE_ID CANDIDATE_ID \
+python3 eval/spex/run.py calibrate --judge-model gpt-6.1-sol
+python3 eval/spex/run.py judge RUN_ID --judge-model gpt-6.1-sol
+python3 eval/spex/run.py compare BASELINE_ID CANDIDATE_ID \
   --judge-model gpt-6.1-sol
 ```
 

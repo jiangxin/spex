@@ -155,11 +155,11 @@ def test_trials_are_independent_and_install_pinned_skill(manifest, tmp_path, mon
 def test_trial_rejects_external_root_and_fixture_symlink(manifest, tmp_path):
     case = workspace.select_cases(manifest.parent.parent)[0]
     trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case-a")
-    outside = tmp_path / ".spex"
-    outside.mkdir()
+    (trial.repo / ".spex.toml").write_text(
+        '[spex]\nspex_root = "../.."\n', encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="Spex roots escape"):
         workspace.verify_spex_roots(trial)
-    outside.rmdir()
     shutil.rmtree(trial.directory)
     (case.fixture / ".spex").symlink_to(tmp_path, target_is_directory=True)
     with pytest.raises(ValueError, match="Unsupported fixture path"):

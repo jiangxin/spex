@@ -1,4 +1,3 @@
-import json
 import logging
 import subprocess
 import sys
@@ -450,7 +449,6 @@ class TestRunInit:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config") as mock_create_toml,
             patch("init.get_project_context", return_value=ctx),
@@ -477,7 +475,6 @@ class TestRunInit:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx_with_roots),
@@ -502,7 +499,6 @@ class TestRunInit:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
@@ -527,7 +523,6 @@ class TestRunInit:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
@@ -551,7 +546,6 @@ class TestRunInit:
         clear_spex_root_cache()
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
         ):
@@ -572,7 +566,6 @@ class TestRunInit:
         clear_spex_root_cache()
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
         ):
@@ -596,7 +589,6 @@ class TestRunInit:
         clear_spex_root_cache()
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
         ):
@@ -711,7 +703,6 @@ class TestVerboseFlag:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
@@ -854,7 +845,6 @@ class TestRunInitWithTargetDir:
         from init import run_init
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("config.Path.home", return_value=tmp_path / "empty_home"),
         ):
@@ -877,7 +867,6 @@ class TestRunInitWithTargetDir:
         from init import run_init
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("config.Path.home", return_value=fake_home),
         ):
@@ -900,7 +889,6 @@ class TestDryRun:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
@@ -921,7 +909,6 @@ class TestDryRun:
         )
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init._create_toml_config"),
             patch("init.get_project_context", return_value=ctx),
@@ -940,7 +927,6 @@ class TestDryRun:
         target.mkdir()
 
         with (
-            patch("init._install_deps"),
             patch("init._install_cli"),
             patch("init.get_main_worktree", return_value=None),
         ):
@@ -977,166 +963,6 @@ class TestDryRun:
         mock_run.assert_called_once_with(
             target_dir=None, verbose=False, dry_run=True, skip_deps=False,
         )
-
-
-class TestDepsSatisfied:
-    """Fast tests for dependency presence checks and skip paths."""
-
-    def test_deps_satisfied_when_imports_exist(self, tmp_path, monkeypatch):
-        from init import _deps_satisfied
-
-        pyproject = tmp_path / "pyproject.toml"
-        pyproject.write_text(
-            '[project]\ndependencies = ["jinja2"]\n',
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(
-            "init.importlib.util.find_spec",
-            lambda name: object() if name == "jinja2" else None,
-        )
-        assert _deps_satisfied(tmp_path) is True
-
-    def test_deps_not_satisfied_when_missing(self, tmp_path, monkeypatch):
-        from init import _deps_satisfied
-
-        pyproject = tmp_path / "pyproject.toml"
-        pyproject.write_text(
-            '[project]\ndependencies = ["jinja2"]\n',
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(
-            "init.importlib.util.find_spec",
-            lambda name: None,
-        )
-        assert _deps_satisfied(tmp_path) is False
-
-    def test_install_deps_skips_when_satisfied(self, caplog, monkeypatch):
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)
-        with patch("init.subprocess.run") as mock_run:
-            with caplog.at_level(logging.INFO):
-                from init import _install_deps
-                assert _install_deps() is True
-        mock_run.assert_not_called()
-        assert "already satisfied" in caplog.text
-
-    def test_install_deps_runs_pip_when_missing(self, monkeypatch):
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
-        with patch(
-            "init.subprocess.run",
-            return_value=subprocess.CompletedProcess([], 0),
-        ) as mock_run:
-            from init import _install_deps
-            assert _install_deps() is True
-        assert mock_run.called
-        cmd = mock_run.call_args[0][0]
-        assert "pip" in cmd
-        from common import _get_skill_path
-        assert str(_get_skill_path()) in cmd
-        assert "--no-input" in cmd
-        assert "--no-deps" not in cmd
-        assert not any(
-            isinstance(a, str) and a.startswith(("http://", "https://"))
-            for a in cmd
-        )
-
-    def test_install_deps_uv_argv_local_skill_dir(self, monkeypatch):
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
-        monkeypatch.setattr(
-            "init.shutil.which",
-            lambda name: "/usr/bin/uv" if name == "uv" else None,
-        )
-        calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(list(cmd))
-            if "-m" in cmd and "pip" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 1, stdout="", stderr="fail",
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("init.subprocess.run", side_effect=fake_run):
-            from init import _install_deps
-            assert _install_deps() is True
-        uv_cmd = calls[1]
-        from common import _get_skill_path
-        assert str(_get_skill_path()) in uv_cmd
-        assert "--no-input" in uv_cmd
-        assert "--no-deps" not in uv_cmd
-        assert not any(
-            isinstance(a, str) and a.startswith(("http://", "https://"))
-            for a in uv_cmd
-        )
-
-    def test_pyproject_has_no_jinja2(self):
-        pyproject = (
-            Path(__file__).resolve().parent.parent
-            / "skills" / "spex" / "pyproject.toml"
-        )
-        content = pyproject.read_text(encoding="utf-8")
-        assert "jinja2" not in content
-        assert "tomli" in content
-
-    def test_dry_run_would_skip_when_satisfied(self, caplog, monkeypatch):
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: True)
-        with caplog.at_level(logging.INFO):
-            from init import _install_deps
-            assert _install_deps(dry_run=True) is True
-        assert "Would skip dependency installation" in caplog.text
-
-    def test_dry_run_would_install_when_missing(self, caplog, monkeypatch):
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
-        with caplog.at_level(logging.INFO):
-            from init import _install_deps
-            assert _install_deps(dry_run=True) is True
-        assert "Would install dependencies" in caplog.text
-
-    def test_skip_deps_bypasses_install(self, tmp_path, caplog):
-        spex_root = tmp_path / ".spex"
-        ctx = _make_context(
-            spex_root=str(spex_root),
-            spex_roots=[str(spex_root)],
-            spex_tomls=[tmp_path / ".spex.toml"],
-        )
-        with (
-            patch("init.get_project_context", return_value=ctx),
-            patch("init.get_top_workdir", return_value=tmp_path),
-            patch("init._install_deps") as mock_install,
-            patch("init._create_toml_config"),
-            patch("init.ensure_initialized"),
-            patch("init._sync_all_templates"),
-            patch("init._install_cli"),
-        ):
-            with caplog.at_level(logging.INFO):
-                from init import run_init
-                run_init(workdir=str(tmp_path), skip_deps=True)
-        mock_install.assert_not_called()
-        assert "--skip-deps" in caplog.text
-
-
-@pytest.mark.slow
-class TestInstallDeps:
-    """Test _install_deps function (lines 41-61)."""
-
-    def test_dry_run_returns_true(self, caplog, monkeypatch):
-        """_install_deps(dry_run=True) returns True without installing."""
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
-        with caplog.at_level(logging.INFO):
-            from init import _install_deps
-            assert _install_deps(dry_run=True) is True
-        assert "Would install dependencies" in caplog.text
-
-    def test_verbose_shows_message(self, caplog, monkeypatch):
-        """_install_deps(verbose=True) shows installing message when needed."""
-        monkeypatch.setattr("init._deps_satisfied", lambda skill_dir: False)
-        with patch(
-            "init.subprocess.run",
-            return_value=subprocess.CompletedProcess([], 0),
-        ):
-            with caplog.at_level(logging.INFO):
-                from init import _install_deps
-                _install_deps(verbose=True)
-        assert "Installing dependencies from" in caplog.text
 
 
 class TestInstallCli:
@@ -1220,147 +1046,3 @@ _GOOD_WHEEL = (
     "jinja2-3.1.0-py3-none-any.whl"
 )
 _PYPI_WHEEL = "https://pypi.org/packages/jinja2-3.1.0-py3-none-any.whl"
-
-
-class TestWheelUrlAllowlist:
-    """URL checks for the wheel-download fallback."""
-
-    def test_allows_pythonhosted_https(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(_GOOD_WHEEL) is True
-
-    def test_allows_pypi_org_https(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(_PYPI_WHEEL) is True
-
-    def test_rejects_http(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(
-            "http://files.pythonhosted.org/packages/"
-            "jinja2-3.1.0-py3-none-any.whl"
-        ) is False
-
-    def test_rejects_unknown_host(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(
-            "https://evil.example/jinja2-3.1.0-py3-none-any.whl"
-        ) is False
-
-    def test_rejects_lookalike_host(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(
-            "https://files.pythonhosted.org.evil.example/x.whl"
-        ) is False
-
-    def test_rejects_userinfo(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url(
-            "https://user:pass@pypi.org/x.whl"
-        ) is False
-
-    def test_rejects_invalid_port(self):
-        from init import _is_allowed_wheel_url
-
-        assert _is_allowed_wheel_url("https://pypi.org:abc/x.whl") is False
-
-    def test_pypi_json_url_exact(self):
-        from init import _is_allowed_pypi_json_url
-
-        assert _is_allowed_pypi_json_url(
-            "https://pypi.org/pypi/jinja2/json", "jinja2",
-        ) is True
-        assert _is_allowed_pypi_json_url(
-            "http://pypi.org/pypi/jinja2/json", "jinja2",
-        ) is False
-        assert _is_allowed_pypi_json_url(
-            "https://pypi.org/pypi/jinja2/json", "evil",
-        ) is False
-        assert _is_allowed_pypi_json_url(
-            "https://pypi.org/pypi/jinja2/../evil/json", "jinja2/../evil",
-        ) is False
-
-
-class TestInstallSingleWheel:
-    """_install_single_wheel rejects untrusted URLs before downloading."""
-
-    @staticmethod
-    def _pypi_json(url):
-        return json.dumps({
-            "urls": [{
-                "filename": "jinja2-3.1.0-py3-none-any.whl",
-                "url": url,
-            }],
-        })
-
-    def test_rejects_bad_wheel_url_without_download(self):
-        from init import _install_single_wheel
-
-        bad = "https://evil.example/jinja2-3.1.0-py3-none-any.whl"
-        payload = self._pypi_json(bad)
-        calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(list(cmd))
-            return subprocess.CompletedProcess(
-                cmd, 0, stdout=payload, stderr="",
-            )
-
-        with patch("init.subprocess.run", side_effect=fake_run):
-            assert _install_single_wheel("jinja2", "/tmp/site") is False
-        assert len(calls) == 1
-        assert calls[0][-1] == "https://pypi.org/pypi/jinja2/json"
-        assert not any(bad in part for cmd in calls for part in cmd)
-
-    def test_rejects_http_wheel_url_without_download(self):
-        from init import _install_single_wheel
-
-        bad = (
-            "http://files.pythonhosted.org/packages/"
-            "jinja2-3.1.0-py3-none-any.whl"
-        )
-        payload = self._pypi_json(bad)
-        calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(list(cmd))
-            return subprocess.CompletedProcess(
-                cmd, 0, stdout=payload, stderr="",
-            )
-
-        with patch("init.subprocess.run", side_effect=fake_run):
-            assert _install_single_wheel("jinja2", "/tmp/site") is False
-        assert len(calls) == 1
-        assert not any(bad in part for cmd in calls for part in cmd)
-
-    def test_allowed_pythonhosted_url_is_fetched(self):
-        from init import _install_single_wheel
-
-        payload = self._pypi_json(_GOOD_WHEEL)
-        calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(list(cmd))
-            if any("pypi.org/pypi/" in str(a) for a in cmd):
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=payload, stderr="",
-                )
-            return subprocess.CompletedProcess(cmd, 1)
-
-        with patch("init.subprocess.run", side_effect=fake_run):
-            _install_single_wheel("jinja2", "/tmp/site")
-        assert any(_GOOD_WHEEL in part for cmd in calls for part in cmd)
-
-    def test_rejects_invalid_package_name(self):
-        from init import _install_single_wheel
-
-        with patch("init.subprocess.run") as mock_run:
-            assert _install_single_wheel(
-                "jinja2/../../evil", "/tmp/site",
-            ) is False
-        mock_run.assert_not_called()

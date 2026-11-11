@@ -5,8 +5,8 @@ Deterministic helper for spex-eval: after agents write
 
 Usage (from repository root)::
 
-    .venv/bin/python eval/spex/collect_handoff.py eval/spex/runs/TIMESTAMP
-    .venv/bin/python eval/spex/collect_handoff.py SANDBOX --no-summary
+    python3 eval/spex/collect_handoff.py eval/spex/runs/TIMESTAMP
+    python3 eval/spex/collect_handoff.py SANDBOX --no-summary
 """
 
 from __future__ import annotations
