@@ -248,7 +248,7 @@ Before / after each batch:
    lint rewrite targets only (exclude `templates/`):
 
    ```bash
-   npx markdownlint-cli2 \
+   npx --yes markdownlint-cli2@0.18.1 \
      "skills/spex/SKILL.md" \
      "skills/spex/commands/*.md" \
      "skills/spex/references/*.md"

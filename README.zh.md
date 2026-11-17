@@ -601,7 +601,8 @@ export PATH="$HOME/.local/bin:$PATH"
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
 - 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
-- 执行 `make setup` 安装 Node.js 依赖。
-- 测试、覆盖率、Python lint 和格式化目标会自动初始化 `.venv`，安装 `skills/spex/[dev]` 并使用其中的 Python，无需手动激活；pre-commit 通过 `make check` 使用同一环境。
+- 运行 `make` 查看可用目标，每次提交前运行 `make check`。
+- Markdown lint 需要 Node.js 和 `npx`。首次使用时，`npx` 会将固定版本的检查工具下载到 npm 缓存。Python lint 和测试只需要 Python。
+- 测试、覆盖率、Python lint 和格式化目标会自动初始化 `.venv`，安装 `skills/spex/[dev]` 并使用其中的 Python，无需手动激活。
 - 首次创建 `.venv` 时可用 `make dev-env PYTHON=python3.13` 选择解释器；切换解释器前删除 `.venv`。`skills/spex/pyproject.toml` 变化后会重新安装依赖；删除 `.venv/.dev-ready` 可强制重新安装。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。
