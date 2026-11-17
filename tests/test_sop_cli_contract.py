@@ -54,7 +54,7 @@ PLACEHOLDER_RE = re.compile(
 # Harvest options from --help; lookarounds use [\w-] (not [\\w-]).
 _HELP_OPTION_RE = re.compile(r"(?<![\w-])(-\w|--[\w-]+)(?![\w-])")
 _FRONT_MATTER_KEY_RE = re.compile(r"^  - (\w+)\s*$")
-_UNQUOTED_NAME_RE = re.compile(r"""--name\s+\$spec_name\b""")
+_UNQUOTED_SPEC_NAME_RE = re.compile(r"""(?<![\w"'])\$spec_name\b""")
 
 # Top-level commands that expose a nested subcommand (second positional).
 NESTED_COMMANDS = frozenset({
@@ -788,16 +788,16 @@ class TestSopCliContract:
         assert "/tmp/fake-skill/scripts/spex" in rendered
         assert 'todo-helper edit "demo-spec"' in rendered
 
-    def test_no_unquoted_name_spec_name_in_sop_or_templates(self):
-        """cli-contract rule 4: --name \"$spec_name\", never bare $spec_name."""
+    def test_no_unquoted_spec_name_in_sop_or_templates(self):
+        """cli-contract rule 4: quote positional spec-name variables."""
         offenders: list[str] = []
         for path in _sop_files():
-            text = path.read_text(encoding="utf-8")
-            if _UNQUOTED_NAME_RE.search(text):
-                rel = path.relative_to(SPEX_ROOT).as_posix()
-                offenders.append(rel)
+            for raw, _ in _extract_invocations(path):
+                if _UNQUOTED_SPEC_NAME_RE.search(raw):
+                    rel = path.relative_to(SPEX_ROOT).as_posix()
+                    offenders.append(rel)
         assert not offenders, (
-            "unquoted --name $spec_name in:\n" + "\n".join(offenders)
+            "unquoted $spec_name in:\n" + "\n".join(offenders)
         )
 
     def test_apply_one_task_wraps_future_steps(self):

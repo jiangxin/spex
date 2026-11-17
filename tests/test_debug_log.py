@@ -159,6 +159,18 @@ class TestParseNameFromArgv:
     def test_missing(self):
         assert parse_name_from_argv(["spex", "version"]) is None
 
+    @pytest.mark.parametrize("command", ["version", "unknown"])
+    def test_legacy_selector_cannot_route_an_unrelated_command(self, command):
+        assert parse_name_from_argv(["spex", command, "--name", "topic"]) is None
+
+    @pytest.mark.parametrize("command, subcommand", [
+        ("apply_helper", "dirty"),
+        ("create-helper", "post-action"),
+    ])
+    def test_lifecycle_name_option_still_routes(self, command, subcommand):
+        argv = ["spex", "--debug", command, subcommand, "--name", "topic_name"]
+        assert parse_name_from_argv(argv) == "topic_name"
+
     @pytest.mark.parametrize("argv, expected", [
         (["archive", "topic", "--json"], "topic"),
         (["archive", "--restore", "topic"], "topic"),
@@ -407,7 +419,7 @@ class TestSessionHelpers:
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(
-                target, ["spex", "version", "--name", "my-spec"]
+                target, ["spex", "prompt", "show", "my-spec"]
             ):
                 print("after-merge")
 

@@ -169,7 +169,7 @@ Always pass `--commit` so the first append can create the review
 file when it does not exist yet:
 
 ```bash
-{{ spex_skill_dir }}/scripts/spex review-helper append {{ spec_name }} \
+{{ spex_skill_dir }}/scripts/spex review-helper append "{{ spec_name }}" \
    --step {{ step_id }} --commit {{ commit_sha }} \
   --id r{{ review_round }}-f1 --severity major --category tests \
   --title "Short title" --details-from-stdin <<'DETAILS'

@@ -285,6 +285,13 @@ including file changes, logic, and acceptance criteria.
 DETAILS
 ```
 
+Pass spec names positionally after the command for direct CLI entries, after
+the subcommand for `todo-helper`, `review-helper`, and `prompt`, or after
+the template name for generic prompt rendering. For `run-hook`, pass the
+optional spec name after the hook name. `todo-helper` accepts exactly one
+locator, either a spec name or `--todo-file <path>`. The `create-helper`
+and `apply-helper` lifecycle commands use `--name` for spec selection.
+
 ### 2. Atomic Commits: Small Steps, Fast Progress
 
 Small batches (breaking a feature into multiple small development steps) are a cornerstone of high-quality development. This isn't just formalism — it's a well-established finding backed by both open-source practice and DevOps research:

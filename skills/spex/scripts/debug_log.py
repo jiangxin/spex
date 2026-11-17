@@ -324,7 +324,7 @@ def parse_name_from_argv(argv: list[str]) -> str | None:
         }:
             return _parse_helper_selector(command, argv[index + 1:])
         break
-    return parse_flag_from_argv(argv, "--name")
+    return None
 
 
 def _parse_helper_selector(command: str, argv: list[str]) -> str | None:
@@ -571,10 +571,10 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
     Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
     1. ``SPEX_LOG_DIR`` → ``<log_dir>/debug.log``
-    2. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    3. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    4. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    5. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    2. Exact selector in ``specs/`` → ``<spec_dir>/debug.log``
+    3. Exact selector in ``archives/`` → ``<archived_dir>/debug.log``
+    4. Unique fuzzy selector in ``specs/`` → ``<spec_dir>/debug.log``
+    5. Unique fuzzy selector in ``archives/`` → ``<archived_dir>/debug.log``
     6. Active create session → ``sessions/<id>/debug.log``
     7. Fallback → ``<spex_root>/debug.log``
     """
@@ -961,9 +961,9 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
 
     The flush path is chosen via ``safe_flush_debug_log_path`` after the
     command body returns. This matters for ``prepare-spec``: the pre-command
-    path may be the active session log (new ``--name`` does not exist yet),
+    path may be the active session log (the new spec does not exist yet),
     but handoff merges/deletes that file and clears the active pointer, after
-    which ``--name`` uniquely matches the new spec. Flushing the pre-resolved
+    which the selector uniquely matches the new spec. Flushing the pre-resolved
     session path would recreate an orphan session log; re-resolving appends
     the tee block to ``<spec_dir>/debug.log`` instead.
 

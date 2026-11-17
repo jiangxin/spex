@@ -23,10 +23,12 @@ Commands (run directly):
   init          Initialize spex environment
   list [--archives] [--all-projects]
                 List specs with progress
-  merge [name]
+  merge [<spec-name>]
                 Merge a spex branch back to target (alias: submit)
-  open          Open spec directory in file browser
-  show [name]   Show detailed spec information (-l for brief)
+  open [<spec-name>]
+                Open spec directory in file browser
+  show [<spec-name>]
+                Show detailed spec information (-l for brief)
 
 Commands (LLM skill only — invoked via /spex, not directly):
   apply       Apply all steps of a spec (or apply-one-step for single step)
@@ -34,13 +36,13 @@ Commands (LLM skill only — invoked via /spex, not directly):
   modify      Modify an existing spec
 
 Internal commands (used by skill):
-  apply-helper <subcommand>
+  apply-helper <subcommand> [--name <spec-name>]
                 Helper utilities for applying specs
                 (precheck, ensure-branch, post-action)
-  create-helper <subcommand>
+  create-helper <subcommand> [--name <spec-name>]
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  meta-helper <spec_name> [key] [value] [--stdin]
+  meta-helper <spec-name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <template> [<spec-name>] [-o <file>]
                 Render a Spex template with metadata
@@ -312,12 +314,12 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge [name] [--no-archive] [-n/--dry-run]
+Usage: spex merge [<spec-name>] [--no-archive] [-n/--dry-run]
 
 Merge a spex branch back to target.
 
 Positional arguments:
-  name            Spec name
+  <spec-name>     Spec name
 
 Options:
   --no-archive    Skip automatic archiving after successful merge

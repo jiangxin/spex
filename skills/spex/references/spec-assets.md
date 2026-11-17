@@ -27,7 +27,7 @@ IF images found:
 3. Register in `meta.json` (example):
 
    ```bash
-   $spex_skill_dir/scripts/spex meta-helper $spec_name prompts \
+   $spex_skill_dir/scripts/spex meta-helper "$spec_name" prompts \
      --add-images assets/file1.png assets/file2.png
    ```
 

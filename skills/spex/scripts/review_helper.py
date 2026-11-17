@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from cli import ArgumentParser
+from cli import ArgumentParser, nonempty_spec_name
 from common import (
     atomic_write_json,
     local_iso_timestamp,
@@ -1521,7 +1521,9 @@ def _build_parser():
         p_init, p_append, p_edit, p_bump, p_set_commit, p_status,
         p_show, p_list, p_get, p_next, p_open_batch, p_set_pending, p_complete,
     ):
-        subparser.add_argument("name", metavar="<spec-name>", help="Spec name")
+        subparser.add_argument(
+            "name", type=nonempty_spec_name, metavar="<spec-name>", help="Spec name",
+        )
 
     return parser
 

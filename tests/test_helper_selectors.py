@@ -47,14 +47,14 @@ def test_todo_positional_selectors(command, options):
 @pytest.mark.parametrize("module,commands", [
     (review_helper, REVIEW_ARGS), (todo_helper, TODO_ARGS),
 ])
-@pytest.mark.parametrize("invalid", ["legacy", "equals", "extra", "missing"])
+@pytest.mark.parametrize("invalid", ["legacy", "equals", "extra", "missing", "empty"])
 def test_invalid_selectors_fail_before_resolution(module, commands, invalid, monkeypatch):
     resolver = Mock(side_effect=AssertionError("Must not resolve an invalid selector"))
     monkeypatch.setattr(module, "resolve_spec_dir", resolver)
     for command, options in commands.items():
         names = {
             "legacy": ["--name", "topic"], "equals": ["--name=topic"],
-            "extra": ["topic", "extra"], "missing": [],
+            "extra": ["topic", "extra"], "missing": [], "empty": [""],
         }[invalid]
         with pytest.raises(SystemExit) as error:
             module.main([command, *names, *options])
@@ -73,7 +73,6 @@ def test_todo_conflicting_locators_leave_file_unchanged(command, options, tmp_pa
 
 
 @pytest.mark.parametrize("locators", [
-    [""],
     ["--todo-file", ""],
     ["topic", "--todo-file", ""],
     ["", "--todo-file", "todo.json"],
@@ -99,6 +98,7 @@ def test_debug_routes_positional_selector(helper, options):
     ["todo-helper", "show", "topic", "--todo-file", ""],
     ["todo-helper", "show", "--name=topic"],
     ["review-helper", "show", "topic"],
+    ["review-helper", "status", "", "--step", "step-1"],
 ])
 def test_debug_ignores_invalid_selectors(args):
     assert debug_log.parse_name_from_argv(["spex", "-d", *args]) is None

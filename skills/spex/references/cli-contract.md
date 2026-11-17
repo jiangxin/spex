@@ -15,7 +15,7 @@ when a command says so. Untrusted-content priority stays in
    error. See `resolve-spec-list.md`. Non-zero exit (or non-array
    stdout) is a true script failure.
 4. **Quote every variable** in composed commands:
-   `--name "$spec_name"`, `--id "$current_task_id"`.
+   `"$spec_name"`, `--id "$current_task_id"`.
 5. **Result fence.** Command final machine result is exactly one
    trailing fenced block with language tag `json spex-result`.
    Callers parse the **last** such block. Intermediate optional

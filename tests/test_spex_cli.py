@@ -641,6 +641,38 @@ class TestLlmErrorHandlers:
 class TestMainEntrypoint:
     """Test main() entry point (lines 513-542)."""
 
+    @pytest.mark.parametrize("command, module, tail", [
+        ("list", "list", ["topic_name", "--json"]),
+        ("show", "show", ["topic_name", "-l"]),
+        ("open", "open", ["topic_name"]),
+        ("merge", "merge", ["topic_name"]),
+        ("submit", "merge", ["topic_name"]),
+        ("meta-helper", "meta_helper", ["topic_name", "description"]),
+        ("meta_helper", "meta_helper", ["topic_name", "description"]),
+        ("apply-helper", "apply_helper", ["dirty", "--name", "topic_name", "--json"]),
+        ("apply_helper", "apply_helper", ["dirty", "--name", "topic_name", "--json"]),
+        ("create-helper", "create_helper", ["post-action", "--name", "topic_name"]),
+        ("create_helper", "create_helper", ["post-action", "--name", "topic_name"]),
+        ("todo-helper", "todo_helper", ["show", "topic_name"]),
+        ("todo_helper", "todo_helper", ["show", "topic_name"]),
+        ("review-helper", "review_helper", ["status", "topic_name", "--step", "s1"]),
+        ("review_helper", "review_helper", ["status", "topic_name", "--step", "s1"]),
+        ("prompt", "prompt", ["show", "topic_name"]),
+        ("archive", "archive", ["topic_name", "--dry-run"]),
+    ])
+    def test_dispatch_preserves_spec_selector(self, monkeypatch, command, module, tail):
+        """Command aliases normalize without rewriting spec-name underscores."""
+        received = []
+        fake_mod = type(sys)(module)
+        fake_mod.main = lambda argv: received.append(argv)
+        fake_mod.cli_submit = lambda argv, command: received.append(argv)
+        monkeypatch.setitem(sys.modules, module, fake_mod)
+        monkeypatch.setattr("debug_log.debug_enabled", lambda argv: False)
+
+        _spex_mod.main([command, *tail])
+
+        assert received == [tail]
+
     def test_no_args_prints_help(self, capsys):
         """main() with no args prints help to stderr and exits 0."""
         with pytest.raises(SystemExit) as exc_info:

@@ -284,6 +284,12 @@ including file changes, logic, and acceptance criteria.
 DETAILS
 ```
 
+直接调用 CLI 时，spec 名称放在命令后。`todo-helper`、`review-helper`
+和 `prompt` 的 spec 名称放在子命令后，通用 prompt 渲染则放在模板名后。
+`run-hook` 的可选 spec 名称放在 hook 名称后。`todo-helper` 接受一种
+定位方式，可以使用 spec 名称或 `--todo-file <path>`。
+`create-helper` 和 `apply-helper` 的生命周期命令通过 `--name` 选择 spec。
+
 ### 2. 原子化提交：小步快跑
 
 Small batches（将功能拆分为多个小的开发步骤）是高质量开发的基石。这不是形式主义，而是开源实践和 DevOps 研究共同验证的成熟经验：
