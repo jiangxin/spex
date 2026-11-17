@@ -77,7 +77,7 @@ def _clear_cache():
 def _prompt_apply_one_task_json(monkeypatch, capsys, name: str) -> dict:
     monkeypatch.setattr(
         "sys.argv",
-        ["prompt", "apply-one-task", "--name", name, "--json"],
+        ["prompt", "apply-one-task", name, "--json"],
     )
     monkeypatch.setattr("sys.stdin", open("/dev/null"))
     from prompt import main

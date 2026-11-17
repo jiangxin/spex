@@ -94,8 +94,21 @@ def test_review_prompt_command_records_only_observed_skips(output, skipped):
         "aggregated_output": output,
     })
     assert event["action"] == "apply.review-command"
+    assert event["spec"] == "spec"
     assert event["mode"] == "full"
     assert event.get("skipped") is skipped
+
+
+@pytest.mark.parametrize("subcommand", ["apply_review", "'apply-review'"])
+def test_review_prompt_keeps_spec_name_separate_from_option_values(subcommand):
+    event = transport.command_event({
+        "command": f"./scripts/spex prompt {subcommand} --output report --commit=abc 'spec name'",
+        "exit_code": 0,
+    })
+    assert event == {
+        "action": "apply.review-command", "exit_code": 0, "stage": "prompt",
+        "spec": "spec name", "commit": "abc",
+    }
 
 
 @pytest.mark.parametrize("options,limit", [([], 4), (["--jobs", "2"], 2), (["--jobs", "1"], 1)])

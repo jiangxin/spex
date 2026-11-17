@@ -55,7 +55,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-one-task", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-one-task", "my-spec"],
         )
         metadata = {
             "current_task_id": "step-4",
@@ -85,7 +85,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-one-task", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-one-task", "my-spec"],
         )
         metadata = {
             "current_task_id": "",
@@ -110,7 +110,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-review", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-review", "my-spec"],
         )
         metadata = {
             "current_task_description": "task",
@@ -392,7 +392,7 @@ class TestReviewFlowTelemetry:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-review", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-review", "my-spec"],
         )
         metadata = {
             "current_task_description": "task",

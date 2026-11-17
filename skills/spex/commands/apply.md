@@ -161,7 +161,7 @@ for outer loops; Phase bodies below do not restate the diagram.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
+$spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 ```
 
 - IF non-zero exit -> report stderr -> STOP

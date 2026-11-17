@@ -56,7 +56,9 @@ def command_event(item: dict) -> dict:
         helper, args = matches[0].groups()
         if helper == "apply-helper" and re.match(r"\s+post-action\b", args):
             action = "apply.post-action"
-        elif helper == "review-helper" or helper == "prompt" and "apply-review" in args:
+        elif helper == "review-helper" or (
+            helper == "prompt" and re.match(r"""\s+['"]?apply[-_]review['"]?(?:\s|$)""", args)
+        ):
             action = "apply.review-command"
         else:
             action = "apply.workflow"
@@ -142,7 +144,7 @@ def review_arguments(command: str) -> dict:
         "--output": None, "-o": None, "--spex-root": None, "--workdir": None,
         "--ids": None, "--evidence": None,
     }
-    if words[1:3] == ["prompt", "apply-review"]:
+    if words[1] == "prompt" and words[2].replace("_", "-") == "apply-review":
         stage = "prompt"
         words = words[3:]
     elif words[1] == "review-helper":

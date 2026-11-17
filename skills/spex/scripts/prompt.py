@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from argparse import ArgumentTypeError
 from pathlib import Path
 from typing import Optional
 
@@ -897,6 +898,12 @@ def _output_rendered(rendered, output_path):
         print(rendered)
 
 
+def _nonempty_spec_name(name: str) -> str:
+    if not name:
+        raise ArgumentTypeError("Spec name must not be empty")
+    return name
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -912,7 +919,7 @@ def _build_parser():
         help="Render prompt for the next undone task",
     )
     p.add_argument(
-        "--name", required=True, help="Spec name (required)",
+        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--json", action="store_true", dest="json_mode",
@@ -928,7 +935,8 @@ def _build_parser():
         description="Render apply-commit template with spec metadata.",
         help="Render commit instructions for the current task",
     )
-    p.add_argument("--name", help="Spec name")
+    p.add_argument("name", nargs="?", type=_nonempty_spec_name,
+                   metavar="<spec-name>", help="Spec name")
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
         help="Read raw text from stdin as prompt_context",
@@ -945,7 +953,8 @@ def _build_parser():
         description="Render apply-review template with spec metadata.",
         help="Render review instructions for the current task commit",
     )
-    p.add_argument("--name", required=True, help="Spec name (required)")
+    p.add_argument("name", type=_nonempty_spec_name, metavar="<spec-name>",
+                   help="Spec name (required)")
     p.add_argument(
         "--commit", dest="commit_sha", default=None,
         help="Commit SHA under review (default: from review file)",
@@ -971,7 +980,8 @@ def _build_parser():
         ),
         help="Render batch fix instructions for open findings",
     )
-    p.add_argument("--name", required=True, help="Spec name (required)")
+    p.add_argument("name", type=_nonempty_spec_name, metavar="<spec-name>",
+                   help="Spec name (required)")
     p.add_argument(
         "--finding-id", default=None, dest="finding_id",
         help=(
@@ -998,7 +1008,7 @@ def _build_parser():
         help="Render prompt for modifying a spec",
     )
     p.add_argument(
-        "--name", required=True, help="Spec name (required)",
+        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -1023,7 +1033,7 @@ def _build_parser():
         help="Render prompt for modifying a todo list",
     )
     p.add_argument(
-        "--name", required=True, help="Spec name (required)",
+        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -1533,29 +1543,36 @@ def cli_modify_todo(argv=None):
     _do_modify_todo(args)
 
 
-def cli_render(argv):
-    """Fallback CLI handler for generic template rendering."""
-
+def _build_render_parser():
+    """Build the generic template parser without rendering or side effects."""
     parser = ArgumentParser(
         prog="spex prompt",
         description="Render a Spex template with metadata.",
     )
-    parser.add_argument("name", help="Template name (without .md extension)")
-    parser.add_argument("--name", help="Spec name for spec-specific metadata")
+    parser.add_argument("template", help="Template name (without .md extension)")
+    parser.add_argument("name", nargs="?", type=_nonempty_spec_name, metavar="<spec-name>",
+                        help="Spec name for spec-specific metadata")
     parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
     parser.add_argument("-o", "--output",
                         help="Output file path (default: stdout)")
-    args = parser.parse(argv)
+    return parser
 
+
+def cli_render(argv):
+    """Fallback CLI handler for generic template rendering."""
+    _do_render(_build_render_parser().parse(argv))
+
+
+def _do_render(args):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
-        metadata = _build_metadata(args.name, args.name)
+        metadata = _build_metadata(args.template, args.name)
         if extra_vars:
             metadata.update(extra_vars)
 
-        rendered = render_prompt(args.name, args.name, metadata=metadata)
+        rendered = render_prompt(args.template, args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -1571,37 +1588,27 @@ def _normalize_subcmd(name):
     return name.replace("_", "-")
 
 
-def main(argv=None):
-    """Route prompt subcommands to their handlers."""
-    if argv is None:
-        argv = sys.argv[1:]
-
-    parser = _build_parser()
-
+def _parse_args(argv):
+    """Parse a known subcommand or a generic template without rendering."""
     if not argv:
-        parser.print_help(sys.stderr)
+        _build_parser().print_help(sys.stderr)
         sys.exit(2)
 
     first = argv[0]
-
-    # Let argparse handle flags like --help / -h
     if first.startswith("-"):
-        parser.parse(argv)
-        return
-
-    # Normalize: accept both underscores and hyphens
+        return _build_parser().parse(argv)
     subcmd = _normalize_subcmd(first)
-
     if subcmd not in _KNOWN_SUBCMDS:
-        # Fallback to generic template rendering
-        cli_render(argv)
-        return
+        return _build_render_parser().parse(argv)
+    return _build_parser().parse([subcmd, *argv[1:]])
 
-    # Ensure normalized name is used for argparse
-    argv = [subcmd] + list(argv[1:])
-    args = parser.parse(argv)
 
-    if args.subcmd == "apply-one-task":
+def main(argv=None):
+    """Route prompt subcommands to their handlers."""
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
+    if hasattr(args, "template"):
+        _do_render(args)
+    elif args.subcmd == "apply-one-task":
         _do_apply_one_task(args)
     elif args.subcmd == "apply-commit":
         _do_apply_commit(args)

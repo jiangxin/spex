@@ -113,7 +113,7 @@ Then (match **in order**):
 
   ```bash
   $spex_skill_dir/scripts/spex prompt apply-review --json \
-    --name "$spec_name" --commit "$commit_sha"
+    "$spec_name" --commit "$commit_sha"
   ```
 
   - IF non-zero exit -> report stderr -> STOP
@@ -163,7 +163,7 @@ is only for **6e** after a major batch fix.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name "$spec_name" --commit "$commit_sha" --mode full
+  "$spec_name" --commit "$commit_sha" --mode full
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -281,7 +281,7 @@ $spex_skill_dir/scripts/spex review-helper open-batch "$spec_name" \
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
-  --name "$spec_name" --commit "$commit_sha"
+  "$spec_name" --commit "$commit_sha"
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -381,7 +381,7 @@ hard-cap **6f→6c** batch. Delta does **not** increment `round`.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name "$spec_name" --commit "$commit_sha" --mode delta
+  "$spec_name" --commit "$commit_sha" --mode delta
 ```
 
 - IF non-zero exit -> report stderr -> STOP

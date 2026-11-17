@@ -92,7 +92,7 @@ Apply a single step from a specification's todo list.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
+$spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 ```
 
 - IF non-zero exit -> report stderr -> STOP

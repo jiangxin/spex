@@ -468,8 +468,8 @@ class TestSubcommandRouting:
         fake_mod.main = fake_main
         sys.modules["prompt"] = fake_mod
         try:
-            _spex_mod._run_prompt(["apply-commit", "--name", "test"])
-            assert called["argv"] == ["apply-commit", "--name", "test"]
+            _spex_mod._run_prompt(["apply-commit", "test"])
+            assert called["argv"] == ["apply-commit", "test"]
         finally:
             del sys.modules["prompt"]
 

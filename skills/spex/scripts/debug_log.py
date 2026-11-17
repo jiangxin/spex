@@ -318,7 +318,7 @@ def parse_name_from_argv(argv: list[str]) -> str | None:
         if arg in {"-d", "--debug", "-V", "--version", "-h", "--help"}:
             continue
         command = arg.replace("_", "-")
-        if command in {"create-helper", "apply-helper", "todo-helper", "review-helper"}:
+        if command in {"create-helper", "apply-helper", "todo-helper", "review-helper", "prompt"}:
             return _parse_helper_selector(command, argv[index + 1:])
         break
     return parse_flag_from_argv(argv, "--name")
@@ -330,14 +330,22 @@ def _parse_helper_selector(command: str, argv: list[str]) -> str | None:
     elif command == "apply-helper":
         from apply_helper import _build_parser
     elif command == "todo-helper":
-        from todo_helper import _build_parser, _parse_args
-    else:
+        from todo_helper import _build_parser
+    elif command == "review-helper":
         from review_helper import _build_parser
 
-    parser = _build_parser()
     try:
         with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
-            args = _parse_args(parser, argv) if command == "todo-helper" else parser.parse(argv)
+            if command == "prompt":
+                from prompt import _parse_args as parse_prompt
+
+                args = parse_prompt(argv)
+            elif command == "todo-helper":
+                from todo_helper import _parse_args as parse_todo
+
+                args = parse_todo(_build_parser(), argv)
+            else:
+                args = _build_parser().parse(argv)
     except SystemExit:
         return None
     return getattr(args, "name", None)

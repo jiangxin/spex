@@ -171,7 +171,7 @@ OK skip paths.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit --name "$spec_name"
+$spex_skill_dir/scripts/spex prompt apply-commit "$spec_name"
 ```
 
 - **Single render:** Call `prompt apply-commit` **once** per commit.

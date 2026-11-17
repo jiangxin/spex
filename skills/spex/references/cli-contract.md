@@ -35,7 +35,7 @@ all-done and skipped-review results. Output failures exit non-zero.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-one-task --json \
-  --name "$spec_name" --output "$result_path"
+  "$spec_name" --output "$result_path"
 ```
 
 Check the exit code before reading the JSON file. Non-JSON output
