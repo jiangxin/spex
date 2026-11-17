@@ -37,6 +37,32 @@ ARCHIVE_SOP = (
 )
 
 
+@pytest.mark.parametrize("argv", [
+    ["--name", "topic"], ["--name=topic"],
+    ["topic", "extra"], ["--restore", "--name", "topic"],
+    ["--restore", "--name=topic"],
+])
+def test_invalid_archive_arguments_fail_before_resolution(monkeypatch, argv):
+    def unexpected():
+        pytest.fail("Invalid arguments must not resolve or mutate storage")
+
+    monkeypatch.setattr(spex_archive, "get_specs_dir", unexpected)
+    monkeypatch.setattr(spex_archive, "get_archives_dir", unexpected)
+    with pytest.raises(SystemExit) as exc:
+        spex_archive.main(argv)
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("argv", [
+    ["topic", "--json", "--restore"],
+    ["--json", "--restore", "topic"],
+])
+def test_archive_positional_selector_order(argv):
+    args = spex_archive._build_parser().parse(argv)
+    assert args.name == "topic"
+    assert args.restore and args.json_mode
+
+
 def _mock_project_context(top_workdir=None):
     """Create a ProjectContext with the given top_workdir for mocking."""
     tw = Path(top_workdir) if top_workdir else None
@@ -456,7 +482,7 @@ class TestMain:
         _write_todo(specs / "other-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--name", "target-topic"]
+            sys, "argv", ["archive.py", "target-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -475,7 +501,7 @@ class TestMain:
         _write_todo(specs / "done-topic", [_make_task("1")])
         archives = tmp_path / "archives"
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--name", "done-topic", "-n"]
+            sys, "argv", ["archive.py", "done-topic", "-n"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -488,24 +514,25 @@ class TestMain:
         assert (specs / "done-topic").is_dir()  # not moved
         assert not archives.exists()  # archives dir not even created
 
-    def test_topic_flag_missing_value(self, tmp_path, capsys, monkeypatch):
-        specs = tmp_path / "specs"
-        specs.mkdir()
-        archives = tmp_path / "archives"
-        monkeypatch.setattr(sys, "argv", ["archive.py", "--name"])
+    @pytest.mark.parametrize("argv, message", [
+        (["--name", "topic"], "--name"),
+        (["--name=topic"], "--name"),
+        (["topic", "extra"], "extra"),
+        ([""], "Spec name must not be empty"),
+    ])
+    def test_invalid_selector_fails_before_storage_lookup(self, argv, message, capsys):
         with patch.object(
-            spex_archive, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", side_effect=AssertionError("Unexpected lookup")
         ), patch.object(
-            spex_archive, "get_archives_dir", return_value=archives
+            spex_archive, "get_archives_dir", side_effect=AssertionError("Unexpected lookup")
         ):
             with pytest.raises(SystemExit) as exc_info:
-                spex_archive.main()
+                spex_archive.main(argv)
             assert exc_info.value.code == 2
-        err = capsys.readouterr().err
-        assert "--name" in err
+        assert message in capsys.readouterr().err
 
     def test_batch_cleans_orphan_stub(self, tmp_path, caplog):
-        """Batch archive (no --name) removes debug-only stub when archives sibling exists."""
+        """Batch archive (no spec name) removes debug-only stub when archives sibling exists."""
         specs = tmp_path / "specs"
         stub = specs / "my-topic"
         stub.mkdir(parents=True)
@@ -880,7 +907,7 @@ class TestMainWithBranchGuard:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive.py", "--name", "branch-guard"],
+            ["archive.py", "branch-guard"],
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -978,32 +1005,28 @@ class TestRestoreSingleTopic:
 class TestRestoreFlagCLI:
     """Integration tests for --restore flag in main()."""
 
-    def test_restore_without_topic_errors(self, tmp_path, caplog, monkeypatch):
-        """--restore without --name → error."""
-        specs = tmp_path / "specs"
-        specs.mkdir()
-        archives = tmp_path / "archives"
-        archives.mkdir()
-        monkeypatch.setattr(sys, "argv", ["archive.py", "--restore"])
+    def test_restore_without_topic_errors(self, capsys):
+        """--restore without a spec name → error."""
         with patch.object(
-            spex_archive, "get_specs_dir", return_value=specs
+            spex_archive, "get_specs_dir", side_effect=AssertionError("Unexpected lookup")
         ), patch.object(
-            spex_archive, "get_archives_dir", return_value=archives
-        ), caplog.at_level(logging.ERROR):
+            spex_archive, "get_archives_dir", side_effect=AssertionError("Unexpected lookup")
+        ):
             with pytest.raises(SystemExit) as exc_info:
-                spex_archive.main()
+                spex_archive.main(["--restore"])
             assert exc_info.value.code == 1
-        assert "--restore" in caplog.text
-        assert "--name" in caplog.text
+        err = capsys.readouterr().err
+        assert "--restore" in err
+        assert "<spec-name>" in err
 
     def test_restore_restores_from_archives(self, tmp_path, caplog, monkeypatch):
-        """--restore --name restores spec from archives to specs."""
+        """--restore <spec-name> restores spec from archives to specs."""
         specs = tmp_path / "specs"
         specs.mkdir()
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--restore", "--name", "my-topic"]
+            sys, "argv", ["archive.py", "--restore", "my-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -1022,7 +1045,7 @@ class TestRestoreFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--restore", "--name", "my-topic", "-n"]
+            sys, "argv", ["archive.py", "--restore", "my-topic", "-n"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -1047,7 +1070,7 @@ class TestRestoreFlagCLI:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["archive.py", "--restore", "--name", "branch-guard"],
+            ["archive.py", "--restore", "branch-guard"],
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -1068,7 +1091,7 @@ class TestRestoreFlagCLI:
         archives = tmp_path / "archives"
         _write_todo(archives / "my-topic", [_make_task("1")])
         monkeypatch.setattr(
-            sys, "argv", ["archive.py", "--not", "--name", "my-topic"]
+            sys, "argv", ["archive.py", "--not", "my-topic"]
         )
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -1202,7 +1225,7 @@ class TestArchiveJsonOutput:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch("branch.branch_exists", return_value=False):
-            spex_archive.main(["--json", "--name", "done-topic"])
+            spex_archive.main(["--json", "done-topic"])
         data = json.loads(capsys.readouterr().out)
         assert data["dry_run"] is False
         assert len(data["results"]) == 1
@@ -1221,7 +1244,7 @@ class TestArchiveJsonOutput:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch("branch.branch_exists", return_value=False):
-            spex_archive.main(["--json", "--name", "done-topic", "-n"])
+            spex_archive.main(["--json", "done-topic", "-n"])
         data = json.loads(capsys.readouterr().out)
         assert data["dry_run"] is True
         item = data["results"][0]
@@ -1243,7 +1266,7 @@ class TestArchiveJsonOutput:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch("branch.branch_exists", return_value=True):
-            spex_archive.main(["--json", "--name", "active-topic"])
+            spex_archive.main(["--json", "active-topic"])
         data = json.loads(capsys.readouterr().out)
         assert data["dry_run"] is False
         item = data["results"][0]
@@ -1262,7 +1285,7 @@ class TestArchiveJsonOutput:
             spex_archive, "get_archives_dir", return_value=archives
         ):
             spex_archive.main(
-                ["--json", "--restore", "--name", "old-topic"]
+                ["--json", "--restore", "old-topic"]
             )
         data = json.loads(capsys.readouterr().out)
         assert data["dry_run"] is False
@@ -1283,7 +1306,7 @@ class TestArchiveJsonOutput:
             spex_archive, "get_archives_dir", return_value=archives
         ):
             spex_archive.main(
-                ["--json", "--restore", "--name", "old-topic", "-n"]
+                ["--json", "--restore", "old-topic", "-n"]
             )
         data = json.loads(capsys.readouterr().out)
         assert data["dry_run"] is True
@@ -1482,7 +1505,7 @@ class TestDebugArchiveCliRegression:
         )
 
     def test_debug_archive_name_no_specs_stub(self, tmp_path):
-        """debug=true + archive --name: specs gone; tee in archives."""
+        """debug=true + archive <spec-name>: specs gone; tee in archives."""
         spex_root = self._setup_repo(tmp_path, debug=True)
         spec_name = "2026-08-05-09-44-cli-archive-debug"
         spec_dir = spex_root / "specs" / spec_name
@@ -1496,7 +1519,7 @@ class TestDebugArchiveCliRegression:
             "===== pre-archive =====\n", encoding="utf-8"
         )
 
-        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+        result = self._run_spex(tmp_path, "archive", spec_name)
 
         assert result.returncode == 0, result.stderr
         assert not (spex_root / "specs" / spec_name).exists()
@@ -1509,7 +1532,7 @@ class TestDebugArchiveCliRegression:
         assert debug_log.is_file()
         content = debug_log.read_text(encoding="utf-8")
         assert "===== pre-archive =====\n" in content
-        assert f"argv: spex archive --name {spec_name}" in content
+        assert f"argv: spex archive {spec_name}" in content
         assert "===== END exit=0 duration_ms=" in content
         # No debug-only stub recreated under specs/
         specs_entries = list((spex_root / "specs").iterdir())
@@ -1532,7 +1555,7 @@ class TestDebugArchiveCliRegression:
         )
         (archived / "spec.md").write_text("# Spec\n", encoding="utf-8")
 
-        result = self._run_spex(tmp_path, "archive", "--name", spec_name)
+        result = self._run_spex(tmp_path, "archive", spec_name)
 
         assert result.returncode == 0, result.stderr
         assert not stub.exists()

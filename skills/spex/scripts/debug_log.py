@@ -318,7 +318,10 @@ def parse_name_from_argv(argv: list[str]) -> str | None:
         if arg in {"-d", "--debug", "-V", "--version", "-h", "--help"}:
             continue
         command = arg.replace("_", "-")
-        if command in {"create-helper", "apply-helper", "todo-helper", "review-helper", "prompt"}:
+        if command in {
+            "create-helper", "apply-helper", "todo-helper", "review-helper", "prompt",
+            "archive", "run-hook",
+        }:
             return _parse_helper_selector(command, argv[index + 1:])
         break
     return parse_flag_from_argv(argv, "--name")
@@ -340,6 +343,14 @@ def _parse_helper_selector(command: str, argv: list[str]) -> str | None:
                 from prompt import _parse_args as parse_prompt
 
                 args = parse_prompt(argv)
+            elif command == "archive":
+                from archive import _parse_args as parse_archive
+
+                args = parse_archive(argv)
+            elif command == "run-hook":
+                from cli import parse_run_hook_args
+
+                args = parse_run_hook_args(argv)
             elif command == "todo-helper":
                 from todo_helper import _parse_args as parse_todo
 

@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from cli import ArgumentParser
+from cli import ArgumentParser, nonempty_spec_name
 from common import (
     find_completed_specs,
     find_matching_specs,
@@ -338,7 +338,8 @@ def _build_parser() -> ArgumentParser:
         prog="spex archive",
         description="Archive completed specs.",
     )
-    parser.add_argument("--name", help="Archive a single spec by name")
+    parser.add_argument("name", nargs="?", type=nonempty_spec_name, metavar="<spec-name>",
+                        help="Archive a single spec by name")
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="Preview without moving")
     parser.add_argument("-f", "--force", action="store_true",
@@ -356,20 +357,23 @@ def _build_parser() -> ArgumentParser:
     return parser
 
 
-def main(argv=None):
+def _parse_args(argv=None):
+    """Validate the selector before accessing spec storage."""
     parser = _build_parser()
     args = parser.parse(argv)
+    if args.restore and not args.name:
+        parser.exit(1, "Error: --restore requires <spec-name> to specify what to restore.\n")
+    return args
+
+
+def main(argv=None):
+    args = _parse_args(argv)
 
     specs_dir = get_specs_dir()
     archives_dir = get_archives_dir()
     results: list[ArchiveItem] = []
 
     if args.restore:
-        if not args.name:
-            logger.error(
-                "Error: --restore requires --name to specify what to restore."
-            )
-            sys.exit(1)
         item = _restore_one(
             args.name, specs_dir, archives_dir, dry_run=args.dry_run,
         )

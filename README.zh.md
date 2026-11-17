@@ -237,9 +237,9 @@ worktree（不会删除 `spex/*` 分支）。
 
 ```bash
 spex archive --json                     # 归档已完成的 specs
-spex archive --json --name <spec>       # 按名称归档单个 spec
+spex archive <spec> --json              # 按名称归档单个 spec
 spex archive --json --dry-run           # 仅预览，不移动
-spex archive --json --restore --name <spec>
+spex archive <spec> --json --restore
 ```
 
 ### spex merge

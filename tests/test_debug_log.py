@@ -159,6 +159,25 @@ class TestParseNameFromArgv:
     def test_missing(self):
         assert parse_name_from_argv(["spex", "version"]) is None
 
+    @pytest.mark.parametrize("argv, expected", [
+        (["archive", "topic", "--json"], "topic"),
+        (["archive", "--restore", "topic"], "topic"),
+        (["archive", "--json"], None),
+        (["archive", "--restore"], None),
+        (["archive", "--restore", ""], None),
+        (["archive", "--name=topic"], None),
+        (["run-hook", "my-hook", "topic", "--event-type", "apply"], "topic"),
+        (["run_hook", "my-hook", "--event-type", "apply", "topic"], "topic"),
+        (["run-hook", "my-hook", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "topic"], None),
+        (["run-hook", "my-hook", "--name", "topic", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "topic", "--event-type", "apply", "--json-payload", "{"], None),
+    ])
+    def test_archive_and_hook_selector(self, argv, expected, capsys):
+        assert parse_name_from_argv(["spex", "--debug", *argv]) == expected
+        assert not capsys.readouterr().err
+
 
 class TestParseFlagFromArgv:
     def test_step_and_commit(self):
@@ -509,7 +528,7 @@ class TestResolveDebugLogPath:
         # Remove the specs copy created by _make_ctx so only archives matches.
         shutil.rmtree(spex_root / "specs" / "my-spec")
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "archive", "--name", "my-spec"])
+            path = resolve_debug_log_path(["spex", "archive", "my-spec"])
         assert path == archived / "debug.log"
 
     def test_specs_match_wins_over_archives(self, tmp_path, monkeypatch):
@@ -535,7 +554,7 @@ class TestResolveDebugLogPath:
         (specs_dir / "foo-v2").mkdir()
         (archives_dir / "foo").mkdir(parents=True)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "archive", "--name", "foo"])
+            path = resolve_debug_log_path(["spex", "archive", "foo"])
         assert path == archives_dir / "foo" / "debug.log"
 
 
@@ -586,7 +605,7 @@ class TestSafeFlushDebugLogPath:
         with patch("debug_log.resolve_debug_log_path", return_value=None):
             with patch("debug_log.get_project_context", return_value=ctx):
                 path = safe_flush_debug_log_path(
-                    ["spex", "archive", "--name", "gone"],
+                    ["spex", "archive", "gone"],
                     pre,
                 )
         assert path == spex_root / "debug.log"
@@ -917,7 +936,7 @@ class TestTraceCommandArchiveFollow:
         archives_dir.mkdir(parents=True)
         pre_log = spec_dir / "debug.log"
         pre_log.write_text("===== pre-archive =====\n", encoding="utf-8")
-        argv = ["spex", "archive", "--name", "my-spec"]
+        argv = ["spex", "archive", "my-spec"]
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(pre_log, argv):
@@ -927,7 +946,7 @@ class TestTraceCommandArchiveFollow:
         archived_log = archives_dir / "my-spec" / "debug.log"
         content = archived_log.read_text(encoding="utf-8")
         assert "===== pre-archive =====\n" in content
-        assert "argv: spex archive --name my-spec" in content
+        assert "argv: spex archive my-spec" in content
         span = json.loads(archived_log.with_name("trace.jsonl").read_text(encoding="utf-8"))
         assert span["name"] == "archive"
         assert "===== END exit=0 duration_ms=" in content
@@ -943,7 +962,7 @@ class TestTraceCommandArchiveFollow:
         spec_dir = spex_root / "specs" / "my-spec"
         pre_log = spec_dir / "debug.log"
         pre_log.write_text("keep\n", encoding="utf-8")
-        argv = ["spex", "archive", "--name", "my-spec"]
+        argv = ["spex", "archive", "my-spec"]
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(pre_log, argv):
@@ -954,7 +973,7 @@ class TestTraceCommandArchiveFollow:
         root_log = spex_root / "debug.log"
         assert root_log.is_file()
         content = root_log.read_text(encoding="utf-8")
-        assert "argv: spex archive --name my-spec" in content
+        assert "argv: spex archive my-spec" in content
         assert not (spex_root / "specs" / "my-spec").exists()
 
     def test_refuses_mkdir_for_vanished_specs_parent(self, tmp_path, monkeypatch):

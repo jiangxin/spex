@@ -139,7 +139,7 @@ def _expand_brackets(line: str) -> tuple[str, list[str]]:
     """Remove ``[...]`` segments; return cleaned line + flags found inside.
 
     Handles:
-    - ``[--name <name>]`` → flag ``--name``
+    - ``[<spec-name>]`` → optional positional placeholder (removed)
     - ``[-n|--dry-run]`` → flags ``-n``, ``--dry-run``
     - ``[--restore]`` → flag ``--restore``
     """
@@ -564,10 +564,10 @@ class TestSopCliContract:
     def test_bracketed_optional_flags_validated(self):
         raw = (
             '$spex_skill_dir/scripts/spex archive --json '
-            "[--name <name>] [-n|--dry-run] [-f|--force] "
+            "[<spec-name>] [-n|--dry-run] [-f|--force] "
             "[--restore] [--all-projects]"
         )
-        tail = "scripts/spex archive --json [--name <name>] [-n|--dry-run] " \
+        tail = "scripts/spex archive --json [<spec-name>] [-n|--dry-run] " \
             "[-f|--force] [--restore] [--all-projects]"
         errors = _check_invocation("commands/archive.md", raw, tail)
         assert errors == []

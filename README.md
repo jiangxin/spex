@@ -238,9 +238,9 @@ linked worktree before moving the directory (it does not delete the
 
 ```bash
 spex archive --json                     # Archive completed specs
-spex archive --json --name <spec>       # Archive one spec by name
+spex archive <spec> --json              # Archive one spec by name
 spex archive --json --dry-run           # Preview without moving
-spex archive --json --restore --name <spec>
+spex archive <spec> --json --restore
 ```
 
 ### spex merge

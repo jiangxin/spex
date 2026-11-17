@@ -16,7 +16,7 @@ _skill_dir = _scripts_dir.parent
 
 GROUPED_HELP = """\
 Commands (run directly):
-  archive [-n] [--name <name>]
+  archive [<spec-name>] [-n]
               Archive completed specs (--dry-run to preview)
   config [get] [--all] [var ...]
                 Show spex configuration variables
@@ -44,7 +44,7 @@ Internal commands (used by skill):
                 Get or set key/value in meta.json
   prompt <template> [<spec-name>] [-o <file>]
                 Render a Spex template with metadata
-  run-hook <hook_name> --event-type <type> --name <name>
+  run-hook <hook-name> [<spec-name>] --event-type <type>
                 Execute a hook script with event data
   review-helper <subcmd> <spec-name>
                 Operate on per-step review files (init, append, edit,
@@ -404,14 +404,14 @@ def _run_init(argv=None):
 
 
 _RUN_HOOK_USAGE = """\
-Usage: spex run-hook <hook_name> --event-type <type> --name <name>
+Usage: spex run-hook <hook-name> [<spec-name>] --event-type <type>
        --json-payload '{"key": "value"}'
 
 Execute a hook script with event data.
 
 Options:
   --event-type <type>   Event type (required)
-  --name <name>         Spec name
+  <spec-name>           Optional spec name (after hook name)
   --json-payload <json> JSON payload string
   --workdir <path>      Working directory
   -h, --help            Show this help message and exit
@@ -420,24 +420,12 @@ Options:
 
 def _run_hook(argv=None):
     """Execute a hook script with event data."""
-    import json
-
     import hooks
+    from cli import parse_run_hook_args
 
-    parser = ArgumentParser(prog="spex run-hook", usage=_RUN_HOOK_USAGE)
-    parser.add_argument("hook_name")
-    parser.add_argument("--event-type")
-    parser.add_argument("--name")
-    parser.add_argument("--json-payload")
-    parser.add_argument("--workdir")
-    args = parser.parse(argv)
+    args = parse_run_hook_args(argv, _RUN_HOOK_USAGE)
 
-    if not args.event_type:
-        from common import logger
-        logger.error("Error: --event-type is required")
-        sys.exit(1)
-
-    payload = json.loads(args.json_payload or "{}")
+    payload = args.payload
     if args.name:
         payload = {**payload, "spec_name": args.name}
     event_data = hooks._build_event_data(args.event_type, payload,

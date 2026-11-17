@@ -7,11 +7,10 @@ import os
 import re
 import subprocess
 import sys
-from argparse import ArgumentTypeError
 from pathlib import Path
 from typing import Optional
 
-from cli import ArgumentParser
+from cli import ArgumentParser, nonempty_spec_name
 from common import (
     atomic_write_json,
     get_spex_root,
@@ -898,12 +897,6 @@ def _output_rendered(rendered, output_path):
         print(rendered)
 
 
-def _nonempty_spec_name(name: str) -> str:
-    if not name:
-        raise ArgumentTypeError("Spec name must not be empty")
-    return name
-
-
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -919,7 +912,7 @@ def _build_parser():
         help="Render prompt for the next undone task",
     )
     p.add_argument(
-        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
+        "name", type=nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--json", action="store_true", dest="json_mode",
@@ -935,7 +928,7 @@ def _build_parser():
         description="Render apply-commit template with spec metadata.",
         help="Render commit instructions for the current task",
     )
-    p.add_argument("name", nargs="?", type=_nonempty_spec_name,
+    p.add_argument("name", nargs="?", type=nonempty_spec_name,
                    metavar="<spec-name>", help="Spec name")
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -953,7 +946,7 @@ def _build_parser():
         description="Render apply-review template with spec metadata.",
         help="Render review instructions for the current task commit",
     )
-    p.add_argument("name", type=_nonempty_spec_name, metavar="<spec-name>",
+    p.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>",
                    help="Spec name (required)")
     p.add_argument(
         "--commit", dest="commit_sha", default=None,
@@ -980,7 +973,7 @@ def _build_parser():
         ),
         help="Render batch fix instructions for open findings",
     )
-    p.add_argument("name", type=_nonempty_spec_name, metavar="<spec-name>",
+    p.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>",
                    help="Spec name (required)")
     p.add_argument(
         "--finding-id", default=None, dest="finding_id",
@@ -1008,7 +1001,7 @@ def _build_parser():
         help="Render prompt for modifying a spec",
     )
     p.add_argument(
-        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
+        "name", type=nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -1033,7 +1026,7 @@ def _build_parser():
         help="Render prompt for modifying a todo list",
     )
     p.add_argument(
-        "name", type=_nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
+        "name", type=nonempty_spec_name, metavar="<spec-name>", help="Spec name (required)",
     )
     p.add_argument(
         "--stdin", action="store_true", dest="stdin_flag",
@@ -1550,7 +1543,7 @@ def _build_render_parser():
         description="Render a Spex template with metadata.",
     )
     parser.add_argument("template", help="Template name (without .md extension)")
-    parser.add_argument("name", nargs="?", type=_nonempty_spec_name, metavar="<spec-name>",
+    parser.add_argument("name", nargs="?", type=nonempty_spec_name, metavar="<spec-name>",
                         help="Spec name for spec-specific metadata")
     parser.add_argument("--stdin", action="store_true", dest="stdin_flag",
                         help="Read raw text from stdin as prompt_context")
