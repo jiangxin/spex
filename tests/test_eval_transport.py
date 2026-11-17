@@ -310,6 +310,10 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
         "    assert os.environ['HOME'].endswith('/home')\n"
         "    assert os.environ['TMPPREFIX'] == os.environ['TMPDIR'] + '/zsh'\n"
         "    assert os.environ['SPEX_CONFIG_FILE'].endswith('/repo/.spex.toml')\n"
+        "    logs = os.environ['SPEX_LOG_DIR']\n"
+        "    assert logs.endswith('/repo/.spex/eval-logs')\n"
+        "    assert 'shell_environment_policy.set.SPEX_LOG_DIR=' + json.dumps(logs) in sys.argv\n"
+        "    assert 'SPEX_TRACE_FILE' not in os.environ\n"
         "    assert os.environ['CODEX_HOME']\n"
         "    if 'resume' in sys.argv:\n"
         "        assert sys.argv[sys.argv.index('resume') + 1] == 'example-1'\n"
@@ -327,6 +331,7 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     )
     fake.chmod(0o755)
     monkeypatch.setenv("SPEX_EVAL_CODEX", str(fake))
+    monkeypatch.setenv("SPEX_TRACE_FILE", str(tmp_path / "outside-trial.jsonl"))
     if verdict == "run_error":
         manifest = run.SUITES / "example" / "cases.json"
         cases = json.loads(manifest.read_text(encoding="utf-8"))
@@ -652,6 +657,7 @@ def test_guarded_manual_dispatch_and_terminal_verdict(runner, monkeypatch):
     commands = []
     with monkeypatch.context() as worker:
         worker.setenv("PATH", "/a/different/worker/path")
+        worker.setenv("SPEX_TRACE_FILE", "/outside-trial.jsonl")
         worker.setattr(manual.os, "chdir", commands.append)
         worker.setattr(manual.os, "execve", lambda *arguments: commands.append(arguments))
         args = manual.parser().parse_args([
@@ -663,6 +669,9 @@ def test_guarded_manual_dispatch_and_terminal_verdict(runner, monkeypatch):
     assert Path(executable).parent == Path(sys.executable).parent
     assert argv == ["python3", "-V"]
     assert environment["SPEX_CONFIG_FILE"] == info["environment"]["SPEX_CONFIG_FILE"]
+    assert environment["SPEX_LOG_DIR"] == info["environment"]["SPEX_LOG_DIR"]
+    assert environment["SPEX_LOG_DIR"] == str(Path(info["workspace"]) / ".spex/eval-logs")
+    assert "SPEX_TRACE_FILE" not in environment
 
     # A previously prepared batch can still have the old PATH in its index.
     index_path = sandbox / "batch-index.json"

@@ -13,7 +13,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
 | Schedule | Claim cases against `execution.jobs` and hold the slot through grading |
-| Env | Apply the prepared environment in the trial session; use `manual.py exec` for shell commands |
+| Env | Apply the prepared environment, including `SPEX_LOG_DIR`, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Start each turn, send its exact `next_input` and preserve the session |
 | Output | Save the final reply to the path published by `manual.py start` |

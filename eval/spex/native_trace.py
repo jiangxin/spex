@@ -20,6 +20,9 @@ from performance import (
     stamp_bounds,
     timestamp,
 )
+from workspace import EVAL_LOG_DIR
+
+CENTRAL_DEBUG_LOG = f"{EVAL_LOG_DIR}/debug.log"
 
 
 def snapshot(repo: Path) -> dict:
@@ -71,6 +74,7 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
         # A new path could contain older records moved from a missing log.
         events = [event for event in events if event["log"] in baseline]
         timed = [event for event in timed if event["log"] in baseline]
+    events = correlate_central_log(repo, events, gaps)
     if not any("exit_code" in event and "command" in event for event in events):
         gaps.add("missing_spex_commands")
     result = {"events": events, "gaps": sorted(gaps)}
@@ -80,6 +84,41 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
         event.pop("_argv_fingerprint", None)
         event.pop("_debug_logged_at", None)
     return checkpoint, result
+
+
+def correlate_central_log(repo: Path, events: list[dict], gaps: set) -> list[dict]:
+    """Link central CLI calls and spec-local anchors from the same turn."""
+    commands = [event for event in events if event["log"] == CENTRAL_DEBUG_LOG]
+    if not commands:
+        return events
+    root = repo / ".spex/specs"
+    names = {path.name for path in root.glob("*")
+             if path.resolve() == path and path.is_dir() and IDENTIFIER.fullmatch(path.name)}
+    posts, anchors = defaultdict(list), defaultdict(list)
+    for event in commands:
+        selector = event.get("spec")
+        if selector and selector not in names:
+            matches = [name for name in names if selector in name]
+            event["spec"] = matches[0] if len(matches) == 1 else None
+            if len(matches) > 1:
+                gaps.add("ambiguous_trace_spec")
+        if event["action"] in {"apply.post-action", "apply.review-command"} and not event["spec"]:
+            gaps.add("missing_trace_spec")
+        if event["action"] == "apply.post-action" and event["spec"]:
+            posts[event["spec"]].append(event)
+    for index, event in enumerate(events):
+        if event["action"] == "apply.post-action" and "command" not in event:
+            anchors[event["spec"]].append(index)
+    paired = set()
+    for spec in posts.keys() & anchors.keys():
+        if len(posts[spec]) != 1 or len(anchors[spec]) != 1:
+            gaps.add("ambiguous_post_action_anchor")
+            continue
+        index = anchors[spec][0]
+        anchor = events[index]
+        posts[spec][0].update(success_anchor=anchor["sequence"], success_anchor_log=anchor["log"])
+        paired.add(index)
+    return [event for index, event in enumerate(events) if index not in paired]
 
 
 def parse_timing_spans(lines: list[str], source: str, gaps: set) -> list[dict]:
@@ -229,6 +268,12 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                     if verb := command_verb(words, name):
                         command["subcommand"] = verb
                 selector = option(words, "--name")
+                if (selector is None and source == CENTRAL_DEBUG_LOG
+                        and name in {"apply-helper", "review-helper", "prompt", "todo-helper"}
+                        and (verb := command.get("subcommand"))):
+                    # Some pinned refs use a positional spec selector after the verb.
+                    index = words.index(verb) + 1
+                    selector = words[index] if index < len(words) else None
                 if selector and IDENTIFIER.fullmatch(selector):
                     if spec is None:
                         command["spec"] = selector

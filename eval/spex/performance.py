@@ -12,6 +12,7 @@ from pathlib import Path
 from statistics import median
 
 from scheduling import execution, execution_label
+from workspace import EVAL_LOG_DIR
 
 LOG = logging.getLogger(__name__)
 USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
@@ -349,7 +350,7 @@ def log_lines(segments: list[str]):
 def debug_logs(repo: Path, filename: str = "debug.log"):
     """Yield bounded workspace logs and read errors without following symlinks."""
     root = repo / ".spex"
-    paths = [root / filename, root / "eval-logs" / filename]
+    paths = [root / filename, root / EVAL_LOG_DIR / filename]
     for directory in ("specs", "archives", "sessions"):
         parent = root / directory
         if parent.resolve() == parent:

@@ -1321,7 +1321,7 @@ def instructions(output: Path, trial: Trial, metadata: dict) -> dict:
         "cleanup_hint": cleanup_hint(sandbox),
         "environment": {key: trial.env[key] for key in (
             "HOME", "PATH", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE",
-            "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
+            "SPEX_LOG_DIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
         )},
     }
 

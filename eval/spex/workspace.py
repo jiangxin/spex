@@ -18,6 +18,7 @@ IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9-]*")
 SANDBOX_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?:-\d+)?$")
 SKILL_PATH = "skills/spex"
 TRIAL_TMP = ".spex-eval-tmp"
+EVAL_LOG_DIR = "eval-logs"
 WORKSPACE_NAME = "workspace"
 
 
@@ -202,10 +203,10 @@ class Trial:
             GIT_CONFIG_NOSYSTEM="1",
             GIT_ATTR_NOSYSTEM="1",
             SPEX_CONFIG_FILE=str(self.repo / ".spex.toml"),
+            SPEX_LOG_DIR=str(self.repo / ".spex" / EVAL_LOG_DIR),
             PYTHONNOUSERSITE="1",
         )
-        # Keep the pinned skill's per-spec log paths for native attribution.
-        env.pop("SPEX_LOG_DIR", None)
+        env.pop("SPEX_TRACE_FILE", None)
         env.pop("PYTHONPATH", None)
         # Prefer the pinned CLI and keep the runner's interpreter ahead of host Python.
         paths = [str(self.skill / "scripts")]

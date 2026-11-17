@@ -371,8 +371,10 @@ def codex_turn(
         "-c", "features.shell_snapshot=false",
         "-c", 'shell_environment_policy.inherit="none"',
     ]
-    for name in ("HOME", "PATH", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE", "GIT_CONFIG_GLOBAL",
-                 "GIT_CONFIG_NOSYSTEM", "GIT_ATTR_NOSYSTEM", "PYTHONNOUSERSITE"):
+    for name in (
+        "HOME", "PATH", "TMPDIR", "TMPPREFIX", "SPEX_CONFIG_FILE", "SPEX_LOG_DIR",
+        "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_ATTR_NOSYSTEM", "PYTHONNOUSERSITE",
+    ):
         command += ["-c", f"shell_environment_policy.set.{name}={json.dumps(env[name])}"]
     try:
         result = subprocess.run(

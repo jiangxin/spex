@@ -78,11 +78,12 @@ def test_trial_env_prefers_runner_python_on_path(tmp_path):
     assert python_bin.is_dir()
 
 
-def test_trial_env_keeps_the_pinned_skill_log_layout(tmp_path, monkeypatch):
+def test_trial_env_pins_cli_logs_inside_the_trial(tmp_path, monkeypatch):
     trial = workspace.Trial(tmp_path, "deadbeef")
-    assert "SPEX_LOG_DIR" not in trial.env
     monkeypatch.setenv("SPEX_LOG_DIR", str(tmp_path / "host-logs"))
-    assert "SPEX_LOG_DIR" not in trial.env
+    monkeypatch.setenv("SPEX_TRACE_FILE", str(tmp_path / "host-trace.jsonl"))
+    assert trial.env["SPEX_LOG_DIR"] == str(trial.repo / ".spex" / "eval-logs")
+    assert "SPEX_TRACE_FILE" not in trial.env
 
 
 @pytest.mark.slow

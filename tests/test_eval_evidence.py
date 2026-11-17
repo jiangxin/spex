@@ -77,6 +77,61 @@ def test_native_trace_excludes_setup_and_acceptance_between_turns(tmp_path):
     assert evidence.check_gate("post-action", turn2, turn3)["verdict"] == "insufficient_evidence"
 
 
+def test_native_trace_links_central_commands_to_spec_anchors(tmp_path):
+    central = tmp_path / ".spex/eval-logs/debug.log"
+    central.parent.mkdir(parents=True)
+    for name in ("first-spec", "second-spec", "legacy"):
+        (tmp_path / ".spex/specs" / name).mkdir(parents=True)
+    baseline = native_trace.snapshot(tmp_path)
+    central.write_text(
+        cli_log("apply-helper post-action --name first")
+        + cli_log("apply-helper post-action second-spec")
+        + cli_log("review-helper status second --step 1")
+    )
+    for name in ("first-spec", "second-spec"):
+        (tmp_path / ".spex/specs" / name / "debug.log").write_text(
+            "===== APPLY post-action ok =====\n"
+            "===== APPLY review begin step=1 mode=full commit=1234567 =====\n"
+            "===== APPLY review end step=1 mode=full commit=1234567 duration_ms=9 =====\n"
+        )
+    (tmp_path / ".spex/specs/legacy/debug.log").write_text(
+        "===== APPLY post-action ok =====\n" + cli_log("apply-helper post-action --name legacy")
+    )
+    checkpoint, trace = native_trace.window(tmp_path, baseline)
+    assert trace["gaps"] == []
+    post = [event for event in trace["events"] if event["action"] == "apply.post-action"]
+    assert {event["spec"]: event.get("success_anchor_log") for event in post} == {
+        "first-spec": "specs/first-spec/debug.log",
+        "second-spec": "specs/second-spec/debug.log",
+        "legacy": None,
+    }
+    assert len(post) == 3 and all(event["success_anchor"] == 0 for event in post)
+    assert {event["spec"] for event in trace["events"] if event["action"] == "apply.review"
+            and event["exit_code"] == 0} == {"first-spec", "second-spec"}
+    assert [event["spec"] for event in trace["events"]
+            if event["action"] == "apply.review-command"] == ["second-spec"]
+    with central.open("a") as stream:
+        stream.write(cli_log("apply-helper post-action --name first"))
+        stream.write(cli_log("apply-helper post-action --name spec"))
+    _, next_turn = native_trace.window(tmp_path, checkpoint)
+    assert all("success_anchor" not in event for event in next_turn["events"])
+    assert "ambiguous_trace_spec" in next_turn["gaps"]
+    assert [event["spec"] for event in next_turn["events"]] == ["first-spec", None]
+
+
+def test_native_trace_reports_ambiguous_cross_file_pairing(tmp_path):
+    central = tmp_path / ".spex/eval-logs/debug.log"
+    central.parent.mkdir(parents=True)
+    anchor = tmp_path / ".spex/specs/example/debug.log"
+    anchor.parent.mkdir(parents=True)
+    baseline = native_trace.snapshot(tmp_path)
+    central.write_text(cli_log("apply-helper post-action --name example") * 2)
+    anchor.write_text("===== APPLY post-action ok =====\n")
+    _, trace = native_trace.window(tmp_path, baseline)
+    assert trace["gaps"] == ["ambiguous_post_action_anchor"]
+    assert all("success_anchor" not in event for event in trace["events"])
+
+
 @pytest.mark.parametrize("step", ["step-1", 1])
 def test_native_review_failure_stop_requires_no_later_workflow(tmp_path, step):
     pending = state(task(step))
