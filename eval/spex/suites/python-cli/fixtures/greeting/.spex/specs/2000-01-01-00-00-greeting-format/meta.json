@@ -1,0 +1,7 @@
+{
+  "name": "greeting-format",
+  "branch": "main",
+  "description": "Allow users to configure greeting formatting",
+  "created_at": "2000-01-01T00:00:00+00:00",
+  "use_git_worktree": false
+}

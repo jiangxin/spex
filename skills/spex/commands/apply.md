@@ -152,6 +152,9 @@ for outer loops; Phase bodies below do not restate the diagram.
   otherwise may switch the main checkout in place. Do **not** switch
   the user's IDE root
 - Pass `$spex_root` and `$spex_worktree` to Phases 4–5 sub-agent
+- Read `$spec_path/todo.json` once before starting this spec's tasks.
+  Record the IDs and titles of steps with a populated `completed_at`
+  for the Phase 9 summary. Reset this record for each spec in `--all`.
 
 ### Phase 3: Build Prompt / Resume Gate
 
@@ -213,6 +216,20 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
 ```
 
 - Display output to user
+- Summarize the current spec's delivered behavior, covering preserved work
+  from earlier steps and changes completed in this run. Use the Phase 2
+  record to identify the steps that were already complete and the steps
+  completed in this run. Name the checks actually run and their results.
+  Report the observed Phase 6 outcome for each relevant step. A prompt
+  result with `skipped: true` records a skip. Report a completed review
+  only when Phase 6 observed its completion. Include any verified
+  failure and recovery behavior specified by the tasks, including what
+  rolls back, what persists, and the conditions for retry or resume.
+- If a step entered Phase 6 through `resume_phase=review`, summarize
+  the recovery for the current spec. Identify the resumed step, state
+  whether review kept or amended its existing commit, and identify
+  any steps completed after it. In `--all` mode, include this
+  summary before advancing to the next spec.
 - IF `--all` mode -> continue to next `$specs` item at Phase 2, or
   **STOP** if none remain
 - ELSE -> **STOP.** Do NOT implement additional steps or modify

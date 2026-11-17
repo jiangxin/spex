@@ -1,0 +1,7 @@
+{
+  "name": "greeting-decoration",
+  "branch": "main",
+  "description": "Add optional prefixes and suffixes to greetings",
+  "created_at": "2000-01-01T00:00:00+00:00",
+  "use_git_worktree": false
+}

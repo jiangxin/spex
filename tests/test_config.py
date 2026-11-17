@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from config import (
+    ConfigParseError,
     ProjectContext,
     _deep_merge,
     _find_spex_tomls,
@@ -21,6 +22,7 @@ from config import (
     get_project_context,
     load_config,
     resolve_spex_root_and_roots,
+    safe_update_toml,
     set_spex_config_file,
 )
 
@@ -62,14 +64,58 @@ class TestLoadTomlConfig:
         result = _load_toml_config(p)
         assert result == {}
 
-    def test_returns_none_without_tomllib(self, tmp_path, monkeypatch, capsys):
-        """When tomllib is None, returns None and prints install hint."""
-        p = tmp_path / "sample.toml"
-        p.write_text('spex_root = "/my/spex"\n', encoding="utf-8")
+    def test_fallback_matches_tomllib(self, tmp_path, monkeypatch):
+        tomllib = pytest.importorskip("tomllib")
+        config_file = tmp_path / ".spex.toml"
+        settings = r"""[spex] # active settings
+spex_root = "dir#name/\u4e2d/\"quoted\"/\\tmp" # trailing comment
+main_branch_name = 'release#2026'
+debug = true
+branch_management = false
+retries = +1_000
+[other]
+offset = -12
+emoji = "\U0001F600"
+"""
+        monkeypatch.setattr("config.tomllib", None)
+        for content in (generate_default_toml(), settings):
+            config_file.write_bytes(content.replace("\n", "\r\n").encode("utf-8"))
+            assert _load_toml_config(config_file) == tomllib.loads(content)
+
+        assert safe_update_toml(config_file)
+        updated = config_file.read_text(encoding="utf-8")
+        assert _load_toml_config(config_file) == tomllib.loads(updated)
+        assert tomllib.loads(updated)["spex"] == tomllib.loads(settings)["spex"]
+
+    @pytest.mark.parametrize(
+        "invalid",
+        [
+            'extra = ["one"]',
+            "extra = {enabled = true}",
+            'extra = """multi',
+            "extra.key = true",
+            "[[extra]]",
+            "[spex]",
+            "debug = false",
+            'extra = "unclosed',
+            'extra = "closed"junk"',
+            r'extra = "\/"',
+            r'extra = "\uD800"',
+            "extra = 01",
+        ],
+    )
+    def test_fallback_rejects_unparseable_config_without_rewriting(
+        self, tmp_path, monkeypatch, invalid,
+    ):
+        config_file = tmp_path / ".spex.toml"
+        original = f"[spex]\ndebug = true\n{invalid}\n".encode()
+        config_file.write_bytes(original)
         monkeypatch.setattr("config.tomllib", None)
 
-        assert _load_toml_config(p) is None
-        assert "spex init" in capsys.readouterr().err
+        with pytest.raises(ConfigParseError, match=r"\.spex\.toml: line 3: .+Python 3\.11"):
+            safe_update_toml(config_file)
+
+        assert config_file.read_bytes() == original
 
 
 # ===================== _deep_merge =====================
@@ -312,6 +358,7 @@ class TestBranchConfig:
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
         assert result["debug"] is False
+        assert result["trace_file"] == ""
         assert result["step_review"] is True
         assert result["use_git_worktree"] is False
 
@@ -371,6 +418,87 @@ class TestBranchConfig:
 # ===================== _resolve_spex_roots =====================
 
 
+class TestConfigInheritance:
+    @pytest.mark.parametrize("inherit", ["", "inherit_config = true\n", "inherit_config = false\n"])
+    def test_merge_and_storage_lookup_are_independent(self, tmp_path, monkeypatch, inherit):
+        home = tmp_path / "home"
+        parent = tmp_path / "parent"
+        project = parent / "project"
+        home.mkdir()
+        project.mkdir(parents=True)
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        monkeypatch.setattr("config._get_top_workdir", lambda _: project)
+        monkeypatch.setattr("config._get_main_worktree", lambda _: project)
+        (home / ".spex.toml").write_text('[spex]\nsubmit_method = "pr"\n')
+        (parent / ".spex.toml").write_text('[spex]\nspex_root = "specs"\ndebug = true\n')
+        (parent / "specs").mkdir()
+        (project / ".spex.toml").write_text(f"[spex]\n{inherit}step_review = false\n")
+        clear_config_cache()
+        try:
+            config = load_config(project)
+            assert config["step_review"] is False
+            inherits = "false" not in inherit
+            assert config["debug"] is inherits
+            assert config["submit_method"] == ("pr" if inherits else "merge")
+            assert config["inherit_config"] is inherits
+            assert config["spex_root"] == ("specs" if inherits else ".spex")
+            assert resolve_spex_root_and_roots(project)[0] == str(parent / "specs")
+
+            (project / ".spex").mkdir()
+            assert resolve_spex_root_and_roots(project)[0] == str(project / ".spex")
+        finally:
+            clear_config_cache()
+
+    def test_parent_barrier_cannot_be_reopened_by_child(self, tmp_path):
+        child, parent, ancestor = (tmp_path / name for name in ("child", "parent", "ancestor"))
+        ancestor.write_text("[spex]\ndebug = true\n")
+        parent.write_text("[spex]\ninherit_config = false\nstep_review = false\n")
+        child.write_text("[spex]\ninherit_config = true\nuse_git_worktree = true\n")
+
+        assert _merge_configs([child, parent, ancestor]) == {
+            "inherit_config": True,
+            "step_review": False,
+            "use_git_worktree": True,
+        }
+
+    def test_search_starts_in_current_directory_or_main_worktree(self, tmp_path, monkeypatch):
+        main = tmp_path / "main"
+        subdir = main / "subdir"
+        linked = tmp_path / "linked"
+        subdir.mkdir(parents=True)
+        linked.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "home")
+        monkeypatch.setattr("config._get_main_worktree", lambda _: main)
+        monkeypatch.setattr(
+            "config._get_top_workdir", lambda path: linked if path == linked else main
+        )
+        (main / ".spex.toml").write_text("[spex]\ndebug = true\n")
+        (subdir / ".spex.toml").write_text("[spex]\ninherit_config = false\n")
+        (linked / ".spex.toml").write_text("[spex]\ndebug = false\n")
+
+        assert load_config(subdir)["debug"] is False
+        assert load_config(linked)["debug"] is True
+
+    def test_explicit_parent_root_is_created_even_without_inheritance(self, tmp_path, monkeypatch):
+        from common import get_spex_root
+
+        home = tmp_path / "home"
+        parent = tmp_path / "parent"
+        project = parent / "project"
+        home.mkdir()
+        project.mkdir(parents=True)
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        (home / ".spex.toml").write_text('[spex]\nspex_root = "home-specs"\n')
+        (parent / ".spex.toml").write_text('[spex]\nspex_root = "missing"\n')
+        (project / ".spex.toml").write_text("[spex]\ninherit_config = false\n")
+
+        root = parent / "missing"
+        assert resolve_spex_root_and_roots(project)[0] == str(root)
+        assert not root.exists()
+        assert get_spex_root(project) == str(root)
+        assert root.is_dir()
+
+
 class TestResolveSpexRoots:
     def test_same_level_added_unconditionally(self, tmp_path, monkeypatch):
         """Directory with .spex.toml setting spex_root is added even without dir."""
@@ -418,16 +546,11 @@ class TestResolveSpexRoots:
 
         # child/.spex exists (governed by parent's config)
         (child / ".spex").mkdir()
-        # grandparent/.specs added unconditionally (same-level)
-
         result = _resolve_spex_roots([parent_toml, gp_toml], child)
 
-        assert result[0] == str((child / ".spex").resolve())
-        assert result[1] == str((parent / ".spex").resolve())
-        assert result[2] == str((grandparent / ".specs").resolve())
+        assert result == [str((child / ".spex").resolve())]
 
-    def test_toml_without_spex_root_is_transparent(self, tmp_path, monkeypatch):
-        """A .spex.toml without spex_root key doesn't affect resolution."""
+    def test_toml_without_spex_root_uses_local_default_or_continues_up(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         parent = tmp_path / "parent"
         child = parent / "child"
@@ -440,13 +563,16 @@ class TestResolveSpexRoots:
         parent_toml = parent / ".spex.toml"
         parent_toml.write_text('[spex]\nspex_root = ".my-spex"\n', encoding="utf-8")
 
-        # child/.my-spex exists (governed by parent's config, since child's toml is transparent)
+        # The parent's relative setting points to storage at the parent level.
         (child / ".my-spex").mkdir()
 
         result = _resolve_spex_roots([child_toml, parent_toml], child)
 
-        assert result[0] == str((child / ".my-spex").resolve())
-        assert result[1] == str((parent / ".my-spex").resolve())
+        assert result[0] == str((parent / ".my-spex").resolve())
+
+        (child / ".spex").mkdir()
+        result = _resolve_spex_roots([child_toml, parent_toml], child)
+        assert result == [str(child / ".spex")]
 
     def test_absolute_path_in_toml(self, tmp_path, monkeypatch):
         """Absolute spex_root is added unconditionally at same level."""
@@ -459,9 +585,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([toml], worktree)
 
-        assert result[0] == str(abs_path.resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [str(abs_path.resolve())]
 
     def test_tilde_path_in_toml(self, monkeypatch, tmp_path):
         """~/path is expanded and treated as absolute."""
@@ -476,9 +600,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([toml], worktree)
 
-        assert result[0] == str(home / "my-specs")
-        home_default = str((home / ".spex").resolve())
-        assert home_default in result
+        assert result == [str(home / "my-specs")]
 
     def test_no_tomls_uses_default(self, tmp_path, monkeypatch):
         """No .spex.toml anywhere — default .spex, only if dir exists."""
@@ -489,9 +611,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([], worktree)
 
-        assert result[0] == str((worktree / ".spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [str((worktree / ".spex").resolve())]
 
     def test_no_tomls_no_dirs_has_home_default(self, tmp_path, monkeypatch):
         """No .spex.toml, no .spex/ dirs — only home default in result."""
@@ -555,10 +675,8 @@ class TestResolveSpexRootAndRoots:
         primary, roots = resolve_spex_root_and_roots()
 
         expected = str((tmp_path / ".spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert primary == expected
-        assert roots[0] == expected
-        assert home_default in roots
+        assert roots == [expected]
 
     def test_same_level_no_dir(self, tmp_path, monkeypatch):
         """Same-level rule: primary returned even if dir doesn't exist."""
@@ -573,13 +691,10 @@ class TestResolveSpexRootAndRoots:
         primary, roots = resolve_spex_root_and_roots()
 
         expected = str((tmp_path / ".my-spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert primary == expected
-        assert roots[0] == expected
-        assert home_default in roots
+        assert roots == [expected]
 
-    def test_home_default_always_in_roots(self, tmp_path, monkeypatch):
-        """~/.<default> is always in roots even without any .spex.toml."""
+    def test_home_default_when_no_root_is_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
             "config._get_main_worktree", lambda w=None: tmp_path
@@ -632,6 +747,28 @@ class TestSpexConfigFileOverride:
         result = _find_spex_tomls(worktree)
 
         assert result == [custom.resolve()]
+
+    def test_config_file_roots_ignore_parent_spex_dirs(self, tmp_path, monkeypatch):
+        """Override mode must not inherit existing parent ~/.spex-style dirs."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        monkeypatch.setenv("HOME", str(home))
+        (home / ".spex").mkdir()
+        host = tmp_path / "work"
+        (host / ".spex").mkdir(parents=True)
+        sandbox = host / "sandbox"
+        repo = sandbox / "workspace" / "repo"
+        repo.mkdir(parents=True)
+        (sandbox / ".git").mkdir()
+        (repo / ".git").mkdir()
+        toml = repo / ".spex.toml"
+        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(toml))
+
+        roots = _resolve_spex_roots([toml.resolve()], repo)
+
+        assert roots == [str((repo / ".spex").resolve())]
 
     def test_cli_override_takes_priority_over_env(self, tmp_path, monkeypatch):
         """set_spex_config_file (CLI) takes priority over SPEX_CONFIG_FILE env."""
@@ -837,6 +974,7 @@ class TestGenerateDefaultToml:
             "debug",
             "step_review",
             "use_git_worktree",
+            "inherit_config",
         ):
             assert f"# {key} = " in result
         assert "skip_review" not in result
@@ -846,6 +984,7 @@ class TestGenerateDefaultToml:
         assert "# branch_management = true" in result
         assert "# step_review = true" in result
         assert "# use_git_worktree = false" in result
+        assert "# inherit_config = true" in result
         assert "True" not in result
 
     def test_string_formatting(self):

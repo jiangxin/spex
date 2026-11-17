@@ -347,12 +347,9 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
 
 
 def _resolve_hook_roots(workdir=None):
-    """Return hook root paths in priority order (highest first).
-
-    Builds from all resolved spex_roots: <spex_root>/hooks/ for each.
-    """
+    """Return the hook directory under the selected storage root."""
     ctx = get_project_context(workdir)
-    return [Path(sr) / "hooks" for sr in ctx.spex_roots]
+    return [Path(ctx.spex_root) / "hooks"] if ctx.spex_root else []
 
 
 def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
@@ -396,10 +393,8 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Resolution order (delegated to config.get_project_context):
-      1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
-         ~/.spex.toml).
-      2. Default: .spex inside the git toplevel.
+    Storage lookup is delegated to config.get_project_context and is
+    independent of the inherit_config setting.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.
@@ -432,7 +427,7 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
 
 
 def get_spex_roots(workdir=None) -> list[str]:
-    """Return all resolved spex root directories (highest priority first)."""
+    """Return the selected storage root as a singleton list."""
     return get_project_context(workdir).spex_roots
 
 
@@ -821,11 +816,10 @@ def _sync_builtin_template(
 def _resolve_template_roots(workdir=None):
     """Return template root paths in priority order (highest first).
 
-    Builds from all resolved spex_roots: <spex_root>/templates/ for each,
-    then appends the skill's built-in templates directory last.
+    The selected storage root takes precedence over built-in templates.
     """
     ctx = get_project_context(workdir)
-    roots = [Path(sr) / TEMPLATE_DIR for sr in ctx.spex_roots]
+    roots = [Path(ctx.spex_root) / TEMPLATE_DIR] if ctx.spex_root else []
     roots.append(_get_skill_path() / TEMPLATE_DIR)
     return roots
 
@@ -835,8 +829,8 @@ def get_template(template_name: str, workdir=None) -> str:
 
     Workflow:
     1. Sync built-in template to <spex_root>/templates/examples/ if needed.
-    2. Search template roots in priority order (derived from spex_roots):
-       a. <spex_root>/templates/ for each discovered spex_root
+    2. Search template roots in priority order:
+       a. <spex_root>/templates/ for the selected spex_root
        b. <skill_path>/templates/ (built-in fallback)
     3. Return content of the first matching file.
 

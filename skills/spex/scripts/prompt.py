@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a Jinja2 template with metadata and output the result."""
+"""Render a Spex template with metadata and output the result."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ from common import (
 )
 from common import filter_completed_todos as _filter_completed_todos
 from config import get_project_context
+from template import TemplateError
+from template import render as render_template
 from todo_helper import normalize_skip_commit
 
 # Review/fix prompt context (Phase 6 compact payloads).
@@ -856,8 +858,6 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
     Returns:
         Rendered template content with front-matter stripped.
     """
-    from jinja2 import Template
-
     content = get_template(name + ".md")
     if metadata is None:
         metadata = _build_metadata(name, spec_name)
@@ -879,7 +879,7 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
         return ""
 
     validate_required_meta(content, metadata)
-    rendered = Template(content).render(**metadata)
+    rendered = render_template(content, metadata)
     return strip_front_matter(rendered)
 
 
@@ -901,7 +901,7 @@ def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
         prog="spex prompt",
-        description="Render Jinja2 templates with metadata.",
+        description="Render Spex templates with metadata.",
     )
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
 
@@ -1051,7 +1051,6 @@ def _do_apply_one_task(args):
     """Handle apply-one-task subcommand."""
     import json
 
-    from jinja2 import TemplateError
 
     try:
         metadata = _build_metadata("apply-one-task", args.name)
@@ -1088,11 +1087,13 @@ def _do_apply_one_task(args):
 
     task_id = metadata.get("current_task_id", "")
     if task_id and args.name:
-        from debug_log import emit_apply_anchor
+        from debug_log import emit_apply_task
 
-        emit_apply_anchor(
+        emit_apply_task(
             resolve_spec_dir(args.name),
-            f"===== APPLY task begin id={task_id} =====",
+            "begin",
+            id=task_id,
+            resume_phase=metadata.get("resume_phase"),
         )
 
     if args.json_mode:
@@ -1133,7 +1134,6 @@ def _read_stdin_extra_vars(stdin_flag):
 
 def _do_apply_commit(args):
     """Handle apply-commit subcommand."""
-    from jinja2 import TemplateError
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -1174,7 +1174,6 @@ def _do_apply_review(args):
     """Handle apply-review subcommand."""
     import json
 
-    from jinja2 import TemplateError
 
     if get_project_context().config.get("step_review") is False:
         payload = {
@@ -1326,7 +1325,6 @@ def _do_apply_fix(args):
     """Handle apply-fix subcommand (one batch, one amend)."""
     import json
 
-    from jinja2 import TemplateError
 
     try:
         metadata = _build_metadata("apply-fix", args.name)
@@ -1450,7 +1448,6 @@ def _do_modify_spec(args):
     """Handle modify-spec subcommand."""
     import json
 
-    from jinja2 import TemplateError
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -1496,7 +1493,6 @@ def _do_modify_todo(args):
     """Handle modify-todo subcommand."""
     import json
 
-    from jinja2 import TemplateError
 
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
@@ -1539,11 +1535,10 @@ def cli_modify_todo(argv=None):
 
 def cli_render(argv):
     """Fallback CLI handler for generic template rendering."""
-    from jinja2 import TemplateError
 
     parser = ArgumentParser(
         prog="spex prompt",
-        description="Render a Jinja2 template with metadata.",
+        description="Render a Spex template with metadata.",
     )
     parser.add_argument("name", help="Template name (without .md extension)")
     parser.add_argument("--name", help="Spec name for spec-specific metadata")

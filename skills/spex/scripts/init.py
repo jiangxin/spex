@@ -3,18 +3,9 @@
 
 from __future__ import annotations
 
-import importlib.util
-import json
-import os
-import re
 import shutil
-import site
-import subprocess
 import sys
-import tempfile
-import zipfile
 from pathlib import Path
-from urllib.parse import urlparse
 
 from cli import ArgumentParser
 from common import (
@@ -24,6 +15,7 @@ from common import (
     logger,
 )
 from config import (
+    ConfigParseError,
     clear_config_cache,
     generate_updated_toml,
     get_main_worktree,
@@ -32,16 +24,6 @@ from config import (
     load_config,
     safe_update_toml,
 )
-
-# PyPI package name -> importable module name for presence checks.
-_PKG_TO_IMPORT = {
-    "jinja2": "jinja2",
-    "tomli": "tomli",
-}
-
-# PEP 508 / PyPI normalized names used when building the JSON API URL.
-_PKG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_ALLOWED_WHEEL_HOSTS = frozenset({"pypi.org", "files.pythonhosted.org"})
 
 
 def is_initialized(workdir=None):
@@ -57,257 +39,8 @@ def is_initialized(workdir=None):
     return True
 
 
-def _deps_for_env_check(pyproject_path: Path) -> list[str]:
-    """Return package names that must be importable in this Python.
-
-    Includes unconditional deps from pyproject.toml. Also includes
-    ``tomli`` when running on Python < 3.11 (matches the environment
-    marker in the skill pyproject).
-    """
-    deps = _parse_pyproject_deps(pyproject_path)
-    content = pyproject_path.read_text(encoding="utf-8")
-    # Support the only conditional dep we ship today.
-    if sys.version_info < (3, 11) and re.search(
-        r"tomli[^;\n]*;\s*python_version\s*<\s*[\"']3\.11[\"']",
-        content,
-    ):
-        if "tomli" not in deps:
-            deps.append("tomli")
-    return deps
-
-
-def _deps_satisfied(skill_dir: Path) -> bool:
-    """Return True if all required runtime packages are importable."""
-    pyproject = skill_dir / "pyproject.toml"
-    if not pyproject.is_file():
-        return True
-    for pkg in _deps_for_env_check(pyproject):
-        mod = _PKG_TO_IMPORT.get(pkg, pkg.replace("-", "_"))
-        if importlib.util.find_spec(mod) is None:
-            return False
-    return True
-
-
-def _install_deps(verbose=False, dry_run=False):
-    """Install Python dependencies from the skill's pyproject.toml.
-
-    Installs only this skill's declared runtime deps from the local skill
-    directory (plus official PyPI when resolving those deps). Skips
-    installation when required packages are already importable.
-    Otherwise tries multiple methods in order:
-    1. pip install (standard)
-    2. uv pip install (fast, if available)
-    3. Manual wheel download + extract (fallback when pip is broken)
-    """
-    from common import _get_skill_path
-
-    skill_dir = _get_skill_path()
-    satisfied = _deps_satisfied(skill_dir)
-    if dry_run:
-        if satisfied:
-            logger.info(
-                "Would skip dependency installation (already satisfied)",
-            )
-        else:
-            logger.info("Would install dependencies from %s", skill_dir)
-        return True
-    if satisfied:
-        logger.info("Dependencies already satisfied, skipping pip.")
-        return True
-    if verbose:
-        logger.info("Installing dependencies from %s ...", skill_dir)
-
-    # Method 1: pip install — local skill dir only, never a remote URL.
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet", "--no-input",
-         str(skill_dir)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        logger.info("Installed Python dependencies (via pip).")
-        return True
-
-    logger.warning("pip install failed, trying fallbacks...")
-
-    # Method 2: uv pip install (if available)
-    uv = shutil.which("uv")
-    if uv:
-        if verbose:
-            logger.info("Trying uv pip install ...")
-        result = subprocess.run(
-            [uv, "pip", "install", "--quiet", "--no-input", str(skill_dir),
-             "--system", "--python", sys.executable],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            logger.info("Installed Python dependencies (via uv).")
-            return True
-        logger.warning("uv install failed, trying wheel download...")
-
-    # Method 3: Direct wheel download + extract
-    if verbose:
-        logger.info("Trying direct wheel installation ...")
-    if _install_wheels_direct(skill_dir, verbose=verbose):
-        logger.info("Installed Python dependencies (via wheel download).")
-        return True
-
-    logger.error(
-        "Warning: failed to install Python dependencies.\n"
-        "  Install them manually with: %s -m pip install %s\n"
-        "  Or install 'uv' (https://docs.astral.sh/uv/) and re-run 'spex init'.",
-        sys.executable, skill_dir,
-    )
-    return False
-
-
-def _install_wheels_direct(skill_dir, verbose=False):
-    """Install dependencies by downloading and extracting wheels directly.
-
-    Parses pyproject.toml to find dependencies, resolves them via PyPI,
-    downloads wheels, and extracts them to site-packages.
-    """
-    site_packages = site.getsitepackages()[0]
-
-    # Parse pyproject.toml for dependencies
-    pyproject = skill_dir / "pyproject.toml"
-    if not pyproject.is_file():
-        return False
-
-    deps = _parse_pyproject_deps(pyproject)
-    if not deps:
-        return True  # No deps to install
-
-    for dep in deps:
-        if verbose:
-            logger.info("  Installing %s via wheel download ...", dep)
-        if not _install_single_wheel(dep, site_packages, verbose=verbose):
-            return False
-    return True
-
-
-def _parse_pyproject_deps(pyproject_path):
-    """Extract runtime dependencies from pyproject.toml.
-
-    Skips conditional deps (python_version constraints) since those
-    are handled by the environment check separately.
-    """
-    content = pyproject_path.read_text(encoding="utf-8")
-    # Find the [project] dependencies block
-    match = re.search(
-        r'dependencies\s*=\s*\[(.*?)\]', content, re.DOTALL
-    )
-    if not match:
-        return []
-
-    deps = []
-    for line in match.group(1).splitlines():
-        line = line.strip().strip(",")
-        if not line or line.startswith("#"):
-            continue
-        # Skip conditional dependencies (e.g. tomli for python < 3.11)
-        if "python_version" in line:
-            continue
-        # Extract package name (before any version specifier)
-        pkg = re.split(r"[><=!~;\[]", line)[0].strip().strip("\"'")
-        if pkg:
-            deps.append(pkg)
-    return deps
-
-
-def _is_allowed_pypi_json_url(url, pkg):
-    """Return True if url is exactly https://pypi.org/pypi/{pkg}/json."""
-    if not pkg or not _PKG_NAME_RE.fullmatch(pkg):
-        return False
-    return url == f"https://pypi.org/pypi/{pkg}/json"
-
-
-def _is_allowed_wheel_url(url):
-    """Return True if url is an https PyPI / pythonhosted wheel URL."""
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme != "https":
-            return False
-        if parsed.username is not None or parsed.password is not None:
-            return False
-        host = (parsed.hostname or "").rstrip(".").lower()
-        if host not in _ALLOWED_WHEEL_HOSTS:
-            return False
-        if parsed.port not in (None, 443):
-            return False
-        return True
-    except (ValueError, UnicodeError):
-        return False
-
-
-def _install_single_wheel(pkg, site_packages, verbose=False):
-    """Download and install a single package via wheel from official PyPI."""
-    pypi_url = f"https://pypi.org/pypi/{pkg}/json"
-    if not _is_allowed_pypi_json_url(pypi_url, pkg):
-        return False
-    try:
-        result = subprocess.run(
-            ["curl", "-sL", pypi_url],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode != 0:
-            return False
-        pypi_data = json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
-        return False
-
-    # Find a compatible wheel
-    py_version = f"cp{sys.version_info.major}{sys.version_info.minor}"
-    platform = "macosx" if sys.platform == "darwin" else ""
-    arch = "arm64" if platform else ""
-
-    files = pypi_data.get("urls", [])
-    wheel_url = None
-    for f in files:
-        fn = f["filename"]
-        if not fn.endswith(".whl"):
-            continue
-        # Prefer platform-specific wheel for current Python version
-        if py_version in fn:
-            if not platform or (platform in fn and arch in fn):
-                wheel_url = f["url"]
-                break
-        # Fallback: pure Python wheel
-        if "py3-none-any" in fn and wheel_url is None:
-            wheel_url = f["url"]
-
-    if wheel_url is None:
-        return False
-    if not _is_allowed_wheel_url(wheel_url):
-        return False
-
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".whl", delete=False) as tmp:
-            result = subprocess.run(
-                ["curl", "-sL", wheel_url, "-o", tmp.name],
-                capture_output=True, timeout=30,
-            )
-            if result.returncode != 0:
-                return False
-
-            z = zipfile.ZipFile(tmp.name)
-            for name in z.namelist():
-                if name.endswith("/"):
-                    continue  # skip directory entries
-                dest = os.path.join(site_packages, name)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "wb") as f:
-                    f.write(z.read(name))
-            return True
-    except (subprocess.TimeoutExpired, OSError, zipfile.BadZipFile):
-        return False
-
-
 def _install_cli(verbose=False, dry_run=False, *, replace_existing=True):
     """Install spex CLI symlink to ~/.local/bin."""
-    import shutil as _shutil
-
     from common import _get_skill_path
 
     script_path = _get_skill_path() / "scripts" / "spex"
@@ -318,7 +51,7 @@ def _install_cli(verbose=False, dry_run=False, *, replace_existing=True):
         logger.info("Would install CLI: %s -> %s", link_path, script_path)
         return
 
-    found = _shutil.which("spex")
+    found = shutil.which("spex")
     if found and Path(found).resolve() == script_path.resolve():
         logger.info("CLI already installed: %s", found)
         return
@@ -428,18 +161,13 @@ def run_init(
     workdir=None, target_dir=None, verbose=False, dry_run=False,
     skip_deps=False,
 ):
-    """Run full spex initialization."""
+    """Run full Spex initialization. The legacy skip_deps flag has no effect."""
     if dry_run:
         verbose = True
 
     if workdir is None:
         top = get_top_workdir()
         workdir = str(top) if top else None
-
-    if skip_deps:
-        logger.info("Skipping dependency installation (--skip-deps).")
-    else:
-        _install_deps(verbose=verbose, dry_run=dry_run)
 
     if target_dir:
         resolved = _resolve_target_dir(target_dir)
@@ -497,7 +225,7 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument(
         "--skip-deps",
         action="store_true",
-        help="Skip Python dependency installation",
+        help="Accepted for compatibility; has no effect",
     )
     return parser
 
@@ -520,4 +248,7 @@ def main(argv=None):
 if __name__ == "__main__":
     from common import setup_logging
     setup_logging()
-    main()
+    try:
+        main()
+    except ConfigParseError as exc:
+        sys.exit(str(exc))

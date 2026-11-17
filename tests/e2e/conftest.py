@@ -19,12 +19,14 @@ SPEX_SCRIPT = str(
 
 SPEX_TOML_NO_BRANCH_MGMT = """\
 [spex]
+inherit_config = false
 spex_root = "spex_root"
 branch_management = false
 """
 
 SPEX_TOML_WITH_BRANCH_MGMT = """\
 [spex]
+inherit_config = false
 spex_root = "spex_root"
 branch_management = true
 """

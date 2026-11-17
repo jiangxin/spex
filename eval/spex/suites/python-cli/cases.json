@@ -1,0 +1,231 @@
+[
+  {
+    "id": "create",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Add --repeat COUNT to greet.py. COUNT must be an integer from 1 through 5, default 1. Print the formatted greeting on COUNT separate lines. For an invalid count, argparse should report an error to stderr, exit 2 and leave stdout empty. Keep the existing name and --upper behavior. Plan tests for default, repeated output and invalid counts.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      }
+    ]
+  },
+  {
+    "id": "modify",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex modify 2000-01-01-00-00-greeting-format 保留已完成的 --upper 及其测试。仅将尚未实现的 --separator 需求改为 --punctuation，允许用户选择 ! 或 .，默认 !，非法选项由 argparse 拒绝并返回退出码 2。保持现有用法兼容。",
+        "checks": [
+          "no-code-change",
+          "completed-preserved"
+        ],
+        "acceptance": "modify-plan"
+      }
+    ]
+  },
+  {
+    "id": "apply",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "post-action"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ]
+  },
+  {
+    "id": "apply-one-step",
+    "fixture": "greeting",
+    "tags": [
+      "smoke"
+    ],
+    "turns": [
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "one-step",
+          "no-post-action"
+        ],
+        "acceptance": "prefix-only"
+      },
+      {
+        "input": "/spex apply-one-step 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "one-step",
+          "post-action"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ]
+  },
+  {
+    "id": "create-clarification",
+    "turns": [
+      {
+        "input": "/spex create Add an option to control how the greeting is displayed.",
+        "checks": [
+          "no-code-change",
+          "no-spec-write"
+        ]
+      },
+      {
+        "input": "Add --repeat COUNT, integer 1 through 5, default 1. Print the greeting COUNT times, one per line. Invalid counts exit 2 with no stdout. Preserve --upper and cover the default, valid, and invalid cases in the plan.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      }
+    ],
+    "fixture": "greeting",
+    "tags": [
+      "recovery"
+    ]
+  },
+  {
+    "id": "create-source-handoff",
+    "fixture": "source-handoff",
+    "tags": [
+      "recovery"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Use missing-plan.md as the source of requirements for a new greeting spec.",
+        "checks": [
+          "no-code-change",
+          "no-spec-write"
+        ]
+      },
+      {
+        "input": "Use repeat-plan.md and repeat-policy.md as equally authoritative requirements instead.",
+        "checks": [
+          "no-code-change",
+          "no-spec-write"
+        ]
+      },
+      {
+        "input": "Use repeat-plan.md as the only authoritative source. The range 1 through 5 is correct. Create the spec and ordered todo so an implementer can work without the source document.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      }
+    ]
+  },
+  {
+    "id": "apply-ambiguous",
+    "turns": [
+      {
+        "input": "/spex apply",
+        "checks": [
+          "no-code-change",
+          "no-spec-write",
+          "no-progress"
+        ]
+      },
+      {
+        "input": "Select the greeting-decoration spec (2000-01-01-00-01-greeting-decoration).",
+        "checks": [
+          "completed-preserved",
+          "one-spec-changed",
+          "post-action"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ],
+    "fixture": "greeting",
+    "tags": [
+      "recovery"
+    ]
+  },
+  {
+    "id": "apply-review-resume",
+    "setup": "review-resume",
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "post-action",
+          "resumed-review"
+        ],
+        "acceptance": "all-decoration"
+      }
+    ],
+    "fixture": "greeting",
+    "tags": [
+      "recovery"
+    ]
+  },
+  {
+    "id": "apply-review-failure",
+    "setup": "review-failure",
+    "turns": [
+      {
+        "input": "/spex apply 2000-01-01-00-01-greeting-decoration",
+        "checks": [
+          "no-code-change",
+          "no-progress",
+          "review-failure-stop"
+        ]
+      }
+    ],
+    "fixture": "greeting",
+    "tags": [
+      "recovery"
+    ]
+  },
+  {
+    "id": "workflow-lifecycle",
+    "turns": [
+      {
+        "input": "/spex create Plan a spec named lifecycle-greeting. Use two ordered tasks: first add --prefix TEXT, then --suffix TEXT. Each defaults to an empty string and is printed verbatim outside the greeting, including with --upper. Pair each change with its own tests. Preserve the default greeting.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      },
+      {
+        "input": "/spex modify lifecycle-greeting Keep both tasks and use --tail instead of --suffix in the second task. Preserve the defaults, uppercase behavior, and tests.",
+        "checks": [
+          "no-code-change",
+          "completed-preserved"
+        ],
+        "acceptance": "lifecycle-plan"
+      },
+      {
+        "input": "/spex apply-one-step lifecycle-greeting",
+        "checks": [
+          "one-step",
+          "no-post-action"
+        ],
+        "acceptance": "lifecycle-prefix"
+      },
+      {
+        "input": "/spex apply lifecycle-greeting",
+        "checks": [
+          "one-step",
+          "post-action"
+        ],
+        "acceptance": "lifecycle-all"
+      }
+    ],
+    "fixture": "greeting",
+    "tags": [
+      "recovery"
+    ]
+  }
+]

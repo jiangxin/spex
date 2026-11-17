@@ -2,9 +2,8 @@
 
 PYTHON = python3
 VENV_PYTHON = .venv/bin/python
-export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
-setup: dev-env
+setup:
 	@echo "==> Installing Node.js dependencies..."
 	npm install
 	@echo "==> Setup complete."

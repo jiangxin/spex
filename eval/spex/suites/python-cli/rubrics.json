@@ -1,0 +1,252 @@
+{
+  "version": 2,
+  "cases": {
+    "create": [
+      {
+        "id": "requirements-covered",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Omits the repeat behavior or contradicts it.",
+          "Covers successful repetition but misses the default, boundary, or failure behavior.",
+          "Covers default and range, repetition, invalid input behavior, and compatibility."
+        ]
+      },
+      {
+        "id": "verifiable-plan",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Missing or unrelated tasks.",
+          "Relevant tasks omit default, error, or repeated-output validation.",
+          "A task pairs the implementation with checks of default, repeated output and invalid inputs."
+        ]
+      }
+    ],
+    "modify": [
+      {
+        "id": "scope-correct",
+        "turn": 1,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Retains the superseded separator as a requirement or reopens uppercasing.",
+          "Changes to punctuation but omits a choice, default, or invalid behavior.",
+          "Replaces separator with punctuation choices, default and error behavior while preserving --upper."
+        ]
+      }
+    ],
+    "apply": [
+      {
+        "id": "accurate-summary",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims behavior that contradicts the evidence.",
+          "Reports some results but omits a feature or validation result.",
+          "Accurately summarizes both features and their verification."
+        ]
+      }
+    ],
+    "apply-one-step": [
+      {
+        "id": "first-step-boundary",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims the suffix step is done or contradicts the evidence.",
+          "Reports the prefix step without stating what remains.",
+          "Accurately reports the prefix step completed and suffix step remaining."
+        ]
+      },
+      {
+        "id": "accurate-summary",
+        "turn": 2,
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims behavior that contradicts the evidence.",
+          "Reports a result but omits the final scope or verification.",
+          "Accurately summarizes the suffix step and completion of the target spec."
+        ]
+      }
+    ],
+    "create-clarification": [
+      {
+        "id": "clarification-relevant",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Invents an option or starts planning it.",
+          "Asks a generic question.",
+          "Asks what display behavior or option the user wants."
+        ]
+      },
+      {
+        "id": "requirements-covered",
+        "turn": 2,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Omits repetition.",
+          "Covers repetition but misses constraints.",
+          "Covers repeat, range, default, errors and compatibility."
+        ]
+      }
+    ],
+    "create-source-handoff": [
+      {
+        "id": "missing-source-clarified",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Proceeds without the missing source or invents its contents.",
+          "Notes a problem without asking for the source.",
+          "Identifies missing-plan.md and asks for its contents or a usable replacement."
+        ]
+      },
+      {
+        "id": "source-conflict-clarified",
+        "turn": 2,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Silently selects a range or proceeds as though the conflict is resolved.",
+          "Notes a conflict without identifying the decision that differs.",
+          "Identifies the 1–5 versus 1–8 range conflict and asks which source or range governs."
+        ]
+      },
+      {
+        "id": "self-contained-spec",
+        "turn": 3,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Requires the source to determine the intended behavior or contradicts it.",
+          "Spec covers repetition but omits rationale, compatibility, failure, or recovery.",
+          "Spec includes the in-memory buffering rationale, the 1–5 range, default and line output, name and uppercase compatibility, and argparse failure and retry behavior."
+        ]
+      },
+      {
+        "id": "ordered-and-verifiable-tasks",
+        "turn": 3,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Tasks are missing, depend on the source, or wire the CLI before validating the count.",
+          "Tasks have the right order but omit a compatibility or acceptance check.",
+          "Tasks deliver a tested validator first without CLI changes, then wire up the option with tests for default output, both bounds, uppercase repetition, non-integers, and out-of-range counts, using the specified unittest command."
+        ]
+      }
+    ],
+    "apply-ambiguous": [
+      {
+        "id": "selection-requested",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Selects a spec without confirmation.",
+          "Mentions ambiguity without a clear choice.",
+          "Offers both pending specs and asks the user to select."
+        ]
+      }
+    ],
+    "apply-review-resume": [
+      {
+        "id": "resume-reported",
+        "turn": 1,
+        "requires": [
+          "reply",
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims the prefix was newly implemented or the suffix remains pending.",
+          "Reports completion without identifying the resumed review.",
+          "Reports resuming prefix review and completing the remaining suffix step."
+        ]
+      }
+    ],
+    "apply-review-failure": [
+      {
+        "id": "failure-explained",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims success or hides the failure.",
+          "Reports a failure without its stage.",
+          "Identifies review as the failing stage and reports that execution stopped."
+        ]
+      }
+    ],
+    "workflow-lifecycle": [
+      {
+        "id": "revision-carried-forward",
+        "turn": 2,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Leaves suffix as the target option.",
+          "Renames the option without updating the task plan.",
+          "Updates the spec and second task to use tail and keeps the first task and compatibility requirements."
+        ]
+      },
+      {
+        "id": "lifecycle-complete",
+        "turn": 4,
+        "review_context_turns": [3],
+        "requires": [
+          "reply",
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Claims unsupported behavior.",
+          "Reports completion without verification detail.",
+          "Accurately reports both requested behaviors and verification."
+        ]
+      }
+    ]
+  }
+}

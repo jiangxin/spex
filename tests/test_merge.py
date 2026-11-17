@@ -233,7 +233,7 @@ class TestNoSpexBranch:
         repo.mkdir()
         subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
         (repo / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{tmp_path}/spex"\n', encoding="utf-8"
+            f'[spex]\ninherit_config = false\nspex_root = "{tmp_path}/spex"\n', encoding="utf-8"
         )
         specs = tmp_path / "spex" / "specs" / "no-branch-spec"
         specs.mkdir(parents=True)
@@ -270,7 +270,8 @@ class TestNonMergeSubmitMethod:
         repo.mkdir()
         subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
         (repo / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{tmp_path}/spex"\nsubmit_method = "pr"\n',
+            '[spex]\ninherit_config = false\n'
+            f'spex_root = "{tmp_path}/spex"\nsubmit_method = "pr"\n',
             encoding="utf-8",
         )
         specs = tmp_path / "spex" / "specs" / "pr-spec"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -17,6 +18,7 @@ from config import get_project_context
 MAX_STREAM_BYTES = 256 * 1024
 PROMPT_STDOUT_LOG_BYTES = 2 * 1024
 DEBUG_LOG_NAME = "debug.log"
+TRACE_JSONL_NAME = "trace.jsonl"
 SESSIONS_DIR_NAME = "sessions"
 ACTIVE_SESSION_FILENAME = "active"
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -25,6 +27,7 @@ _PROMPT_SUMMARY_KEYS = (
     "commit_sha",
     "review_round",
     "all_done",
+    "skipped",
     "step_id",
     "resume_phase",
     "commit_title",
@@ -131,6 +134,14 @@ def format_apply_event(event: str, **fields) -> str:
     return " ".join(parts) + " ====="
 
 
+def emit_apply_task(spec_dir: str | Path, event: str, **fields) -> None:
+    emit_apply_anchor(spec_dir, format_apply_event(f"task {event}", **fields, ts=apply_timestamp()))
+
+
+def apply_timestamp() -> str:
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
 def apply_span_state_path(spec_dir: str | Path) -> Path:
     """Sidecar path for open review-flow spans beside ``debug.log``."""
     return Path(spec_dir) / f"{DEBUG_LOG_NAME}.apply_span"
@@ -188,7 +199,7 @@ def start_apply_span(
     if not debug_enabled(argv if argv is not None else sys.argv):
         return None
 
-    started_at = local_iso_timestamp()
+    started_at = apply_timestamp()
     span = {
         "kind": kind,
         "started_at": started_at,
@@ -236,7 +247,7 @@ def end_apply_span(
         return None
     _write_apply_spans(spec_dir, spans)
 
-    ended_at = local_iso_timestamp()
+    ended_at = apply_timestamp()
     if duration_ms is None:
         started_mono = span.get("started_mono")
         if isinstance(started_mono, (int, float)):
@@ -396,6 +407,7 @@ def merge_session_log_into_spec(
 ) -> Path | None:
     """Append session log into ``spec_dir/debug.log``, then delete session log.
 
+    Moves the default JSONL trace alongside the debug log.
     Also relocates the session ``.prev_end`` sidecar onto the target log when
     content was merged (so post-merge ``gap_ms`` continues), and always removes
     the session sidecar so the empty session directory can be cleaned up.
@@ -413,6 +425,7 @@ def merge_session_log_into_spec(
         logger.debug("Ignoring invalid session_id for merge: %r", session_id)
         return None
     session_dir = session_log.parent
+    _merge_session_trace(session_dir, Path(spec_dir))
 
     def _rmdir_if_empty() -> None:
         try:
@@ -471,17 +484,56 @@ def merge_session_log_into_spec(
     return target
 
 
+def _merge_session_trace(session_dir: Path, spec_dir: Path) -> None:
+    source = session_dir / TRACE_JSONL_NAME
+    if not source.is_file():
+        return
+    target = spec_dir / TRACE_JSONL_NAME
+    try:
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        with source.open("rb") as incoming, target.open("ab") as output:
+            snapshot = os.fstat(incoming.fileno())
+            if os.path.samestat(snapshot, os.fstat(output.fileno())):
+                return
+            remaining = snapshot.st_size
+            while remaining:
+                chunk = incoming.read(min(remaining, 64 * 1024))
+                if not chunk:
+                    break
+                output.write(chunk)
+                remaining -= len(chunk)
+        source.unlink()
+    except OSError as exc:
+        logger.debug("Failed to merge session trace %s into %s: %s", source, target, exc)
+
+
+def _configured_log_dir() -> Path | None:
+    value = os.environ.get("SPEX_LOG_DIR", "").strip()
+    if not value:
+        return None
+    try:
+        return Path(value).expanduser()
+    except RuntimeError as exc:
+        logger.debug("Failed to expand SPEX_LOG_DIR: %s", exc)
+        return None
+
+
 def resolve_debug_log_path(argv: list[str]) -> Path | None:
     """Resolve debug.log with mutual-exclusive routing.
 
     Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
-    1. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    2. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    3. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    4. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    5. Active create session → ``sessions/<id>/debug.log``
-    6. Fallback → ``<spex_root>/debug.log``
+    1. ``SPEX_LOG_DIR`` → ``<log_dir>/debug.log``
+    2. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    3. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    4. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    5. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    6. Active create session → ``sessions/<id>/debug.log``
+    7. Fallback → ``<spex_root>/debug.log``
     """
+    log_dir = _configured_log_dir()
+    if log_dir is not None:
+        return log_dir / DEBUG_LOG_NAME
+
     ctx = get_project_context()
     if not ctx.spex_root:
         return None
@@ -515,6 +567,30 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
         return session_debug_log_path(ctx.spex_root, session_id)
 
     return Path(ctx.spex_root) / DEBUG_LOG_NAME
+
+
+def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
+    """Resolve the trace destination, preferring environment over config."""
+    log_dir = _configured_log_dir()
+    env_path = os.environ.get("SPEX_TRACE_FILE", "").strip()
+    if env_path:
+        path = Path(env_path).expanduser()
+        return log_dir / path if log_dir is not None else path
+
+    ctx = get_project_context()
+    configured = str(ctx.config.get("trace_file") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_absolute():
+            return path
+        if log_dir is not None:
+            return log_dir / path
+        if ctx.spex_root:
+            return Path(ctx.spex_root) / path
+        return None
+    if log_dir is not None:
+        return log_dir / TRACE_JSONL_NAME
+    return debug_path.with_name(TRACE_JSONL_NAME) if debug_path is not None else None
 
 
 def safe_flush_debug_log_path(
@@ -760,7 +836,7 @@ def _append_trace(
     stderr_meta: dict,
     exit_code: int,
     duration_ms: int,
-) -> None:
+) -> str | None:
     timestamp = local_iso_timestamp()
     now = _parse_iso_timestamp(timestamp) or datetime.now().astimezone()
     argv_text = " ".join(argv)
@@ -774,13 +850,15 @@ def _append_trace(
         f"===== END exit={exit_code} duration_ms={duration_ms} =====\n"
     )
     if not _prepare_debug_log_parent(log_path):
-        return
+        return None
     try:
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(block)
         _remember_end_instant(log_path, now)
     except OSError as exc:
         logger.debug("Failed to write debug log to %s: %s", log_path, exc)
+        return None
+    return timestamp
 
 
 def _normalize_exit_code(code) -> int:
@@ -794,8 +872,43 @@ def _normalize_exit_code(code) -> int:
         return 1
 
 
+def _append_cli_span(
+    path: Path, argv: list[str], start_ns: int, end_ns: int,
+    duration_ms: int, exit_code: int, debug_logged_at: str | None,
+) -> None:
+    command = next((arg.replace("_", "-") for arg in argv[1:] if not arg.startswith("-")), "")
+    attributes = {
+        "process.executable.name": "spex",
+        "process.command_args": argv,
+        "process.pid": os.getpid(),
+        "process.exit.code": exit_code,
+    }
+    if exit_code:
+        attributes["error.type"] = "nonzero_exit"
+    span = {
+        "schema_version": 1,
+        "name": command,
+        "kind": "INTERNAL",
+        "start_time_unix_nano": start_ns,
+        "end_time_unix_nano": end_ns,
+        "attributes": attributes,
+        "status": {"code": "ERROR" if exit_code else "UNSET"},
+        "spex": {
+            "subcommand": command,
+            "duration_ms": duration_ms,
+            "started_at": datetime.fromtimestamp(start_ns / 1e9).astimezone().isoformat(),
+            "ended_at": datetime.fromtimestamp(end_ns / 1e9).astimezone().isoformat(),
+        },
+    }
+    if debug_logged_at is not None:
+        span["spex"]["debug_logged_at"] = debug_logged_at
+    if _prepare_debug_log_parent(path):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(span, separators=(",", ":")) + "\n")
+
+
 @contextmanager
-def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
+def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
     The flush path is chosen via ``safe_flush_debug_log_path`` after the
@@ -811,6 +924,7 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
     ``specs/<name>/`` stub via ``mkdir``.
     """
     start = time.monotonic()
+    start_ns = time.time_ns()
     exit_code = 0
     stdout_parts: list[str] = []
     stderr_parts: list[str] = []
@@ -834,16 +948,27 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
+        end_ns = time.time_ns()
         flush_path = safe_flush_debug_log_path(argv, log_path)
-        if flush_path is None:
-            return
-        _append_trace(
-            flush_path,
-            argv,
-            stdout_parts,
-            stdout_meta,
-            stderr_parts,
-            stderr_meta,
-            exit_code,
-            duration_ms,
-        )
+        debug_logged_at = None
+        if flush_path is not None:
+            debug_logged_at = _append_trace(
+                flush_path,
+                argv,
+                stdout_parts,
+                stdout_meta,
+                stderr_parts,
+                stderr_meta,
+                exit_code,
+                duration_ms,
+            )
+        try:
+            trace_path = resolve_trace_file_path(flush_path)
+            if trace_path is not None and (
+                flush_path is None or trace_path.resolve() != flush_path.resolve()
+            ):
+                _append_cli_span(
+                    trace_path, argv, start_ns, end_ns, duration_ms, exit_code, debug_logged_at,
+                )
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Failed to write CLI span: %s", exc)

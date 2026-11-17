@@ -113,11 +113,10 @@ spex/
 
 打开 Coding Agent 工具，输入 `/spex init`。这将会：
 
-1. 仅安装本 skill 在本地 skill 目录中声明的 Python 依赖（解析这些依赖时使用官方 PyPI）。
-2. 创建 `~/.spex.toml` 配置文件。
-3. 在 `~/.spex/` 目录下初始化规格存储目录。
-4. 同步模板文件。
-5. 将 spex 命令行工具安装（链接）到 `~/.local/bin/` 下。
+1. 创建 `~/.spex.toml` 配置文件。
+2. 在 `~/.spex/` 目录下初始化规格存储目录。
+3. 同步模板文件。
+4. 将 spex 命令行工具安装（链接）到 `~/.local/bin/` 下。
 
 ---
 
@@ -155,19 +154,17 @@ disable-model-invocation: true
 
 ## 使用 spex 命令行
 
-Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置、安装 Python 依赖，以及将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
+Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配置并将 CLI 符号链接到 `~/.local/bin/`——确保该路径在 PATH 中。
 
-**注意**：spex 命令行工具依赖 Python 3.9+，请确保系统中已安装。
+**注意**：Spex 命令行工具支持 Python 3.9+，运行时仅使用标准库。建议使用 Python 3.11+ 以获得完整的 TOML 支持。
 
 ### spex init
 
 除了执行与 `/spex init` 技能命令相同的设置之外，还支持以路径为参数，在指定仓库的根目录下创建 `.spex.toml` 和本地 `.spex/` 目录。
 
-依赖安装仅使用本 skill 的 `pyproject.toml`：本地 skill 目录加上官方 PyPI（仅 `pypi.org` / `files.pythonhosted.org` 的 https）。不会拉取或执行任意远程脚本。
-
 ### spex config
 
-显示 spex 配置，包括 Git 信息、路径、配置文件列表和 spex roots。
+显示 Spex 配置，包括 Git 信息、路径、配置文件列表和选中的存储目录。
 
 ```
 ── Git ───────────────────────────────────────────
@@ -193,13 +190,9 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
   /Users/jiangxin/.spex.toml
-
-── Spex Roots ────────────────────────────────────
-  /Users/jiangxin/work/.spex
-  /Users/jiangxin/.spex
 ```
 
-配置文件和 spex root 目录可以有多个，按优先级从高到低排列。优先级高的配置可以覆盖低优先级的配置值，高优先级目录中的模板和 hooks 也会覆盖低优先级目录中的同名文件。
+配置文件按优先级从高到低排列。Spex 只使用一个存储目录来存放规格、自定义模板和 hooks。
 
 ### spex list
 
@@ -374,7 +367,7 @@ Phase 6 review 循环：
 
 ### 4. 模板定制
 
-每个团队都有自己的规范：spec 文档的格式、提交说明的风格、代码评审的 checklist 等等。Spex 支持自定义模板——使用 Jinja2 模板引擎渲染的 Markdown 文件。例如，`templates/apply-commit.md` 中的以下片段展示了 `user_name` 和 `user_email` 变量如何控制 git commit 命令：提供这些变量时，`-c` 参数会将提交作者设置为 spec 中指定的身份。
+每个团队都有自己的规范：spec 文档的格式、提交说明的风格、代码评审的 checklist 等等。Spex 支持自定义模板——由标准库 Spex 模板引擎渲染的 Markdown 文件（`skills/spex/scripts/template.py`；方言说明见 `skills/spex/templates/AGENTS.md`）。例如，`templates/apply-commit.md` 中的以下片段展示了 `user_name` 和 `user_email` 变量如何控制 git commit 命令：提供这些变量时，`-c` 参数会将提交作者设置为 spec 中指定的身份。
 
 ```markdown
 {% if user_name and user_email -%}
@@ -483,6 +476,16 @@ spex_root = ".spex"
 
 **说明**：创建的 `.spex` 目录下包含 `.gitignore` 文件，默认忽略 spec 文件，只将 templates 等文件保存到仓库。
 
+### 配置继承
+
+Spex 从当前目录向上查找 `.spex.toml`；在 Git 链接工作树中运行时，
+从主工作树开始。默认继承上级配置文件和 `~/.spex.toml` 中的设置。
+在 `[spex]` 下设置 `inherit_config = false`，即可停止继承该文件以上的设置。
+
+Spec 存储目录（`spex_root`）独立查找。每一级有显式配置时，使用指定的目录并按需创建。
+没有显式配置时，优先使用该级已存在的 `.spex`，否则继续向上查找。
+最后回退到 `~/.spex.toml`，默认使用 `~/.spex`。
+
 ### 平台集成：统一管理多仓库的 Spec
 
 将 Spex 集成到开发平台时，通常需要统一管理多个代码仓库的 spec 生成和执行，而不是让每个仓库各自配置。Spex 支持通过环境变量 `SPEX_CONFIG_FILE` 指定配置文件，跳过仓库中的 `.spex.toml`：
@@ -493,9 +496,23 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 这样平台可以统一控制 `spex_root` 位置、模板和 hook，确保所有仓库的 spec 集中存储和统一管理。
 
+启用调试日志后，设置 `SPEX_LOG_DIR` 可将 CLI 的 `debug.log` 和
+`trace.jsonl` 写入同一目录。相对目录以当前工作目录为基准。
+工作流锚点和评审状态仍保存在各自的 spec 目录中。
+
+```bash
+export SPEX_LOG_DIR=/path/to/trial-logs
+```
+
+`SPEX_TRACE_FILE` 优先于配置项 `trace_file`，两者仅覆盖 `trace.jsonl`。
+绝对路径直接使用。设置 `SPEX_LOG_DIR` 时，相对路径以该目录为基准。
+否则，`SPEX_TRACE_FILE` 相对当前工作目录解析，`trace_file` 相对
+`spex_root` 解析。
+
 ### 定制 spex 模板
 
-用 `spex config` 查看 `spex_roots` 路径列表，选择一个模板目录（例如 `~/.spex/templates/`），创建替换的模板文件。可以从 `templates/examples/` 复制模板作为起点。
+用 `spex config get spex_root` 查看选中的存储目录，将自定义模板放在该目录的
+`templates/` 下。Spex 会回退到内置模板，也可以从 `templates/examples/` 复制模板作为起点。
 
 ### 定制 hook
 
@@ -528,7 +545,9 @@ Spex 支持 pre-action 和 post-action 两种 hook。它们是项目本地的，
 
 ### Python 版本要求
 
-Spex 的命令行工具依赖 Python 3.9+。可以用 `python3 --version` 检查。macOS 用户可以通过 `brew install python` 安装。
+Spex 支持 Python 3.9 及以上版本。在 Python 3.9–3.10 上，内置解析器支持 `[spex]` 等单层表、裸键、单行字符串、布尔值、十进制整数和注释。配置中使用数组、内联表、点分键或多行字符串时，请使用 Python 3.11+。
+
+可用 `python3 --version` 检查版本。macOS 用户可通过 `brew install python` 安装较新版本。
 
 ### spex 命令找不到
 
@@ -576,7 +595,7 @@ export PATH="$HOME/.local/bin:$PATH"
 - `SKILL.md` 是一个路由文件，逻辑拆解到 `commands/*.md` 中。
 - 模板文件在 `templates/*.md` 下。
 - 脚本在 `skills/spex/scripts/` 目录下，使用 Python 3.9+ 编写。
-- 执行 `make setup` 创建 `.venv`，并安装 Python dev 依赖和 Node.js 依赖。
+- 执行 `make setup` 安装 Node.js 依赖。
 - 测试、覆盖率、Python lint 和格式化目标会自动初始化 `.venv`，安装 `skills/spex/[dev]` 并使用其中的 Python，无需手动激活；pre-commit 通过 `make check` 使用同一环境。
 - 首次创建 `.venv` 时可用 `make dev-env PYTHON=python3.13` 选择解释器；切换解释器前删除 `.venv`。`skills/spex/pyproject.toml` 变化后会重新安装依赖；删除 `.venv/.dev-ready` 可强制重新安装。
 - 运行测试：`make test`（快速），`make test-all`（全部，包含慢测试）。

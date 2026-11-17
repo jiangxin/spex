@@ -29,7 +29,7 @@ def _setup_spex_toml(tmp_path):
     toml = tmp_path / ".spex.toml"
     if not toml.exists():
         toml.write_text(
-            f'[spex]\nspex_root = "{tmp_path}"\n', encoding="utf-8"
+            f'[spex]\ninherit_config = false\nspex_root = "{tmp_path}"\n', encoding="utf-8"
         )
 
 

@@ -1151,6 +1151,10 @@ def _emit_complete_batch_telemetry(
         duration_ms=evidence_ms,
         step=step_id,
         count=len(checks),
+        timed_count=sum(
+            type(check.get("duration_ms")) is int and check["duration_ms"] >= 0
+            for check in checks if isinstance(check, dict)
+        ),
         ok=ok,
         sha=new_sha,
     )

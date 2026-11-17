@@ -528,7 +528,7 @@ class TestShowScriptDirect:
         )
         monkeypatch.setenv("HOME", str(tmp_path))
         (tmp_path / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{spex_root}"\n', encoding="utf-8",
+            f'[spex]\ninherit_config = false\nspex_root = "{spex_root}"\n', encoding="utf-8",
         )
         result = subprocess.run(
             [sys.executable, str(

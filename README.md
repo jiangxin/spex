@@ -113,11 +113,10 @@ spex/
 
 Open your coding agent tool and type `/spex init`. This will:
 
-1. Install only this skill's declared Python dependencies from the local skill directory, plus official PyPI when resolving those deps.
-2. Create the `~/.spex.toml` configuration file.
-3. Initialize the spec storage directory under `~/.spex/`.
-4. Sync template files.
-5. Install (symlink) the spex CLI to `~/.local/bin/`.
+1. Create the `~/.spex.toml` configuration file.
+2. Initialize the spec storage directory under `~/.spex/`.
+3. Sync template files.
+4. Install (symlink) the spex CLI to `~/.local/bin/`.
 
 ---
 
@@ -155,19 +154,17 @@ disable-model-invocation: true
 
 ## Using the spex CLI
 
-After installing the skill, run `/spex init` in your coding agent to set up the configuration, install Python dependencies, and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
+After installing the skill, run `/spex init` in your coding agent to set up the configuration and symlink the CLI to `~/.local/bin/` — make sure this path is in your PATH.
 
-**Note**: The spex CLI requires Python 3.9+. Ensure it is installed on your system.
+**Note**: The Spex CLI runs on Python 3.9+ using the standard library. Python 3.11+ is recommended for full TOML support.
 
 ### spex init
 
 In addition to performing the same setup as the `/spex init` skill command, it also accepts a path argument to create `.spex.toml` and a local `.spex/` directory at the root of the specified repository.
 
-Dependency installation uses only this skill's `pyproject.toml`: the local skill directory plus official PyPI (`pypi.org` / `files.pythonhosted.org` over https). It does not fetch or run arbitrary remote scripts.
-
 ### spex config
 
-Display spex configuration, including Git info, paths, config file list, and spex roots.
+Display Spex configuration, including Git info, paths, config files, and the selected storage root.
 
 ```
 ── Git ───────────────────────────────────────────
@@ -193,13 +190,9 @@ Display spex configuration, including Git info, paths, config file list, and spe
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
   /Users/jiangxin/.spex.toml
-
-── Spex Roots ────────────────────────────────────
-  /Users/jiangxin/work/.spex
-  /Users/jiangxin/.spex
 ```
 
-There can be multiple config files and spex root directories, listed in order from highest to lowest priority. Higher-priority configs override lower-priority values, and templates and hooks in higher-priority directories override same-named files in lower-priority directories.
+Config files are listed from highest to lowest priority. Spex uses one storage root for specs, custom templates, and hooks.
 
 ### spex list
 
@@ -379,7 +372,7 @@ Requirements change, and models may drift during requirements analysis, requirin
 
 ### 4. Template Customization
 
-Every team has its own standards: spec document format, commit message style, code review checklist, etc. Spex supports customizable templates — Markdown files rendered with the Jinja2 template engine. For example, the following snippet from `templates/apply-commit.md` shows how the `user_name` and `user_email` variables control the git commit command: when provided, the `-c` flag sets the commit author to match the spec's specified identity.
+Every team has its own standards: spec document format, commit message style, code review checklist, etc. Spex supports customizable templates — Markdown files rendered by the stdlib Spex template engine (`skills/spex/scripts/template.py`; dialect in `skills/spex/templates/AGENTS.md`). For example, the following snippet from `templates/apply-commit.md` shows how the `user_name` and `user_email` variables control the git commit command: when provided, the `-c` flag sets the commit author to match the spec's specified identity.
 
 ```markdown
 {% if user_name and user_email -%}
@@ -488,6 +481,19 @@ Then run `spex init .` (`.` refers to the current path) to create a `.spex` dire
 
 **Note**: The created `.spex` directory contains a `.gitignore` file that ignores spec files by default, saving only templates and similar files to the repository.
 
+### Configuration Inheritance
+
+Spex searches for `.spex.toml` from the current directory upward, starting
+from the main checkout when run in a linked Git worktree. Settings inherit
+from parent files and `~/.spex.toml` by default. Set `inherit_config = false`
+under `[spex]` to stop inheriting settings above that file.
+
+Spec storage (`spex_root`) is resolved independently. At each level,
+Spex uses an explicit `spex_root` and creates the directory when needed.
+Without an explicit setting, it prefers an existing local `.spex` before
+continuing upward. The final fallback is `~/.spex.toml`, with `~/.spex`
+as the default.
+
 ### Platform Integration: Managing Specs Across Repositories
 
 When integrating Spex into a development platform, you typically need centralized control over spec generation and execution across multiple repositories, rather than letting each repository configure itself. Spex supports the `SPEX_CONFIG_FILE` environment variable to specify a config file, bypassing any `.spex.toml` in the repo:
@@ -498,9 +504,25 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 This lets the platform control the `spex_root` location, templates, and hooks centrally, ensuring specs from all repositories are stored and managed in one place.
 
+With debug logging enabled, set `SPEX_LOG_DIR` to write CLI `debug.log` and
+`trace.jsonl` into one directory. A relative directory is resolved from the
+current working directory. Workflow anchors and review state remain with each spec.
+
+```bash
+export SPEX_LOG_DIR=/path/to/trial-logs
+```
+
+`SPEX_TRACE_FILE` takes precedence over the `trace_file` config setting.
+Both override only `trace.jsonl`. Absolute paths are used as given.
+Relative paths resolve under `SPEX_LOG_DIR` when set. Otherwise,
+`SPEX_TRACE_FILE` resolves from the working directory and `trace_file`
+resolves from `spex_root`.
+
 ### Customizing spex Templates
 
-Run `spex config` to see the `spex_roots` path list, pick a template directory (e.g., `~/.spex/templates/`), and create replacement template files. You can copy templates from `templates/examples/` as a starting point.
+Run `spex config get spex_root` to find the selected storage directory.
+Put custom templates in its `templates/` directory. Spex falls back to
+built-in templates, which you can copy from `templates/examples/`.
 
 ### Customizing Hooks
 
@@ -533,7 +555,9 @@ Unsafe hooks are skipped (treated as missing) with a warning.
 
 ### Python Version Requirement
 
-The Spex CLI requires Python 3.9+. Check with `python3 --version`. macOS users can install via `brew install python`.
+Spex supports Python 3.9 and newer. On Python 3.9–3.10, the built-in parser supports single-level tables such as `[spex]`, bare keys, single-line strings, booleans, decimal integers, and comments. Use Python 3.11+ for configuration that uses arrays, inline tables, dotted keys, or multiline strings.
+
+Check your version with `python3 --version`. macOS users can install a newer version via `brew install python`.
 
 ### spex command not found
 
@@ -581,7 +605,7 @@ If apply stops because `apply-helper ensure-branch` failed on a detached HEAD, S
 - `SKILL.md` is a routing file; logic is split across `commands/*.md`.
 - Templates are in `templates/*.md`.
 - Scripts are in `skills/spex/scripts/`, written in Python 3.9+.
-- Run `make setup` to create `.venv` and install Python dev dependencies and Node.js dependencies.
+- Run `make setup` to install Node.js dependencies.
 - Test, coverage, Python lint, and format targets automatically initialize `.venv` with `skills/spex/[dev]` and use its Python. No manual activation is needed; pre-commit uses the same environment through `make check`.
 - Use `make dev-env PYTHON=python3.13` to choose the Python interpreter when creating `.venv`. Delete `.venv` before switching interpreters. Dependency installation is repeated when `skills/spex/pyproject.toml` changes; remove `.venv/.dev-ready` to force a reinstall.
 - Run tests: `make test` (fast), `make test-all` (full, including slow tests).

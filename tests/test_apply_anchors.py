@@ -74,9 +74,7 @@ class TestPromptApplyAnchors:
         ):
             prompt._do_apply_one_task(args)
 
-        assert "===== APPLY task begin id=step-4 =====\n" in _read_log(
-            spec_dir,
-        )
+        assert "===== APPLY task begin id=step-4 resume_phase=implement ts=" in _read_log(spec_dir)
         out = json.loads(capsys.readouterr().out)
         assert out["task_id"] == "step-4"
 
@@ -186,7 +184,7 @@ class TestTodoEditAnchors:
             todo_helper.cmd_edit(todo, args)
 
         assert (
-            "===== APPLY task committed id=step-4 sha=abc1234 =====\n"
+            "===== APPLY task committed id=step-4 sha=abc1234 ts="
             in _read_log(tmp_path)
         )
 
@@ -216,7 +214,7 @@ class TestTodoEditAnchors:
             todo_helper.cmd_edit(todo, args)
 
         content = _read_log(tmp_path)
-        assert "===== APPLY task done id=step-4 =====\n" in content
+        assert "===== APPLY task done id=step-4 ts=" in content
         assert "task committed" not in content
 
     def test_no_anchor_when_debug_off(self, tmp_path, monkeypatch):
@@ -373,11 +371,11 @@ class TestApplyAnchorSequence:
             ])
 
         content = _read_log(spec_dir)
-        begin = content.index("===== APPLY task begin id=step-4 =====\n")
+        begin = content.index("===== APPLY task begin id=step-4 resume_phase=implement ts=")
         committed = content.index(
-            "===== APPLY task committed id=step-4 sha=deadbee =====\n",
+            "===== APPLY task committed id=step-4 sha=deadbee ts=",
         )
-        done = content.index("===== APPLY task done id=step-4 =====\n")
+        done = content.index("===== APPLY task done id=step-4 ts=")
         bumped = content.index("===== APPLY review round → 2 =====\n")
         assert begin < committed < done < bumped
         assert "result=new_major_next_full_round" in content

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Refactoring
+
+- **Stdlib template engine** — replace the Jinja2 prompt renderer with
+  `skills/spex/scripts/template.py` (dialect documented in
+  `skills/spex/templates/AGENTS.md`); drop the `jinja2` runtime
+  dependency so system `python3` no longer needs that package for
+  apply/modify prompts.
+
 ## 0.8.0
 
 ### Features

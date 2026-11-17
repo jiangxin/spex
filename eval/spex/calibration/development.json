@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "id": "python-dev-omit-repeat",
+      "suite": "python-cli",
+      "case": "create",
+      "evidence": {
+        "turn-1:input": "Add --repeat COUNT. Accept integers from 1 through 5, default 1. Print the greeting COUNT times on separate lines. Invalid input exits 2 with stderr and empty stdout. Keep name and --upper behavior.",
+        "turn-1:state": {
+          "specs": {
+            "greeting": {
+              "spec.md": "Add a flag that prints the greeting once regardless of the count.",
+              "todo.json": [
+                {
+                  "id": "step-1",
+                  "details": "Change the greeting color."
+                }
+              ]
+            }
+          }
+        }
+      },
+      "gold": {
+        "requirements-covered": {
+          "verdict": "fail",
+          "evidence_refs": [
+            "turn-1:state"
+          ]
+        },
+        "verifiable-plan": {
+          "verdict": "fail",
+          "evidence_refs": [
+            "turn-1:state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "docs-dev-unsupported-cause",
+      "suite": "docs",
+      "case": "analyze-incident",
+      "evidence": {
+        "turn-1:input": "Explain why job 77 did not upload and propose a recovery step.",
+        "turn-1:reply": "Job 77 failed because its JSON schema did not pass rendering.",
+        "turn-1:acceptance": {
+          "passed": true,
+          "evidence": {
+            "incident_log": "Job 77: render succeeded. Write /exports/job-77.json failed with ENOSPC. Upload skipped because the write did not produce an artifact."
+          }
+        }
+      },
+      "gold": {
+        "incident-evidence": {
+          "verdict": "fail",
+          "evidence_refs": [
+            "turn-1:reply",
+            "turn-1:acceptance"
+          ]
+        }
+      }
+    }
+  ]
+}

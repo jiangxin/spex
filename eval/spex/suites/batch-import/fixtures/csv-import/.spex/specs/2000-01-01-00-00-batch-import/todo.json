@@ -1,0 +1,30 @@
+[
+  {
+    "id": "step-1",
+    "name": "Read legacy and write versioned checkpoints",
+    "details": "Implement the checkpoint interface from spec.md. Test a read-only legacy load, version 2 round-trip, missing checkpoint and unknown version. Leave CLI behavior unchanged.",
+    "completed_at": "",
+    "commit_title": ""
+  },
+  {
+    "id": "step-2",
+    "name": "Commit one import batch atomically",
+    "details": "Implement importer.import_batch as specified. Test a bad final row rolling back prior writes in that batch, preservation of previous batches, and counting duplicate rows without overwriting data.",
+    "completed_at": "",
+    "commit_title": ""
+  },
+  {
+    "id": "step-3",
+    "name": "Expose batch import and resume on the CLI",
+    "details": "Add batch-size and resume options. Test legacy checkpoint resume, partial final batch, identical completed resume, missing checkpoint, invalid batch size, and the unchanged original command.",
+    "completed_at": "",
+    "commit_title": ""
+  },
+  {
+    "id": "step-4",
+    "name": "Reject changed inputs before resuming",
+    "details": "Enforce input identity before writing or upgrading any checkpoint. Test an appended input for incomplete and complete checkpoints, no mutations on failure, recovery with the original bytes, and an identical input at a different path.",
+    "completed_at": "",
+    "commit_title": ""
+  }
+]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -298,6 +299,79 @@ def create_spec(spec, specs_dir, auto_prefix=True):
     return (spec, spec_dir)
 
 
+# prepare-spec stubs may only contain meta plus optional debug tee files.
+_INCOMPLETE_STUB_ALLOWED = frozenset({
+    "meta.json",
+    "debug.log",
+    "debug.log.prev_end",
+})
+
+
+def is_incomplete_spec_dir(spec_dir: Path) -> bool:
+    """True when a directory exists but has no ``spec.md`` yet.
+
+    Prefer :func:`is_incomplete_spec_stub` before deleting; this helper only
+    answers whether ``spec.md`` is missing.
+    """
+    path = Path(spec_dir)
+    return path.is_dir() and not (path / "spec.md").is_file()
+
+
+def is_incomplete_spec_stub(
+    spec_dir: Path,
+    specs_dir: Path | str | None = None,
+) -> bool:
+    """True for a prepare-spec stub that is safe to discard.
+
+    Requires a dated spec directory name, no ``spec.md``, and either an empty
+    directory or only stub allowlist files with ``meta.json`` present. When
+    ``specs_dir`` is set, the path must be a direct child of that directory.
+    """
+    path = Path(spec_dir)
+    if not path.is_dir() or (path / "spec.md").is_file():
+        return False
+    if not SPEC_NAME_PATTERN.match(path.name):
+        return False
+    if specs_dir is not None:
+        parent = path.parent.resolve()
+        expected = Path(specs_dir).resolve()
+        if parent != expected:
+            return False
+    names = {entry.name for entry in path.iterdir()}
+    if not names:
+        return True
+    return "meta.json" in names and names <= _INCOMPLETE_STUB_ALLOWED
+
+
+def discard_incomplete_spec(
+    spec_dir: Path,
+    specs_dir: Path | str | None = None,
+) -> bool:
+    """Remove a prepare-spec stub directory.
+
+    Returns True if the directory was removed. Raises ValueError when the
+    path exists but is not a safe stub (has ``spec.md``, unexpected files,
+    bad name, or wrong parent under ``specs_dir``).
+    """
+    path = Path(spec_dir)
+    if not path.exists():
+        return False
+    if not path.is_dir():
+        raise ValueError(f"Not a spec directory: {path}")
+    if (path / "spec.md").is_file():
+        raise ValueError(
+            f"Refusing to discard '{path.name}': spec.md already exists"
+        )
+    if not is_incomplete_spec_stub(path, specs_dir=specs_dir):
+        raise ValueError(
+            f"Refusing to discard '{path.name}': not a prepare-spec stub "
+            "(require dated name under specs/, empty or meta.json-only "
+            "with optional debug.log files)"
+        )
+    shutil.rmtree(path)
+    return True
+
+
 def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
     """Write meta.json into spec_dir with project context and prompt."""
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
@@ -444,31 +518,58 @@ def _do_prepare_spec(args):
         logger.error(f"Error: {e}")
         sys.exit(1)
 
-    ctx = cfg.get_project_context()
-    timestamp = local_iso_timestamp()
-    _write_meta(
-        spec_dir, ctx, prompt, timestamp, validated["description"],
-    )
+    try:
+        ctx = cfg.get_project_context()
+        timestamp = local_iso_timestamp()
+        _write_meta(
+            spec_dir, ctx, prompt, timestamp, validated["description"],
+        )
 
-    if ctx.spex_root:
-        _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
+        if ctx.spex_root:
+            _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
 
-    spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
-    hooks.run_pre_action(
-        "create",
-        {"spex_branch": spex_branch},
-        workdir=ctx.top_workdir,
-        spec_name=spec_name,
-    )
+        spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
+        hooks.run_pre_action(
+            "create",
+            {"spex_branch": spex_branch},
+            workdir=ctx.top_workdir,
+            spec_name=spec_name,
+        )
 
-    import prompt as prompt_mod
+        import prompt as prompt_mod
 
-    result = {
-        "spec_name": spec_name,
+        result = {
+            "spec_name": spec_name,
+            "spec_path": str(spec_dir),
+            "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
+        }
+        print(json.dumps(result, indent=2))
+    except BaseException:
+        # prepare-spec owns the new directory until success; roll back stubs
+        # so a retry with another name does not leave meta-only trees.
+        try:
+            discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+        except ValueError as err:
+            logger.warning("prepare-spec rollback skipped: %s", err)
+        raise
+
+
+def _do_discard_incomplete(args):
+    """Remove a prepared spec directory that never received spec.md."""
+    from common import get_specs_dir
+
+    specs_dir = get_specs_dir()
+    # resolve_spec_dir exits on missing / ambiguous names.
+    spec_dir = resolve_spec_dir(args.name, specs_dir)
+    try:
+        removed = discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+    except ValueError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    print(json.dumps({
+        "discarded": removed,
         "spec_path": str(spec_dir),
-        "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
-    }
-    print(json.dumps(result, indent=2))
+    }, indent=2))
 
 
 def cli_prepare_spec(argv=None):
@@ -630,6 +731,18 @@ def _build_parser():
         help="Brief description (saved to meta.json)",
     )
 
+    p_discard = subs.add_parser(
+        "discard-incomplete",
+        description=(
+            "Remove a prepared spec directory that has no spec.md yet."
+        ),
+        help="Discard an incomplete (no spec.md) spec directory",
+    )
+    p_discard.add_argument(
+        "--name", required=True,
+        help="Spec name or path fragment to resolve under specs/",
+    )
+
     p_post = subs.add_parser(
         "post-action",
         description=(
@@ -668,5 +781,7 @@ def main(argv=None):
         _do_validate_name(args)
     elif args.subcmd == "prepare-spec":
         _do_prepare_spec(args)
+    elif args.subcmd == "discard-incomplete":
+        _do_discard_incomplete(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)

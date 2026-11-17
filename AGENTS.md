@@ -31,6 +31,16 @@ Specification documented in `references/SKILLS-SPEC.md`.
 - `skills/spex/references/` — Reference documentation loaded into context as needed.
 - `tests/` — Unit tests.
 
+## Python Environments
+
+- Run repository skills, including `spex`, `git-commit`, and `spex-eval`,
+  with the system `python3` (3.9+, with 3.11+ recommended for full TOML
+  support) and the Python standard library. Do not
+  introduce third-party Python runtime dependencies or require the project
+  `.venv` to run a skill.
+- Create and use `.venv` on demand for repository tests, coverage, Python lint,
+  and formatting. The Makefile invokes its interpreter directly.
+
 ## Naming Conventions
 
 ### Script Files

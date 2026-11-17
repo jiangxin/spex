@@ -52,6 +52,7 @@ def _make_context(**overrides):
             "submit_method": "merge",
             "step_review": True,
             "use_git_worktree": False,
+            "inherit_config": True,
         },
         "spex_tomls": [Path("/test/repo/.spex.toml")],
         "spex_roots": ["/test/repo/.spex"],
@@ -103,13 +104,13 @@ class TestFormatValue:
 class TestBuildConfigSections:
     """Tests for _build_config_sections."""
 
-    def test_returns_five_sections(self):
+    def test_returns_four_sections(self):
         ctx = _make_context()
         sections = _build_config_sections(ctx)
-        assert len(sections) == 5
+        assert len(sections) == 4
         names = [name for name, _, _ in sections]
         assert names == [
-            "Git", "Paths", "Config", "Config Files", "Spex Roots",
+            "Git", "Paths", "Config", "Config Files",
         ]
 
     def test_git_section_keys(self):
@@ -150,7 +151,7 @@ class TestBuildConfigSections:
         assert keys == [
             "spex_root", "branch_management",
             "main_branch_name", "submit_method",
-            "step_review", "use_git_worktree",
+            "step_review", "use_git_worktree", "inherit_config",
         ]
 
     def test_config_section_values(self):
@@ -171,11 +172,6 @@ class TestBuildConfigSections:
         assert name == "Config Files"
         assert kind == "list"
         assert entries == [Path("/test/repo/.spex.toml")]
-        # Spec Roots
-        name, kind, entries = sections[4]
-        assert name == "Spex Roots"
-        assert kind == "list"
-        assert entries == ["/test/repo/.spex"]
 
     def test_none_top_workdir(self):
         ctx = _make_context(top_workdir=None)
@@ -197,7 +193,7 @@ class TestPrintConfigSections:
         assert "── Paths " in out
         assert "── Config " in out
         assert "── Config Files " in out
-        assert "── Spex Roots " in out
+        assert "── Spex Roots " not in out
 
     def test_kv_format_uses_equals(self, capsys):
         ctx = _make_context()
@@ -299,7 +295,7 @@ class TestRunConfig:
             _run_config([])
         out = capsys.readouterr().out
         for header in ("── Git ", "── Paths ", "── Config ",
-                        "── Config Files ", "── Spex Roots "):
+                        "── Config Files "):
             assert header in out, f"{header} not found in output"
 
     def test_default_output_shows_all_keys(self, capsys):
@@ -310,7 +306,7 @@ class TestRunConfig:
         for key in ("branch", "remote_url", "user_name", "user_email",
                      "cwd", "top_workdir", "main_worktree", "spex_root",
                      "branch_management", "submit_method",
-                     "step_review", "use_git_worktree"):
+                     "step_review", "use_git_worktree", "inherit_config"):
             assert key in out, f"{key} not found in output"
 
     def test_get_subcommand_filters(self, capsys):
@@ -917,9 +913,7 @@ class TestDebugTracingIntegration:
 
     def _setup_repo(self, tmp_path, *, debug: Optional[bool] = None):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-        lines = ['[spex]', 'spex_root = ".spex"']
-        # Always set debug explicitly so a developer ~/.spex.toml with
-        # debug=true cannot leak into subprocess integration tests.
+        lines = ['[spex]', 'inherit_config = false', 'spex_root = ".spex"']
         if debug is True:
             lines.append("debug = true")
         else:
