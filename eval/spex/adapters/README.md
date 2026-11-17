@@ -3,23 +3,25 @@
 The runner never opens product sessions. Every host only needs to map onto
 the portable interface documented in [`../README.md`](../README.md):
 
-1. `prepare` / `prepare --sandbox` JSON
-2. Reply files under `<sandbox>/_handoff/`
-3. `collect` → `export-packet` → judge → `import-grades` → `summary`
+1. `prepare` / `prepare --sandbox` publishes the batch handoffs.
+2. `manual.py` initializes the queue, claims cases and guards turn collection.
+3. `export-packet` → judge → `import-grades` → queue completion → `summary`.
 
 ## Shared checklist
 
 | Step | Requirement |
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
-| Schedule | Respect `execution.jobs` from `prepare`. By default finish every trial, including grading, before starting the next one |
-| Env | Export every key in prepare `environment` (especially `PATH`, `HOME`, `SPEX_CONFIG_FILE`) before invoking Spex |
-| Skill | Follow the pinned `skill` path; write only under `workspace` |
-| Input | Send `next_input` exactly; keep the same session for later turns |
-| Output | Write `_handoff/<suite>-<case>-turnN.txt` |
-| Events | Optional supplementary Codex-style JSONL via `collect --events`; required workflow checks primarily use Spex logs and workspace evidence |
-| Timing | Pass `collect --host-duration-ms` and `import-grades --judge-duration-ms` when the adapter measures the respective session turn |
-| Collect | `collect --session ID --reply <file> [--events …]` |
+| Schedule | Claim cases against `execution.jobs` and hold the slot through grading |
+| Env | Apply the prepared environment in the trial session; use `manual.py exec` for shell commands |
+| Skill | Follow the pinned `skill` path and write under `workspace` |
+| Input | Start each turn, send its exact `next_input` and preserve the session |
+| Output | Save the final reply to the path published by `manual.py start` |
+| Events | Optional supplementary Codex-style JSONL beside the reply with suffix `.events.jsonl` |
+| Timing | Stop the current turn timer once its final reply is ready |
+| Collect | Use `manual.py collect` before starting the next turn |
+| Host failure | Record a launch failure, host exit or timeout with `manual.py fail` so the next case can claim the slot |
+| Complete | Import grades and complete each case; require terminal status before summarizing |
 
 ## Cursor (manual / Task)
 
@@ -35,10 +37,10 @@ the portable interface documented in [`../README.md`](../README.md):
 
 - Use `eval/spex/run.py run` for automated trials when the requester asks
   for Codex automation (`run` / `judge` / `calibrate` remain Codex-only).
-- Manual Codex handoff still uses `_handoff/` + `collect` like any other host.
+- Manual Codex uses the same guarded handoff as any other current host.
 
 ## Pure manual (any IDE)
 
-- Paste `next_input` into a session whose cwd/env match prepare JSON.
-- Save the final assistant reply under `_handoff/` and run `collect`.
-- Skip `--events` unless you can produce a compatible transcript.
+- Paste the input returned by `manual.py start` into the prepared session.
+- Stop the timer, save the reply and run `manual.py collect`.
+- Supply an events sidecar only when a compatible transcript is available.

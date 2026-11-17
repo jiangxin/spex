@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "eval" / "spex"))
 try:
     import collect_handoff
+    import manual
     import run
     import transport
     import workspace
@@ -82,7 +84,7 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
     events = []
     peak = 0
     lock = threading.Lock()
-    first_started = threading.Event()
+    first_wave = threading.Barrier(limit, timeout=5)
     second_finished = threading.Event()
 
     def setup(case, output, args, repeat, **kwargs):
@@ -97,8 +99,6 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
             active.add(repeat)
             events.append(("start", repeat))
             peak = max(peak, len(active))
-        if repeat == 1:
-            first_started.set()
         return SimpleNamespace(skill=output, repeat=repeat)
 
     def host(trial, message, *args, **kwargs):
@@ -114,10 +114,10 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
 
     def judge(output, metadata, *args, **kwargs):
         repeat = metadata["repeat"]
+        if repeat <= limit:
+            first_wave.wait()
         if repeat == 1 and limit == 2:
             assert second_finished.wait(timeout=5)
-        if repeat == 2 and limit == 2:
-            assert first_started.wait(timeout=5)
         with lock:
             events.append(("judged", repeat))
             active.remove(repeat)
@@ -615,6 +615,151 @@ def test_prepare_reuses_sandbox_across_cases(runner):
     ]))
     assert first["sandbox"] == second["sandbox"]
     assert Path(second["trial"]) == Path(first["sandbox"]) / "example" / "follow-up"
+
+
+def manual_action(sandbox, *arguments):
+    return manual.dispatch(manual.parser().parse_args([
+        "--sandbox", str(sandbox), *arguments,
+    ]), sandbox)
+
+
+@pytest.mark.slow
+def test_guarded_manual_dispatch_and_terminal_verdict(runner, monkeypatch):
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "cursor",
+    ]))
+    sandbox = Path(info["sandbox"])
+    key = "example/clarify"
+    with pytest.raises(ValueError, match="exact selected"):
+        manual_action(sandbox, "init", key, "example/not-prepared")
+    assert manual_action(sandbox, "init", key)[0]["terminal"] is False
+    assert manual_action(sandbox, "status", "--require-terminal")[1] == 1
+    with ThreadPoolExecutor(2) as pool:
+        claims = [pool.submit(manual_action, sandbox, "claim", key) for _ in range(2)]
+    assert sum(future.exception() is None for future in claims) == 1
+    with pytest.raises(ValueError, match="still pending"):
+        manual_action(sandbox, "complete", key)
+    with pytest.raises(ValueError, match="Start this turn"):
+        manual_action(sandbox, "stop", key, "1")
+    with pytest.raises(ValueError, match="pending turn is 1"):
+        manual_action(sandbox, "start", key, "2", "--session", "trial-1")
+
+    with monkeypatch.context() as worker:
+        worker.setenv("PATH", "/a/different/worker/path")
+        start, _ = manual_action(sandbox, "start", key, "1", "--session", "trial-1")
+    assert start["next_input"] == info["next_input"]
+    assert start["environment"] == info["environment"]
+    commands = []
+    with monkeypatch.context() as worker:
+        worker.setenv("PATH", "/a/different/worker/path")
+        worker.setattr(manual.os, "chdir", commands.append)
+        worker.setattr(manual.os, "execve", lambda *arguments: commands.append(arguments))
+        args = manual.parser().parse_args([
+            "--sandbox", str(sandbox), "exec", key, "--", "python3", "-V",
+        ])
+        assert manual.run_command(args, sandbox) == 0
+    assert commands[0] == Path(info["workspace"])
+    executable, argv, environment = commands[1]
+    assert Path(executable).parent == Path(info["environment"]["PATH"].split(":")[0])
+    assert argv == ["python3", "-V"]
+    assert environment["SPEX_CONFIG_FILE"] == info["environment"]["SPEX_CONFIG_FILE"]
+
+    Path(start["reply"]).write_text("What type?", encoding="utf-8")
+    with pytest.raises(ValueError, match="already started"):
+        manual_action(sandbox, "start", key, "1", "--session", "trial-1")
+    with pytest.raises(ValueError, match="Stop the current turn timer"):
+        manual_action(sandbox, "collect", key, "1")
+    manual_action(sandbox, "stop", key, "1")
+    manual_action(sandbox, "stop", key, "1")  # Retried stop leaves the timing intact.
+    first, _ = manual_action(sandbox, "collect", key, "1")
+    assert first["next_input"] == "Use a boolean setting"
+    assert manual_action(sandbox, "collect", key, "1")[0] == first
+    with pytest.raises(ValueError, match="same valid session ID"):
+        manual_action(sandbox, "start", key, "2", "--session", "wrong-session")
+    second, _ = manual_action(sandbox, "start", key, "2", "--session", "trial-1")
+    Path(second["reply"]).write_text("Done", encoding="utf-8")
+    manual_action(sandbox, "stop", key, "2")
+    final, _ = manual_action(sandbox, "collect", key, "2")
+    assert final["verdict"] == "pass"
+    with pytest.raises(ValueError, match="Import semantic grades"):
+        manual_action(sandbox, "complete", key)
+    trial = Path(info["trial"]) / "trial.json"
+    metadata = run.read_json(trial)
+    run.write_json(trial, {**metadata, "hard_verdict": "pass", "verdict": "fail"})
+    assert manual_action(sandbox, "complete", key)[0]["verdict"] == "fail"
+    assert manual_action(sandbox, "status", "--require-terminal")[1] == 0
+
+
+@pytest.mark.slow
+def test_guarded_manual_host_failure_releases_slot_and_preserves_evidence(runner):
+    manifest = run.SUITES / "example" / "cases.json"
+    original = run.read_json(manifest)[0]
+    manifest.write_text(json.dumps([
+        {**original, "id": name} for name in ("alpha", "bravo")
+    ]), encoding="utf-8")
+    first, second = "example/alpha", "example/bravo"
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "alpha", "--host", "cursor", "--jobs", "1",
+    ]))
+    sandbox = Path(info["sandbox"])
+    run.execute(runner.parse_args([
+        "prepare", "--case", "bravo", "--host", "cursor", "--sandbox", str(sandbox),
+    ]))
+    manual_action(sandbox, "init", first, second)
+    with pytest.raises(ValueError, match="must be claimed"):
+        manual_action(sandbox, "fail", first, "--reason", "launch_failed")
+    manual_action(sandbox, "claim", first)
+    start, _ = manual_action(sandbox, "start", first, "1", "--session", "trial-alpha")
+    Path(start["reply"]).write_text("What type?", encoding="utf-8")
+    manual_action(sandbox, "stop", first, "1")
+    manual_action(sandbox, "collect", first, "1")
+    manifest_path = Path(info["trial"]) / "trial.json"
+    before = run.read_json(manifest_path)
+    manual_action(sandbox, "start", first, "2", "--session", "trial-alpha")
+    with pytest.raises(ValueError, match="slots are occupied"):
+        manual_action(sandbox, "claim", second)
+
+    failed, _ = manual_action(sandbox, "fail", first, "--reason", "timeout")
+    assert failed == {"case": first, "status": "completed", "verdict": "run_error"}
+    after = run.read_json(manifest_path)
+    assert after == {**before, "verdict": "run_error", "error": "manual_host_timeout"}
+    assert Path(start["reply"]).read_text(encoding="utf-8") == "What type?"
+    assert manual_action(sandbox, "status", "--require-terminal")[1] == 1
+    manual_action(sandbox, "claim", second)
+    manual_action(sandbox, "fail", second, "--reason", "launch_failed")
+    status, code = manual_action(sandbox, "status", "--require-terminal")
+    assert code == 0 and status["terminal"]
+    assert {row["verdict"] for row in status["cases"].values()} == {"run_error"}
+
+
+@pytest.mark.slow
+def test_parallel_prepares_publish_every_case_and_can_republish(runner):
+    manifest = run.SUITES / "example" / "cases.json"
+    original = run.read_json(manifest)[0]
+    manifest.write_text(json.dumps([
+        {**original, "id": name} for name in ("alpha", "bravo", "charlie")
+    ]), encoding="utf-8")
+
+    def prepare(case, sandbox=None):
+        extra = [] if sandbox is None else ["--sandbox", str(sandbox)]
+        return run.execute(runner.parse_args([
+            "prepare", "--case", case, "--host", "cursor", *extra,
+        ]))
+
+    first = prepare("alpha")
+    sandbox = Path(first["sandbox"])
+    with ThreadPoolExecutor(2) as pool:
+        both = [pool.submit(prepare, case, sandbox) for case in ("bravo", "charlie")]
+        for future in both:
+            assert future.result()["sandbox"] == str(sandbox)
+    index = sandbox / "batch-index.json"
+    entries = run.read_json(index)
+    assert set(entries) == {"example/alpha", "example/bravo", "example/charlie"}
+    # Simulate an interruption after publishing the workspace and before its entry.
+    entries.pop("example/alpha")
+    run.write_json(index, entries)
+    assert prepare("alpha", sandbox) == first
+    assert len(run.read_json(index)) == 3
 
 
 @pytest.mark.slow

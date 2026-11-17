@@ -60,25 +60,28 @@ with `--spex-ref <ref>` and the resolved `--jobs`. The first successful
 prepare returns the batch `sandbox`. Pass it to every later prepare
 with `--sandbox`. Use the
 returned `workspace`, `environment`, `skill`, `trial`, and `next_input`.
-Record preparation errors with their case IDs and continue the batch.
+Record preparation errors with their case IDs. After preparation, run
+`python3 eval/spex/manual.py --sandbox <sandbox> init <suite/id> ...` with all
+selected case IDs. Initialization rejects a missing preparation, so retry
+the missing prepare before dispatching. A deliberately reduced batch must
+be reported as partial relative to the original request.
 
 ## 4. Execute and collect each turn
 
-1. Open an independent trial session in the returned workspace with the
-   returned environment. Send the exact `next_input`. Keep the same
-   session for every turn of that trial.
-2. Save each reply under the sandbox as
-   `_handoff/<suite>-<case>-turnN.txt`.
-3. Run `collect <trial> --session <id> --reply <file>`. Add `--events`
-   only when a compatible transcript is available. Pass
-   `--host-duration-ms` when the adapter measured elapsed time from input
-   dispatch through final reply. Repeat while the runner returns another
-   `next_input`.
+Use `python3 eval/spex/manual.py --sandbox <sandbox>` with these commands.
 
-The workspace and file handoff work across hosts. When all replies already
-exist and no collection session has been recorded for pending trials, use
-`eval/spex/collect_handoff.py <sandbox> --no-summary` with the repository
-Python to collect those replies before grading.
+1. `claim <suite/id>` reserves a worker slot through grade import.
+2. Open a trial session in the workspace and apply the prepared environment.
+   For shell tools, use `exec <suite/id> -- <command> ...` to bind cwd and
+   environment without rebuilding them.
+3. Immediately before dispatch, call
+   `start <suite/id> <turn> --session <id>`. Send the returned `next_input`
+   exactly. Continue in the same session for later turns.
+4. Once the final reply is ready, call `stop <suite/id> <turn>` and save the
+   reply to the path returned by `start`. An optional transcript goes beside
+   it with suffix `.events.jsonl`.
+5. Run `collect <suite/id> <turn>`. Start the next turn only after this
+   succeeds and returns another input.
 
 ## 5. Grade in a separate session
 
@@ -87,11 +90,14 @@ read only the returned `judge-prompt.txt` and produce grades JSON.
 Run `import-grades <trial> --grades <file> --host <judge-agent> --model <judge-model>`.
 Pass `--judge-duration-ms` when the adapter measured the judge session.
 The runner validates grades. The hard verdict takes precedence.
-Keep the worker occupied through grade import or terminal failure.
-Run each trial's turns in order within that worker.
+After grade import, run `manual.py --sandbox <sandbox> complete <suite/id>`.
+The queue reads the persisted outcome and rejects incomplete trials.
 
 ## 6. Summarize the batch
 
+For manual batches, wait until
+`manual.py --sandbox <sandbox> status --require-terminal` succeeds before
+reporting completion. Continue monitoring pending and running cases.
 Run `summary <sandbox>` after the batch. Use the runner JSON and
 `report.md` as the source of truth for deterministic results. If no
 sandbox was allocated, report the runner errors.

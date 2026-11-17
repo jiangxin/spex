@@ -14,6 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
+import manual_batch
 import native_trace
 import performance
 from calibration import evaluate, load_samples
@@ -1357,6 +1358,25 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+def existing_prepare(case: Case, output: Path, sandbox: Path, args: argparse.Namespace):
+    output = resolve_trial(output)
+    metadata = read_json(output / "trial.json")
+    expected = {
+        "suite": case.suite, "case_id": case.id, "sandbox": str(sandbox),
+        "trial_directory": str(output / WORKSPACE_NAME), "collection": "manual",
+        "spex_ref": resolve_spex_ref(SOURCE, args.spex_ref), "host": args.host,
+        "host_version": args.host_version, "invocation": args.invocation,
+        "model": args.model, "judge_model": args.judge_model,
+        "case_hash": digest(encode(case.definition)), "fixture_hash": fixture_hash(case),
+        "execution": args.execution, "turn_results": [], "verdict": "pending", "session": "",
+    }
+    if any(metadata.get(key) != value for key, value in expected.items()):
+        raise ValueError(f"Existing trial does not match this prepare request: {output}")
+    trial = Trial(Path(metadata["trial_directory"]), metadata["spex_ref"])
+    verify_trial_workspace(trial)
+    return trial, metadata
+
+
 def execute(args: argparse.Namespace) -> dict:
     if args.command == "compare":
         return compare_runs(args)
@@ -1398,14 +1418,29 @@ def execute(args: argparse.Namespace) -> dict:
         output = case_dir(sandbox, cases[0].suite, cases[0].id)
         try:
             args.execution = configure_execution(sandbox, args.jobs)
-            trial = setup(cases[0], output, args, sandbox=sandbox)
+            manual_batch.check_prepare(sandbox, cases[0].suite, cases[0].id)
+            new_trial = not (output / "trial.json").is_file()
+            if new_trial:
+                trial = setup(cases[0], output, args, sandbox=sandbox)
+                metadata = read_json(output / "trial.json")
+            else:
+                trial, metadata = existing_prepare(cases[0], output, sandbox, args)
+            handoff = instructions(output, trial, metadata)
+            try:
+                handoff["environment"] = manual_batch.publish(
+                    sandbox, cases[0].suite, cases[0].id, output, handoff["environment"],
+                )
+            except ValueError:
+                if new_trial:
+                    cleanup_failed_case(sandbox, output, remove_sandbox=False)
+                raise
         except BaseException:
             if allocated:
                 cleanup_failed_case(sandbox, output, remove_sandbox=True)
             else:
                 prune_empty_parents(output.parent, sandbox)
             raise
-        return instructions(output, trial, read_json(output / "trial.json"))
+        return handoff
     if not cases:
         raise ValueError("Select cases for run")
     if args.repeat < 1 or args.timeout < 1:

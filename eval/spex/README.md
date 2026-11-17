@@ -110,6 +110,27 @@ The runner does not open host sessions. The portable interface is:
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
 | Collect | `collect --session ID --reply <handoff-file> [--events …]` |
 
+For guarded current-host batches, `prepare` publishes each handoff to
+`batch-index.json`. Use `python3 eval/spex/manual.py --sandbox PATH` for
+these commands.
+
+| Command | Result |
+| --- | --- |
+| `init SUITE/CASE ...` | Initialize the queue from all selected and published cases |
+| `claim SUITE/CASE` | Reserve a trial slot through grading |
+| `exec SUITE/CASE -- COMMAND ...` | Run a shell command with the prepared cwd and environment |
+| `start SUITE/CASE TURN --session ID` | Bind the session and timer, then return the exact input and reply path |
+| `stop SUITE/CASE TURN` | Finish the current timer after the final reply is ready |
+| `collect SUITE/CASE TURN` | Collect the saved reply and timing sidecars, then return the next input |
+| `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot |
+| `fail SUITE/CASE --reason launch_failed\|exited\|timeout` | Record a host failure on a claimed, pending trial and release its slot while preserving collected evidence |
+| `status --require-terminal` | Exit 1 until every queued case has a terminal verdict |
+
+The guarded path collects each turn before dispatching the next one. Direct
+`collect` and `collect_handoff.py` remain available for existing handoffs and
+debugging. The batch stays partial if any selected preparation or trial is
+unresolved.
+
 Each collect reads the Spex command log since the previous turn's checkpoint
 and saves workspace snapshots. Required checks report insufficient evidence if
 the available observations cannot establish the required behavior.
