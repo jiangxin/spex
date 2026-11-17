@@ -69,21 +69,21 @@ def _activate_session(spex_root: str | Path, session_id: str = "20260804T155021-
 class TestDebugEnabled:
     def test_enabled_by_cli_flag(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        with patch("debug_log.get_project_context", return_value=_make_ctx(tmp_path)):
+        with patch("debug_log.load_config", return_value={}):
             assert debug_enabled(["spex", "-d", "version"]) is True
             assert debug_enabled(["spex", "--debug", "version"]) is True
 
     def test_enabled_by_config(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         with patch(
-            "debug_log.get_project_context",
-            return_value=_make_ctx(tmp_path, debug=True),
+            "debug_log.load_config",
+            return_value={"debug": True},
         ):
             assert debug_enabled(["spex", "version"]) is True
 
     def test_disabled_without_flag_or_config(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        with patch("debug_log.get_project_context", return_value=_make_ctx(tmp_path)):
+        with patch("debug_log.load_config", return_value={}):
             assert debug_enabled(["spex", "version"]) is False
 
 
@@ -96,7 +96,7 @@ def test_trace_path_precedence(tmp_path, monkeypatch, log_dir):
     if log_dir is not None:
         monkeypatch.setenv("SPEX_LOG_DIR", log_dir)
     shared = tmp_path / log_dir if log_dir and log_dir.strip() else None
-    with patch("debug_log.get_project_context", return_value=ctx):
+    with patch("debug_log.get_project_storage", return_value=ctx):
         default = (shared or debug_path.parent) / "trace.jsonl"
         assert resolve_trace_file_path(debug_path).absolute() == default
         ctx.config["trace_file"] = "custom/configured.jsonl"
@@ -122,7 +122,7 @@ def test_shared_cli_logs_preserve_spec_anchors(tmp_path, monkeypatch):
     monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
     argv = ["spex", "prompt", "apply-one-task", "my-spec"]
 
-    with patch("debug_log.get_project_context", return_value=ctx):
+    with patch("debug_log.get_project_storage", return_value=ctx):
         debug_path = resolve_debug_log_path(argv)
         assert debug_path == log_dir / "debug.log"
         with trace_command(debug_path, argv):
@@ -399,7 +399,7 @@ class TestSessionHelpers:
             lambda: next(stamps),
         )
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             with trace_command(session_log, ["spex", "version"]):
                 print("session")
 
@@ -417,7 +417,7 @@ class TestSessionHelpers:
         assert target_sidecar.is_file()
         assert target_sidecar.read_text(encoding="utf-8").strip() == t0.isoformat()
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             with trace_command(
                 target, ["spex", "prompt", "show", "my-spec"]
             ):
@@ -439,7 +439,7 @@ class TestResolveDebugLogPath:
     def test_with_name_resolves_spec_dir(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
 
@@ -447,7 +447,7 @@ class TestResolveDebugLogPath:
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
         session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
         assert path != session_debug_log_path(ctx.spex_root, session_id)
@@ -456,7 +456,7 @@ class TestResolveDebugLogPath:
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
         session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "version"])
         assert path == session_debug_log_path(ctx.spex_root, session_id)
 
@@ -466,21 +466,21 @@ class TestResolveDebugLogPath:
         pointer = Path(ctx.spex_root) / "sessions" / "active"
         pointer.parent.mkdir(parents=True)
         pointer.write_text("../../outside\n", encoding="utf-8")
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "version"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
     def test_without_name_uses_spex_root(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "version"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
     def test_unknown_name_falls_back_to_spex_root(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
@@ -488,7 +488,7 @@ class TestResolveDebugLogPath:
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
         session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
         assert path == session_debug_log_path(ctx.spex_root, session_id)
 
@@ -498,7 +498,7 @@ class TestResolveDebugLogPath:
         specs_dir = Path(ctx.spex_root) / "specs"
         (specs_dir / "2026-01-01-foo").mkdir()
         (specs_dir / "2026-01-01-foo-bar").mkdir()
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
@@ -509,7 +509,7 @@ class TestResolveDebugLogPath:
         (specs_dir / "2026-01-01-foo").mkdir()
         (specs_dir / "2026-01-01-foo-bar").mkdir()
         session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
         assert path == session_debug_log_path(ctx.spex_root, session_id)
 
@@ -528,7 +528,7 @@ class TestResolveDebugLogPath:
             spex_root="",
             spex_roots=[],
         )
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             assert resolve_debug_log_path(["spex", "version"]) is None
 
     def test_name_only_in_archives_resolves_archived_dir(self, tmp_path, monkeypatch):
@@ -539,7 +539,7 @@ class TestResolveDebugLogPath:
         archived.mkdir(parents=True)
         # Remove the specs copy created by _make_ctx so only archives matches.
         shutil.rmtree(spex_root / "specs" / "my-spec")
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "archive", "my-spec"])
         assert path == archived / "debug.log"
 
@@ -549,7 +549,7 @@ class TestResolveDebugLogPath:
         spex_root = Path(ctx.spex_root)
         archived = spex_root / "archives" / "my-spec"
         archived.mkdir(parents=True)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == spex_root / "specs" / "my-spec" / "debug.log"
 
@@ -565,7 +565,7 @@ class TestResolveDebugLogPath:
         shutil.rmtree(specs_dir / "my-spec")
         (specs_dir / "foo-v2").mkdir()
         (archives_dir / "foo").mkdir(parents=True)
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "archive", "foo"])
         assert path == archives_dir / "foo" / "debug.log"
 
@@ -577,7 +577,7 @@ class TestSafeFlushDebugLogPath:
         pre = tmp_path / "pre" / "debug.log"
         pre.parent.mkdir()
         resolved = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             path = safe_flush_debug_log_path(
                 ["spex", "prompt", "apply-one-task", "my-spec"],
                 pre,
@@ -590,7 +590,7 @@ class TestSafeFlushDebugLogPath:
         pre.parent.mkdir()
         with patch("debug_log.resolve_debug_log_path", return_value=None):
             with patch(
-                "debug_log.get_project_context",
+                "debug_log.get_project_storage",
                 return_value=ProjectContext(
                     cwd=tmp_path,
                     top_workdir=tmp_path,
@@ -615,7 +615,7 @@ class TestSafeFlushDebugLogPath:
         pre = spex_root / "specs" / "gone" / "debug.log"
         # parent does not exist
         with patch("debug_log.resolve_debug_log_path", return_value=None):
-            with patch("debug_log.get_project_context", return_value=ctx):
+            with patch("debug_log.get_project_storage", return_value=ctx):
                 path = safe_flush_debug_log_path(
                     ["spex", "archive", "gone"],
                     pre,
@@ -627,7 +627,7 @@ class TestSafeFlushDebugLogPath:
         pre = tmp_path / "specs" / "gone" / "debug.log"
         with patch("debug_log.resolve_debug_log_path", return_value=None):
             with patch(
-                "debug_log.get_project_context",
+                "debug_log.get_project_storage",
                 return_value=ProjectContext(
                     cwd=tmp_path,
                     top_workdir=tmp_path,
@@ -950,7 +950,7 @@ class TestTraceCommandArchiveFollow:
         pre_log.write_text("===== pre-archive =====\n", encoding="utf-8")
         argv = ["spex", "archive", "my-spec"]
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             with trace_command(pre_log, argv):
                 shutil.move(str(spec_dir), str(archives_dir / "my-spec"))
 
@@ -976,7 +976,7 @@ class TestTraceCommandArchiveFollow:
         pre_log.write_text("keep\n", encoding="utf-8")
         argv = ["spex", "archive", "my-spec"]
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             with trace_command(pre_log, argv):
                 # Spec vanished with no archives counterpart.
                 shutil.rmtree(spec_dir)
@@ -1000,7 +1000,7 @@ class TestTraceCommandArchiveFollow:
         assert (spex_root / "specs").is_dir()
         assert not vanished.parent.exists()
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             _append_trace(
                 vanished,
                 ["spex", "version"],
@@ -1028,7 +1028,7 @@ class TestTraceCommandArchiveFollow:
         vanished = spex_root / "specs" / "ghost" / "debug.log"
         assert not (spex_root / "specs").exists()
 
-        with patch("debug_log.get_project_context", return_value=ctx):
+        with patch("debug_log.get_project_storage", return_value=ctx):
             _append_trace(
                 vanished,
                 ["spex", "version"],

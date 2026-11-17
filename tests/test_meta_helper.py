@@ -239,7 +239,7 @@ class TestErrorOnMissingTopic:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
         from common import clear_spex_root_cache
         clear_spex_root_cache()
 
@@ -970,7 +970,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         meta_helper.main(["t8"])
         out = capsys.readouterr().out
@@ -991,7 +991,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         meta_helper.main(["t9", "branch"])
         assert capsys.readouterr().out.strip() == "feature-y"
@@ -1010,7 +1010,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         meta_helper.main(["t10", "branch", "new"])
         out = capsys.readouterr().out
@@ -1033,7 +1033,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         meta_helper.main(["t11", "prompts", "--add-images", "img.png"])
         out = capsys.readouterr().out
@@ -1053,7 +1053,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         with caplog.at_level(0):
             with pytest.raises(SystemExit) as exc_info:
@@ -1075,7 +1075,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         with caplog.at_level(0):
             with pytest.raises(SystemExit) as exc_info:
@@ -1097,7 +1097,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("stdin prompt text"))
 
         meta_helper.main(["t14", "prompts", "--stdin"])
@@ -1121,7 +1121,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("new desc"))
 
         meta_helper.main(["t15", "description", "--stdin"])
@@ -1143,7 +1143,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("stdin with images"))
 
         meta_helper.main([
@@ -1167,7 +1167,7 @@ class TestDirectImportInternal:
             spex_roots=[str(tmp_path)],
         )
         clear_spex_root_cache()
-        monkeypatch.setattr("common.get_project_context", lambda w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda w=None: ctx)
 
         meta_helper.main([
             "t17", "prompts", "prompt text",

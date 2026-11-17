@@ -126,7 +126,7 @@ class TestMain:
         ctx = _make_ctx(None)
         monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
         with pytest.raises(SystemExit) as exc_info:
             spex_show.main([])
         assert exc_info.value.code == 1
@@ -253,7 +253,7 @@ class TestSelectSpecInteractive:
 
         monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
 
         return specs, archives
 
@@ -291,7 +291,7 @@ class TestSelectSpecInteractive:
         ctx = _make_ctx(None)
         monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
 
         with pytest.raises(SystemExit) as exc_info:
             spex_common.select_spec_interactive()
@@ -375,7 +375,7 @@ class TestSelectSpecInteractiveAllowEmpty:
         ctx = _make_ctx(None)
         monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
 
         result = spex_common.select_spec_interactive(allow_empty=True)
         assert result is None
@@ -405,7 +405,7 @@ class TestSelectSpecInteractiveAllowEmpty:
 
         monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr("common.get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
         monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
 
         result = spex_common.select_spec_interactive(allow_empty=True)
@@ -486,7 +486,7 @@ class TestMainBriefAndVerbose:
             json.dumps({"name": "test-spec"}), encoding="utf-8"
         )
         ctx = _make_ctx(tmp_path)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
         monkeypatch.setattr(
             "common.get_specs_dir", lambda _w=None: tmp_path / "specs",
         )
@@ -504,7 +504,7 @@ class TestMainBriefAndVerbose:
         )
         (spec_dir / "spec.md").write_text("# Test\n\nSome content.", encoding="utf-8")
         ctx = _make_ctx(tmp_path)
-        monkeypatch.setattr("common.get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
         monkeypatch.setattr(
             "common.get_specs_dir", lambda _w=None: tmp_path / "specs",
         )

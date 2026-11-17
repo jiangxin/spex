@@ -17,7 +17,7 @@ from pathlib import Path
 from config import (
     clear_config_cache,
     generate_default_toml,
-    get_project_context,
+    get_project_storage,
     safe_update_toml,
 )
 
@@ -348,7 +348,7 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
 
 def _resolve_hook_roots(workdir=None):
     """Return the hook directory under the selected storage root."""
-    ctx = get_project_context(workdir)
+    ctx = get_project_storage(workdir)
     return [Path(ctx.spex_root) / "hooks"] if ctx.spex_root else []
 
 
@@ -393,7 +393,7 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Storage lookup is delegated to config.get_project_context and is
+    Storage lookup is delegated to config.get_project_storage and is
     independent of the inherit_config setting.
 
     Args:
@@ -406,12 +406,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
     Returns:
         Absolute path to the spex root directory.
     """
-    ctx = get_project_context(workdir)
+    ctx = get_project_storage(workdir)
 
     if auto_init and not ctx.spex_tomls:
         _create_default_toml()
         clear_config_cache()
-        ctx = get_project_context(workdir)
+        ctx = get_project_storage(workdir)
 
     if not ctx.spex_root:
         raise RuntimeError(
@@ -428,12 +428,12 @@ def get_spex_root(workdir=None, require_git=False, auto_init=True):
 
 def get_spex_roots(workdir=None) -> list[str]:
     """Return the selected storage root as a singleton list."""
-    return get_project_context(workdir).spex_roots
+    return get_project_storage(workdir).spex_roots
 
 
 def get_spex_tomls(workdir=None) -> list[str]:
     """Return discovered .spex.toml config paths as strings."""
-    return [str(p) for p in get_project_context(workdir).spex_tomls]
+    return [str(p) for p in get_project_storage(workdir).spex_tomls]
 
 
 def get_specs_dir(workdir=None) -> Path:
@@ -818,7 +818,7 @@ def _resolve_template_roots(workdir=None):
 
     The selected storage root takes precedence over built-in templates.
     """
-    ctx = get_project_context(workdir)
+    ctx = get_project_storage(workdir)
     roots = [Path(ctx.spex_root) / TEMPLATE_DIR] if ctx.spex_root else []
     roots.append(_get_skill_path() / TEMPLATE_DIR)
     return roots
@@ -1039,7 +1039,7 @@ def gather_specs(
             if spec is not None:
                 specs.append(spec)
 
-    ctx = get_project_context()
+    ctx = get_project_storage()
     if not all_projects:
         specs = [t for t in specs if ctx.is_related_to(t)]
         show_repo = not ctx.in_git_workdir()

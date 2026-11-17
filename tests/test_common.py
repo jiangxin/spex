@@ -677,7 +677,7 @@ class TestGetTemplate:
             spex_roots=[str(tmp_path)],
         )
         try:
-            with patch("common.get_project_context", return_value=ctx):
+            with patch("common.get_project_storage", return_value=ctx):
                 result = get_template("test-tpl.md")
             assert "# Test TPL" in result
             assert "---" in result
@@ -708,7 +708,7 @@ class TestGetTemplate:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path), str(tmp_path.parent)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             roots = _resolve_template_roots()
 
         assert len(roots) == 2
@@ -744,7 +744,7 @@ class TestGetTemplate:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = get_template("prio-tpl.md")
         assert result == "spex_root content"
 
@@ -779,7 +779,7 @@ class TestGetTemplate:
             spex_roots=[str(tmp_path)],
         )
         try:
-            with patch("common.get_project_context", return_value=ctx):
+            with patch("common.get_project_storage", return_value=ctx):
                 result = get_template("fallback-tpl.md")
             assert result == "skill fallback content"
         finally:
@@ -810,7 +810,7 @@ class TestGetTemplate:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             with pytest.raises(FileNotFoundError, match=unlikely):
                 get_template(f"{unlikely}.md")
 

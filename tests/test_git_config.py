@@ -388,7 +388,7 @@ def test_project_identity_refreshes_after_git_changes(tmp_path, isolated_git):
 
 
 @pytest.mark.slow
-def test_cli_reads_one_snapshot_and_new_processes_see_updates(tmp_path, isolated_git):
+def test_cli_uses_topology_for_list_and_reads_one_snapshot_for_identity(tmp_path, isolated_git):
     git = isolated_git
     git("init", "-q", "project")
     repo = tmp_path / "project"
@@ -399,14 +399,14 @@ import runpy
 import subprocess
 import sys
 
-script, scripts, *args = sys.argv[1:]
+script, scripts, kind, *args = sys.argv[1:]
 sys.path.insert(0, scripts)
 run = subprocess.run
 queries = []
 
 def traced(command, *args, **kwargs):
-    if command[:2] == ["git", "config"]:
-        queries.append(command[2:])
+    if command[0] == "git":
+        queries.append(command[1:])
     return run(command, *args, **kwargs)
 
 subprocess.run = traced
@@ -414,13 +414,27 @@ sys.argv = [script, *args]
 try:
     runpy.run_path(script, run_name="__main__")
 finally:
-    assert queries == [["--null", "--show-scope", "--includes", "--list"]], queries
+    if args[0] == "list":
+        expected = [["rev-parse", "--show-toplevel"]]
+        if kind == "linked":
+            expected.extend([
+                ["rev-parse", "--show-superproject-working-tree"],
+                ["worktree", "list", "--porcelain"],
+            ])
+        assert queries == expected, queries
+    else:
+        assert [q for q in queries if q[0] == "config"] == [
+            ["config", "--null", "--show-scope", "--includes", "--list"],
+        ], queries
 """
 
-    def spex(*args):
+    def spex(*args, cwd=repo, kind="regular"):
         return subprocess.run(
-            [sys.executable, "-c", instrument, str(scripts / "spex"), str(scripts), *args],
-            cwd=repo, capture_output=True, text=True,
+            [
+                sys.executable, "-c", instrument,
+                str(scripts / "spex"), str(scripts), kind, *args,
+            ],
+            cwd=cwd, capture_output=True, text=True,
         )
 
     listed = spex("list", "--json")
@@ -431,3 +445,17 @@ finally:
     git("config", "user.name", "Second", cwd=repo)
     second = spex("config", "user_name")
     assert second.returncode == 0 and "Second" in second.stdout, second.stderr
+
+    git("config", "user.email", "fixture@example.invalid", cwd=repo)
+    git("commit", "-qm", "Initial", "--allow-empty", cwd=repo)
+    linked = tmp_path / "linked"
+    git("worktree", "add", "-qb", "linked", str(linked), cwd=repo)
+    (repo / ".spex.toml").write_text(
+        '[spex]\n spex_root = ".spex"\n debug = true\n', encoding="utf-8",
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / ".spex.toml").write_text('[spex]\n spex_root = ".spex"\n', encoding="utf-8")
+    for directory, kind in ((repo, "regular"), (linked, "linked"), (outside, "outside")):
+        listed = spex("list", "--json", cwd=directory, kind=kind)
+        assert (listed.returncode, listed.stdout.strip()) == (0, "[]"), listed.stderr

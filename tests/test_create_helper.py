@@ -1680,7 +1680,7 @@ class TestPreparePostActionSession:
             session_log.write_text("session-entry\n", encoding="utf-8")
             session_size = session_log.stat().st_size
 
-            with patch("debug_log.get_project_context", return_value=ctx):
+            with patch("debug_log.get_project_storage", return_value=ctx):
                 named_path = resolve_debug_log_path(
                     ["spex", "prompt", "apply-one-task", "2026-08-04-15-50-side"],
                 )
@@ -1722,7 +1722,7 @@ class TestPreparePostActionSession:
 
         with (
             patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.get_project_context", return_value=ctx),
+            patch("debug_log.get_project_storage", return_value=ctx),
             patch("debug_log.debug_enabled", return_value=True),
         ):
             create_helper.main(["begin-session"])
