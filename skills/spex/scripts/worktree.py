@@ -103,10 +103,11 @@ def remove_worktree(
     *,
     force: bool = False,
     cwd: str | Path | None = None,
+    entries: list[dict[str, str]] | None = None,
 ) -> None:
     """Remove a linked worktree. No-op if path is not registered."""
     path = Path(path)
-    if not is_registered_worktree(path, cwd=cwd):
+    if not is_registered_worktree(path, cwd=cwd, entries=entries):
         return
     cmd = ["git", "worktree", "remove"]
     if force:
@@ -139,11 +140,13 @@ def checkout_commit(path: str | Path, commit: str) -> None:
 def find_worktree_for_branch(
     branch: str,
     cwd: str | Path | None = None,
+    *,
+    entries: list[dict[str, str]] | None = None,
 ) -> Path | None:
     """Return the worktree path that has ``branch`` checked out, or None."""
     branch = _strip_refs_prefix(branch)
     want = f"refs/heads/{branch}"
-    for entry in list_worktrees(cwd=cwd):
+    for entry in list_worktrees(cwd=cwd) if entries is None else entries:
         if entry.get("branch") == want:
             return Path(entry["path"])
     return None
@@ -152,9 +155,11 @@ def find_worktree_for_branch(
 def is_registered_worktree(
     path: str | Path,
     cwd: str | Path | None = None,
+    *,
+    entries: list[dict[str, str]] | None = None,
 ) -> bool:
     """Return True if ``path`` appears in ``git worktree list``."""
-    for entry in list_worktrees(cwd=cwd):
+    for entry in list_worktrees(cwd=cwd) if entries is None else entries:
         if same_path(entry["path"], path):
             return True
     return False

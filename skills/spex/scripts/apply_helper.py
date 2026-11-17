@@ -236,20 +236,28 @@ def _ensure_on_branch(branch: str, cwd: str | Path | None) -> None:
 def _prepare_worktree_path(
     path: Path,
     main: str | Path,
-) -> Path:
-    """Ensure ``path`` is free for ``git worktree add``."""
+    entries: list[dict[str, str]],
+) -> bool:
+    """Prepare the target path and report whether removal was attempted."""
     import shutil
 
-    from worktree import remove_worktree
+    from worktree import is_registered_worktree, list_worktrees, remove_worktree
 
-    # Reclaim registered or stale paths so callers can always add_worktree.
-    try:
-        remove_worktree(path, force=True, cwd=main)
-    except subprocess.CalledProcessError:
-        pass
-    if path.exists():
+    # An existing path may have been registered since planning began.
+    exists = path.exists()
+    if exists:
+        entries = list_worktrees(cwd=main)
+    registered = is_registered_worktree(path, entries=entries)
+    if registered:
+        try:
+            remove_worktree(path, force=True, cwd=main, entries=entries)
+        except subprocess.CalledProcessError as e:
+            logger.error("Error: failed to remove worktree '%s': %s", path,
+                         (e.stderr or str(e)).strip())
+            sys.exit(1)
+    elif exists:
         shutil.rmtree(path)
-    return path
+    return registered
 
 
 def _validate_apply_worktree(
@@ -263,6 +271,7 @@ def _validate_apply_worktree(
         add_worktree,
         find_worktree_for_branch,
         is_registered_worktree,
+        list_worktrees,
         resolve_spex_worktree_path,
     )
 
@@ -273,10 +282,11 @@ def _validate_apply_worktree(
         )
         sys.exit(1)
     main = Path(main)
+    entries = list_worktrees(cwd=main)
 
     spex_branch = meta.spex_branch
     if spex_branch and meta.spex_worktree:
-        if is_registered_worktree(meta.spex_worktree, cwd=main):
+        if is_registered_worktree(meta.spex_worktree, entries=entries):
             _ensure_on_branch(spex_branch, meta.spex_worktree)
             logger.info(
                 "Reusing spex worktree '%s' for branch '%s'.",
@@ -286,7 +296,7 @@ def _validate_apply_worktree(
             return
 
     if spex_branch:
-        found = find_worktree_for_branch(spex_branch, cwd=main)
+        found = find_worktree_for_branch(spex_branch, entries=entries)
         if found is not None:
             path_str = str(found.resolve())
             _persist_spex_branch_meta(
@@ -310,7 +320,7 @@ def _validate_apply_worktree(
             stale = Path(meta.spex_worktree)
             if stale.resolve() != target.resolve():
                 target = stale
-        target = _prepare_worktree_path(Path(target), main)
+        _prepare_worktree_path(target, main, entries)
         try:
             add_worktree(target, spex_branch, cwd=main)
         except subprocess.CalledProcessError as e:
@@ -335,11 +345,12 @@ def _validate_apply_worktree(
     candidates = _branch_candidates(spec_dir, meta)
     created_branch = None
     target = resolve_spex_worktree_path(main, spec_dir.name)
-    target = _prepare_worktree_path(target, main)
+    if _prepare_worktree_path(target, main, entries):
+        entries = list_worktrees(cwd=main)
 
     for candidate in candidates:
         if branch_exists(candidate, cwd=main):
-            found = find_worktree_for_branch(candidate, cwd=main)
+            found = find_worktree_for_branch(candidate, entries=entries)
             if found is not None:
                 path_str = str(found.resolve())
                 _persist_spex_branch_meta(
@@ -355,6 +366,7 @@ def _validate_apply_worktree(
             try:
                 add_worktree(target, candidate, cwd=main)
             except subprocess.CalledProcessError:
+                entries = list_worktrees(cwd=main)
                 continue
             created_branch = candidate
             break
@@ -363,6 +375,7 @@ def _validate_apply_worktree(
             created_branch = candidate
             break
         except subprocess.CalledProcessError:
+            entries = list_worktrees(cwd=main)
             continue
 
     if created_branch is None:

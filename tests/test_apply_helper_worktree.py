@@ -16,6 +16,7 @@ from branch import get_current_branch
 from common import SpecMeta, load_meta
 from worktree import (
     is_registered_worktree,
+    list_worktrees,
     remove_worktree,
     resolve_spex_worktree_path,
 )
@@ -107,11 +108,13 @@ class TestValidateApplyWorktree:
             branch=main_branch,
         )
 
-        validate_apply_branch(
-            {"branch_management": True},
-            spec_dir,
-            cwd=main,
-        )
+        with patch("worktree.list_worktrees", wraps=list_worktrees) as listing:
+            validate_apply_branch(
+                {"branch_management": True},
+                spec_dir,
+                cwd=main,
+            )
+        listing.assert_called_once_with(cwd=main)
 
         meta = load_meta(spec_dir)
         assert meta is not None
@@ -190,9 +193,16 @@ class TestValidateApplyWorktree:
         path1 = meta1.spex_worktree
         branch1 = meta1.spex_branch
 
-        validate_apply_branch(
-            {"branch_management": True}, spec_dir, cwd=main,
-        )
+        # The metadata points to an unregistered path while the branch
+        # is still occupied by the original linked worktree.
+        raw = json.loads((spec_dir / "meta.json").read_text(encoding="utf-8"))
+        raw["spex_worktree"] = str(tmp_path / "stale")
+        (spec_dir / "meta.json").write_text(json.dumps(raw), encoding="utf-8")
+        with patch("worktree.list_worktrees", wraps=list_worktrees) as listing:
+            validate_apply_branch(
+                {"branch_management": True}, spec_dir, cwd=main,
+            )
+        listing.assert_called_once_with(cwd=main)
         meta2 = load_meta(spec_dir)
         assert meta2 is not None
         assert meta2.spex_worktree == path1
@@ -200,6 +210,64 @@ class TestValidateApplyWorktree:
         assert is_registered_worktree(path1, cwd=main)
 
         remove_worktree(path1, force=True, cwd=main)
+
+    def test_refreshes_listing_after_removal_and_failed_add(
+        self, tmp_path, monkeypatch,
+    ):
+        from worktree import add_worktree
+
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        name = "2026-09-10-19-36-topic"
+        spec_dir = tmp_path / "specs" / name
+        _write_spec(spec_dir, use_git_worktree=True, main_worktree=main)
+        target = resolve_spex_worktree_path(main, name)
+        occupied = tmp_path / "occupied"
+        add_worktree(target, "spex/topic", cwd=main)
+        second = f"spex/{name}"
+
+        def fail_after_occupying_next_candidate(path, branch, *, base=None, cwd=None):
+            assert path == target and branch == "spex/topic"
+            add_worktree(occupied, second, cwd=cwd)
+            raise subprocess.CalledProcessError(1, ["git", "worktree", "add"])
+
+        with (
+            patch("worktree.list_worktrees", wraps=list_worktrees) as listing,
+            patch("worktree.add_worktree", side_effect=fail_after_occupying_next_candidate),
+        ):
+            validate_apply_branch({"branch_management": True}, spec_dir, cwd=main)
+        assert listing.call_count == 4
+        assert not target.exists()
+        meta = load_meta(spec_dir)
+        assert meta is not None
+        assert meta.spex_branch == second
+        assert Path(meta.spex_worktree) == occupied.resolve()
+
+    def test_cleanup_rechecks_registration_and_preserves_locked_worktree(
+        self, tmp_path, caplog,
+    ):
+        from apply_helper import _prepare_worktree_path
+        from worktree import add_worktree
+
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        target = tmp_path / "newly-registered"
+        original_entries = list_worktrees(cwd=main)
+        add_worktree(target, "spex/concurrent", cwd=main)
+        # Git requires two force flags to remove a locked worktree.
+        subprocess.run(
+            ["git", "worktree", "lock", str(target)],
+            cwd=main, check=True, capture_output=True,
+        )
+
+        with pytest.raises(SystemExit) as failure:
+            _prepare_worktree_path(target, main, original_entries)
+
+        assert failure.value.code == 1
+        assert "failed to remove worktree" in caplog.text
+        assert (target / "README").is_file()
+        assert is_registered_worktree(target, cwd=main)
 
     def test_old_meta_missing_use_git_worktree_is_inplace(
         self, tmp_path, monkeypatch,
