@@ -17,11 +17,15 @@ is recommended for full TOML support.
 ## 1. Resolve the request
 
 - **Default:** all cases in all suites, Spex ref `HEAD`, current Agent host.
-- **Execution:** default to four workers. Each worker owns one whole trial
-  through ordered turns, collection, and separate grading. Respect an
-  explicit worker limit from one to four, with one worker for serial
-  execution. Apply the same defaults to regrading and calibration. Reuse
-  the saved worker limit when continuing an existing sandbox.
+- **Execution:** use four workers as the default ceiling and respect a
+  requested limit from one to four. Each worker owns one whole trial
+  through ordered turns, collection, and separate grading. For current-host
+  trials, dispatch in parallel only when the host can open independent
+  sessions and resume each across turns. Otherwise use `--jobs 1` for a
+  new current-host batch and use serial manual handoffs if sessions must be
+  opened manually. Reuse the saved ceiling in an existing sandbox and
+  claim fewer trials when needed. Apply the four-worker default to
+  automated execution, regrading, and calibration.
 - **Scope args:** translate natural language or explicit args to runner filters.
 
   | Request | Filters |
@@ -70,9 +74,10 @@ be reported as partial relative to the original request.
 Use `python3 eval/spex/manual.py --sandbox <sandbox>` with these commands.
 
 1. `claim <suite/id>` reserves a worker slot through grade import.
-2. Open a trial session in the workspace and apply the prepared environment.
-   For shell tools, use `exec <suite/id> -- <command> ...` to bind cwd and
-   environment without rebuilding them.
+2. Open an independent trial session using the returned workspace,
+   environment, and pinned skill. Verify these before dispatch. If the host
+   cannot set cwd and environment at session launch, use
+   `exec <suite/id> -- <command> ...` on each shell call.
 3. Immediately before dispatch, call
    `start <suite/id> <turn> --session <id>`. Send the returned `next_input`
    exactly. Continue in the same session for later turns.

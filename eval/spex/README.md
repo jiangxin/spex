@@ -70,14 +70,18 @@ successful preparation's `--sandbox` for the remaining cases.
 
 ## Current-host trials
 
-The default is four parallel workers. Each worker runs a whole trial
-through grading, with ordered turns and one session per trial. Pass `--jobs N`
-(1–4) to `prepare`, `run`, `judge`, or `calibrate` to configure the
-limit explicitly, or `--jobs 1` for serial execution. Current-host
-adapters enforce the limit returned by `prepare`, and the runner enforces
-it in automatic execution. Later
-`prepare --sandbox` calls inherit the first setting. Start a new
-sandbox to change it.
+The runner defaults to a four-worker ceiling. Each worker runs a whole
+trial through grading, with ordered turns and one session per trial. For
+current-host trials, dispatch in parallel when the host can open
+independent sessions and resume them across turns. Otherwise prepare a
+new batch with `--jobs 1` and use serial manual handoffs when needed.
+An existing sandbox retains the saved ceiling. Its coordinator can claim
+fewer trials when the host supports less concurrency.
+
+Pass `--jobs N` (1–4) to configure the limit for a new `prepare` batch
+or for `run`, `judge`, or `calibrate`. The guarded queue enforces the
+limit returned by `prepare`, and the runner enforces it in automatic
+execution. Later `prepare --sandbox` calls inherit the first setting.
 
 Reports record the configured mode and worker limit. Historical runs
 without that setting display `unknown`. Performance summaries group
@@ -107,7 +111,7 @@ The runner does not open host sessions. The portable interface is:
 | Step | Any host |
 | --- | --- |
 | Isolate | One session (or equivalent) per trial; separate session for judge |
-| Env | Apply `environment` from prepare to tools and shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
+| Env | Verify the prepared cwd, environment, and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
 | Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
 | Input | Send `next_input` exactly; keep the same session for later turns |
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |

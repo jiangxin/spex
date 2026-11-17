@@ -12,7 +12,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Step | Requirement |
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
-| Schedule | Claim cases against `execution.jobs` (four by default for a new batch) and hold the slot through grading |
+| Schedule | Treat `execution.jobs` as the worker ceiling and hold each claim through grading or terminal failure |
 | Env | Apply the prepared environment, including `SPEX_LOG_DIR`, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Start each turn, send its exact `next_input` and preserve the session |
@@ -22,6 +22,23 @@ the portable interface documented in [`../README.md`](../README.md):
 | Collect | Use `manual.py collect` before starting the next turn |
 | Host failure | Record a launch failure, host exit or timeout with `manual.py fail` so the next case can claim the slot |
 | Complete | Import grades and complete each case; require terminal status before summarizing |
+
+## Schedule current-host trials
+
+Coordinate trials from the current Agent session. Use parallel dispatch
+when the host can open independent trial sessions and resume each one
+across turns. Otherwise prepare a new batch with `--jobs 1` and run
+one trial at a time, using manual handoffs if the host cannot open
+sessions directly. When continuing an existing sandbox, retain its saved
+ceiling and claim only as many trials as the host can run.
+
+Before dispatch, verify the prepared workspace, pinned skill and CLI, and
+environment. If the host cannot apply cwd and environment when opening a
+session, run shell commands via
+`manual.py --sandbox PATH exec SUITE/CASE -- COMMAND ...` and resolve
+file operations in the prepared workspace. Collect each turn before
+resuming its session to send the next input. Keep grading in a separate
+session.
 
 ## Cursor (manual / Task)
 
