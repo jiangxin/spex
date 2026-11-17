@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""CRUD operations for JSON todo files."""
+"""CRUD and transaction operations for JSON todo files."""
 
 from __future__ import annotations
 
 import json
+import os
 import string
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -253,6 +255,43 @@ def cmd_remove(todo_path, args):
     logger.info("Removed '%s'.", args.id)
 
 
+def _start_transaction(todo_path, backup_path):
+    """Publish a complete snapshot without replacing an existing backup."""
+    try:
+        snapshot = todo_path.read_bytes()
+    except FileNotFoundError:
+        snapshot = b""
+
+    with tempfile.NamedTemporaryFile(
+        dir=backup_path.parent, prefix=f".{backup_path.name}.",
+    ) as temporary:
+        if snapshot.decode("utf-8", errors="surrogateescape").strip():
+            temporary.write(snapshot)
+            temporary.flush()
+        os.link(temporary.name, backup_path)
+
+
+def cmd_transaction(todo_path, action):
+    """Start, commit, or roll back a todo file transaction."""
+    backup_path = todo_path.with_name(f"{todo_path.name}.lock")
+    try:
+        if action == "start":
+            _start_transaction(todo_path, backup_path)
+        elif action == "commit":
+            backup_path.unlink()
+        elif backup_path.stat().st_size:
+            backup_path.replace(todo_path)
+        else:
+            todo_path.unlink(missing_ok=True)
+            backup_path.unlink()
+    except OSError as exc:
+        logger.error(
+            "Error: cannot %s todo transaction using '%s': %s",
+            action, backup_path, exc,
+        )
+        sys.exit(1)
+
+
 def _wrap_field(label, text, indent, width=10**9):
     """Wrap a sub-bullet field."""
     prefix = f"{indent}- {label}: "
@@ -454,7 +493,7 @@ def _build_parser():
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, edit, remove, show)."
+            " (validate, append, edit, remove, show, transaction)."
         ),
     )
     parser.add_argument(
@@ -600,7 +639,17 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
-    for subparser in (p_validate, p_append, p_edit, p_remove, p_show):
+    p_transaction = subs.add_parser(
+        "transaction",
+        description=(
+            "Start by backing up the todo file to a .lock file,"
+            " commit by deleting the backup, or roll back using the backup."
+        ),
+        help="Start, commit, or roll back a todo transaction",
+    )
+    p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
+
+    for subparser in (p_validate, p_append, p_edit, p_remove, p_show, p_transaction):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
             help="Spec name (omit when using --todo-file)",
@@ -642,6 +691,8 @@ def main(argv=None):
         cmd_remove(todo_path, args)
     elif args.subcmd == "show":
         cmd_show(todo_path, args)
+    elif args.subcmd == "transaction":
+        cmd_transaction(todo_path, args.action)
 
 
 if __name__ == "__main__":

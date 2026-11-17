@@ -138,6 +138,88 @@ class TestFileLocating:
         with pytest.raises(SystemExit):
             todo_helper.main(["validate"])
 
+
+class TestTransaction:
+    def test_commit_by_spec_name(self, todo_file, monkeypatch):
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
+        )
+        todo_file.write_bytes(b"[]")
+
+        todo_helper.main(["transaction", "start", "my-topic"])
+        backup = todo_file.with_suffix(".json.lock")
+        assert backup.read_bytes() == b"[]"
+        todo_file.write_bytes(b"[{}]")
+
+        todo_helper.main(["transaction", "commit", "my-topic"])
+        assert todo_file.read_bytes() == b"[{}]"
+        assert not backup.exists()
+
+    @pytest.mark.parametrize("original", [b"[]", b" [\r\n {} ]\n", b"\xff"])
+    def test_rollback_restores_snapshot_bytes(self, todo_file, original):
+        todo_file.write_bytes(original)
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        backup = todo_file.with_suffix(".json.lock")
+        assert backup.read_bytes() == original
+        todo_file.write_bytes(b"updated")
+
+        todo_helper.main([*locator, "transaction", "rollback"])
+        assert todo_file.read_bytes() == original
+        assert not backup.exists()
+
+    @pytest.mark.parametrize(
+        "original", [None, b"", b" \t\r\n", "\u2003".encode("utf-8")],
+    )
+    def test_rollback_empty_snapshot_removes_todo(self, todo_file, original):
+        if original is not None:
+            todo_file.write_bytes(original)
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        backup = todo_file.with_suffix(".json.lock")
+        assert backup.read_bytes() == b""
+        todo_file.write_bytes(b"updated")
+
+        todo_helper.main(["transaction", "rollback", *locator])
+        assert not todo_file.exists()
+        assert not backup.exists()
+
+    def test_repeated_start_preserves_backup(self, todo_file):
+        todo_file.write_bytes(b"original")
+        start = ["transaction", "start", "--todo-file", str(todo_file)]
+        todo_helper.main(start)
+        todo_file.write_bytes(b"updated")
+
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(start)
+        assert error.value.code == 1
+        assert todo_file.with_suffix(".json.lock").read_bytes() == b"original"
+        assert todo_file.read_bytes() == b"updated"
+
+    def test_failed_publish_cleans_temporary_file(self, todo_file, monkeypatch, caplog):
+        todo_file.write_bytes(b"original")
+
+        def fail_to_link(_source, _target):
+            raise OSError("snapshot publication failed")
+
+        monkeypatch.setattr(todo_helper.os, "link", fail_to_link)
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(["transaction", "start", "--todo-file", str(todo_file)])
+        assert error.value.code == 1
+        assert "snapshot publication failed" in caplog.text
+        assert list(todo_file.parent.iterdir()) == [todo_file]
+        assert todo_file.read_bytes() == b"original"
+
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_ending_without_backup_preserves_todo(self, todo_file, action):
+        todo_file.write_bytes(b"original")
+
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(["transaction", action, "--todo-file", str(todo_file)])
+        assert error.value.code == 1
+        assert todo_file.read_bytes() == b"original"
+
+
 # -----------------------------------------------------------------------
 # validate
 # -----------------------------------------------------------------------
