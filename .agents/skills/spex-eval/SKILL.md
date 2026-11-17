@@ -92,12 +92,18 @@ in the original queue before preparing a separate rerun.
    `exec <suite/id> -- <command> ...` on each shell call.
 3. Immediately before dispatch, call
    `start <suite/id> <turn> --session <id>`. Send the returned `next_input`
-   exactly. Continue in the same session for later turns.
-4. Once the final reply is ready, call `stop <suite/id> <turn>` and save the
-   reply to the path returned by `start`. An optional transcript goes beside
-   it with suffix `.events.jsonl`.
-5. Run `collect <suite/id> <turn>`. Start the next turn only after this
-   succeeds and returns another input.
+   exactly. Continue in the same session for later turns. Workers save the
+   final reply to the returned path (an optional `.events.jsonl` transcript
+   goes beside it) and do not collect.
+4. Run `wait --any --timeout <seconds>` to block until a running trial has a
+   reply. It returns immediately when nothing is running and exits 1 on
+   timeout.
+5. Run `advance`. For every running turn with a reply it stops the timer,
+   collects the turn, and exports the judge packet when the trial is final.
+   It returns `advanced`, `waiting` (next inputs ready to dispatch),
+   `exported` (judge prompts ready), and `errors`. Dispatch the `waiting`
+   inputs, send `exported` trials to step 5, and replace finished workers by
+   claiming pending cases.
 
 ## 5. Grade in a separate session
 

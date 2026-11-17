@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ import run as runner
 from workspace import Trial, case_dir
 
 TERMINAL_VERDICTS = {"pass", "fail", "insufficient_evidence", "judge_error", "run_error"}
+WAIT_INTERVAL = 2.0
 
 
 def validate_keys(sandbox: Path, keys: list[str]) -> None:
@@ -196,12 +198,116 @@ def run_command(args, sandbox: Path) -> int:
     return 0
 
 
+def pending_reply(sandbox: Path, key: str, row: dict) -> dict | None:
+    """Return the reply coordinates when a running turn has finished writing."""
+    dispatch = row.get("dispatch") or {}
+    turn = dispatch.get("turn")
+    if row.get("status") != "running" or type(turn) is not int:
+        return None
+    suite, case = key.split("/")
+    reply = collect_handoff.handoff_reply(sandbox, suite, case, turn)
+    if reply.is_symlink() or not reply.is_file():
+        return None
+    return {
+        "case": key, "turn": turn,
+        "session": dispatch.get("session"), "reply": str(reply),
+    }
+
+
+def queue_progress(sandbox: Path, queue: dict) -> dict:
+    ready = []
+    for key, row in queue.items():
+        item = pending_reply(sandbox, key, row)
+        if item is not None:
+            ready.append(item)
+    return {
+        "ready": ready,
+        "running": sum(row["status"] == "running" for row in queue.values()),
+        "pending": sum(row["status"] == "pending" for row in queue.values()),
+    }
+
+
+def wait_action(args, sandbox: Path) -> tuple[dict, int]:
+    """Block until any running turn has a reply, or no trial is running."""
+    deadline = time.monotonic() + args.timeout
+    while True:
+        with manual_batch.locked(sandbox):
+            queue = manual_batch.read(sandbox / "queue.json")
+            progress = queue_progress(sandbox, queue)
+        progress.update(sandbox=str(sandbox), timed_out=False)
+        if progress["ready"] or progress["running"] == 0:
+            return progress, 0
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            progress["timed_out"] = True
+            return progress, 1
+        time.sleep(min(WAIT_INTERVAL, remaining))
+
+
+def advance_action(sandbox: Path) -> tuple[dict, int]:
+    """Stop, collect, and export every running turn whose reply has appeared."""
+    advanced: list[dict] = []
+    exported: list[dict] = []
+    waiting: list[dict] = []
+    errors: list[dict] = []
+    with manual_batch.locked(sandbox):
+        queue_file = sandbox / "queue.json"
+        entries = manual_batch.read(sandbox / "batch-index.json")
+        queue = manual_batch.read(queue_file)
+        for key, row in queue.items():
+            item = pending_reply(sandbox, key, row)
+            if item is None:
+                continue
+            try:
+                output, trial, metadata = load_trial(sandbox, key, entries)
+                environment = entries[key]["environment"]
+                turn = item["turn"]
+                for command in ("stop", "collect"):
+                    result = turn_action(
+                        SimpleNamespace(command=command, case=key, turn=turn),
+                        sandbox, output, trial, metadata, row, environment,
+                        lambda: None,
+                    )
+                manual_batch.write(queue_file, queue)
+                advanced.append({"case": key, "turn": turn, "reply": item["reply"]})
+                if result.get("next_input"):
+                    waiting.append(
+                        {"case": key, "next_input": result["next_input"]},
+                    )
+                    continue
+                packet = runner.export_judge(output)
+                exported.append({
+                    "case": key, "verdict": packet["hard_verdict"],
+                    "prompt": packet["prompt"], "trial": packet["trial"],
+                })
+            except (OSError, ValueError, SystemExit, runner.TransportError) as error:
+                errors.append({"case": key, "error": str(error)})
+                manual_batch.write(queue_file, queue)
+    payload = {
+        "sandbox": str(sandbox), "advanced": advanced, "exported": exported,
+        "waiting": waiting, "errors": errors,
+    }
+    return payload, 1 if errors else 0
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     root.add_argument("--sandbox", required=True, type=Path)
     sub = root.add_subparsers(dest="command", required=True)
     sub.add_parser("init").add_argument("cases", nargs="+", metavar="SUITE/CASE")
     sub.add_parser("status").add_argument("--require-terminal", action="store_true")
+    wait = sub.add_parser("wait", help="Block until a running turn has a reply")
+    wait.add_argument(
+        "--any", action="store_true", required=True,
+        help="Return as soon as any running trial has a reply",
+    )
+    wait.add_argument(
+        "--timeout", type=int, default=900,
+        help="Give up after this many seconds (default: 900)",
+    )
+    sub.add_parser(
+        "advance", help="Stop, collect, and export every finished running turn",
+    )
     for command in ("claim", "start", "stop", "collect", "complete", "fail", "exec"):
         action = sub.add_parser(command)
         action.add_argument("case", metavar="SUITE/CASE")
@@ -224,7 +330,12 @@ def main() -> int:
         sandbox = runner.resolve_sandbox(args.sandbox)
         if args.command == "exec":
             return run_command(args, sandbox)
-        result, code = dispatch(args, sandbox)
+        if args.command == "wait":
+            result, code = wait_action(args, sandbox)
+        elif args.command == "advance":
+            result, code = advance_action(sandbox)
+        else:
+            result, code = dispatch(args, sandbox)
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2

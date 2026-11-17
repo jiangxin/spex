@@ -823,6 +823,65 @@ def test_prepare_all_shares_one_sandbox_and_reports_case_errors(runner):
 
 
 @pytest.mark.slow
+def test_wait_then_advance_collects_and_exports_turns(runner, monkeypatch):
+    (run.SUITES / "example" / "rubrics.json").write_text(json.dumps({
+        "version": 1,
+        "cases": {
+            "clarify": [{
+                "id": "coverage", "turn": 1, "requires": ["state"], "threshold": 2,
+                "anchors": ["Missing", "Partial", "Complete"],
+            }],
+        },
+    }), encoding="utf-8")
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "qoder", "--invocation", "native",
+    ]))
+    sandbox = Path(info["sandbox"])
+    key = "example/clarify"
+    manual_action(sandbox, "init", key)
+    manual_action(sandbox, "claim", key)
+    start, _ = manual_action(sandbox, "start", key, "1", "--session", "host-2")
+    monkeypatch.setattr(manual, "WAIT_INTERVAL", 0.01)
+
+    def wait(timeout):
+        return manual.wait_action(manual.parser().parse_args([
+            "--sandbox", str(sandbox), "wait", "--any", "--timeout", str(timeout),
+        ]), sandbox)
+
+    stalled, code = wait(0)
+    assert code == 1 and stalled["timed_out"] and stalled["ready"] == []
+    assert stalled["running"] == 1 and stalled["pending"] == 0
+    assert manual.advance_action(sandbox)[0]["advanced"] == []
+
+    Path(start["reply"]).write_text("What type?", encoding="utf-8")
+    ready, code = wait(5)
+    assert code == 0 and not ready["timed_out"]
+    assert ready["ready"] == [{
+        "case": key, "turn": 1, "session": "host-2", "reply": start["reply"],
+    }]
+
+    advanced, code = manual.advance_action(sandbox)
+    assert code == 0 and advanced["errors"] == [] and advanced["exported"] == []
+    assert advanced["advanced"] == [{
+        "case": key, "turn": 1, "reply": start["reply"],
+    }]
+    assert advanced["waiting"] == [
+        {"case": key, "next_input": "Use a boolean setting"},
+    ]
+
+    second, _ = manual_action(sandbox, "start", key, "2", "--session", "host-2")
+    Path(second["reply"]).write_text("Done", encoding="utf-8")
+    manual_action(sandbox, "stop", key, "2")  # A worker may stop before advance.
+    advanced, code = manual.advance_action(sandbox)
+    assert code == 0 and advanced["errors"] == [] and advanced["waiting"] == []
+    assert [item["case"] for item in advanced["exported"]] == [key]
+    assert advanced["exported"][0]["verdict"] == "pass"
+    assert Path(advanced["exported"][0]["prompt"]).is_file()
+    idle, code = manual.advance_action(sandbox)
+    assert code == 0 and idle["advanced"] == [] and idle["exported"] == []
+
+
+@pytest.mark.slow
 def test_manual_collection_requires_same_session(runner, tmp_path):
     info = run.execute(runner.parse_args([
         "prepare", "--case", "clarify", "--model", "example", "--host", "codex",
