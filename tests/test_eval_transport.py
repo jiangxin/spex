@@ -78,7 +78,7 @@ def test_review_prompt_command_records_only_observed_skips(output, skipped):
     assert event.get("skipped") is skipped
 
 
-@pytest.mark.parametrize("options,limit", [([], 1), (["--jobs", "2"], 2)])
+@pytest.mark.parametrize("options,limit", [([], 4), (["--jobs", "2"], 2), (["--jobs", "1"], 1)])
 def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, options, limit):
     active = set()
     events = []
@@ -86,6 +86,7 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
     lock = threading.Lock()
     first_wave = threading.Barrier(limit, timeout=5)
     second_finished = threading.Event()
+    repeats = max(3, limit + 1)
 
     def setup(case, output, args, repeat, **kwargs):
         nonlocal peak
@@ -116,7 +117,7 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
         repeat = metadata["repeat"]
         if repeat <= limit:
             first_wave.wait()
-        if repeat == 1 and limit == 2:
+        if repeat == 1 and limit > 1:
             assert second_finished.wait(timeout=5)
         with lock:
             events.append(("judged", repeat))
@@ -132,14 +133,14 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
     monkeypatch.setattr(run, "store_turn", collect)
     monkeypatch.setattr(run, "judge_trial", judge)
     result = run.execute(runner.parse_args([
-        "run", "--model", "fake", "--judge-model", "fake", "--repeat", "3", *options,
+        "run", "--model", "fake", "--judge-model", "fake", "--repeat", str(repeats), *options,
     ]))
     assert peak == limit
-    assert [row["repeat"] for row in result["trials"]] == [1, 2, 3]
+    assert [row["repeat"] for row in result["trials"]] == list(range(1, repeats + 1))
     assert events.index(("judged", 1 if limit == 1 else 2)) < events.index(
         ("start", 2) if limit == 1 else ("judged", 1)
     )
-    for repeat in range(1, 4):
+    for repeat in range(1, repeats + 1):
         assert [stage for stage, number in events if number == repeat] == [
             "start", "first", "second", "judged",
         ]
@@ -150,17 +151,19 @@ def test_run_schedules_whole_trials_and_reports_in_order(runner, monkeypatch, op
 
 
 @pytest.mark.slow
-def test_prepare_inherits_worker_limit_and_rejects_conflicts(runner):
+@pytest.mark.parametrize("options,limit", [([], 4), (["--jobs", "1"], 1), (["--jobs", "2"], 2)])
+def test_prepare_inherits_worker_limit_and_rejects_conflicts(runner, options, limit):
     path = run.SUITES / "example" / "cases.json"
     case, = run.read_json(path)
     run.write_json(path, [case, {**case, "id": "second"}])
     command = ["prepare", "--host", "cursor"]
-    first = run.execute(runner.parse_args([*command, "--case", "clarify", "--jobs", "2"]))
+    first = run.execute(runner.parse_args([*command, "--case", "clarify", *options]))
     existing = [*command, "--sandbox", first["sandbox"]]
     inherited = run.execute(runner.parse_args([*existing, "--case", "second"]))
-    assert first["execution"] == inherited["execution"] == run.execution(2)
+    assert first["execution"] == inherited["execution"] == run.execution(limit)
+    conflict = "2" if limit == 1 else "1"
     with pytest.raises(ValueError, match="Use a new sandbox"):
-        run.execute(runner.parse_args([*existing, "--case", "clarify", "--jobs", "1"]))
+        run.execute(runner.parse_args([*existing, "--case", "clarify", "--jobs", conflict]))
     assert Path(first["trial"], "trial.json").is_file()
 
 

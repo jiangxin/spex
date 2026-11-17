@@ -17,12 +17,11 @@ is recommended for full TOML support.
 ## 1. Resolve the request
 
 - **Default:** all cases in all suites, Spex ref `HEAD`, current Agent host.
-- **Execution:** default to one worker. Finish all turns, collection, and
-  separate grading of the current trial before starting the next trial.
-  Enable multiple workers only when explicitly requested in this
-  invocation. Use two for a request for parallel execution without a
-  count, or use the requested count from one to four. Each worker owns
-  one whole trial. Apply the same rule to regrading and calibration.
+- **Execution:** default to four workers. Each worker owns one whole trial
+  through ordered turns, collection, and separate grading. Respect an
+  explicit worker limit from one to four, with one worker for serial
+  execution. Apply the same defaults to regrading and calibration. Reuse
+  the saved worker limit when continuing an existing sandbox.
 - **Scope args:** translate natural language or explicit args to runner filters.
 
   | Request | Filters |

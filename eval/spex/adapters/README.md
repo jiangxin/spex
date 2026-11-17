@@ -12,7 +12,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Step | Requirement |
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
-| Schedule | Claim cases against `execution.jobs` and hold the slot through grading |
+| Schedule | Claim cases against `execution.jobs` (four by default for a new batch) and hold the slot through grading |
 | Env | Apply the prepared environment, including `SPEX_LOG_DIR`, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Start each turn, send its exact `next_input` and preserve the session |

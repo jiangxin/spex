@@ -70,11 +70,12 @@ successful preparation's `--sandbox` for the remaining cases.
 
 ## Current-host trials
 
-The default is serial execution. Each worker runs a whole trial through
-grading, with ordered turns and one session per trial. Pass `--jobs N`
+The default is four parallel workers. Each worker runs a whole trial
+through grading, with ordered turns and one session per trial. Pass `--jobs N`
 (1–4) to `prepare`, `run`, `judge`, or `calibrate` to configure the
-limit explicitly. Current-host adapters enforce the limit returned by
-`prepare`, and the runner enforces it in automatic execution. Later
+limit explicitly, or `--jobs 1` for serial execution. Current-host
+adapters enforce the limit returned by `prepare`, and the runner enforces
+it in automatic execution. Later
 `prepare --sandbox` calls inherit the first setting. Start a new
 sandbox to change it.
 

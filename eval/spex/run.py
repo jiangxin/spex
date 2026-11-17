@@ -32,7 +32,14 @@ from judge import (
     packet_for,
     rubric_for,
 )
-from scheduling import execution, execution_label, ordered_map, worker_count
+from scheduling import (
+    DEFAULT_JOBS,
+    MAX_JOBS,
+    execution,
+    execution_label,
+    ordered_map,
+    worker_count,
+)
 from transport import (
     SESSION_ID,
     CodexRuntime,
@@ -649,7 +656,7 @@ def read_execution(sandbox: Path) -> dict:
     except FileNotFoundError:
         return execution(None)
     jobs = config.get("jobs") if isinstance(config, dict) else None
-    if type(jobs) is not int or not 1 <= jobs <= 4 or config != execution(jobs):
+    if type(jobs) is not int or not 1 <= jobs <= MAX_JOBS or config != execution(jobs):
         raise ValueError("Invalid sandbox execution configuration")
     return config
 
@@ -659,7 +666,7 @@ def configure_execution(sandbox: Path, jobs: int | None) -> dict:
     if config["jobs"] is None:
         # Publish a complete file before any other prepare can read it.
         with tempfile.NamedTemporaryFile(dir=sandbox) as temporary:
-            temporary.write(encode(execution(jobs if jobs is not None else 1)))
+            temporary.write(encode(execution(DEFAULT_JOBS if jobs is None else jobs)))
             temporary.flush()
             try:
                 os.link(temporary.name, sandbox / "execution.json")
@@ -1055,7 +1062,7 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
     }
 
 
-def replay(run_id: str, model: str, timeout: int, *, jobs: int = 1,
+def replay(run_id: str, model: str, timeout: int, *, jobs: int = DEFAULT_JOBS,
            runtime: CodexRuntime | None = None) -> dict:
     if not saved_run_id(run_id):
         raise ValueError("Expected a saved run ID")
@@ -1347,7 +1354,10 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--repeat", type=int, default=1)
             command.add_argument("--timeout", type=int, default=TIMEOUT)
         if name in ("run", "prepare"):
-            command.add_argument("--jobs", type=worker_count, default=1 if name == "run" else None)
+            command.add_argument(
+                "--jobs", type=worker_count,
+                default=DEFAULT_JOBS if name == "run" else None,
+            )
         if name == "prepare":
             command.add_argument("--host", type=host_name, required=True)
             command.add_argument("--host-version", type=unknownable, default="unknown")
@@ -1398,7 +1408,7 @@ def parser() -> argparse.ArgumentParser:
     calibration = sub.add_parser("calibrate")
     calibration.add_argument("--split", choices=("frozen", "development"), default="frozen")
     for command in (rejudge, calibration):
-        command.add_argument("--jobs", type=worker_count, default=1)
+        command.add_argument("--jobs", type=worker_count, default=DEFAULT_JOBS)
     comparison = sub.add_parser("compare")
     comparison.add_argument("baseline")
     comparison.add_argument("candidate")

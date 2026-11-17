@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 
+DEFAULT_JOBS = 4
+MAX_JOBS = 4
+
 
 def worker_count(value: str) -> int:
     count = int(value)
-    if not 1 <= count <= 4:
+    if not 1 <= count <= MAX_JOBS:
         raise argparse.ArgumentTypeError("Choose between one and four workers")
     return count
 
