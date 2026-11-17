@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -79,6 +80,9 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     """Sandbox under a tree with parent .spex dirs must still prepare."""
     host = tmp_path / "host"
     (host / ".spex").mkdir(parents=True)
+    (host / ".spex.toml").write_text(
+        '[spex]\nspex_root = ".spex"\nstep_review = false\n', encoding="utf-8",
+    )
     runs = host / "project" / "eval" / "spex" / "runs"
     sandbox = workspace.allocate_sandbox(runs)
     case = workspace.select_cases(manifest.parent.parent)[0]
@@ -87,6 +91,23 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     )
     assert trial.directory.is_relative_to(sandbox)
     workspace.verify_spex_roots(trial)
+    assert "step_review=true" in trial_config(trial)
+
+
+def trial_config(trial):
+    return subprocess.check_output(
+        [sys.executable, "-I", str(trial.skill / "scripts" / "spex"), "config"],
+        cwd=trial.repo, env=trial.env, text=True,
+    ).replace(" ", "").lower()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("suite", ["batch-import", "docs"])
+def test_trial_disables_review_for_non_review_suites(manifest, tmp_path, suite):
+    fixture = workspace.select_cases(manifest.parent.parent)[0]
+    case = workspace.Case(suite, fixture.definition, fixture.fixture)
+    trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case")
+    assert "step_review=false" in trial_config(trial)
 
 
 def test_allocate_sandbox_adds_numeric_suffix_on_name_clash(tmp_path, monkeypatch):

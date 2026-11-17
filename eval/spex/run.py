@@ -966,9 +966,9 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
         "suite_rubric_hash": digest(rubric.read_bytes()),
         "evidence_hash": digest(encode(packet["evidence"])),
     }
-    raw = grades.read_text(encoding="utf-8")
+    raw = sys.stdin.read() if grades == Path("-") else grades.read_text(encoding="utf-8")
     if not raw.strip():
-        raise ValueError("The grades file is empty")
+        raise ValueError("The grades input is empty")
     record.update(apply_grades(packet, raw))
     record["verdict"] = final_verdict(hard, record)
     metadata["hard_verdict"] = hard
@@ -1241,7 +1241,9 @@ def parser() -> argparse.ArgumentParser:
     export.add_argument("trial", type=Path)
     imported = sub.add_parser("import-grades")
     imported.add_argument("trial", type=Path)
-    imported.add_argument("--grades", type=Path, required=True)
+    imported.add_argument(
+        "--grades", type=Path, required=True, help="Grades JSON file or - for stdin",
+    )
     imported.add_argument("--host", type=host_name, default="unknown", help="Judge agent host")
     imported.add_argument("--model", type=unknownable, default="unknown", help="Judge model ID")
     imported.add_argument("--judge-duration-ms", type=duration_argument)
@@ -1308,9 +1310,12 @@ def execute(args: argparse.Namespace) -> dict:
     if args.command == "list":
         return {"cases": [{"suite": case.suite, "id": case.id,
                            "tags": case.definition["tags"]} for case in cases]}
-    if not cases or args.command == "prepare" and len(cases) != 1:
-        raise ValueError("Select cases for run, or exactly one case for prepare")
     if args.command == "prepare":
+        if len(cases) != 1:
+            raise ValueError(
+                f"Expected exactly one case for prepare, found {len(cases)} "
+                f"with --suite {args.suite!r}, --case {args.case!r}, --tag {args.tag!r}"
+            )
         allocated = args.sandbox is None
         sandbox = resolve_sandbox(args.sandbox)
         output = case_dir(sandbox, cases[0].suite, cases[0].id)
@@ -1324,6 +1329,8 @@ def execute(args: argparse.Namespace) -> dict:
                 prune_empty_parents(output.parent, sandbox)
             raise
         return instructions(output, trial, read_json(output / "trial.json"))
+    if not cases:
+        raise ValueError("Select cases for run")
     if args.repeat < 1 or args.timeout < 1:
         raise ValueError("Repeat and timeout must be positive")
     args.spex_ref = resolve_spex_ref(SOURCE, args.spex_ref)

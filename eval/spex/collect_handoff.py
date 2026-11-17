@@ -28,8 +28,17 @@ def handoff_reply(sandbox: Path, suite: str, case_id: str, turn: int) -> Path:
     return sandbox / "_handoff" / f"{suite}-{case_id}-turn{turn}.txt"
 
 
-def session_id(suite: str, case_id: str) -> str:
-    return f"{suite}-{case_id}-batch"
+def resolve_collect_session(metadata: dict, suite: str, case_id: str) -> str:
+    existing = metadata.get("session")
+    if isinstance(existing, str) and existing:
+        return existing
+    host = metadata.get("host")
+    if not isinstance(host, str) or host == "unknown" or not eval_run.SESSION_ID.fullmatch(host):
+        host = "manual"
+    label = f"{host}-{suite}-{case_id}"
+    if len(label) > 128:
+        return f"{label[:111]}-{eval_run.digest(label.encode())[:16]}"
+    return label
 
 
 def collect_trial(sandbox: Path, trial_json: Path) -> dict:
@@ -47,7 +56,7 @@ def collect_trial(sandbox: Path, trial_json: Path) -> dict:
             "turns": [],
             "verdict": metadata.get("verdict"),
         }
-    session = session_id(suite, case_id)
+    session = resolve_collect_session(metadata, suite, case_id)
     turns: list[dict] = []
     turn = len(metadata.get("turn_results") or []) + 1
     while True:

@@ -6,6 +6,12 @@ a pinned commit, and collects its own evidence. The judge works in a separate
 tool-free session. A failed deterministic check takes precedence over an AI
 score.
 
+Each trial installs the committed `skills/spex` tree from the selected
+`--spex-ref` (default `HEAD`) into the trial workspace. It uses a trial-local
+`HOME` and `SPEX_CONFIG_FILE` to isolate host installs and configuration.
+Commit skill edits before using them in a trial. Step review is enabled for
+`python-cli` and disabled for `batch-import` and `docs`.
+
 ## Quick start
 
 The default path evaluates Spex from the current host. Use macOS, Git, and
@@ -155,6 +161,7 @@ trial evidence and returns `prompt_bytes` plus a `judge_hint`. Open a
 re-summarize workspace evidence), then feed the grades JSON to
 `import-grades`. Criteria that lack required artifacts, including missing
 tool traces, are already marked insufficient and are not sent to the judge.
+`import-grades --grades -` reads the same JSON from stdin.
 `import-grades` reuses the same score and evidence-reference checks as the
 automatic judge. `summary` writes `manifest.json`, `report.json`, and
 `report.md` at the sandbox root and returns a `cleanup_hint`; delete the

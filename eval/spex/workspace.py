@@ -330,8 +330,9 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
         (directory / "home").mkdir()
         copy_fixture(case, trial.repo)
         (trial.repo / TRIAL_TMP).mkdir()
+        step_review = "false" if case.suite in {"batch-import", "docs"} else "true"
         (trial.repo / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\nuse_git_worktree = false\ndebug = true\n',
+            SANDBOX_TOML + f"step_review = {step_review}\n",
             encoding="utf-8",
         )
         initialize_repo(trial)

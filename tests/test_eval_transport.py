@@ -1,5 +1,6 @@
 """Offline checks for automated and manually collected Spex eval turns."""
 
+import io
 import json
 import subprocess
 import sys
@@ -647,7 +648,8 @@ def test_prepare_accepts_current_hosts_and_unknown_labels(runner):
 
 
 @pytest.mark.slow
-def test_export_packet_and_import_external_grades(runner, tmp_path):
+@pytest.mark.parametrize("from_stdin", [False, True])
+def test_export_packet_and_import_external_grades(runner, tmp_path, monkeypatch, from_stdin):
     (run.SUITES / "example" / "rubrics.json").write_text(json.dumps({
         "version": 1,
         "cases": {
@@ -677,14 +679,18 @@ def test_export_packet_and_import_external_grades(runner, tmp_path):
     assert packet["insufficient"][0]["criterion_id"] == "trace"
     assert "Grade the supplied criteria" in Path(exported["prompt"]).read_text(encoding="utf-8")
 
-    grades = tmp_path / "grades.json"
-    grades.write_text(json.dumps([{
+    raw = json.dumps([{
         "criterion_id": "coverage", "score": 2, "verdict": "pass",
         "reason": "The first-turn state covers the clarification outcome.",
         "evidence_refs": ["turn-1:state"],
-    }]), encoding="utf-8")
+    }])
+    grades = tmp_path / "grades.json"
+    if from_stdin:
+        monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
+    else:
+        grades.write_text(raw, encoding="utf-8")
     imported = run.execute(runner.parse_args([
-        "import-grades", info["trial"], "--grades", str(grades),
+        "import-grades", info["trial"], "--grades", "-" if from_stdin else str(grades),
         "--host", "codex", "--model", "host-judge",
     ]))
     assert imported["hard_verdict"] == "pass"
@@ -727,9 +733,10 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
 
 
 @pytest.mark.slow
-def test_collect_handoff_batch_runs_summary(runner, tmp_path):
+@pytest.mark.parametrize("first_session", [None, "real-codex-session"])
+def test_collect_handoff_batch_runs_summary(runner, tmp_path, first_session):
     info = run.execute(runner.parse_args([
-        "prepare", "--case", "clarify", "--model", "example", "--host", "cursor",
+        "prepare", "--case", "clarify", "--model", "example", "--host", "codex",
         "--host-version", "1", "--invocation", "native",
     ]))
     sandbox = Path(info["sandbox"])
@@ -737,12 +744,37 @@ def test_collect_handoff_batch_runs_summary(runner, tmp_path):
     handoff.mkdir(exist_ok=True)
     (handoff / "example-clarify-turn1.txt").write_text("What type?\n", encoding="utf-8")
     (handoff / "example-clarify-turn2.txt").write_text("Done\n", encoding="utf-8")
+    if first_session:
+        run.execute(runner.parse_args([
+            "collect", info["trial"], "--session", first_session,
+            "--reply", str(handoff / "example-clarify-turn1.txt"),
+        ]))
     payload = collect_handoff.collect_sandbox(sandbox, do_summary=True)
     assert payload["missing"] == []
     assert len(payload["collected"]) == 1
     assert payload["collected"][0]["verdict"] == "pass"
     assert Path(payload["report"]).is_file()
     assert "Score summary" in Path(payload["report"]).read_text(encoding="utf-8")
+    metadata = run.read_json(Path(info["trial"]) / "trial.json")
+    assert metadata["session"] == (first_session or "codex-example-clarify")
+
+
+@pytest.mark.parametrize(("filters", "count"), [
+    (("--suite", "example clarify", "--case", "", "--tag", "smoke"), 0),
+    (("--suite", "example"), 2),
+])
+def test_prepare_reports_rejected_filters(runner, filters, count):
+    manifest = run.SUITES / "example" / "cases.json"
+    cases = run.read_json(manifest)
+    run.write_json(manifest, [cases[0], {**cases[0], "id": "follow-up"}])
+    args = runner.parse_args(["prepare", "--host", "codex", *filters])
+    with pytest.raises(ValueError) as error:
+        run.execute(args)
+    assert str(error.value) == (
+        f"Expected exactly one case for prepare, found {count} "
+        f"with --suite {args.suite!r}, --case {args.case!r}, --tag {args.tag!r}"
+    )
+    assert not run.RUNS.exists()
 
 
 @pytest.mark.slow
