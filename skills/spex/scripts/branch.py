@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import unicodedata
 from pathlib import Path
 
 from config import clear_git_config_cache
@@ -35,11 +36,44 @@ def get_current_branch(cwd: str | Path | None = None) -> str:
     return _strip_refs_prefix(result.stdout.strip())
 
 
-def branch_exists(branch_name: str, cwd: str | Path | None = None) -> bool:
+def list_local_branch_refs() -> set[str] | None:
+    """Return local refs in the current repository, or None on query failure."""
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads/"],
+            capture_output=True,
+            text=True,
+            errors="surrogateescape",
+        )
+    except OSError:
+        return None
+    if result.returncode or result.stderr:
+        return None
+    return set(result.stdout.rstrip("\n").split("\n")) if result.stdout else set()
+
+
+def normalize_ref_alias(ref: str) -> str:
+    """Group possible filesystem aliases for verification by Git."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", ref).casefold())
+
+
+def branch_exists(
+    branch_name: str,
+    cwd: str | Path | None = None,
+    *,
+    local_refs: set[str] | None = None,
+    normalized_refs: set[str] | None = None,
+) -> bool:
     """Check if a local git branch exists."""
     branch_name = _strip_refs_prefix(branch_name)
+    ref = f"refs/heads/{branch_name}"
+    if local_refs is not None and not any(op in branch_name for op in ("~", "^", ":", "@{")):
+        if ref in local_refs:
+            return True
+        if normalized_refs is None or normalize_ref_alias(ref) not in normalized_refs:
+            return False
     result = subprocess.run(
-        ["git", "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+        ["git", "rev-parse", "--verify", ref],
         capture_output=True,
         text=True,
         cwd=cwd,

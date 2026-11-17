@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import branch
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
     find_completed_specs,
@@ -193,6 +194,26 @@ def _remove_spex_worktree(
     from worktree import remove_worktree
 
     remove_worktree(path, force=force, cwd=cwd or None)
+
+
+def _partition_active_branches(
+    completed: list[Path],
+) -> tuple[list[Path], list[tuple[Path, str]]]:
+    candidates = []
+    for spec_dir in completed:
+        meta = load_meta(spec_dir)
+        candidates.append((spec_dir, meta.spex_branch if meta else ""))
+
+    refs = branch.list_local_branch_refs() if any(name for _, name in candidates) else None
+    normalized_refs = {branch.normalize_ref_alias(ref) for ref in refs or ()}
+    archivable = []
+    skipped = []
+    for spec_dir, name in candidates:
+        if name and branch.branch_exists(name, local_refs=refs, normalized_refs=normalized_refs):
+            skipped.append((spec_dir, name))
+        else:
+            archivable.append(spec_dir)
+    return archivable, skipped
 
 
 def _archive_one(
@@ -429,8 +450,11 @@ def main(argv=None):
         return
 
     completed = find_completed_specs(
-        specs_dir, ctx, args.force, all_projects=args.all_projects,
+        specs_dir, ctx, force=True, all_projects=args.all_projects,
     )
+    skipped = []
+    if not args.force:
+        completed, skipped = _partition_active_branches(completed)
 
     def _cleanup_orphan_stubs(*, dry_run: bool) -> list[ArchiveItem]:
         cleaned: list[ArchiveItem] = []
@@ -458,22 +482,6 @@ def main(argv=None):
         return cleaned
 
     if args.dry_run:
-        # Active-branch skips only when not --force (force includes them
-        # in completed; listing them again would double-count in JSON).
-        skipped = []
-        if not args.force:
-            # Same relatedness scope as find_completed_specs / would_archive.
-            skipped = [
-                d for d in sorted(specs_dir.iterdir())
-                if (
-                    d.is_dir()
-                    and is_spec_completed(d)
-                    and has_active_branch(d)
-                    and (
-                        args.all_projects or ctx.is_related_to(d)
-                    )
-                )
-            ]
         if completed:
             logger.info("Would archive %d spec(s):", len(completed))
             for spec_dir in completed:
@@ -498,15 +506,13 @@ def main(argv=None):
             logger.info(
                 "Would skip %d spec(s) (active spex_branch):", len(skipped)
             )
-            for spec_dir in skipped:
-                meta = load_meta(spec_dir)
-                branch = meta.spex_branch if meta else ""
-                logger.info("  %s (%s)", spec_dir.name, branch)
+            for spec_dir, branch_name in skipped:
+                logger.info("  %s (%s)", spec_dir.name, branch_name)
                 results.append(ArchiveItem(
                     "skipped",
                     spec_dir.name,
                     spec_dir,
-                    detail=f"active branch '{branch}'",
+                    detail=f"active branch '{branch_name}'",
                 ))
         results.extend(_cleanup_orphan_stubs(dry_run=True))
         if not results:
