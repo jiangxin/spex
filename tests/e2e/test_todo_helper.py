@@ -102,12 +102,12 @@ def test_plan_todo_transaction(sandbox, event, finish):
         spex("todo-helper", "remove-undone", name)
         assert [item["id"] for item in json.loads(todo.read_bytes())] == ["step-1"]
 
-    new_id = "step-1" if event == "create" else "step-2"
     spex(
-        "todo-helper", "append", name, "--id", new_id,
+        "todo-helper", "append", name,
         "--step-name", "New step", "--details", "New details",
     )
-    updated = todo.read_bytes()
+    updated = json.loads(todo.read_bytes())
+    assert "id" not in updated[-1]
     if finish == "rollback":
         todo.write_text("[invalid", encoding="utf-8")
     post_action = run_spex(
@@ -119,7 +119,9 @@ def test_plan_todo_transaction(sandbox, event, finish):
     spex("todo-helper", "transaction", finish, name)
     assert not backup.exists()
     if finish == "commit":
-        assert todo.read_bytes() == updated
+        assert json.loads(todo.read_bytes()) == [
+            dict(item, id=index) for index, item in enumerate(updated, 1)
+        ]
     elif event == "modify":
         assert todo.read_bytes() == original
     else:
@@ -150,7 +152,6 @@ class TestTodoHelperAppendShow:
 
         result = run_spex(
             "todo-helper", "append", spec_name,
-            "--id", "step-3",
             "--step-name", "New step",
             "--details", "New details",
             sandbox=sandbox,
@@ -164,7 +165,7 @@ class TestTodoHelperAppendShow:
         assert result.returncode == 0, result.stderr
         items = json.loads(result.stdout)
         ids = [item["id"] for item in items]
-        assert "step-3" in ids
+        assert 3 in ids
 
     def test_show_done_filter(self, sandbox):
         """Show --done returns only completed steps."""
@@ -180,8 +181,8 @@ class TestTodoHelperAppendShow:
         assert result.returncode == 0, result.stderr
         items = json.loads(result.stdout)
         ids = [item["id"] for item in items]
-        assert "step-1" in ids
-        assert "step-2" in ids
+        assert 1 in ids
+        assert 2 in ids
 
 
 @pytest.mark.e2e
@@ -194,7 +195,6 @@ class TestTodoHelperWorkflow:
         # 1. Append step-3
         result = run_spex(
             "todo-helper", "append", spec_name,
-            "--id", "step-3",
             "--step-name", "Task 3",
             "--details", "Do thing 3",
             sandbox=sandbox,
@@ -204,7 +204,7 @@ class TestTodoHelperWorkflow:
         # 2. Edit step-3
         result = run_spex(
             "todo-helper", "edit", spec_name,
-            "--id", "step-3",
+            "--id", "3",
             "--step-name", "Updated Task 3",
             sandbox=sandbox,
         )
@@ -218,7 +218,7 @@ class TestTodoHelperWorkflow:
         assert result.returncode == 0, result.stderr
         items = json.loads(result.stdout)
         step3 = [
-            i for i in items if i["id"] == "step-3"
+            i for i in items if i["id"] == 3
         ]
         assert len(step3) == 1
         assert step3[0]["name"] == "Updated Task 3"
@@ -226,7 +226,7 @@ class TestTodoHelperWorkflow:
         # 4. Remove step-3
         result = run_spex(
             "todo-helper", "remove", spec_name,
-            "--id", "step-3",
+            "--id", "3",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
@@ -239,6 +239,6 @@ class TestTodoHelperWorkflow:
         assert result.returncode == 0, result.stderr
         items = json.loads(result.stdout)
         ids = [item["id"] for item in items]
-        assert "step-3" not in ids
-        assert "step-1" in ids
-        assert "step-2" in ids
+        assert 3 not in ids
+        assert 1 in ids
+        assert 2 in ids

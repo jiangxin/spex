@@ -82,7 +82,7 @@ Completed entries keep their existing values and order.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper append "$spec_name" \
-  --id step-1 --step-name "Short description for the step" \
+  --step-name "Short description for the step" \
   --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -100,7 +100,7 @@ DETAILS
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper append "$spec_name" \
-  --id step-N --step-name "Confirm checklist without repo edits" \
+  --step-name "Confirm checklist without repo edits" \
   --skip-commit true \
   --details-from-stdin <<'DETAILS'
 Verify acceptance criteria without changing tracked files.

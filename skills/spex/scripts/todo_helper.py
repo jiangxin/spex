@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from argparse import ArgumentTypeError
 from pathlib import Path
 
 from cli import ArgumentParser
@@ -19,11 +20,12 @@ from common import (
     load_and_validate_todo_json,
     local_iso_timestamp,
     logger,
+    number_todo_items,
     resolve_spec_dir,
     validate_unique_ids,
 )
 
-REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
+REQUIRED_FIELDS = ("name", "details", "completed_at", "commit_title")
 
 _SKIP_COMMIT_FALSE = "false"
 _SKIP_COMMIT_AUTO = "auto"
@@ -66,28 +68,53 @@ def _resolve_completed_at(value):
 # JSON file loading
 # ---------------------------------------------------------------------------
 
-def load_todo_json(path):
-    """Load todo entries from a JSON file.
+def _backup_path(path):
+    return path.with_name(f"{path.name}.lock")
+
+
+def _read_todo(path):
+    """Load stored todo entries without changing their IDs.
 
     Returns an empty list when the file does not exist or is empty.
     """
     path = Path(path)
-    if not path.is_file():
+    if not path.exists():
         return []
-    content = path.read_text(encoding="utf-8").strip()
-    if not content:
+    if not path.read_text(encoding="utf-8").strip():
         return []
-    return load_and_validate_todo_json(path, allow_empty=True)
+    data = load_and_validate_todo_json(path, allow_empty=True)
+    validate_unique_ids(data, allow_missing=_backup_path(path).exists())
+    return data
+
+
+def load_todo_json(path):
+    """Load todo entries with their current positional IDs."""
+    return number_todo_items(_read_todo(path))
+
+
+def _write_todo(path, data):
+    if not _backup_path(path).exists():
+        number_todo_items(data)
+    atomic_write_json(path, data)
+
+
+def _step_index(data, step_id):
+    if not 1 <= step_id <= len(data):
+        logger.error("Error: id '%s' not found.", step_id)
+        sys.exit(1)
+    return step_id - 1
 
 
 # ---------------------------------------------------------------------------
 # Subcommands
 # ---------------------------------------------------------------------------
 
-def cmd_validate(todo_path):
-    """Validate todo file format and check for duplicate IDs."""
+def validate_todo(todo_path, *, allow_empty=True):
+    """Validate the todo list and return its numbered entries."""
     data = load_todo_json(todo_path)
-    validate_unique_ids(data)
+    if not allow_empty and not data:
+        logger.error("Error: empty array, nothing to process.")
+        sys.exit(1)
     for i, item in enumerate(data):
         for field in REQUIRED_FIELDS:
             if field not in item:
@@ -98,6 +125,12 @@ def cmd_validate(todo_path):
                 sys.exit(1)
         if "skip_commit" in item:
             normalize_skip_commit(item["skip_commit"])
+    return data
+
+
+def cmd_validate(todo_path):
+    """Validate the todo list."""
+    validate_todo(todo_path)
     logger.info("OK")
 
 
@@ -113,17 +146,8 @@ def cmd_append(todo_path, args):
         )
         sys.exit(1)
 
-    data = load_todo_json(todo_path)
-
-    for item in data:
-        if isinstance(item, dict) and item.get("id") == args.id:
-            logger.error(
-                "Error: duplicate id '%s'.", args.id,
-            )
-            sys.exit(1)
-
+    data = _read_todo(todo_path)
     entry = {
-        "id": args.id,
         "name": args.step_name,
         "details": details,
         "completed_at": _resolve_completed_at(args.completed_at),
@@ -136,8 +160,8 @@ def cmd_append(todo_path, args):
         if normalized != _SKIP_COMMIT_FALSE:
             entry["skip_commit"] = normalized
     data.append(entry)
-    atomic_write_json(todo_path, data)
-    logger.info("Appended '%s'.", args.id)
+    _write_todo(todo_path, data)
+    logger.info("Appended step-%d.", len(data))
 
 
 def _short_head_sha() -> str:
@@ -200,69 +224,42 @@ def cmd_edit(todo_path, args):
     if args.completed_at is not None:
         args.completed_at = _resolve_completed_at(args.completed_at)
 
-    data = load_todo_json(todo_path)
+    data = _read_todo(todo_path)
+    item = data[_step_index(data, args.id)]
+    for field, value in (
+        ("name", args.step_name), ("details", details),
+        ("completed_at", args.completed_at), ("commit_title", args.commit_title),
+    ):
+        if value is not None:
+            item[field] = value
+    skip_commit = getattr(args, "skip_commit", None)
+    if skip_commit is not None:
+        normalized = normalize_skip_commit(skip_commit)
+        if normalized == _SKIP_COMMIT_FALSE:
+            item.pop("skip_commit", None)
+        else:
+            item["skip_commit"] = normalized
 
-    found = False
-    updated_item = None
-    for item in data:
-        if isinstance(item, dict) and item.get("id") == args.id:
-            if args.step_name is not None:
-                item["name"] = args.step_name
-            if details is not None:
-                item["details"] = details
-            if args.completed_at is not None:
-                item["completed_at"] = args.completed_at
-            if args.commit_title is not None:
-                item["commit_title"] = args.commit_title
-            skip_commit = getattr(args, "skip_commit", None)
-            if skip_commit is not None:
-                normalized = normalize_skip_commit(skip_commit)
-                if normalized == _SKIP_COMMIT_FALSE:
-                    item.pop("skip_commit", None)
-                else:
-                    item["skip_commit"] = normalized
-            found = True
-            updated_item = item
-            break
-
-    if not found:
-        logger.error(
-            "Error: id '%s' not found.", args.id,
-        )
-        sys.exit(1)
-
-    atomic_write_json(todo_path, data)
+    _write_todo(todo_path, data)
     logger.info("Updated '%s'.", args.id)
-    if updated_item is not None:
-        _emit_todo_edit_apply_anchor(todo_path, args, updated_item)
+    _emit_todo_edit_apply_anchor(todo_path, args, item)
 
 
 def cmd_remove(todo_path, args):
     """Remove an entry by ID."""
-    data = load_todo_json(todo_path)
-
-    new_data = [
-        item for item in data
-        if not (isinstance(item, dict) and item.get("id") == args.id)
-    ]
-
-    if len(new_data) == len(data):
-        logger.error(
-            "Error: id '%s' not found.", args.id,
-        )
-        sys.exit(1)
-
-    atomic_write_json(todo_path, new_data)
+    data = _read_todo(todo_path)
+    del data[_step_index(data, args.id)]
+    _write_todo(todo_path, data)
     logger.info("Removed '%s'.", args.id)
 
 
 def cmd_remove_undone(todo_path):
     """Remove incomplete entries, preserving completed entries in order."""
-    data = load_todo_json(todo_path)
+    data = _read_todo(todo_path)
     completed = filter_completed_todos(data)
     removed = len(data) - len(completed)
     if removed:
-        atomic_write_json(todo_path, completed)
+        _write_todo(todo_path, completed)
         logger.info("Removed %d unfinished step(s).", removed)
 
 
@@ -284,11 +281,14 @@ def _start_transaction(todo_path, backup_path):
 
 def cmd_transaction(todo_path, action):
     """Start, commit, or roll back a todo file transaction."""
-    backup_path = todo_path.with_name(f"{todo_path.name}.lock")
+    backup_path = _backup_path(todo_path)
     try:
         if action == "start":
             _start_transaction(todo_path, backup_path)
         elif action == "commit":
+            backup_path.stat()
+            if todo_path.exists():
+                atomic_write_json(todo_path, validate_todo(todo_path))
             backup_path.unlink()
         elif backup_path.stat().st_size:
             backup_path.replace(todo_path)
@@ -348,7 +348,7 @@ def _format_markdown(data, width=0):
     w = width if width > 0 else 10**9
     lines = []
     for idx, item in enumerate(data, 1):
-        step_id = item.get("id", "")
+        step_id = f"step-{item['id']}"
         completed = bool(item.get("completed_at"))
         icon = "✅" if completed else "🔲"
         prefix = f"{idx}. "
@@ -393,15 +393,7 @@ def cmd_show(todo_path, args):
     data = load_todo_json(todo_path)
 
     if args.step_id:
-        data = [
-            item for item in data
-            if isinstance(item, dict) and item.get("id") == args.step_id
-        ]
-        if not data:
-            logger.error(
-                "Error: id '%s' not found.", args.step_id,
-            )
-            sys.exit(1)
+        data = [data[_step_index(data, args.step_id)]]
     elif args.done:
         data = [
             item for item in data
@@ -500,6 +492,19 @@ def _hoist_locator_flags(argv):
     return hoisted + remaining
 
 
+def _parse_step_id(value):
+    """Read a positive integer step ID."""
+    if value.isascii() and value.isdecimal():
+        try:
+            number = int(value)
+        except ValueError:
+            pass
+        else:
+            if number > 0:
+                return number
+    raise ArgumentTypeError(f"expected a positive step ID, got {value!r}")
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -536,9 +541,6 @@ def _build_parser():
         help="Append a new entry",
     )
     p_append.add_argument(
-        "--id", required=True, help="Task ID",
-    )
-    p_append.add_argument(
         "--step-name", required=True, help="Task name",
     )
     p_append.add_argument(
@@ -573,7 +575,7 @@ def _build_parser():
         help="Edit an existing entry by ID",
     )
     p_edit.add_argument(
-        "--id", required=True, help="Task ID to edit",
+        "--id", required=True, type=_parse_step_id, help="Task number to edit",
     )
     p_edit.add_argument(
         "--step-name", default=None, help="New task name",
@@ -610,7 +612,7 @@ def _build_parser():
         help="Remove an entry by ID",
     )
     p_remove.add_argument(
-        "--id", required=True, help="Task ID to remove",
+        "--id", required=True, type=_parse_step_id, help="Task number to remove",
     )
 
     p_remove_undone = subs.add_parser(
@@ -636,7 +638,7 @@ def _build_parser():
         help="Show only incomplete entries",
     )
     p_show.add_argument(
-        "--id", dest="step_id", default=None,
+        "--id", dest="step_id", type=_parse_step_id, default=None,
         help=(
             "Show a single entry by ID "
             "(ignores --done/--undone if set)"
@@ -661,7 +663,7 @@ def _build_parser():
         "transaction",
         description=(
             "Start by backing up the todo file to a .lock file,"
-            " commit by deleting the backup, or roll back using the backup."
+            " commit by assigning numeric IDs, or roll back using the backup."
         ),
         help="Start, commit, or roll back a todo transaction",
     )

@@ -496,6 +496,14 @@ def load_todo(spec_dir: Path):
     return data
 
 
+def number_todo_items(data):
+    """Assign todo IDs from list order, starting at one."""
+    for number, item in enumerate(data, 1):
+        if isinstance(item, dict):
+            item["id"] = number
+    return data
+
+
 def load_and_validate_todo_json(path, allow_empty=False):
     """Load a JSON file, validate it is a list, return data.
 
@@ -531,7 +539,7 @@ def load_and_validate_todo_json(path, allow_empty=False):
     return data
 
 
-def validate_unique_ids(data):
+def validate_unique_ids(data, *, allow_missing=False):
     """Check all items have unique non-empty 'id' fields.
 
     Args:
@@ -545,10 +553,16 @@ def validate_unique_ids(data):
         if not isinstance(item, dict):
             logger.error("Error: item[%d] is not an object.", i)
             sys.exit(1)
-        step_id = item.get("id", "")
-        if not step_id:
+        if allow_missing and "id" not in item:
+            continue
+        step_id = item.get("id")
+        if not (
+            (isinstance(step_id, str) and step_id)
+            or (type(step_id) is int and step_id > 0)
+        ):
             logger.error(
-                "Error: item[%d]: 'id' is missing or empty.", i,
+                "Error: item[%d]: 'id' must be a positive integer"
+                " or a nonempty legacy string.", i,
             )
             sys.exit(1)
         if step_id in seen_ids:

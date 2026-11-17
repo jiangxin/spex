@@ -81,7 +81,7 @@ final plan is coherent and complete.
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex todo-helper append "{{ spec_name }}" \
-  --id step-N --step-name "Short name" \
+  --step-name "Short name" \
   --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -97,7 +97,7 @@ files change):
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex todo-helper append "{{ spec_name }}" \
-  --id step-N --step-name "Confirm checklist without repo edits" \
+  --step-name "Confirm checklist without repo edits" \
   --skip-commit true \
   --details-from-stdin <<'DETAILS'
 Verify acceptance criteria without changing tracked files.
@@ -121,7 +121,7 @@ Do **not** put `--skip-commit true` on coding steps. Values:
 
 ```bash
 {{ spex_skill_dir }}/scripts/spex todo-helper edit "{{ spec_name }}" \
-  --id step-N --step-name "Updated name" --details-from-stdin <<'DETAILS'
+  --step-name "Updated name" --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
 - Revised implementation approach

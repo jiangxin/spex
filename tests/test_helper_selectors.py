@@ -27,8 +27,8 @@ REVIEW_ARGS = {
 }
 TODO_ARGS = {
     "validate": [], "show": [],
-    "append": ["--id", "step-1", "--step-name", "First step"],
-    "edit": ["--id", "step-1"], "remove": ["--id", "step-1"],
+    "append": ["--step-name", "First step"],
+    "edit": ["--id", "1"], "remove": ["--id", "1"],
 }
 
 
