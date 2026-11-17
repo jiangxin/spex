@@ -665,7 +665,7 @@ class TestGetTemplate:
             test_template.unlink()
 
     def test_resolve_template_roots_order(self, monkeypatch, tmp_path):
-        """_resolve_template_roots returns spex_roots/templates + skill/templates."""
+        """Only the selected root and built-in template directory are searched."""
         from unittest.mock import patch
 
         from common import TEMPLATE_DIR, _get_skill_path
@@ -684,7 +684,7 @@ class TestGetTemplate:
             spex_tomls=[],
             config={},
             spex_root=str(tmp_path),
-            spex_roots=[str(tmp_path)],
+            spex_roots=[str(tmp_path), str(tmp_path.parent)],
         )
         with patch("common.get_project_context", return_value=ctx):
             roots = _resolve_template_roots()
@@ -989,8 +989,7 @@ class TestGetSpexRoots:
         assert len(result) >= 1
         assert str((repo / ".spex").resolve()) in result
 
-    def test_home_default_always_present(self, monkeypatch, tmp_path):
-        """get_spex_roots always includes ~/.spex as fallback."""
+    def test_home_default_when_no_root_is_found(self, monkeypatch, tmp_path):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -1000,10 +999,9 @@ class TestGetSpexRoots:
         result = get_spex_roots(str(repo))
 
         home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [home_default]
 
-    def test_multiple_roots_when_nested(self, monkeypatch, tmp_path):
-        """get_spex_roots returns multiple roots for nested directories."""
+    def test_only_nearest_root_when_nested(self, monkeypatch, tmp_path):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         # Create parent with .spex
         parent = tmp_path / "parent"
@@ -1018,10 +1016,7 @@ class TestGetSpexRoots:
 
         result = get_spex_roots(str(child))
 
-        assert str((child / ".spex").resolve()) in result
-        assert str((parent / ".spex").resolve()) in result
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [str((child / ".spex").resolve())]
 
 
 @pytest.mark.slow

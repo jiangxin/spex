@@ -545,13 +545,9 @@ class TestResolveSpexRoots:
 
         # child/.spex exists (governed by parent's config)
         (child / ".spex").mkdir()
-        # grandparent/.specs added unconditionally (same-level)
-
         result = _resolve_spex_roots([parent_toml, gp_toml], child)
 
-        assert result[0] == str((child / ".spex").resolve())
-        assert result[1] == str((parent / ".spex").resolve())
-        assert result[2] == str((grandparent / ".specs").resolve())
+        assert result == [str((child / ".spex").resolve())]
 
     def test_toml_without_spex_root_uses_local_default_or_continues_up(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
@@ -575,7 +571,7 @@ class TestResolveSpexRoots:
 
         (child / ".spex").mkdir()
         result = _resolve_spex_roots([child_toml, parent_toml], child)
-        assert result[:2] == [str(child / ".spex"), str(parent / ".my-spex")]
+        assert result == [str(child / ".spex")]
 
     def test_absolute_path_in_toml(self, tmp_path, monkeypatch):
         """Absolute spex_root is added unconditionally at same level."""
@@ -588,9 +584,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([toml], worktree)
 
-        assert result[0] == str(abs_path.resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [str(abs_path.resolve())]
 
     def test_tilde_path_in_toml(self, monkeypatch, tmp_path):
         """~/path is expanded and treated as absolute."""
@@ -605,9 +599,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([toml], worktree)
 
-        assert result[0] == str(home / "my-specs")
-        home_default = str((home / ".spex").resolve())
-        assert home_default in result
+        assert result == [str(home / "my-specs")]
 
     def test_no_tomls_uses_default(self, tmp_path, monkeypatch):
         """No .spex.toml anywhere — default .spex, only if dir exists."""
@@ -618,9 +610,7 @@ class TestResolveSpexRoots:
 
         result = _resolve_spex_roots([], worktree)
 
-        assert result[0] == str((worktree / ".spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
-        assert home_default in result
+        assert result == [str((worktree / ".spex").resolve())]
 
     def test_no_tomls_no_dirs_has_home_default(self, tmp_path, monkeypatch):
         """No .spex.toml, no .spex/ dirs — only home default in result."""
@@ -684,10 +674,8 @@ class TestResolveSpexRootAndRoots:
         primary, roots = resolve_spex_root_and_roots()
 
         expected = str((tmp_path / ".spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert primary == expected
-        assert roots[0] == expected
-        assert home_default in roots
+        assert roots == [expected]
 
     def test_same_level_no_dir(self, tmp_path, monkeypatch):
         """Same-level rule: primary returned even if dir doesn't exist."""
@@ -702,13 +690,10 @@ class TestResolveSpexRootAndRoots:
         primary, roots = resolve_spex_root_and_roots()
 
         expected = str((tmp_path / ".my-spex").resolve())
-        home_default = str((tmp_path / "fakehome" / ".spex").resolve())
         assert primary == expected
-        assert roots[0] == expected
-        assert home_default in roots
+        assert roots == [expected]
 
-    def test_home_default_always_in_roots(self, tmp_path, monkeypatch):
-        """~/.<default> is always in roots even without any .spex.toml."""
+    def test_home_default_when_no_root_is_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.setattr(
             "config._get_main_worktree", lambda w=None: tmp_path

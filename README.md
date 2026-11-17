@@ -164,7 +164,7 @@ In addition to performing the same setup as the `/spex init` skill command, it a
 
 ### spex config
 
-Display spex configuration, including Git info, paths, config file list, and spex roots.
+Display Spex configuration, including Git info, paths, config files, and the selected storage root.
 
 ```
 ── Git ───────────────────────────────────────────
@@ -190,13 +190,9 @@ Display spex configuration, including Git info, paths, config file list, and spe
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
   /Users/jiangxin/.spex.toml
-
-── Spex Roots ────────────────────────────────────
-  /Users/jiangxin/work/.spex
-  /Users/jiangxin/.spex
 ```
 
-There can be multiple config files and spex root directories, listed in order from highest to lowest priority. Higher-priority configs override lower-priority values, and templates and hooks in higher-priority directories override same-named files in lower-priority directories.
+Config files are listed from highest to lowest priority. Spex uses one storage root for specs, custom templates, and hooks.
 
 ### spex list
 
@@ -510,7 +506,9 @@ This lets the platform control the `spex_root` location, templates, and hooks ce
 
 ### Customizing spex Templates
 
-Run `spex config` to see the `spex_roots` path list, pick a template directory (e.g., `~/.spex/templates/`), and create replacement template files. You can copy templates from `templates/examples/` as a starting point.
+Run `spex config get spex_root` to find the selected storage directory.
+Put custom templates in its `templates/` directory. Spex falls back to
+built-in templates, which you can copy from `templates/examples/`.
 
 ### Customizing Hooks
 

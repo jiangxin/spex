@@ -335,7 +335,7 @@ def _resolve_spex_roots(
     main_worktree: Path | None,
     workdir: str | Path | None = None,
 ) -> list[str]:
-    """Resolve spex_root to a list of directory paths using per-level configs.
+    """Return the first eligible storage root as a singleton list.
 
     Each .spex.toml that sets spex_root governs its own directory and all
     child directories below it. When walking upward from start, the effective
@@ -397,59 +397,30 @@ def _resolve_spex_roots(
         else:
             governing[i] = (current_effective, False)
 
-    # Build results
-    results: list[str] = []
-    visited: set[str] = set()
-    home = Path.home().resolve()
-
     for i, d in enumerate(path_dirs):
         spex_root_val, same_level = governing[i]
-        expanded = Path(spex_root_val).expanduser()
 
         if not same_level and d in config_dirs:
             default_candidate = d / _DEFAULTS["spex_root"]
             if default_candidate.is_dir():
-                resolved_default = str(default_candidate.resolve())
-                if resolved_default not in visited:
-                    results.append(resolved_default)
-                    visited.add(resolved_default)
+                return [str(default_candidate.resolve())]
             continue
 
-        if expanded.is_absolute():
-            candidate = expanded
-        else:
-            candidate = d / spex_root_val
+        candidate = d / Path(spex_root_val).expanduser()
+        if same_level or candidate.is_dir():
+            return [str(candidate.resolve())]
 
-        resolved_str = str(candidate.resolve())
-        if resolved_str not in visited:
-            if same_level or candidate.is_dir():
-                results.append(resolved_str)
-                visited.add(resolved_str)
+    if unmapped_tomls:
+        toml_dir, sr = unmapped_tomls[0]
+        return [str((toml_dir / Path(sr).expanduser()).resolve())]
 
-    # Handle tomls not on the path (e.g. home fallback when ~ is not an ancestor)
-    for toml_dir, sr in unmapped_tomls:
-        expanded = Path(sr).expanduser()
-        candidate = expanded if expanded.is_absolute() else toml_dir / sr
-        resolved_str = str(candidate.resolve())
-        if resolved_str not in visited:
-            results.append(resolved_str)
-            visited.add(resolved_str)
-
-    # Always append ~/<default_spex_root> as final fallback
-    home_default = str((home / _DEFAULTS["spex_root"]).resolve())
-    if home_default not in visited:
-        results.append(home_default)
-
-    return results
+    return [str((Path.home() / _DEFAULTS["spex_root"]).resolve())]
 
 
 def resolve_spex_root_and_roots(
     workdir: str | Path | None = None,
 ) -> tuple[str, list[str]]:
-    """Return (primary_spex_root, all_spex_roots) based on per-level config.
-
-    The primary root is the first (highest-priority) entry in the roots list.
-    """
+    """Return the selected root and its singleton list for existing callers."""
     main_wt = _get_config_worktree(workdir)
     spex_tomls = _find_spex_tomls(main_wt, workdir)
     roots = _resolve_spex_roots(spex_tomls, main_wt, workdir)

@@ -164,7 +164,7 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 
 ### spex config
 
-显示 spex 配置，包括 Git 信息、路径、配置文件列表和 spex roots。
+显示 Spex 配置，包括 Git 信息、路径、配置文件列表和选中的存储目录。
 
 ```
 ── Git ───────────────────────────────────────────
@@ -190,13 +190,9 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 ── Config Files ──────────────────────────────────
   /Users/jiangxin/work/ai-native/spex/.spex.toml
   /Users/jiangxin/.spex.toml
-
-── Spex Roots ────────────────────────────────────
-  /Users/jiangxin/work/.spex
-  /Users/jiangxin/.spex
 ```
 
-配置文件和 spex root 目录可以有多个，按优先级从高到低排列。优先级高的配置可以覆盖低优先级的配置值，高优先级目录中的模板和 hooks 也会覆盖低优先级目录中的同名文件。
+配置文件按优先级从高到低排列。Spex 只使用一个存储目录来存放规格、自定义模板和 hooks。
 
 ### spex list
 
@@ -502,7 +498,8 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 ### 定制 spex 模板
 
-用 `spex config` 查看 `spex_roots` 路径列表，选择一个模板目录（例如 `~/.spex/templates/`），创建替换的模板文件。可以从 `templates/examples/` 复制模板作为起点。
+用 `spex config get spex_root` 查看选中的存储目录，将自定义模板放在该目录的
+`templates/` 下。Spex 会回退到内置模板，也可以从 `templates/examples/` 复制模板作为起点。
 
 ### 定制 hook
 

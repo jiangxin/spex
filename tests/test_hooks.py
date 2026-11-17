@@ -79,8 +79,7 @@ class TestFindHook:
             result = hooks.find_hook("post-action")
         assert result == hook_file
 
-    def test_finds_in_secondary_spex_root(self, monkeypatch, tmp_path):
-        """Hook found in secondary spex_root/hooks/ when primary has none."""
+    def test_ignores_hooks_outside_selected_root(self, monkeypatch, tmp_path):
         from unittest.mock import patch
 
         from config import ProjectContext
@@ -113,7 +112,7 @@ class TestFindHook:
         with patch("common.get_project_context", return_value=ctx):
             clear_spex_root_cache()
             result = hooks.find_hook("post-action")
-            assert result == hook_file
+            assert result is None
 
     def test_primary_spex_root_overrides_secondary(self, monkeypatch, tmp_path):
         """Primary spex_root hook wins over secondary spex_root hook."""

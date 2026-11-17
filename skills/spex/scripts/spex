@@ -98,10 +98,9 @@ _CONFIG_SECTIONS = [
     ("Paths", "kv", ["cwd", "top_workdir", "main_worktree", "spex_root"]),
     ("Config", "kv", [
         "spex_root", "branch_management", "main_branch_name", "submit_method",
-        "step_review", "use_git_worktree",
+        "step_review", "use_git_worktree", "inherit_config",
     ]),
     ("Config Files", "list", "spex_tomls"),
-    ("Spex Roots", "list", "spex_roots"),
 ]
 
 
