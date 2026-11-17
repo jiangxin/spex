@@ -36,6 +36,16 @@ def cli_log(argv, code=0):
     )
 
 
+def test_integer_task_ids_count_toward_progress(tmp_path):
+    before = evidence.persist_turn(tmp_path, 0, state(task(1, "done"), task(2)))
+    after = evidence.persist_turn(tmp_path, 1, state(task(1, "done"), task(2, "later")))
+    changed = evidence.persist_turn(tmp_path, 2, state(task(1, "changed"), task(2)))
+    assert evidence.check_gate("one-step", before, after)["verdict"] == "pass"
+    assert evidence.check_gate("no-progress", before, after)["verdict"] == "fail"
+    assert evidence.check_gate("completed-preserved", before, changed)["verdict"] == "fail"
+    assert evidence.completed(state(task(True, "done"))) == {}
+
+
 def test_native_trace_excludes_setup_and_acceptance_between_turns(tmp_path):
     repo = tmp_path / "repo"
     log = repo / ".spex/specs/eval-spec/debug.log"
@@ -67,11 +77,12 @@ def test_native_trace_excludes_setup_and_acceptance_between_turns(tmp_path):
     assert evidence.check_gate("post-action", turn2, turn3)["verdict"] == "insufficient_evidence"
 
 
-def test_native_review_failure_stop_requires_no_later_workflow(tmp_path):
-    pending = state(task("step-1"))
+@pytest.mark.parametrize("step", ["step-1", 1])
+def test_native_review_failure_stop_requires_no_later_workflow(tmp_path, step):
+    pending = state(task(step))
     before = evidence.persist_turn(tmp_path, 0, pending)
     log = "specs/eval-spec/debug.log"
-    failure = cli_log("review-helper --name eval-spec status --step step-1 --json", 1)
+    failure = cli_log(f"review-helper --name eval-spec status --step {step} --json", 1)
     later = cli_log("prompt apply-one-task eval-spec")
     for turn, contents, verdict in ((1, failure, "pass"), (2, failure + later, "fail")):
         gaps = set()
@@ -116,20 +127,21 @@ def test_native_prompt_skip_requires_logged_output_and_success():
 
 
 @pytest.mark.parametrize(("fix", "expected"), [(False, "92590d9"), (True, "63d5bac")])
-def test_native_resume_follows_the_reviewed_commit(tmp_path, fix, expected):
-    old = state(task("step-1", commit_title="92590d9: Prefix"))
+@pytest.mark.parametrize("step", ["step-1", 1])
+def test_native_resume_follows_the_reviewed_commit(tmp_path, fix, expected, step):
+    old = state(task(step, commit_title="92590d9: Prefix"))
     old["head"] = "92590d94072433285b225f79e51fec80de172381"
     before = evidence.persist_turn(tmp_path, 0, old)
     lines = [
-        f"===== APPLY review {edge} step=step-1 round=1 mode=full commit=92590d9 ====="
+        f"===== APPLY review {edge} step={step} round=1 mode=full commit=92590d9 ====="
         for edge in ("begin", "end")
     ]
     if fix:
-        lines.append("===== APPLY fix end step=step-1 base=92590d9 new=63d5bac =====")
+        lines.append(f"===== APPLY fix end step={step} base=92590d9 new=63d5bac =====")
     gaps = set()
     events = native_trace.parse(lines, "specs/eval-spec/debug.log", gaps)
     after = evidence.persist_turn(
-        tmp_path, 1, state(task("step-1", "done", commit_title=f"{expected}: Prefix")),
+        tmp_path, 1, state(task(step, "done", commit_title=f"{expected}: Prefix")),
         native={"events": events, "gaps": sorted(gaps)},
     )
     assert evidence.check_gate("resumed-review", before, after)["verdict"] == "pass"

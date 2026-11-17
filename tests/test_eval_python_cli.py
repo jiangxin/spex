@@ -1,5 +1,6 @@
 """Offline checks for the Python CLI eval suite."""
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -51,6 +52,22 @@ def acceptance(trial, scenario):
     report = json.loads(run.stdout)
     assert run.returncode == (0 if report["passed"] else 1)
     return report
+
+
+@pytest.mark.parametrize(("ids", "generated", "valid"), [
+    (["step-1", "step-2"], True, True),
+    ([1, 2], True, True),
+    (["step-1", "step-2"], False, True),
+    ([1, 2], False, False),
+    ([1, "step-2"], True, False),
+    ([True, 2], True, False),
+    ([2, 1], True, False),
+])
+def test_workflow_acceptance_preserves_task_id_order(ids, generated, valid):
+    spec = importlib.util.spec_from_file_location("python_cli_acceptance", SUITE / "acceptance.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    assert checker.ordered_task_ids(ids, 2, generated=generated) is valid
 
 
 @pytest.mark.slow

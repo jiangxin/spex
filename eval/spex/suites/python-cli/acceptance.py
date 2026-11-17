@@ -33,6 +33,13 @@ def lifecycle_name(repo):
     return names[0]
 
 
+def ordered_task_ids(ids, count, *, generated):
+    numbers = list(range(1, count + 1))
+    return ids == [f"step-{number}" for number in numbers] or (
+        generated and all(type(task_id) is int for task_id in ids) and ids == numbers
+    )
+
+
 def plan_checks(repo, scenario):
     root = repo / SPECS
     name = FORMAT
@@ -55,7 +62,9 @@ def plan_checks(repo, scenario):
     checks = {
         "spec-written": bool(spec.strip()),
         "meta-written": isinstance(meta, dict) and bool(meta.get("name")),
-        "valid-task-identifiers": ids == [f"step-{i}" for i in range(1, len(tasks) + 1)],
+        "valid-task-identifiers": ordered_task_ids(
+            ids, len(tasks), generated=scenario in ("new-plan", "lifecycle-plan"),
+        ),
         "pending-tasks": bool(pending),
         "task-details-written": all(t.get("name") and t.get("details") for t in tasks),
     }
@@ -148,13 +157,16 @@ def decoration_checks(repo, scenario):
     if scenario in ("prefix-only", "lifecycle-prefix"):
         suffix = invoke(repo, suffix_flag, " tail")
         checks["suffix-not-implemented"] = suffix.returncode == 2 and suffix.stdout == ""
-        checks["expected-completed-steps"] = [t.get("id") for t in done] == ["step-1"]
+        expected_count = 1
     else:
-        checks["expected-completed-steps"] = [t.get("id") for t in done] == ["step-1", "step-2"]
+        expected_count = 2
         checks["suffix-verbatim"] = output_is(
             repo, "[hi] HELLO, ADA! tail\n", "--upper", "--prefix", "[hi] ", suffix_flag, " tail"
         )
         checks["suffix-only"] = output_is(repo, "Hello, Ada! tail\n", suffix_flag, " tail")
+    checks["expected-completed-steps"] = ordered_task_ids(
+        [task.get("id") for task in done], expected_count, generated=lifecycle,
+    )
     return checks
 
 

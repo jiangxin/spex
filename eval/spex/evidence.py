@@ -114,7 +114,7 @@ def spec_tasks(state: dict):
         tasks = artifacts.get("todo.json")
         if isinstance(tasks, list):
             for task in tasks:
-                if isinstance(task, dict) and isinstance(task.get("id"), str):
+                if isinstance(task, dict) and type(task.get("id")) in (str, int):
                     yield (spec, task["id"]), task
 
 
@@ -231,11 +231,14 @@ def native_check(
     )
     if not unchanged or post or extra_post:
         return False
-    pending = {key for key, task in spec_tasks(old) if not task.get("completed_at")}
+    pending = {
+        (spec, str(step)) for (spec, step), task in spec_tasks(old)
+        if not task.get("completed_at")
+    }
     failures = [event for event in events
                 if event["action"] == "apply.review-command" and event.get("stage") == "status"
                 and type(event.get("exit_code")) is int and event["exit_code"] != 0
-                and (event["spec"], event.get("step")) in pending]
+                and (event["spec"], str(event.get("step", ""))) in pending]
     if not failures:
         return False if complete else None
     failure = failures[0]
@@ -286,12 +289,14 @@ def resumed_review(
         return False
     spec, step = pending[0]
     final = completed_after.get((spec, step), {})
+    # CLI logs serialize task selectors as text, even for integer todo IDs.
+    step = str(step)
     final_sha = str(final.get("commit_title", "")).partition(":")[0]
     events = [
         event for event in trace["value"]
         if event.get("action") == "apply.review" and (native or event.get("exit_code") == 0)
         and event.get("spec") == spec
-        and (not native or event.get("step") == step)
+        and (not native or str(event.get("step", "")) == step)
     ]
     start = next((i for i, event in enumerate(events) if event.get("mode") == "full"), None)
     if start is None:
@@ -307,7 +312,7 @@ def resumed_review(
         return None
     current_sha = seed
     for event in events[start + 1:]:
-        if event.get("step") == step and "new_commit" in event:
+        if str(event.get("step", "")) == step and "new_commit" in event:
             if not same_commit(current_sha, event.get("base_commit", "")):
                 return False
             current_sha = event["new_commit"]

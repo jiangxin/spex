@@ -251,7 +251,8 @@ def resume_cli():
         assert checkpoint(conn)["complete"] is False
         before = state(conn), conn.total_changes
         status, _, err = cli(conn, BAD, "--batch-size", "2")
-        assert status and "resume" in err.lower()
+        error = err.lower()
+        assert status and ("resume" in error or "incomplete checkpoint" in error)
         assert (state(conn), conn.total_changes) == before
 
 

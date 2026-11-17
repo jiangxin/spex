@@ -86,6 +86,43 @@ def test_input_identity_acceptance_rejects_success_for_changed_input(monkeypatch
         acceptance.input_identity()
 
 
+@pytest.mark.parametrize(("message", "passed"), [
+    ("Use --resume to continue", True),
+    ("An incomplete checkpoint already exists", True),
+    ("Invalid option", False),
+])
+def test_resume_acceptance_accepts_incomplete_checkpoint_diagnostic(monkeypatch, message, passed):
+    def cli(conn, data, *options):
+        if data == acceptance.BAD and acceptance.checkpoint(conn) is not None:
+            return 1, "", message
+        if options in (("--resume",), ("--batch-size", "0"), ("--batch-size", "bad")):
+            prior = acceptance.checkpoint(conn)
+            if prior is None:
+                return 1, "", "Invalid options"
+            if prior.get("complete"):
+                return 0, "", ""
+            conn.execute("DROP TABLE import_checkpoint")
+        count = 2 if data == acceptance.BAD else 5
+        conn.execute("DELETE FROM records")
+        acceptance.seed(conn, data, version=2, complete=count == 5)
+        if count == 5:
+            conn.executemany(
+                "INSERT INTO records VALUES (?, ?)", acceptance.EXPECTED[2:],
+            )
+            conn.execute(
+                "UPDATE import_checkpoint SET data = ?",
+                (json.dumps({**acceptance.checkpoint(conn), "committed_rows": 5}),),
+            )
+        return int(count == 2), "", ""
+
+    monkeypatch.setattr(acceptance, "cli", cli)
+    if passed:
+        acceptance.resume_cli()
+    else:
+        with pytest.raises(AssertionError):
+            acceptance.resume_cli()
+
+
 @pytest.mark.slow
 def test_resume_seed_is_preserved_and_commit_order_is_checked(tmp_path):
     case, = select_cases(EVAL / "suites", suite="batch-import", case_id="apply-resume")
