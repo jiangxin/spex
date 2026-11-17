@@ -169,6 +169,20 @@ IDs based on the new order. Use those displayed IDs for subsequent edits.
 To persist consecutive IDs for the new order, start a transaction before
 moving the steps and commit it after the edits.
 
+## Renumber
+
+Persist the positional IDs shown by `show` after an edit outside a
+transaction:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper renumber "$spec_name"
+```
+
+`renumber` assigns consecutive integer IDs from 1 and preserves step order
+and other entry fields. It can repair missing, duplicate, or invalid IDs in
+an otherwise valid todo file. Use `transaction commit` to renumber when a
+transaction is open.
+
 ## Remove
 
 ```bash

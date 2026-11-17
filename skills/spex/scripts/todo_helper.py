@@ -116,7 +116,16 @@ def validate_todo(todo_path, *, allow_empty=True):
     if not allow_empty and not data:
         logger.error("Error: empty array, nothing to process.")
         sys.exit(1)
+    _validate_todo_fields(data)
+    return data
+
+
+def _validate_todo_fields(data):
+    """Validate todo entries independently of their stored IDs."""
     for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            logger.error("Error: item[%d] is not an object.", i)
+            sys.exit(1)
         for field in REQUIRED_FIELDS:
             if field not in item:
                 logger.error(
@@ -126,13 +135,27 @@ def validate_todo(todo_path, *, allow_empty=True):
                 sys.exit(1)
         if "skip_commit" in item:
             normalize_skip_commit(item["skip_commit"])
-    return data
 
 
 def cmd_validate(todo_path):
     """Validate the todo list."""
     validate_todo(todo_path)
     logger.info("OK")
+
+
+def cmd_renumber(todo_path):
+    """Replace stored IDs according to the current list order."""
+    try:
+        if _backup_path(todo_path).exists():
+            logger.error("Error: todo transaction is open; use transaction commit to renumber.")
+            sys.exit(1)
+        data = load_and_validate_todo_json(todo_path, allow_empty=True)
+        _validate_todo_fields(data)
+        atomic_write_json(todo_path, number_todo_items(data))
+    except (OSError, UnicodeError) as exc:
+        logger.error("Error: cannot renumber todo file '%s': %s", todo_path, exc)
+        sys.exit(1)
+    logger.info("Renumbered %d step(s).", len(data))
 
 
 def _new_todo_entry(args):
@@ -572,7 +595,7 @@ def _build_parser():
         description=(
             "Operate on todo files"
             " (validate, append, insert, edit, move, remove, remove-undone,"
-            " show, transaction)."
+            " renumber, show, transaction)."
         ),
     )
     parser.add_argument(
@@ -689,6 +712,15 @@ def _build_parser():
         help="Remove all unfinished steps",
     )
 
+    p_renumber = subs.add_parser(
+        "renumber",
+        description=(
+            "Write consecutive integer IDs from 1 in current list order."
+            " Use transaction commit when a transaction is open."
+        ),
+        help="Regenerate stored IDs outside a transaction",
+    )
+
     # show
     p_show = subs.add_parser(
         "show",
@@ -740,7 +772,7 @@ def _build_parser():
 
     for subparser in (
         p_validate, p_append, p_insert, p_edit, p_move, p_remove, p_remove_undone,
-        p_show, p_transaction,
+        p_renumber, p_show, p_transaction,
     ):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
@@ -787,6 +819,8 @@ def main(argv=None):
         cmd_remove(todo_path, args)
     elif args.subcmd == "remove-undone":
         cmd_remove_undone(todo_path)
+    elif args.subcmd == "renumber":
+        cmd_renumber(todo_path)
     elif args.subcmd == "show":
         cmd_show(todo_path, args)
     elif args.subcmd == "transaction":

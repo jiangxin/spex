@@ -778,6 +778,78 @@ class TestMove:
 
 
 # -----------------------------------------------------------------------
+# renumber
+# -----------------------------------------------------------------------
+class TestRenumber:
+    @pytest.mark.parametrize("by_spec_name", [True, False])
+    def test_repair_ids_and_preserve_payload(self, todo_file, monkeypatch, by_spec_name):
+        monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
+        missing_id = {key: value for key, value in SAMPLE_DATA[0].items() if key != "id"}
+        items = [
+            missing_id,
+            dict(SAMPLE_DATA[1], id=None, skip_commit="auto", extra={"labels": ["new"]}),
+            dict(SAMPLE_DATA[2], id="legacy"),
+            dict(SAMPLE_DATA[1], id="legacy"),
+        ]
+        _write(todo_file, items)
+        argv = ["renumber", "topic"] if by_spec_name else [
+            "--todo-file", str(todo_file), "renumber",
+        ]
+
+        todo_helper.main(argv)
+
+        assert _read(todo_file) == [
+            dict(item, id=index) for index, item in enumerate(items, 1)
+        ]
+        numbered = todo_file.read_bytes()
+        todo_helper.main(argv)
+        assert todo_file.read_bytes() == numbered
+
+    def test_empty_array(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert _read(todo_file) == []
+
+    @pytest.mark.parametrize("contents", ["", "{", "{}", "[null]", "[{}]"])
+    def test_reject_invalid_contents(self, todo_file, contents):
+        todo_file.write_text(contents, encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert todo_file.read_text(encoding="utf-8") == contents
+
+    def test_reject_invalid_skip_commit(self, todo_file):
+        _write(todo_file, [dict(SAMPLE_DATA[0], skip_commit="invalid")])
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert todo_file.read_bytes() == original
+
+    def test_reject_missing_file(self, todo_file):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert not todo_file.exists()
+
+    def test_reject_open_transaction(self, todo_file, caplog):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main(["move", "--from", "3", "--to", "1", *locator])
+        pending = todo_file.read_bytes()
+
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", *locator])
+
+        assert exc.value.code == 1
+        assert "transaction commit" in caplog.text
+        assert todo_file.read_bytes() == pending
+        assert todo_file.with_suffix(".json.lock").read_bytes() == original
+
+
+# -----------------------------------------------------------------------
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:
