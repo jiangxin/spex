@@ -59,19 +59,19 @@ evaluation, continue to step 3. Read `eval/spex/adapters/README.md` for setup.
 
 ## 3. Prepare each case
 
-For batches, use the [structured preparation example](../../../eval/spex/adapters/README.md#prepare-a-batch-with-structured-arguments)
-to retain successful handoffs and retry failed preparations individually.
-
-Run `prepare --suite <suite> --case <id> --host <agent> --model <trial-model>`
-with `--spex-ref <ref>` and the resolved `--jobs`. The first successful
-prepare returns the batch `sandbox`. Pass it to every later prepare
-with `--sandbox`. Use the
-returned `workspace`, `environment`, `skill`, `trial`, and `next_input`.
-Record preparation errors with their case IDs. After preparation, run
-`python3 eval/spex/manual.py --sandbox <sandbox> init <suite/id> ...` with all
-selected case IDs. Initialization rejects a missing preparation, so retry
-the missing prepare before dispatching. A deliberately reduced batch must
-be reported as partial relative to the original request.
+For batches, run `prepare --all` with the resolved filters, `--host <agent>`,
+`--model <trial-model>`, `--spex-ref <ref>`, and `--jobs`. It allocates one
+sandbox and prepares every matching case in parallel against the same pinned
+commit. The JSON returns the batch `sandbox`, a `prepared` handoff per case
+(`workspace`, `environment`, `env_script`, `skill`, `trial`, `next_input`),
+and per-case `errors`. Record errors with their case IDs; retry only the
+failed cases with `prepare --case <id> --sandbox <sandbox>`. The
+[structured preparation example](../../../eval/spex/adapters/README.md#prepare-a-batch-with-structured-arguments)
+remains the scripted fallback for a per-case prepare loop. After
+preparation, run `python3 eval/spex/manual.py --sandbox <sandbox> init
+<suite/id> ...` with the prepared case IDs. Initialization rejects a missing
+preparation, so retry the missing prepare before dispatching. A deliberately
+reduced batch must be reported as partial relative to the original request.
 
 ## 4. Execute and collect each turn
 
@@ -83,9 +83,11 @@ claims until capacity changes. Resume only the refused operation when
 the original session can safely continue. Record terminal host failures
 in the original queue before preparing a separate rerun.
 
-1. `claim <suite/id>` reserves a worker slot through grade import.
+1. `claim <suite/id>` reserves a worker slot through grade import. Claim up
+   to the configured worker limit.
 2. Open an independent trial session using the returned workspace,
-   environment, and pinned skill. Verify these before dispatch. If the host
+   environment, and pinned skill. Verify these before dispatch, and source
+   the prepare `env_script` to apply the prepared environment. If the host
    cannot set cwd and environment at session launch, use
    `exec <suite/id> -- <command> ...` on each shell call.
 3. Immediately before dispatch, call

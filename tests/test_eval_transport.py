@@ -789,6 +789,40 @@ def test_parallel_prepares_publish_every_case_and_can_republish(runner):
 
 
 @pytest.mark.slow
+def test_prepare_all_shares_one_sandbox_and_reports_case_errors(runner):
+    manifest = run.SUITES / "example" / "cases.json"
+    original = run.read_json(manifest)[0]
+    manifest.write_text(json.dumps([
+        {**original, "id": name} for name in ("alpha", "bravo")
+    ]), encoding="utf-8")
+
+    result = run.execute(runner.parse_args([
+        "prepare", "--all", "--host", "cursor", "--jobs", "2",
+    ]))
+    sandbox = Path(result["sandbox"])
+    assert result["errors"] == []
+    assert [item["case"] for item in result["prepared"]] == ["alpha", "bravo"]
+    assert [Path(item["trial"]).name for item in result["prepared"]] == ["alpha", "bravo"]
+    assert {item["sandbox"] for item in result["prepared"]} == {str(sandbox)}
+    assert set(run.read_json(sandbox / "batch-index.json")) == {
+        "example/alpha", "example/bravo",
+    }
+    for item in result["prepared"]:
+        script = Path(item["env_script"])
+        assert script.parent == sandbox / "_handoff"
+        assert item["environment"]["SPEX_LOG_DIR"] in script.read_text(encoding="utf-8")
+
+    drifted = Path(result["prepared"][1]["trial"]) / "trial.json"
+    run.write_json(drifted, {**run.read_json(drifted), "host": "claude-code"})
+    again = run.execute(runner.parse_args([
+        "prepare", "--all", "--host", "cursor", "--sandbox", str(sandbox),
+    ]))
+    assert [item["case"] for item in again["errors"]] == ["bravo"]
+    assert "does not match" in again["errors"][0]["error"]
+    assert [Path(item["trial"]).name for item in again["prepared"]] == ["alpha"]
+
+
+@pytest.mark.slow
 def test_manual_collection_requires_same_session(runner, tmp_path):
     info = run.execute(runner.parse_args([
         "prepare", "--case", "clarify", "--model", "example", "--host", "codex",

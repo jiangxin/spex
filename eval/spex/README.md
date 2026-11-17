@@ -65,8 +65,10 @@ Filters match by intersection.
 | One case | `list --suite docs --case analyze-incident` |
 | All smoke cases | `list --tag smoke` |
 
-For current-host runs, call `prepare` once per listed case and reuse the first
-successful preparation's `--sandbox` for the remaining cases.
+For current-host runs, add `--all` to prepare every listed case into one
+sandbox in parallel against the same pinned commit. The JSON reports a
+`prepared` handoff and an `env_script` path per case plus per-case `errors`.
+Retry individual failures with `prepare --case CASE --sandbox PATH`.
 
 ## Current-host trials
 
@@ -101,8 +103,8 @@ checks from `collect` take precedence over AI grades.
 
 The runner does not open host sessions. The portable interface is:
 
-1. `prepare` / `prepare --sandbox` JSON (`workspace`, `environment`,
-   `next_input`, `trial`, `sandbox`).
+1. `prepare` / `prepare --sandbox` / `prepare --all` JSON (`workspace`,
+   `environment`, `env_script`, `next_input`, `trial`, `sandbox`).
 2. Reply files under `<sandbox>/_handoff/<suite>-<case>-turnN.txt`.
 3. `collect` / `export-packet` / `import-grades` / `summary`.
 
