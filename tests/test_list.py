@@ -711,7 +711,7 @@ class TestMainJsonFlag:
 
         monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr(common_mod, "get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr(common_mod, "get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr(common_mod, "get_project_storage", lambda _w=None: ctx)
 
         return specs, archives
 
@@ -810,7 +810,7 @@ class TestNoSpecsStderr:
             common_mod, "get_archives_dir", lambda _w=None: archives,
         )
         monkeypatch.setattr(
-            common_mod, "get_project_context", lambda _w=None: ctx,
+            common_mod, "get_project_storage", lambda _w=None: ctx,
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -833,7 +833,7 @@ class TestNoSpecsStderr:
             common_mod, "get_archives_dir", lambda _w=None: archives,
         )
         monkeypatch.setattr(
-            common_mod, "get_project_context", lambda _w=None: ctx,
+            common_mod, "get_project_storage", lambda _w=None: ctx,
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -859,7 +859,7 @@ class TestNoSpecsStderr:
             common_mod, "get_archives_dir", lambda _w=None: archives,
         )
         monkeypatch.setattr(
-            common_mod, "get_project_context", lambda _w=None: ctx,
+            common_mod, "get_project_storage", lambda _w=None: ctx,
         )
 
         main(["--json"])
@@ -894,7 +894,7 @@ class TestMainFlags:
 
         monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
         monkeypatch.setattr(common_mod, "get_archives_dir", lambda _w=None: archives)
-        monkeypatch.setattr(common_mod, "get_project_context", lambda _w=None: ctx)
+        monkeypatch.setattr(common_mod, "get_project_storage", lambda _w=None: ctx)
 
         return specs, archives
 
@@ -1029,7 +1029,7 @@ class TestDoneUndoneFilter:
             common_mod, "get_archives_dir", lambda _w=None: archives,
         )
         monkeypatch.setattr(
-            common_mod, "get_project_context", lambda _w=None: ctx,
+            common_mod, "get_project_storage", lambda _w=None: ctx,
         )
 
     def test_default_shows_all(self, tmp_path, monkeypatch, capsys):

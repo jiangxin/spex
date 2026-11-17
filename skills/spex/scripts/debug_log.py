@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Iterator
 
 from common import find_matching_specs, local_iso_timestamp, logger
-from config import get_project_context
+from config import get_project_storage, load_config
 
 MAX_STREAM_BYTES = 256 * 1024
 PROMPT_STDOUT_LOG_BYTES = 2 * 1024
@@ -62,8 +62,7 @@ def debug_enabled(argv: list[str]) -> bool:
     """Return True if CLI debug flag or config.debug is enabled."""
     if "-d" in argv or "--debug" in argv:
         return True
-    ctx = get_project_context()
-    return bool(ctx.config.get("debug"))
+    return bool(load_config().get("debug"))
 
 
 def append_debug_anchor(log_path: Path, line: str) -> None:
@@ -582,7 +581,7 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
     if log_dir is not None:
         return log_dir / DEBUG_LOG_NAME
 
-    ctx = get_project_context()
+    ctx = get_project_storage()
     if not ctx.spex_root:
         return None
 
@@ -625,7 +624,7 @@ def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
         path = Path(env_path).expanduser()
         return log_dir / path if log_dir is not None else path
 
-    ctx = get_project_context()
+    ctx = get_project_storage()
     configured = str(ctx.config.get("trace_file") or "").strip()
     if configured:
         path = Path(configured).expanduser()
@@ -660,7 +659,7 @@ def safe_flush_debug_log_path(
     if pre_resolved is not None and pre_resolved.parent.is_dir():
         return pre_resolved
 
-    ctx = get_project_context()
+    ctx = get_project_storage()
     if ctx.spex_root:
         return Path(ctx.spex_root) / DEBUG_LOG_NAME
     return None
@@ -672,7 +671,7 @@ def _is_under_specs_tree(path: Path) -> bool:
     Uses path structure relative to configured ``spex_root``, so the check
     still holds when the entire ``specs/`` directory has vanished.
     """
-    ctx = get_project_context()
+    ctx = get_project_storage()
     if ctx.spex_root:
         specs_root = Path(ctx.spex_root) / "specs"
         try:

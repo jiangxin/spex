@@ -3,7 +3,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import archive as spex_archive
 import pytest
@@ -61,6 +61,52 @@ def test_archive_positional_selector_order(argv):
     args = spex_archive._build_parser().parse(argv)
     assert args.name == "topic"
     assert args.restore and args.json_mode
+
+
+@pytest.mark.parametrize("count", [1, 100])
+@pytest.mark.parametrize("fallback", [False, True])
+def test_batch_archive_shares_branch_query(tmp_path, monkeypatch, capsys, count, fallback):
+    specs = tmp_path / "specs"
+    for index in range(count):
+        topic = specs / f"topic-{index}"
+        _write_todo(topic, [_make_task("1")])
+        (topic / "meta.json").write_text(
+            json.dumps({"spex_branch": f"refs/heads/spex/topic-{index}"}),
+            encoding="utf-8",
+        )
+    unrelated = specs / "unrelated"
+    _write_todo(unrelated, [_make_task("1")])
+    (unrelated / "meta.json").write_text(
+        json.dumps({"spex_branch": "spex/unrelated", "workdir": "/other"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(spex_archive, "get_specs_dir", lambda: specs)
+    monkeypatch.setattr(spex_archive, "get_archives_dir", lambda: tmp_path / "archives")
+    monkeypatch.setattr(spex_archive, "get_project_context", lambda: _mock_project_context("/repo"))
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[1] == "for-each-ref":
+            return subprocess.CompletedProcess(
+                args, int(fallback), "" if fallback else "refs/heads/spex/topic-0\n", "",
+            )
+        assert args[:3] == ["git", "rev-parse", "--verify"]
+        return subprocess.CompletedProcess(args, int(args[-1] != "refs/heads/spex/topic-0"), "", "")
+
+    with patch("branch.subprocess.run", side_effect=run):
+        spex_archive.main(["--dry-run", "--json"])
+        results = json.loads(capsys.readouterr().out)["results"]
+        assert len(results) == count
+        skipped = [item["spec_name"] for item in results if item["action"] == "skipped"]
+        assert skipped == ["topic-0"]
+        assert calls[0] == ["git", "for-each-ref", "--format=%(refname)", "refs/heads/"]
+        assert len(calls) == 1 + (count if fallback else 0)
+        assert all("refs/heads/spex/unrelated" not in cmd for cmd in calls)
+
+        calls.clear()
+        spex_archive.main(["--dry-run", "--json", "--force"])
+        assert not calls
 
 
 def _mock_project_context(top_workdir=None):
@@ -861,8 +907,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "branch.branch_exists",
-            side_effect=lambda name: name == "spex/active",
+            "branch.list_local_branch_refs", return_value={"refs/heads/spex/active"},
         ), caplog.at_level(logging.INFO):
             spex_archive.main()
         assert "Would archive 1 spec(s)" in caplog.text
@@ -890,8 +935,7 @@ class TestMainWithBranchGuard:
         ), patch.object(
             spex_archive, "get_archives_dir", return_value=archives
         ), patch(
-            "branch.branch_exists",
-            side_effect=lambda name: name == "spex/active",
+            "branch.list_local_branch_refs", return_value={"refs/heads/spex/active"},
         ), caplog.at_level(logging.INFO):
             spex_archive.main()
         assert "merged-topic" in caplog.text
@@ -1355,8 +1399,7 @@ class TestArchiveJsonOutput:
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
         ), patch(
-            "branch.branch_exists",
-            side_effect=lambda name: name == "spex/active",
+            "branch.list_local_branch_refs", return_value={"refs/heads/spex/active"},
         ):
             spex_archive.main(["--json", "--dry-run"])
         data = json.loads(capsys.readouterr().out)
@@ -1366,6 +1409,31 @@ class TestArchiveJsonOutput:
         assert by_name["active-topic"]["action"] == "skipped"
         assert (specs / "merged-topic").is_dir()
         assert (specs / "active-topic").is_dir()
+
+    @pytest.mark.parametrize("returncode", [0, 1])
+    def test_batch_verifies_filesystem_aliases_with_git(self, tmp_path, returncode):
+        names = ["spex/CAFÉ", "spex/exact", "spex/missing"]
+        candidates = [tmp_path / str(index) for index, _ in enumerate(names)]
+        for candidate, name in zip(candidates, names):
+            candidate.mkdir()
+            (candidate / "meta.json").write_text(
+                json.dumps({"spex_branch": name}), encoding="utf-8",
+            )
+
+        with patch(
+            "branch.list_local_branch_refs",
+            return_value={"refs/heads/spex/cafe\u0301", "refs/heads/spex/exact"},
+        ), patch("branch.subprocess.run", return_value=Mock(returncode=returncode)) as run:
+            archivable, skipped = spex_archive._partition_active_branches(candidates)
+
+        run.assert_called_once_with(
+            ["git", "rev-parse", "--verify", "refs/heads/spex/CAFÉ"],
+            capture_output=True,
+            text=True,
+            cwd=None,
+        )
+        assert archivable == ([candidates[2]] if returncode == 0 else candidates[::2])
+        assert skipped == list(zip(candidates[:2], names[:2]))[returncode:]
 
     def test_json_dry_run_skipped_respects_project_scope(
         self, tmp_path, capsys
@@ -1397,8 +1465,7 @@ class TestArchiveJsonOutput:
         archives = tmp_path / "archives"
         ctx = _mock_project_context(top_workdir="/my/repo")
 
-        def _branch_exists(name):
-            return name in {"spex/mine-active", "spex/other-active"}
+        refs = {"refs/heads/spex/mine-active", "refs/heads/spex/other-active"}
 
         with patch.object(
             spex_archive, "get_specs_dir", return_value=specs
@@ -1406,7 +1473,7 @@ class TestArchiveJsonOutput:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ), patch("branch.branch_exists", side_effect=_branch_exists):
+        ), patch("branch.list_local_branch_refs", return_value=refs):
             spex_archive.main(["--json", "--dry-run"])
         data = json.loads(capsys.readouterr().out)
         by_name = {r["spec_name"]: r for r in data["results"]}
@@ -1420,7 +1487,7 @@ class TestArchiveJsonOutput:
             spex_archive, "get_archives_dir", return_value=archives
         ), patch.object(
             spex_archive, "get_project_context", return_value=ctx
-        ), patch("branch.branch_exists", side_effect=_branch_exists):
+        ), patch("branch.list_local_branch_refs", return_value=refs):
             spex_archive.main(["--json", "--dry-run", "--all-projects"])
         data_all = json.loads(capsys.readouterr().out)
         by_name_all = {r["spec_name"]: r for r in data_all["results"]}

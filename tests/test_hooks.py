@@ -39,7 +39,7 @@ class TestResolveHookRoots:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             roots = hooks._resolve_hook_roots()
 
         assert len(roots) >= 1
@@ -75,7 +75,7 @@ class TestFindHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result == hook_file
 
@@ -109,7 +109,7 @@ class TestFindHook:
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             clear_spex_root_cache()
             result = hooks.find_hook("post-action")
             assert result is None
@@ -151,7 +151,7 @@ class TestFindHook:
             spex_root=str(primary),
             spex_roots=[str(primary), str(secondary)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             clear_spex_root_cache()
             result = hooks.find_hook("post-action")
             assert result == primary_hook
@@ -181,7 +181,7 @@ class TestFindHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result is None
 
@@ -204,7 +204,7 @@ class TestFindHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.find_hook("post-action")
         assert result is None
 
@@ -279,7 +279,7 @@ class TestRunHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             hooks.run_hook(
                 "post-action",
                 {"event_type": "apply", "payload": {}},
@@ -316,7 +316,7 @@ class TestRunHook:
             spex_roots=[str(tmp_path)],
         )
         with caplog.at_level(logging.WARNING):
-            with patch("common.get_project_context", return_value=ctx):
+            with patch("common.get_project_storage", return_value=ctx):
                 hooks.run_hook(
                     "post-action",
                     {"event_type": "create", "payload": {}},
@@ -345,7 +345,7 @@ class TestRunHook:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             hooks.run_hook(
                 "post-action",
                 {"event_type": "init", "payload": {}},
@@ -403,7 +403,7 @@ class TestRunPostAction:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             hooks.run_post_action(
                 "apply", {"foo": "bar"}, str(tmp_path), spec_name="my-topic"
             )
@@ -435,7 +435,7 @@ class TestRunHookReturnValue:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "pre-action",
                 {"event_type": "create", "payload": {}},
@@ -469,7 +469,7 @@ class TestRunHookReturnValue:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "pre-action",
                 {"event_type": "create", "payload": {}},
@@ -505,7 +505,7 @@ class TestRunHookReturnValue:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "pre-action",
                 {"event_type": "create", "payload": {}},
@@ -563,7 +563,7 @@ class TestRunPreAction:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             hooks.run_pre_action(
                 "create", {"topic": "feat"}, str(tmp_path),
                 spec_name="my-spec",
@@ -609,7 +609,7 @@ class TestRunPreAction:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             with pytest.raises(SystemExit) as exc_info:
                 hooks.run_pre_action(
                     "apply", {}, str(tmp_path),
@@ -653,7 +653,7 @@ class TestRunPreAction:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             # Should not raise SystemExit
             hooks.run_pre_action(
                 "create", {}, str(tmp_path),
@@ -678,7 +678,7 @@ class TestRunPreAction:
             spex_root=str(tmp_path),
             spex_roots=[str(tmp_path)],
         )
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             # Should not raise SystemExit
             hooks.run_pre_action(
                 "create", {}, str(tmp_path),
@@ -719,7 +719,7 @@ class TestHookConfinement:
         os.chmod(hook_file, 0o755)
 
         ctx = _hook_project_ctx(tmp_path)
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "post-action",
                 {"event_type": "apply", "payload": {}},
@@ -747,7 +747,7 @@ class TestHookConfinement:
         hook_file.symlink_to(evil)
 
         ctx = _hook_project_ctx(tmp_path)
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "pre-action",
                 {"event_type": "create", "payload": {}},
@@ -770,7 +770,7 @@ class TestHookConfinement:
         os.chmod(hook_file, 0o777)
 
         ctx = _hook_project_ctx(tmp_path)
-        with patch("common.get_project_context", return_value=ctx):
+        with patch("common.get_project_storage", return_value=ctx):
             result = hooks.run_hook(
                 "pre-action",
                 {"event_type": "create", "payload": {}},

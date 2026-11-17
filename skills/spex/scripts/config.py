@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
+import git_config
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -47,20 +49,10 @@ _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
 _DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
 
 @dataclass
-class ProjectContext:
-    """Full project context including git metadata and spex configuration."""
-
+class _ProjectLocation:
     cwd: Path
     top_workdir: Path | None
     main_worktree: Path | None
-    remote_url: str
-    branch: str
-    user_name: str
-    user_email: str
-    spex_tomls: list[Path] = field(default_factory=list)
-    config: dict = field(default_factory=dict)
-    spex_root: str = ""
-    spex_roots: list[str] = field(default_factory=list)
 
     def in_git_workdir(self) -> bool:
         return self.top_workdir is not None
@@ -112,11 +104,37 @@ class ProjectContext:
 
         return False
 
+
+@dataclass
+class ProjectStorage(_ProjectLocation):
+    """Repository location and Spex storage settings."""
+
+    spex_tomls: list[Path]
+    config: dict
+    spex_root: str
+    spex_roots: list[str]
+
+
+@dataclass
+class ProjectContext(_ProjectLocation):
+    """Full project context including git metadata and spex configuration."""
+
+    remote_url: str
+    branch: str
+    user_name: str
+    user_email: str
+    spex_tomls: list[Path] = field(default_factory=list)
+    config: dict = field(default_factory=dict)
+    spex_root: str = ""
+    spex_roots: list[str] = field(default_factory=list)
+
+
 _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}
 _config_cache: dict[Path, dict] = {}
 _project_context_cache: dict[str, ProjectContext] = {}
+_project_storage_cache: dict[Path, ProjectStorage] = {}
 _spex_config_file_override: str | None = None
 
 
@@ -131,7 +149,7 @@ def _get_main_worktree(workdir: str | Path | None = None) -> Path | None:
     Handles linked worktrees and submodules: when .git is a file, resolves
     back to the main worktree via ``git worktree list --porcelain``.
     """
-    key = str(Path(workdir).resolve()) if workdir else None
+    key = Path(workdir).resolve() if workdir else Path.cwd().resolve()
     cached = _main_worktree_cache.get(key, _SENTINEL)
     if cached is not _SENTINEL:
         return cached
@@ -173,7 +191,7 @@ def _get_main_worktree(workdir: str | Path | None = None) -> Path | None:
 
 def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
     """Return the git top workdir, or None if not inside a repo. Cached."""
-    key = str(Path(workdir).resolve()) if workdir else None
+    key = Path(workdir).resolve() if workdir else Path.cwd().resolve()
     cached = _top_workdir_cache.get(key, _SENTINEL)
     if cached is not _SENTINEL:
         return cached
@@ -448,6 +466,35 @@ def _get_remote_url(cwd: str | Path | None = None) -> str:
     return ""
 
 
+def _get_git_identity(workdir: Path) -> tuple[str, str]:
+    """Return configured user name and email with the metadata defaults."""
+    try:
+        user_name = git_config.get("user.name", workdir)
+        user_email = git_config.get("user.email", workdir)
+    except git_config.GitConfigError:
+        return "", ""
+    return (user_name or "").strip(), (user_email or "").strip()
+
+
+def get_project_storage(workdir: str | Path | None = None) -> ProjectStorage:
+    """Resolve storage and project matching without querying Git metadata."""
+    cwd = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+    if cwd not in _project_storage_cache:
+        config_worktree = _get_config_worktree(cwd)
+        spex_tomls = _find_spex_tomls(config_worktree, cwd)
+        spex_roots = _resolve_spex_roots(spex_tomls, config_worktree, cwd)
+        _project_storage_cache[cwd] = ProjectStorage(
+            cwd=cwd,
+            top_workdir=_get_top_workdir(cwd),
+            main_worktree=_get_main_worktree(cwd),
+            spex_tomls=spex_tomls,
+            config=load_config(cwd),
+            spex_root=spex_roots[0] if spex_roots else "",
+            spex_roots=spex_roots,
+        )
+    return _project_storage_cache[cwd]
+
+
 def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     """Return a fully resolved ProjectContext, cached by resolved workdir.
 
@@ -460,12 +507,10 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     if cache_key in _project_context_cache:
         return _project_context_cache[cache_key]
 
-    top_workdir = _get_top_workdir(workdir)
-    main_worktree = _get_main_worktree(workdir)
-    user_name = _git_field(["git", "config", "user.name"], cwd=workdir)
-    user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
+    storage = get_project_storage(workdir)
+    user_name, user_email = _get_git_identity(workdir)
 
-    if top_workdir is not None:
+    if storage.in_git_workdir():
         remote_url = _get_remote_url(cwd=workdir)
         try:
             from branch import get_current_branch
@@ -476,24 +521,18 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
         remote_url = ""
         branch = ""
 
-    config_worktree = _get_config_worktree(workdir)
-    spex_tomls = _find_spex_tomls(config_worktree, workdir)
-    config = load_config(workdir)
-    spex_roots = _resolve_spex_roots(spex_tomls, config_worktree, workdir)
-    spex_root = spex_roots[0] if spex_roots else ""
-
     ctx = ProjectContext(
         cwd=workdir,
-        top_workdir=top_workdir,
-        main_worktree=main_worktree,
+        top_workdir=storage.top_workdir,
+        main_worktree=storage.main_worktree,
         remote_url=remote_url,
         branch=branch,
         user_name=user_name,
         user_email=user_email,
-        spex_tomls=spex_tomls,
-        config=config,
-        spex_root=spex_root,
-        spex_roots=spex_roots,
+        spex_tomls=storage.spex_tomls,
+        config=storage.config,
+        spex_root=storage.spex_root,
+        spex_roots=storage.spex_roots,
     )
     _project_context_cache[cache_key] = ctx
     return ctx
@@ -584,12 +623,24 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
     return _merge_configs(get_spex_tomls(workdir))
 
 
+def clear_git_config_cache(
+    *, local_only: bool = False, cwd: str | Path | None = None,
+) -> None:
+    """Discard Git configuration snapshots and derived project metadata."""
+    if local_only:
+        git_config.invalidate_local(cwd)
+    else:
+        git_config.clear_cache()
+    _project_context_cache.clear()
+    _project_storage_cache.clear()
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _top_workdir_cache, _main_worktree_cache
-    global _project_context_cache, _spex_config_file_override
+    global _spex_config_file_override
+    clear_git_config_cache()
     _config_cache.clear()
     _top_workdir_cache = {}
     _main_worktree_cache = {}
-    _project_context_cache = {}
     _spex_config_file_override = None
