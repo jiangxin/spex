@@ -64,7 +64,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
@@ -80,7 +80,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", mock_merge):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
 
@@ -107,7 +107,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", MagicMock()), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run"])
@@ -123,7 +123,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "--dry-run", "--no-archive"])
@@ -144,7 +144,7 @@ class TestDryRun:
 
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", mock_merge), \
              caplog.at_level(logging.INFO):
             spex_merge.cli_submit(["my-topic", "-n"])
@@ -170,8 +170,9 @@ class TestAutoSelect:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
-             patch("worktree.find_worktree_for_branch",
-                   return_value=target_wt), \
+             patch("worktree.list_worktrees", return_value=[{
+                 "path": str(target_wt), "branch": "refs/heads/main",
+             }]), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_post_action"), \
              patch("archive.archive_single_spec", return_value=None), \
@@ -312,8 +313,9 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
-             patch("worktree.find_worktree_for_branch",
-                   return_value=Path(tmp_path)), \
+             patch("worktree.list_worktrees", return_value=[{
+                 "path": str(Path(tmp_path)), "branch": "refs/heads/main",
+             }]), \
              patch("branch.merge_branch", side_effect=conflict), \
              patch("hooks.run_pre_action"), \
              caplog.at_level(logging.ERROR), \
@@ -337,7 +339,7 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=False), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.create_and_switch_branch", side_effect=create_err), \
              patch("hooks.run_pre_action"), \
              caplog.at_level(logging.ERROR), \
@@ -360,7 +362,7 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
-             patch("worktree.find_worktree_for_branch", return_value=None), \
+             patch("worktree.list_worktrees", return_value=[]), \
              patch("branch.merge_branch", mock_merge), \
              patch("hooks.run_pre_action"), \
              patch("hooks.run_post_action"), \
@@ -379,8 +381,9 @@ class TestMergeErrorsToStderr:
         with patch("config.get_project_context", return_value=ctx), \
              patch("common.get_specs_dir", return_value=specs), \
              patch("branch.branch_exists", return_value=True), \
-             patch("worktree.find_worktree_for_branch",
-                   return_value=Path(tmp_path)), \
+             patch("worktree.list_worktrees", return_value=[{
+                 "path": str(Path(tmp_path)), "branch": "refs/heads/main",
+             }]), \
              patch("branch.merge_branch"), \
              patch("hooks.run_pre_action"), \
              patch("hooks.run_post_action"), \

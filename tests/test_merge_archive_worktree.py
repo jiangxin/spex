@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from archive import archive_single_spec
 from branch import get_current_branch
 from common import SpecMeta, clear_spex_root_cache, load_meta
 from config import ProjectContext, clear_config_cache
-from merge import cli_submit
+from merge import _plan_merge, cli_submit
 from worktree import (
     add_worktree,
     is_registered_worktree,
@@ -80,8 +81,9 @@ def _write_completed_spec(
 
 @pytest.mark.slow
 class TestMergeOnTargetWorktree:
+    @pytest.mark.parametrize("from_target", [False, True])
     def test_merge_succeeds_while_feature_locked_in_worktree(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, monkeypatch, capsys, from_target,
     ):
         """Feature branch locked in spex worktree; merge on main succeeds."""
         home = tmp_path / "home"
@@ -124,11 +126,12 @@ class TestMergeOnTargetWorktree:
 
         clear_config_cache()
         clear_spex_root_cache()
-        monkeypatch.chdir(main)
+        caller = main if from_target else wt_path
+        monkeypatch.chdir(caller)
 
         ctx = ProjectContext(
-            cwd=main,
-            top_workdir=main,
+            cwd=caller,
+            top_workdir=caller,
             main_worktree=main,
             remote_url="",
             branch=main_branch,
@@ -170,7 +173,7 @@ class TestMergeOnTargetWorktree:
 
         # Legacy apply: switch main worktree onto the feature branch
         # (no linked spex worktree). Target trunk is then not checked out
-        # anywhere until merge falls back to main_worktree and switches.
+        # anywhere until merge switches this single checkout.
         subprocess.run(
             ["git", "switch", "-c", "spex/feat"],
             cwd=main, check=True, capture_output=True,
@@ -232,6 +235,304 @@ class TestMergeOnTargetWorktree:
         assert out["target"] == main_branch
         assert get_current_branch(main) == main_branch
         assert (main / "feature.txt").is_file()
+
+
+def _git(cwd: Path, *args: str, check: bool = True):
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=check, capture_output=True, text=True,
+    )
+
+
+@pytest.fixture
+def linked_merge(tmp_path, monkeypatch):
+    main = tmp_path / "repo"
+    _git_init_with_commit(main)
+    _git(main, "switch", "-c", "original-main")
+    local_readme = main / "README"
+    local_readme.write_text("unrelated local edit\n", encoding="utf-8")
+
+    caller = tmp_path / "linked"
+    add_worktree(caller, "caller", base="main", cwd=main)
+    _git(caller, "switch", "-c", "spex/feat")
+    (caller / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(caller, "add", "feature.txt")
+    _git(caller, "commit", "-m", "feature")
+    _git(caller, "switch", "caller")
+    _git(caller, "commit", "--allow-empty", "-m", "caller-only base")
+
+    root = tmp_path / "spex"
+    specs = root / "specs"
+    archives = root / "archives"
+    spec_dir = specs / "linked-merge"
+    _write_completed_spec(spec_dir, main=main, spex_branch="spex/feat")
+    ctx = ProjectContext(
+        cwd=caller,
+        top_workdir=caller,
+        main_worktree=main,
+        remote_url="",
+        branch="caller",
+        user_name="Test",
+        user_email="test@example.com",
+        config={"submit_method": "merge"},
+        spex_root=str(root),
+        spex_roots=[str(root)],
+    )
+    monkeypatch.chdir(caller)
+    with patch("config.get_project_context", return_value=ctx), \
+         patch("common.get_specs_dir", return_value=specs), \
+         patch("common.get_archives_dir", return_value=archives), \
+         patch("hooks.run_pre_action"), \
+         patch("hooks.run_post_action") as post_action:
+        yield main, caller, spec_dir, archives, post_action
+
+
+@pytest.mark.slow
+class TestTemporaryMergeCheckout:
+    def test_bare_record_is_not_a_checkout(self, linked_merge, tmp_path):
+        main, _, _, _, _ = linked_merge
+        bare = tmp_path / "bare.git"
+        _git(tmp_path, "clone", "--bare", str(main), str(bare))
+        caller = tmp_path / "bare-linked"
+        add_worktree(caller, "caller", cwd=bare)
+
+        plan = _plan_merge("main", caller)
+
+        assert plan.cwd == caller
+        assert plan.current_branch == "caller"
+        assert not plan.multiple_worktrees
+        assert not plan.target_checked_out
+        assert plan.restore_branch == ""
+
+    @pytest.mark.parametrize("missing_target", [False, True])
+    def test_merges_in_caller_and_restores_branch(
+        self, linked_merge, capsys, missing_target,
+    ):
+        main, caller, spec_dir, archives, post_action = linked_merge
+        target = "main"
+        caller_head = _git(caller, "rev-parse", "HEAD").stdout.strip()
+        if missing_target:
+            target = "new-target"
+            _write_completed_spec(
+                spec_dir, main=main, spex_branch="spex/feat", branch=target,
+            )
+
+        with patch("hooks.run_pre_action") as pre_action:
+            cli_submit([spec_dir.name, "--dry-run"])
+        pre_action.assert_not_called()
+        preview = json.loads(capsys.readouterr().out)
+        assert Path(preview["merge_cwd"]).resolve() == caller.resolve()
+        assert preview["merge_cwd_head"] == "caller"
+        assert preview["would_switch"] is True
+        assert get_current_branch(caller) == "caller"
+        if missing_target:
+            assert _git(caller, "rev-parse", "--verify", target, check=False).returncode
+        post_action.assert_not_called()
+
+        cli_submit([spec_dir.name, "--no-archive"])
+        assert json.loads(capsys.readouterr().out)["errors"] == []
+        assert _git(caller, "symbolic-ref", "HEAD").stdout.strip() == "refs/heads/caller"
+        assert _git(caller, "rev-parse", "HEAD").stdout.strip() == caller_head
+        _git(caller, "merge-base", "--is-ancestor", "spex/feat", target)
+        if missing_target:
+            assert _git(caller, "rev-parse", f"{target}^1").stdout.strip() == caller_head
+        assert get_current_branch(main) == "original-main"
+        assert (main / "README").read_text(encoding="utf-8") == "unrelated local edit\n"
+        assert not archives.exists()
+        post_action.assert_called_once()
+
+    @pytest.mark.parametrize("command", ["merge", "submit"])
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_pending_todo_transaction_blocks_submit(
+        self, linked_merge, capsys, command, dry_run,
+    ):
+        _, caller, spec_dir, archives, post_action = linked_merge
+        backup = spec_dir / "todo.json.lock"
+        backup_bytes = b'[{ "id": "1", "completed_at": "" }]\n'
+        backup.write_bytes(backup_bytes)
+        todo = spec_dir / "todo.json"
+        todo_before = todo.read_bytes()
+        refs_before = _git(caller, "show-ref").stdout
+        args = [spec_dir.name, "--dry-run"] if dry_run else [spec_dir.name]
+
+        with patch("hooks.run_pre_action") as pre_action, \
+             pytest.raises(SystemExit) as exc_info:
+            cli_submit(args, command=command)
+
+        assert exc_info.value.code == 1
+        error = json.loads(capsys.readouterr().out)["errors"][0]
+        assert str(backup) in error
+        for action in ("commit", "rollback"):
+            assert f"spex todo-helper transaction {action} {spec_dir.name}" in error
+        assert backup.read_bytes() == backup_bytes
+        assert todo.read_bytes() == todo_before
+        assert _git(caller, "show-ref").stdout == refs_before
+        assert get_current_branch(caller) == "caller"
+        assert not archives.exists()
+        pre_action.assert_not_called()
+        post_action.assert_not_called()
+
+    @pytest.mark.parametrize("archive_mode", ["preserve", "remove", "skip", "stale"])
+    def test_archive_after_restoring_worktree(
+        self, linked_merge, capsys, caplog, archive_mode,
+    ):
+        main, caller, spec_dir, archives, post_action = linked_merge
+        bound = caller.parent / "bound-worktree"
+        if archive_mode == "preserve":
+            bound.symlink_to(caller, target_is_directory=True)
+        elif archive_mode != "stale":
+            add_worktree(bound, "bound", base="main", cwd=main)
+        dirty_file = caller / "local.txt"
+        dirty_file.write_text("uncommitted work\n", encoding="utf-8")
+        _write_completed_spec(
+            spec_dir, main=main, spex_branch="spex/feat", spex_worktree=str(bound),
+        )
+        meta_before = (spec_dir / "meta.json").read_bytes()
+        args = [spec_dir.name]
+        if archive_mode == "skip":
+            args.append("--no-archive")
+
+        with caplog.at_level(logging.INFO):
+            cli_submit([*args, "--dry-run"])
+        preview = json.loads(capsys.readouterr().out)
+        retained = str(caller) if archive_mode == "preserve" else ""
+        assert preview["multiple_worktrees"] is True
+        assert preview["would_restore_branch"] == "caller"
+        assert preview["would_retain_worktree"] == retained
+        assert preview["would_remove_worktree"] is (archive_mode == "remove")
+        assert "Would restore branch: caller" in caplog.text
+        assert ("Would retain worktree:" in caplog.text) is bool(retained)
+        assert spec_dir.is_dir() and not archives.exists()
+        assert bound.is_dir() is (archive_mode != "stale")
+
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            cli_submit(args)
+        submitted = json.loads(capsys.readouterr().out)
+        assert submitted["archived"] is (archive_mode != "skip")
+        assert Path(submitted["merge_cwd"]).resolve() == caller.resolve()
+        assert submitted["multiple_worktrees"] is True
+        assert submitted["restored_branch"] == "caller"
+        assert submitted["retained_worktree"] == retained
+        assert "Merged 'spex/feat' into 'main'." in caplog.text
+        assert f"Merge worktree: {caller}" in caplog.text
+        assert "Restored branch: caller" in caplog.text
+        assert ("Retained worktree:" in caplog.text) is bool(retained)
+        assert get_current_branch(caller) == "caller"
+        assert is_registered_worktree(caller, cwd=main)
+        assert dirty_file.read_text(encoding="utf-8") == "uncommitted work\n"
+        assert bound.is_dir() is (archive_mode in ("preserve", "skip"))
+        assert is_registered_worktree(bound, cwd=main) is bound.is_dir()
+        post_action.assert_called_once()
+
+        if archive_mode == "skip":
+            assert spec_dir.is_dir() and not archives.exists()
+        else:
+            assert not spec_dir.exists()
+            assert (archives / spec_dir.name / "meta.json").read_bytes() == meta_before
+
+    @pytest.mark.parametrize("command", ["merge", "submit"])
+    def test_cli_worktree_summary_for_a_single_checkout(self, tmp_path, command):
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        _git(main, "branch", "spex/feat")
+        root = tmp_path / "spex"
+        (main / ".spex.toml").write_text(
+            f'[spex]\ninherit_config = false\nspex_root = "{root}"\n',
+            encoding="utf-8",
+        )
+        spec_dir = root / "specs" / "merge-summary"
+        _write_completed_spec(spec_dir, main=main, spex_branch="spex/feat")
+        cli = Path(__file__).resolve().parents[1] / "skills/spex/scripts/spex"
+        args = [sys.executable, str(cli), command, spec_dir.name, "--no-archive"]
+
+        preview = subprocess.run(
+            [*args, "--dry-run"], cwd=main, check=True, capture_output=True, text=True,
+        )
+        out = json.loads(preview.stdout)
+        assert out["source"] == "spex/feat" and out["target"] == "main"
+        assert out["dry_run"] is True and out["target_checked_out"] is True
+        assert out["multiple_worktrees"] is False
+        assert out["would_restore_branch"] == "" and out["would_retain_worktree"] == ""
+        assert out["would_remove_worktree"] is False
+        assert "Would merge: spex/feat -> main" in preview.stderr
+
+        submitted = subprocess.run(
+            args, cwd=main, check=True, capture_output=True, text=True,
+        )
+        out = json.loads(submitted.stdout)
+        assert out["source"] == "spex/feat" and out["target"] == "main"
+        assert Path(out["merge_cwd"]).resolve() == main.resolve()
+        assert out["multiple_worktrees"] is False and out["archived"] is False
+        assert out["restored_branch"] == "" and out["retained_worktree"] == ""
+        assert "Merged 'spex/feat' into 'main'." in submitted.stderr
+
+    def test_restores_caller_branch_when_a_tag_has_the_same_name(
+        self, linked_merge, capsys,
+    ):
+        _, caller, spec_dir, _, post_action = linked_merge
+        _git(caller, "tag", "caller")
+
+        cli_submit([spec_dir.name, "--no-archive"])
+
+        assert json.loads(capsys.readouterr().out)["errors"] == []
+        assert _git(caller, "symbolic-ref", "HEAD").stdout.strip() == "refs/heads/caller"
+        _git(caller, "merge-base", "--is-ancestor", "spex/feat", "main")
+        post_action.assert_called_once()
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_rejects_detached_caller(self, linked_merge, capsys, dry_run):
+        main, caller, spec_dir, archives, post_action = linked_merge
+        _write_completed_spec(
+            spec_dir, main=main, spex_branch="spex/feat", branch="new-target",
+        )
+        _git(caller, "switch", "--detach")
+        before = _git(caller, "rev-parse", "HEAD").stdout.strip()
+        args = [spec_dir.name, "--dry-run"] if dry_run else [spec_dir.name]
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli_submit(args)
+
+        assert exc_info.value.code == 1
+        error = json.loads(capsys.readouterr().out)["errors"][0]
+        assert str(caller) in error
+        assert "detached HEAD" in error
+        assert _git(caller, "rev-parse", "HEAD").stdout.strip() == before
+        assert _git(caller, "symbolic-ref", "HEAD", check=False).returncode
+        assert _git(caller, "rev-parse", "--verify", "new-target", check=False).returncode
+        assert spec_dir.is_dir() and not archives.exists()
+        post_action.assert_not_called()
+
+    @pytest.mark.parametrize("restore_failure", [False, True])
+    def test_preserves_merge_or_recovery_state(
+        self, linked_merge, capsys, restore_failure,
+    ):
+        _, caller, spec_dir, archives, post_action = linked_merge
+        if not restore_failure:
+            _git(caller, "switch", "main")
+            (caller / "feature.txt").write_text("conflicting change\n", encoding="utf-8")
+            _git(caller, "add", "feature.txt")
+            _git(caller, "commit", "-m", "conflicting target")
+            _git(caller, "switch", "caller")
+        failure = subprocess.CalledProcessError(1, "git switch", stderr="switch blocked")
+
+        with patch("branch.switch_branch", side_effect=failure) as switch, \
+             pytest.raises(SystemExit) as exc_info:
+            cli_submit([spec_dir.name])
+
+        assert exc_info.value.code == 1
+        error = json.loads(capsys.readouterr().out)["errors"][0]
+        assert str(caller) in error
+        assert get_current_branch(caller) == "main"
+        if restore_failure:
+            assert "Merge completed" in error and "caller" in error
+            switch.assert_called_once_with("caller", cwd=caller)
+            _git(caller, "merge-base", "--is-ancestor", "spex/feat", "main")
+        else:
+            assert "Merge failed" in error
+            switch.assert_not_called()
+            _git(caller, "rev-parse", "--verify", "MERGE_HEAD")
+        assert spec_dir.is_dir() and not archives.exists()
+        post_action.assert_not_called()
 
 
 @pytest.mark.slow

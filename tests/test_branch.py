@@ -58,11 +58,11 @@ class TestGetCurrentBranch:
     @patch("branch.subprocess.run")
     def test_returns_branch_name(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="main\n", stderr=""
+            args=[], returncode=0, stdout="refs/heads/main\n", stderr=""
         )
         assert get_current_branch() == "main"
         mock_run.assert_called_once_with(
-            ["git", "symbolic-ref", "--short", "HEAD"],
+            ["git", "symbolic-ref", "HEAD"],
             capture_output=True,
             text=True,
             cwd=None,
@@ -714,6 +714,11 @@ class TestCliPostAction:
 
 
 class TestCliSubmit:
+    @pytest.fixture(autouse=True)
+    def mock_submit_hooks(self):
+        with patch("hooks.run_pre_action"), patch("hooks.run_post_action"):
+            yield
+
     @patch("merge._find_submittable_specs", return_value=[])
     def test_no_spec_arg_exits(self, _mock, caplog):
         """Empty spec argument causes error exit."""
@@ -761,11 +766,13 @@ class TestCliSubmit:
 
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
-    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
+    @patch("worktree.list_worktrees", return_value=[{
+        "path": "/fake/main", "branch": "refs/heads/main",
+    }])
     @patch("branch.merge_branch")
     @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
-        config={"submit_method": "merge"}))
+        top_workdir=Path("/fake/main"), config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success(self, mock_resolve, _specs, _ctx, _exists, mock_merge,
@@ -788,11 +795,13 @@ class TestCliSubmit:
         )
 
     @patch("archive.archive_single_spec", return_value=Path("/fake/archive"))
-    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
+    @patch("worktree.list_worktrees", return_value=[{
+        "path": "/fake/main", "branch": "refs/heads/main",
+    }])
     @patch("branch.merge_branch")
     @patch("branch.branch_exists", return_value=True)
     @patch("config.get_project_context", return_value=_fake_context(
-        config={"submit_method": "merge"}))
+        top_workdir=Path("/fake/main"), config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_archives(self, mock_resolve, _specs, _ctx,
@@ -810,11 +819,13 @@ class TestCliSubmit:
         mock_archive.assert_called_once()
 
     @patch("archive.archive_single_spec")
-    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
+    @patch("worktree.list_worktrees", return_value=[{
+        "path": "/fake/main", "branch": "refs/heads/main",
+    }])
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch")
     @patch("config.get_project_context", return_value=_fake_context(
-        config={"submit_method": "merge"}))
+        top_workdir=Path("/fake/main"), config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_success_no_archive_flag(self, mock_resolve, _specs, _ctx,
@@ -832,12 +843,14 @@ class TestCliSubmit:
         mock_archive.assert_not_called()
 
     @patch("archive.archive_single_spec")
-    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
+    @patch("worktree.list_worktrees", return_value=[{
+        "path": "/fake/main", "branch": "refs/heads/main",
+    }])
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
-        config={"submit_method": "merge"}))
+        top_workdir=Path("/fake/main"), config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_no_archive(self, mock_resolve, _specs, _ctx,
@@ -861,12 +874,14 @@ class TestCliSubmit:
         assert out["errors"][0] in caplog.text
         mock_archive.assert_not_called()
 
-    @patch("worktree.find_worktree_for_branch", return_value=Path("/fake/main"))
+    @patch("worktree.list_worktrees", return_value=[{
+        "path": "/fake/main", "branch": "refs/heads/main",
+    }])
     @patch("branch.branch_exists", return_value=True)
     @patch("branch.merge_branch",
            side_effect=subprocess.CalledProcessError(1, "git", stderr="CONFLICT"))
     @patch("config.get_project_context", return_value=_fake_context(
-        config={"submit_method": "merge"}))
+        top_workdir=Path("/fake/main"), config={"submit_method": "merge"}))
     @patch("common.get_specs_dir", return_value=Path("/fake/specs"))
     @patch("common.resolve_spec_dir")
     def test_merge_failure_exits_nonzero(self, mock_resolve, _specs, _ctx,

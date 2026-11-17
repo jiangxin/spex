@@ -30,7 +30,7 @@ def resolve_spex_worktree_path(
     return worktree_root() / basename / spec_name
 
 
-def _parse_worktree_list(
+def list_worktrees(
     cwd: str | Path | None = None,
 ) -> list[dict[str, str]]:
     """Parse ``git worktree list --porcelain`` into entry dicts."""
@@ -139,7 +139,7 @@ def find_worktree_for_branch(
     """Return the worktree path that has ``branch`` checked out, or None."""
     branch = _strip_refs_prefix(branch)
     want = f"refs/heads/{branch}"
-    for entry in _parse_worktree_list(cwd=cwd):
+    for entry in list_worktrees(cwd=cwd):
         if entry.get("branch") == want:
             return Path(entry["path"])
     return None
@@ -150,7 +150,7 @@ def is_registered_worktree(
     cwd: str | Path | None = None,
 ) -> bool:
     """Return True if ``path`` appears in ``git worktree list``."""
-    for entry in _parse_worktree_list(cwd=cwd):
+    for entry in list_worktrees(cwd=cwd):
         if same_path(entry["path"], path):
             return True
     return False

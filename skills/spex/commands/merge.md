@@ -72,11 +72,15 @@ Submit completed work by merging the feature branch or creating a PR.
 
 - Forward any agent-supplied Usage flags unchanged.
 - Note: `spex merge` has **no** `--json` flag; stdout is always JSON.
-- Merge runs in the worktree that already has the **target** trunk
-  branch checked out (via `git worktree list`). It does not switch
-  into a trunk branch locked by a feature worktree. Successful
-  merge archives the spec, which removes `meta.spex_worktree` when
-  set.
+- Merge uses the worktree that has the target branch checked out.
+  If the target is free, it uses the caller's worktree. With one
+  worktree it stays on the target. With multiple worktrees it
+  requires a local branch in the caller and switches back after
+  a successful merge. Bare repository records do not count as
+  worktrees.
+- A successful merge archives the spec unless `--no-archive` is
+  set. If the restored worktree is bound to the spec, auto-archive
+  keeps the checkout.
 - CMD:
 
 ```bash
@@ -87,8 +91,12 @@ $spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
 - ELSE parse JSON stdout:
   - IF `errors` non-empty -> report errors -> STOP
   - ELSE -> note `action`, `source`, `target`
-  - IF `--dry-run` / `-n` was used -> report preview -> **STOP** (no
-    real submit in the same invocation)
+  - IF `--dry-run` / `-n` was used -> report the source and target,
+    the planned `merge_cwd` when `multiple_worktrees` is true, and
+    any planned branch restoration or worktree retention from
+    `would_restore_branch` and `would_retain_worktree`. Report
+    planned cleanup when `would_remove_worktree` is true, then
+    **STOP** (no real submit in the same invocation).
 
 ### Phase 3: Output
 
@@ -104,6 +112,9 @@ $spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
 ```
 
 - `$archived` = `yes` IF JSON `"archived": true` ELSE `no`
+- Show the merge worktree (`merge_cwd`) when `multiple_worktrees`
+  is true. Show the restored branch (`restored_branch`) and the
+  retained worktree (`retained_worktree`) when present.
 
 ## Failure Handling
 

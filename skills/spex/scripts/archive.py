@@ -25,6 +25,7 @@ from common import (
     load_meta,
     logger,
     resolve_spec_dir,
+    same_path,
 )
 from config import get_project_context
 from debug_log import DEBUG_LOG_NAME
@@ -64,19 +65,24 @@ class ArchiveItem:
         return item
 
 
-def _worktree_remove_plan(
-    spec_dir: Path, *, force: bool = False,
+def worktree_remove_plan(
+    spec_dir: Path,
+    *,
+    force: bool = False,
+    preserve_worktree: Path | None = None,
 ) -> tuple[str, str, str, bool]:
     """Return dry-run plan for removing a linked spex worktree.
 
-    Returns ``(spex_worktree, cwd, cmd, would_remove)``. Empty strings and
-    ``would_remove=False`` when ``meta.spex_worktree`` is unset.
+    Returns ``(spex_worktree, cwd, cmd, would_remove)``. The command is empty
+    when the binding is absent or points to the preserved worktree.
     """
     meta = load_meta(spec_dir)
     if not meta or not meta.spex_worktree:
         return "", "", "", False
     path = meta.spex_worktree
     cwd = meta.main_worktree or ""
+    if preserve_worktree is not None and same_path(path, str(preserve_worktree)):
+        return path, cwd, "", False
     cmd_parts = ["git", "worktree", "remove"]
     if force:
         cmd_parts.append("--force")
@@ -168,19 +174,25 @@ def move_spec(spec_dir: Path, archives_dir: Path) -> Path:
     return move_spec_with_conflict(spec_dir, archives_dir)
 
 
-def _remove_spex_worktree(spec_dir: Path, *, force: bool = False) -> None:
+def _remove_spex_worktree(
+    spec_dir: Path,
+    *,
+    force: bool = False,
+    preserve_worktree: Path | None = None,
+) -> None:
     """Remove linked spex worktree when ``meta.spex_worktree`` is set.
 
     Runs even if ``use_git_worktree`` is false, so leftover paths are cleaned.
     ``force`` maps to ``git worktree remove --force`` (archive ``-f``).
     """
-    meta = load_meta(spec_dir)
-    if not meta or not meta.spex_worktree:
+    path, cwd, _, would_remove = worktree_remove_plan(
+        spec_dir, force=force, preserve_worktree=preserve_worktree,
+    )
+    if not would_remove:
         return
     from worktree import remove_worktree
 
-    cwd = meta.main_worktree or None
-    remove_worktree(meta.spex_worktree, force=force, cwd=cwd)
+    remove_worktree(path, force=force, cwd=cwd or None)
 
 
 def _archive_one(
@@ -189,6 +201,8 @@ def _archive_one(
     archives_dir: Path,
     force: bool = False,
     dry_run: bool = False,
+    *,
+    preserve_worktree: Path | None = None,
 ) -> ArchiveItem:
     """Archive a single spec; return a structured outcome."""
     spec_dir = resolve_spec_dir(spec_name, specs_dir)
@@ -232,8 +246,8 @@ def _archive_one(
         )
     if dry_run:
         logger.info("Would archive: %s", spec_dir.name)
-        spex_wt, wt_cwd, wt_cmd, would_remove = _worktree_remove_plan(
-            spec_dir, force=force,
+        spex_wt, wt_cwd, wt_cmd, would_remove = worktree_remove_plan(
+            spec_dir, force=force, preserve_worktree=preserve_worktree,
         )
         if would_remove:
             _log_worktree_remove_dry_run(spex_wt, wt_cwd, wt_cmd)
@@ -247,7 +261,9 @@ def _archive_one(
             would_remove_worktree=would_remove,
         )
     archives_dir.mkdir(parents=True, exist_ok=True)
-    _remove_spex_worktree(spec_dir, force=force)
+    _remove_spex_worktree(
+        spec_dir, force=force, preserve_worktree=preserve_worktree,
+    )
     dest = move_spec(spec_dir, archives_dir)
     logger.info("Archived: %s -> %s", spec_dir.name, dest)
     return ArchiveItem("archived", spec_dir.name, dest)
@@ -259,15 +275,19 @@ def archive_single_spec(
     archives_dir: Path,
     force: bool = False,
     dry_run: bool = False,
+    *,
+    preserve_worktree: Path | None = None,
 ) -> Path | None:
     """Archive a single spec by name. Supports partial name matching.
 
     Returns the destination path, or None if skipped due to active branch.
+    If the bound linked worktree matches ``preserve_worktree``, leave it in place.
     When a debug-only stub is cleaned because archives already has the
     same name, returns the existing archives path (success, no ``-2``).
     """
     item = _archive_one(
         spec_name, specs_dir, archives_dir, force=force, dry_run=dry_run,
+        preserve_worktree=preserve_worktree,
     )
     if item.action in ("archived", "would_archive"):
         return item.spec_path
@@ -459,7 +479,7 @@ def main(argv=None):
             for spec_dir in completed:
                 logger.info("  %s", spec_dir.name)
                 spex_wt, wt_cwd, wt_cmd, would_remove = (
-                    _worktree_remove_plan(spec_dir, force=args.force)
+                    worktree_remove_plan(spec_dir, force=args.force)
                 )
                 if would_remove:
                     _log_worktree_remove_dry_run(spex_wt, wt_cwd, wt_cmd)
