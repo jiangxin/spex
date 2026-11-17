@@ -20,6 +20,4 @@ jobs:
         with:
           node-version: "22"
 
-      - run: make setup
-
       - run: make check

@@ -1,12 +1,27 @@
-.PHONY: setup dev-env lint lint-md format test test-all check check-all coverage coverage-all version version-check bump
+.DEFAULT_GOAL := help
+.PHONY: help dev-env lint lint-md format test test-all check check-all coverage coverage-all version version-check bump
 
 PYTHON = python3
 VENV_PYTHON = .venv/bin/python
 
-setup:
-	@echo "==> Installing Node.js dependencies..."
-	npm install
-	@echo "==> Setup complete."
+help:
+	@printf '%s\n' \
+		'Usage: make <target>' \
+		'' \
+		'  help                Show available targets' \
+		'  dev-env             Set up the Python development environment' \
+		'  lint                Lint Python files' \
+		'  lint-md             Lint Markdown files' \
+		'  format              Format Python files' \
+		'  test                Run fast tests' \
+		'  test-all            Run all tests, including slow tests' \
+		'  check               Check versions, run linters and fast tests' \
+		'  check-all           Check versions, run linters and all tests' \
+		'  coverage            Measure coverage with fast tests' \
+		'  coverage-all        Measure coverage with all tests' \
+		'  version             Show the current version' \
+		'  version-check       Check version consistency' \
+		'  bump VERSION=x.y.z  Update the version'
 
 dev-env: .venv/.dev-ready
 
@@ -25,7 +40,7 @@ lint: dev-env
 
 lint-md:
 	@echo "==> Linting Markdown files..."
-	npx markdownlint-cli2
+	npx --yes markdownlint-cli2@0.18.1
 
 format: dev-env
 	@echo "==> Formatting Python files..."

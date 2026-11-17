@@ -168,14 +168,13 @@ pass all tests.
 
 ## Quality Checks
 
-Before committing, `make check` runs automatically via a husky pre-commit hook. It executes:
+Run `make check` before every commit. If a check fails, fix it and rerun
+`make check` before committing. It runs:
 
 1. `python3 skills/spex/scripts/version.py --check` — version consistency
-2. `ruff check skills/spex/scripts/ tests/` — Python lint
-3. `npx markdownlint-cli2` — Markdown lint
+2. `make lint` — Python lint
+3. `npx --yes markdownlint-cli2@0.18.1` — Markdown lint
 4. `pytest` — unit tests
-
-If the pre-commit hook does not fire (e.g., hooks are not installed), run `make check` manually before creating a commit. Fix any failures before retrying.
 
 ## Test Suite
 
@@ -191,7 +190,7 @@ Tests in `tests/test_prompt.py` (except `TestBuildTaskContext`) are marked
 per test). These are skipped by default via `addopts = ["-m", "not slow"]`
 in `pyproject.toml`.
 
-- `make check` / `pytest` — fast tier only (husky pre-commit hook)
+- `make check` / `pytest` — fast tier only
 - `make check-all` / `pytest -m ""` — runs all tests including slow
 - `pytest -m slow` — runs slow tests only
 
