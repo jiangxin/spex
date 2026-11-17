@@ -507,17 +507,33 @@ def _merge_session_trace(session_dir: Path, spec_dir: Path) -> None:
         logger.debug("Failed to merge session trace %s into %s: %s", source, target, exc)
 
 
+def _configured_log_dir() -> Path | None:
+    value = os.environ.get("SPEX_LOG_DIR", "").strip()
+    if not value:
+        return None
+    try:
+        return Path(value).expanduser()
+    except RuntimeError as exc:
+        logger.debug("Failed to expand SPEX_LOG_DIR: %s", exc)
+        return None
+
+
 def resolve_debug_log_path(argv: list[str]) -> Path | None:
     """Resolve debug.log with mutual-exclusive routing.
 
     Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
-    1. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    2. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    3. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    4. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    5. Active create session → ``sessions/<id>/debug.log``
-    6. Fallback → ``<spex_root>/debug.log``
+    1. ``SPEX_LOG_DIR`` → ``<log_dir>/debug.log``
+    2. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    3. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    4. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
+    5. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    6. Active create session → ``sessions/<id>/debug.log``
+    7. Fallback → ``<spex_root>/debug.log``
     """
+    log_dir = _configured_log_dir()
+    if log_dir is not None:
+        return log_dir / DEBUG_LOG_NAME
+
     ctx = get_project_context()
     if not ctx.spex_root:
         return None
@@ -554,10 +570,12 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
 
 def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
-    """Resolve an explicit trace destination or use the debug log's sibling."""
+    """Resolve the trace destination, preferring environment over config."""
+    log_dir = _configured_log_dir()
     env_path = os.environ.get("SPEX_TRACE_FILE", "").strip()
     if env_path:
-        return Path(env_path).expanduser()
+        path = Path(env_path).expanduser()
+        return log_dir / path if log_dir is not None else path
 
     ctx = get_project_context()
     configured = str(ctx.config.get("trace_file") or "").strip()
@@ -565,9 +583,13 @@ def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
         path = Path(configured).expanduser()
         if path.is_absolute():
             return path
+        if log_dir is not None:
+            return log_dir / path
         if ctx.spex_root:
             return Path(ctx.spex_root) / path
         return None
+    if log_dir is not None:
+        return log_dir / TRACE_JSONL_NAME
     return debug_path.with_name(TRACE_JSONL_NAME) if debug_path is not None else None
 
 

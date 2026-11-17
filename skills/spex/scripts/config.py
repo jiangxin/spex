@@ -38,7 +38,7 @@ _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("main_branch_name", "", "Restrict spec creation to this branch"),
     ("submit_method", "merge", "How to submit completed work: merge or pr"),
     ("debug", False, "Append script traces to <spec_dir>/debug.log"),
-    ("trace_file", "", "JSONL CLI span path (relative to spex_root)"),
+    ("trace_file", "", "JSONL CLI span path (relative to SPEX_LOG_DIR or spex_root)"),
     ("step_review", True, "Review each apply step commit before marking it done"),
     ("use_git_worktree", False, "Create a linked git worktree per spec for apply"),
     ("inherit_config", True, "Inherit settings from ancestor config files"),

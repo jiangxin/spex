@@ -496,6 +496,19 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 这样平台可以统一控制 `spex_root` 位置、模板和 hook，确保所有仓库的 spec 集中存储和统一管理。
 
+启用调试日志后，设置 `SPEX_LOG_DIR` 可将 CLI 的 `debug.log` 和
+`trace.jsonl` 写入同一目录。相对目录以当前工作目录为基准。
+工作流锚点和评审状态仍保存在各自的 spec 目录中。
+
+```bash
+export SPEX_LOG_DIR=/path/to/trial-logs
+```
+
+`SPEX_TRACE_FILE` 优先于配置项 `trace_file`，两者仅覆盖 `trace.jsonl`。
+绝对路径直接使用。设置 `SPEX_LOG_DIR` 时，相对路径以该目录为基准。
+否则，`SPEX_TRACE_FILE` 相对当前工作目录解析，`trace_file` 相对
+`spex_root` 解析。
+
 ### 定制 spex 模板
 
 用 `spex config get spex_root` 查看选中的存储目录，将自定义模板放在该目录的

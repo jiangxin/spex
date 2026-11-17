@@ -504,6 +504,20 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 This lets the platform control the `spex_root` location, templates, and hooks centrally, ensuring specs from all repositories are stored and managed in one place.
 
+With debug logging enabled, set `SPEX_LOG_DIR` to write CLI `debug.log` and
+`trace.jsonl` into one directory. A relative directory is resolved from the
+current working directory. Workflow anchors and review state remain with each spec.
+
+```bash
+export SPEX_LOG_DIR=/path/to/trial-logs
+```
+
+`SPEX_TRACE_FILE` takes precedence over the `trace_file` config setting.
+Both override only `trace.jsonl`. Absolute paths are used as given.
+Relative paths resolve under `SPEX_LOG_DIR` when set. Otherwise,
+`SPEX_TRACE_FILE` resolves from the working directory and `trace_file`
+resolves from `spex_root`.
+
 ### Customizing spex Templates
 
 Run `spex config get spex_root` to find the selected storage directory.

@@ -15,6 +15,7 @@ from debug_log import (
     TeeIO,
     clear_active_session,
     debug_enabled,
+    emit_apply_anchor,
     get_active_session_id,
     is_prompt_argv,
     merge_session_log_into_spec,
@@ -31,7 +32,8 @@ from debug_log import (
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache():
+def _clear_cache(monkeypatch):
+    monkeypatch.delenv("SPEX_LOG_DIR", raising=False)
     clear_config_cache()
     yield
     clear_config_cache()
@@ -85,23 +87,53 @@ class TestDebugEnabled:
             assert debug_enabled(["spex", "version"]) is False
 
 
-def test_trace_path_precedence(tmp_path, monkeypatch):
+@pytest.mark.parametrize("log_dir", [None, "   ", "trial-logs"])
+def test_trace_path_precedence(tmp_path, monkeypatch, log_dir):
     ctx = _make_ctx(tmp_path)
     debug_path = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+    if log_dir is not None:
+        monkeypatch.setenv("SPEX_LOG_DIR", log_dir)
+    shared = tmp_path / log_dir if log_dir and log_dir.strip() else None
     with patch("debug_log.get_project_context", return_value=ctx):
-        assert resolve_trace_file_path(debug_path) == debug_path.with_name("trace.jsonl")
+        default = (shared or debug_path.parent) / "trace.jsonl"
+        assert resolve_trace_file_path(debug_path).absolute() == default
         ctx.config["trace_file"] = "custom/configured.jsonl"
-        configured = Path(ctx.spex_root) / "custom/configured.jsonl"
-        assert resolve_trace_file_path(debug_path) == configured
+        configured = (shared or Path(ctx.spex_root)) / "custom/configured.jsonl"
+        assert resolve_trace_file_path(debug_path).absolute() == configured
         absolute = tmp_path / "configured.jsonl"
         ctx.config["trace_file"] = str(absolute)
         assert resolve_trace_file_path(debug_path) == absolute
         monkeypatch.setenv("SPEX_TRACE_FILE", "override.jsonl")
-        assert resolve_trace_file_path(debug_path).absolute() == tmp_path / "override.jsonl"
+        assert resolve_trace_file_path(debug_path).absolute() == (
+            shared or tmp_path
+        ) / "override.jsonl"
         monkeypatch.setenv("SPEX_TRACE_FILE", str(tmp_path / "explicit.jsonl"))
         assert resolve_trace_file_path(debug_path) == tmp_path / "explicit.jsonl"
+
+
+def test_shared_cli_logs_preserve_spec_anchors(tmp_path, monkeypatch):
+    ctx = _make_ctx(tmp_path, debug=True)
+    spec_dir = Path(ctx.spex_root) / "specs" / "my-spec"
+    _activate_session(ctx.spex_root)
+    log_dir = tmp_path / "cli-logs"
+    monkeypatch.setenv("SPEX_LOG_DIR", str(log_dir))
+    monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+    argv = ["spex", "prompt", "--name", "my-spec"]
+
+    with patch("debug_log.get_project_context", return_value=ctx):
+        debug_path = resolve_debug_log_path(argv)
+        assert debug_path == log_dir / "debug.log"
+        with trace_command(debug_path, argv):
+            emit_apply_anchor(spec_dir, "===== APPLY task begin =====", argv)
+
+    assert "===== BEGIN " in debug_path.read_text(encoding="utf-8")
+    span = json.loads((log_dir / "trace.jsonl").read_text(encoding="utf-8"))
+    assert span["attributes"]["process.command_args"] == argv
+    assert (spec_dir / "debug.log").read_text(encoding="utf-8") == (
+        "===== APPLY task begin =====\n"
+    )
 
 
 def test_failed_span_write_preserves_command_failure(tmp_path, monkeypatch):
