@@ -179,3 +179,25 @@ def test_timeout_keeps_host_duration_and_partial_metrics(tmp_path, monkeypatch):
     assert host["duration_ms"] >= 0
     assert host["error"] == "timeout"
     assert host["command_failures"] == 1
+
+
+def test_turn_timing_uses_only_its_saved_events_and_legacy_flush_stamp(tmp_path):
+    host = performance.host_metrics(
+        None, 1000, "adapter",
+        started_at="2026-11-17T09:00:20.100000+08:00",
+        ended_at="2026-11-17T09:00:21.100000+08:00",
+    )
+    early = {"events": [
+        {"command": "list", "at": "2026-11-17T09:00:01+08:00", "duration_ms": 700},
+    ]}
+    later = {"events": [
+        {"command": "list", "at": "2026-11-17T09:00:21.100000054+08:00", "duration_ms": 700},
+    ]}
+    performance.update(tmp_path, turn=1, host={**host, "gaps": []}, native=early)
+    performance.update(tmp_path, turn=2, host={**host, "gaps": []}, native=later)
+    performance.update(tmp_path, turn=2, host={**host, "gaps": []}, native=later)
+    turns = performance.read_performance(tmp_path)["turns"]
+    assert "implausible_host_duration" in turns["1"]["host"]["gaps"]
+    assert turns["2"]["host"]["gaps"] == []
+    nano, end = performance.stamp_bounds("2026-11-17T09:00:21.100000054+08:00")
+    assert nano == end and nano % 1000 == 54

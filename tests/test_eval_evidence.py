@@ -303,3 +303,26 @@ def test_capture_detects_worktree_and_index_changes(tmp_path):
     assert changed["files"] != before["files"]
     evidence.git(trial.repo, "add", "cli.py", env=trial.env)
     assert evidence.capture(trial)["index"] != before["index"]
+
+
+def test_native_timing_prefers_precise_spans_and_keeps_legacy_only_folders(tmp_path):
+    baseline = native_trace.snapshot(tmp_path)
+    root = tmp_path / ".spex"
+    spec = root / "specs" / "eval-spec"
+    spec.mkdir(parents=True)
+    shared = root / "eval-logs"
+    shared.mkdir()
+    (root / "debug.log").write_text(cli_log("list"))
+    (shared / "debug.log").write_text(cli_log("list"))
+    (spec / "debug.log").write_text(cli_log("list"))
+    (shared / "trace.jsonl").write_text(json.dumps({
+        "schema_version": 1, "start_time_unix_nano": 1, "end_time_unix_nano": 9,
+    }) + "\n")
+    checkpoint, evidence = native_trace.window(tmp_path, baseline)
+    assert len(evidence["events"]) == 3
+    assert [event["log"] for event in evidence["timing_events"]] == [
+        "eval-logs/trace.jsonl", "debug.log", "specs/eval-spec/debug.log",
+    ]
+    assert evidence["timing_events"][0]["end_ns"] == 9
+    _, after = native_trace.window(tmp_path, checkpoint)
+    assert "timing_events" not in after and after["events"] == []

@@ -203,6 +203,8 @@ class Trial:
             SPEX_CONFIG_FILE=str(self.repo / ".spex.toml"),
             PYTHONNOUSERSITE="1",
         )
+        # Keep the pinned skill's per-spec log paths for native attribution.
+        env.pop("SPEX_LOG_DIR", None)
         env.pop("PYTHONPATH", None)
         # Keep the runner's interpreter first on PATH for Python shebangs in the trial.
         python_bin = Path(sys.executable).parent

@@ -75,6 +75,13 @@ def test_trial_env_prefers_runner_python_on_path(tmp_path):
     assert first.is_dir()
 
 
+def test_trial_env_keeps_the_pinned_skill_log_layout(tmp_path, monkeypatch):
+    trial = workspace.Trial(tmp_path, "deadbeef")
+    assert "SPEX_LOG_DIR" not in trial.env
+    monkeypatch.setenv("SPEX_LOG_DIR", str(tmp_path / "host-logs"))
+    assert "SPEX_LOG_DIR" not in trial.env
+
+
 @pytest.mark.slow
 def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     """Sandbox under a tree with parent .spex dirs must still prepare."""

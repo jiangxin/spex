@@ -21,11 +21,50 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import performance  # noqa: E402
 import run as eval_run  # noqa: E402
 
 
 def handoff_reply(sandbox: Path, suite: str, case_id: str, turn: int) -> Path:
     return sandbox / "_handoff" / f"{suite}-{case_id}-turn{turn}.txt"
+
+
+def host_duration_sidecar(reply: Path) -> Path:
+    return reply.with_suffix(".host-duration-ms")
+
+
+def host_wall_clock_sidecar(reply: Path) -> Path:
+    return reply.with_suffix(".host-wall-clock.json")
+
+
+def read_host_wall_clock(reply: Path) -> dict:
+    """Prefer JSON wall bounds and fall back to the legacy duration sidecar."""
+    wall = host_wall_clock_sidecar(reply)
+    legacy = host_duration_sidecar(reply)
+    result = {"host_started_at": None, "host_ended_at": None, "host_duration_ms": None}
+    try:
+        data = (json.loads(wall.read_text(encoding="utf-8"))
+                if wall.is_file() and not wall.is_symlink() else None)
+    except (OSError, ValueError):
+        data = None
+    if isinstance(data, dict):
+        for key in ("started_at", "ended_at"):
+            if performance.timestamp(data.get(key)) is not None:
+                result["host_" + key] = data[key]
+        result["host_duration_ms"] = performance.nonnegative(data.get("duration_ms"))
+        if result["host_duration_ms"] is None:
+            result["host_duration_ms"] = performance.delta_ms(
+                performance.timestamp(result["host_started_at"]),
+                performance.timestamp(result["host_ended_at"]),
+            )
+    if result["host_duration_ms"] is None and legacy.is_file() and not legacy.is_symlink():
+        try:
+            result["host_duration_ms"] = performance.nonnegative(
+                int(legacy.read_text(encoding="utf-8")),
+            )
+        except (OSError, ValueError):
+            pass
+    return result
 
 
 def resolve_collect_session(metadata: dict, suite: str, case_id: str) -> str:
@@ -87,6 +126,7 @@ def collect_trial(sandbox: Path, trial_json: Path) -> dict:
             session=session,
             reply=reply,
             events=sidecar if sidecar.is_file() and not sidecar.is_symlink() else None,
+            **read_host_wall_clock(reply),
         )
         result = eval_run.manual_result(eval_run.resolve_trial(trial_dir), args)
         turns.append({

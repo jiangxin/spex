@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
+from itertools import chain
 from pathlib import Path
 
 from performance import CLI_END, IDENTIFIER, TIMELINE, debug_logs, number_field, timestamp
@@ -19,7 +21,10 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
     checkpoint, events, gaps = {}, [], set()
     if baseline is None:
         gaps.add("missing_log_baseline")
-    for source, content, error in debug_logs(repo):
+    timed = []
+    span_sources = set()
+    files = chain(debug_logs(repo), debug_logs(repo, "trace.jsonl"))
+    for source, content, error in files:
         if error:
             gaps.add(error)
             checkpoint[source] = None
@@ -48,14 +53,46 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
         if not content.endswith(b"\n"):
             gaps.add("incomplete_cli_log")
             lines.pop()
-        events.extend(parse(lines, source, gaps))
+        if Path(source).name == "trace.jsonl":
+            spans = parse_timing_spans(lines, source, gaps)
+            if spans:
+                span_sources.add(Path(source).parent)
+                timed.extend(spans)
+        else:
+            events.extend(parse(lines, source, gaps))
     if baseline is not None and baseline.keys() - checkpoint.keys():
         gaps.add("debug_log_removed")
         # A new path could contain older records moved from a missing log.
         events = [event for event in events if event["log"] in baseline]
+        timed = [event for event in timed if event["log"] in baseline]
     if not any("exit_code" in event and "command" in event for event in events):
         gaps.add("missing_spex_commands")
-    return checkpoint, {"events": events, "gaps": sorted(gaps)}
+    result = {"events": events, "gaps": sorted(gaps)}
+    if timed:
+        result["timing_events"] = timed + [
+            event for event in events
+            if "command" not in event or Path(event["log"]).parent not in span_sources
+        ]
+    return checkpoint, result
+
+
+def parse_timing_spans(lines: list[str], source: str, gaps: set) -> list[dict]:
+    """Read precise CLI bounds from supported JSONL spans."""
+    spans = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            span = json.loads(line)
+            start, end = span["start_time_unix_nano"], span["end_time_unix_nano"]
+            if (span["schema_version"] != 1 or type(start) is not int
+                    or type(end) is not int or not 0 <= start <= end):
+                raise ValueError("Invalid trace span time")
+        except (KeyError, TypeError, ValueError):
+            gaps.add("unreadable_trace_jsonl")
+            continue
+        spans.append({"log": source, "start_ns": start, "end_ns": end})
+    return spans
 
 
 def option(words: list[str], flag: str) -> str | None:
@@ -78,8 +115,8 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
         if line.startswith("===== BEGIN "):
             if command is not None:
                 gaps.add("incomplete_cli_log")
-            stamp = timestamp(line.removeprefix("===== BEGIN ").removesuffix(" ====="))
-            command = {**location, "at": stamp.isoformat() if stamp else None}
+            stamp = line.removeprefix("===== BEGIN ").removesuffix(" =====")
+            command = {**location, "at": stamp if timestamp(stamp) else None}
         elif command is not None:
             if index == command["sequence"] + 1 and line.startswith("argv: spex "):
                 try:
@@ -147,7 +184,7 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
             values = dict(re.findall(r"\b([a-z_]+)=([^\s]+)", fields or ""))
             stamp = timestamp(values.get("ts"))
             if stamp:
-                location["at"] = stamp.isoformat()
+                location["at"] = values["ts"]
             step = values.get("step") or values.get("id")
             if step and not IDENTIFIER.fullmatch(step):
                 continue

@@ -748,6 +748,7 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
 
 def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
                host_duration_ms: int | None = None, host_source: str = "runner",
+               host_started_at: str | None = None, host_ended_at: str | None = None,
                collect_started: float | None = None,
                supplemental_gap: str | None = None, supplemental: list | None = None) -> None:
     index = len(metadata["turn_results"])
@@ -757,16 +758,18 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
     previous = read_json(output / f"turn-{index}.json")
     acceptance_ms = None
     result = None
+    native = None
 
     def record_performance():
         host_metrics = performance.host_metrics(
             host.raw, host_duration_ms, host_source, error=supplemental_gap,
+            started_at=host_started_at, ended_at=host_ended_at,
         )
         if host_source == "adapter" and host.raw:
             host_metrics.update(trace="partial", trace_source="legacy_jsonl_sidecar")
             host_metrics["gaps"].append("unverified_host_trace_coverage")
         performance.update(
-            output, turn=index + 1, repo=trial.repo,
+            output, turn=index + 1, repo=trial.repo, native=native,
             host=host_metrics,
             collect_ms=performance.elapsed_ms(collect_started) - (acceptance_ms or 0),
             acceptance_ms=acceptance_ms,
@@ -782,6 +785,7 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
         ):
             raise ValueError("The pending turn already has different saved evidence")
         result = artifacts.get("acceptance", {}).get("value")
+        native = artifacts.get("spex-trace", {}).get("value")
     else:
         try:
             verify_trial_workspace(trial)
@@ -831,8 +835,8 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
     metadata["session"] = host.session
     metadata["turn_results"].append({"turn": index + 1, "checks": checks})
     metadata["verdict"] = trial_verdict(metadata["turn_results"], index + 1 == len(turns))
-    write_json(output / "trial.json", metadata)
     record_performance()
+    write_json(output / "trial.json", metadata)
 
 
 def trial_verdict(turn_results: list, final: bool) -> str:
@@ -1088,6 +1092,7 @@ def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
             if index == 0:
                 message += f"\nUse the Spex skill at {trial.skill / 'SKILL.md'}."
         started = time.monotonic()
+        started_at = performance.wall_clock_iso()
         try:
             host = codex_turn(
                 trial, message, args.model, args.timeout, metadata["session"],
@@ -1097,11 +1102,15 @@ def drive(output: Path, trial: Trial, args: argparse.Namespace) -> dict:
             performance.update(
                 output, turn=index + 1, repo=trial.repo,
                 host=performance.host_metrics(error.partial_events, performance.elapsed_ms(started),
-                                              "runner", str(error)),
+                                              "runner", str(error), started_at=started_at,
+                                              ended_at=performance.wall_clock_iso()),
                 collect_ms=None, acceptance_ms=None,
             )
             raise
-        store_turn(output, trial, metadata, host, host_duration_ms=performance.elapsed_ms(started))
+        store_turn(
+            output, trial, metadata, host, host_duration_ms=performance.elapsed_ms(started),
+            host_started_at=started_at, host_ended_at=performance.wall_clock_iso(),
+        )
         if metadata["verdict"] != "pending":
             break
     return metadata
@@ -1174,6 +1183,8 @@ def manual_result(output: Path, args: argparse.Namespace) -> dict:
     store_turn(
         output, trial, metadata, host, host_duration_ms=getattr(args, "host_duration_ms", None),
         host_source="adapter", collect_started=started, supplemental_gap=supplemental_gap,
+        host_started_at=getattr(args, "host_started_at", None),
+        host_ended_at=getattr(args, "host_ended_at", None),
         supplemental=supplemental,
     )
     # Manual / current-host collection keeps deterministic checks only. Semantic
@@ -1224,6 +1235,12 @@ def unknownable(value: str) -> str:
     if not text or "\n" in text or "\0" in text:
         raise argparse.ArgumentTypeError("Expected a single-line model or version label")
     return text[:128]
+
+
+def wall_clock_argument(value: str) -> str:
+    if performance.timestamp(value) is None:
+        raise argparse.ArgumentTypeError("Expected an ISO timestamp with a time zone")
+    return value
 
 
 def duration_argument(value: str) -> int:
@@ -1294,6 +1311,8 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--events-format", default="legacy-jsonl",
                          help="Supplemental format (legacy-jsonl or normalized)")
     collect.add_argument("--host-duration-ms", type=duration_argument)
+    collect.add_argument("--host-started-at", type=wall_clock_argument)
+    collect.add_argument("--host-ended-at", type=wall_clock_argument)
     collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
     export = sub.add_parser("export-packet")
     export.add_argument("trial", type=Path)

@@ -758,6 +758,7 @@ def test_collect_handoff_batch_runs_summary(runner, tmp_path, first_session):
     (handoff / "example-clarify-turn1.txt").write_text("What type?\n", encoding="utf-8")
     second_reply = handoff / "example-clarify-turn2.txt"
     second_reply.write_text("Done\n", encoding="utf-8")
+    collect_handoff.host_duration_sidecar(second_reply).write_text("1250\n")
     if first_session:
         run.execute(runner.parse_args([
             "collect", info["trial"], "--session", first_session,
@@ -778,6 +779,8 @@ def test_collect_handoff_batch_runs_summary(runner, tmp_path, first_session):
     assert "Score summary" in Path(payload["report"]).read_text(encoding="utf-8")
     metadata = run.read_json(Path(info["trial"]) / "trial.json")
     assert metadata["session"] == (first_session or "codex-example-clarify")
+    timings = run.read_json(Path(info["trial"]) / "performance.json")["turns"]
+    assert timings["2"]["host"]["duration_ms"] == 1250
 
 
 @pytest.mark.parametrize(("filters", "count"), [
@@ -845,3 +848,71 @@ def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
         encoding="utf-8",
     )
     assert run.acceptance(trial, "example", "canary") == {"passed": True}
+
+
+@pytest.mark.slow
+def test_host_turn_timer_uses_wall_clock_across_processes(tmp_path):
+    timer = REPO / "eval" / "spex" / "host_turn_timer.py"
+    args = ["--sandbox", str(tmp_path), "--suite", "docs", "--case", "guide", "--turn", "1"]
+    started = subprocess.run(
+        [sys.executable, str(timer), "start", *args], capture_output=True, text=True, check=True,
+    )
+    pending = Path(json.loads(started.stdout)["pending"])
+    payload = json.loads(pending.read_text())
+    payload.update(started_at="2020-01-01T00:00:00+00:00", monotonic=1e30)
+    pending.write_text(json.dumps(payload))
+    stopped = subprocess.run(
+        [sys.executable, str(timer), "stop", *args], capture_output=True, text=True, check=True,
+    )
+    measured = json.loads(stopped.stdout)
+    reply = collect_handoff.handoff_reply(tmp_path, "docs", "guide", 1)
+    timing = collect_handoff.read_host_wall_clock(reply)
+    assert timing["host_duration_ms"] == measured["duration_ms"] > 1
+    assert timing["host_started_at"] == payload["started_at"]
+    assert timing["host_ended_at"] == measured["ended_at"]
+    assert not pending.exists()
+    collect_handoff.host_wall_clock_sidecar(reply).write_text("invalid")
+    fallback = collect_handoff.read_host_wall_clock(reply)
+    assert fallback["host_duration_ms"] == measured["duration_ms"]
+
+
+@pytest.mark.slow
+def test_collect_retry_uses_saved_timing_evidence(runner, monkeypatch):
+    info = run.execute(runner.parse_args(["prepare", "--case", "clarify", "--host", "codex"]))
+    output = Path(info["trial"])
+    metadata_path = output / "trial.json"
+    metadata = run.read_json(metadata_path)
+    trial = workspace.Trial(Path(metadata["trial_directory"]), metadata["spex_ref"])
+    log = trial.repo / ".spex" / "debug.log"
+    log.parent.mkdir(exist_ok=True)
+    log.write_text(
+        "===== BEGIN 2026-11-17T09:00:21+08:00 =====\n"
+        "argv: spex list\n===== END exit=0 duration_ms=9000 =====\n",
+    )
+    host = transport.HostTurn("same-session", "What type?", None, "")
+    timing = {
+        "host_started_at": "2026-11-17T09:00:11+08:00",
+        "host_ended_at": "2026-11-17T09:00:21+08:00",
+    }
+    original_write = run.write_json
+    with monkeypatch.context() as patch:
+        def interrupted(path, value):
+            if path == metadata_path:
+                raise OSError("interrupted before trial metadata update")
+            original_write(path, value)
+
+        patch.setattr(run, "write_json", interrupted)
+        with pytest.raises(OSError, match="interrupted"):
+            run.store_turn(output, trial, run.read_json(metadata_path), host, **timing)
+    saved = run.read_json(output / "turn-1.json")
+    assert saved["artifacts"]["spex-trace"]["value"]["events"]
+    with log.open("a") as stream:
+        stream.write(
+            "===== BEGIN 2026-11-17T09:10:00+08:00 =====\n"
+            "argv: spex list\n===== END exit=0 duration_ms=10 =====\n",
+        )
+    run.store_turn(output, trial, run.read_json(metadata_path), host, **timing)
+    metrics = run.read_json(output / "performance.json")["turns"]["1"]["host"]
+    assert metrics["duration_ms"] == 10000
+    assert not {"missing_turn_timing_evidence", "implausible_host_duration"} & set(metrics["gaps"])
+    assert run.read_json(output / "turn-1.json") == saved

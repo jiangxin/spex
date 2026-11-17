@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 
@@ -38,8 +38,15 @@ def nonnegative(value):
     return value if type(value) is int and value >= 0 else None
 
 
+def wall_clock_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
-                 error: str | None = None) -> dict:
+                 error: str | None = None, *, started_at: str | None = None,
+                 ended_at: str | None = None) -> dict:
+    if duration_ms is None:
+        duration_ms = delta_ms(timestamp(started_at), timestamp(ended_at))
     record = {
         "duration_ms": duration_ms, "duration_source": source if duration_ms is not None else None,
         "model_requests": None, "parent_usage": None, "subagent_usage": None,
@@ -47,6 +54,9 @@ def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
         "subagent_failures": None, "subagent_spawn_failures": None, "trace": "missing",
         "gaps": ["missing_request_events", "missing_subagent_usage"],
     }
+    for key, value in (("started_at", started_at), ("ended_at", ended_at)):
+        if timestamp(value) is not None:
+            record[key] = value
     if error:
         record["error"] = error if re.fullmatch(r"[a-z_]{1,64}", error) else "host_error"
         record["gaps"].append(record["error"])
@@ -115,9 +125,9 @@ def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
 
 
 def timestamp(value):
-    if value:
+    if isinstance(value, str) and value:
         try:
-            stamp = datetime.fromisoformat(value)
+            stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return stamp if stamp.tzinfo is not None else None
         except ValueError:
             pass
@@ -128,6 +138,63 @@ def delta_ms(start, end):
     if start is not None and end is not None and end >= start:
         return round((end - start).total_seconds() * 1000)
     return None
+
+
+def stamp_bounds(value):
+    """Represent an ISO timestamp as a range at its recorded precision."""
+    parsed = timestamp(value)
+    if parsed is None:
+        return None
+    delta = parsed - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    start = (delta.days * 86_400 + delta.seconds) * 10**9 + delta.microseconds * 1000
+    fraction = re.search(r"[T ]\d{2}:\d{2}:\d{2}[.,](\d+)", value)
+    digits = fraction[1][:9] if fraction else ""
+    if len(digits) > 6:
+        start += int(digits[6:].ljust(3, "0"))
+    return start, start + 10 ** (9 - len(digits)) - 1
+
+
+def event_bounds(event):
+    """Return the latest possible start and earliest possible finish."""
+    if type(event.get("start_ns")) is int and type(event.get("end_ns")) is int:
+        return event["start_ns"], event["end_ns"]
+    stamp = stamp_bounds(event.get("at"))
+    duration = nonnegative(event.get("duration_ms"))
+    if stamp is None:
+        return None
+    low, high = stamp
+    if "command" in event and duration is not None:
+        # Legacy BEGIN is written at flush time, after the command returns.
+        return high - duration * 10**6, low
+    if event.get("mode") in {"full", "delta"} and duration is not None:
+        return high, low + duration * 10**6
+    if event.get("action") == "apply.workflow":
+        return high, low
+    return None
+
+
+def validate_host_timing(host: dict, native: dict | None) -> None:
+    """Compare a host interval only to this turn's persisted Spex evidence."""
+    duration = nonnegative(host.get("duration_ms"))
+    start, end = stamp_bounds(host.get("started_at")), stamp_bounds(host.get("ended_at"))
+    if duration is None and start is None and end is None:
+        return
+    gaps = host.setdefault("gaps", [])
+    evidence = native or {}
+    events = evidence.get("timing_events", evidence.get("events", []))
+    bounds = [pair for event in events if (pair := event_bounds(event)) is not None]
+    if not bounds:
+        gaps.append("missing_turn_timing_evidence")
+        return
+    first, last = min(pair[0] for pair in bounds), max(pair[1] for pair in bounds)
+    slack = 5 * 10**9
+    if (
+        (duration is not None and duration * 10**6 + slack < last - first)
+        or (start is not None and start[0] > first + slack)
+        or (end is not None and end[1] < last - slack)
+        or (start is not None and end is not None and start[0] > end[1])
+    ):
+        gaps.append("implausible_host_duration")
 
 
 def parse_log(segments: list[str]) -> dict:
@@ -279,21 +346,21 @@ def log_lines(segments: list[str]):
         yield from segment.splitlines()
 
 
-def debug_logs(repo: Path):
+def debug_logs(repo: Path, filename: str = "debug.log"):
     """Yield bounded workspace logs and read errors without following symlinks."""
     root = repo / ".spex"
-    paths = [root / "debug.log"]
+    paths = [root / filename, root / "eval-logs" / filename]
     for directory in ("specs", "archives", "sessions"):
         parent = root / directory
         if parent.resolve() == parent:
-            paths.extend(parent.glob("*/debug.log"))
+            paths.extend(parent.glob(f"*/{filename}"))
         else:
-            yield directory, None, "unsafe_debug_log"
+            yield f"{directory}/{filename}", None, "unsafe_debug_log"
     for path in sorted(paths):
         if not path.exists() and not path.is_symlink():
             continue
         relative = path.relative_to(root)
-        if len(relative.parts) not in (1, 3) or (
+        if len(relative.parts) not in (1, 2, 3) or (
             len(relative.parts) == 3 and relative.parts[0] not in {"specs", "archives", "sessions"}
         ):
             continue
@@ -373,13 +440,15 @@ def read_performance(output: Path) -> dict:
         return {"schema_version": 1, "turns": {}, "gaps": ["unreadable_performance_file"]}
 
 
-def update(output: Path, *, turn: int | None = None, repo: Path | None = None, **metrics) -> None:
+def update(output: Path, *, turn: int | None = None, repo: Path | None = None,
+           native: dict | None = None, **metrics) -> None:
     data = read_performance(output)
     try:
         new_turn = turn is not None and str(turn) not in data["turns"]
         if turn is None:
             data.update(metrics)
         else:
+            validate_host_timing(metrics["host"], native)
             data["turns"][str(turn)] = metrics
         if repo is not None:
             try:

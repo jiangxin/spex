@@ -130,6 +130,14 @@ next input.
 python3 eval/spex/run.py collect "$trial" --session "$session" --reply "$reply"
 ```
 
+For manual timing, run `eval/spex/host_turn_timer.py start` immediately
+before sending a turn and `stop` after its final reply, with the same
+`--sandbox`, `--suite`, `--case`, and `--turn` for both calls.
+`collect_handoff.py` reads the resulting `.host-wall-clock.json` or the
+legacy `.host-duration-ms` beside the reply. Direct `collect` accepts
+`--host-started-at`, `--host-ended-at`, and `--host-duration-ms`.
+Timing diagnostics compare the host window with the saved evidence for that turn.
+
 A compatible Codex-style JSONL transcript supplied through `--events FILE`
 adds host observations. Its reply must match the handoff for the transcript
 to be used. Portable positive observations can be supplied through
