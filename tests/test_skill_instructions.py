@@ -994,6 +994,7 @@ class TestApplyStepReviewSop:
         _index(phase5, "`$did_commit`")
         _index(phase5, "Leftover dirty paths poison")
         persist = _index(phase5, "--commit-title")
+        commit = _index(phase5, "transaction commit")
         recompute = _index(phase5, "Recompute `$dirty`")
         outcome = _index(phase5, "outcome=committed")
         assert persist < recompute, (
@@ -1004,6 +1005,7 @@ class TestApplyStepReviewSop:
         )
         _index(phase5, "only allowed **after** persist")
         _index(phase5, "do **not** skip persisting on residual dirty")
+        assert _index(phase5, "transaction start") < persist < commit < recompute
 
         # Phase 6 is Load-only pointer; STOP/6c live in review-loop
         phase6 = _h2_section(phases, "Phase 6: Review Loop")
@@ -1015,6 +1017,15 @@ class TestApplyStepReviewSop:
         phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
         _index(phase7, "`$did_commit`")
         _index(phase7, "Refresh `$commit_title` if needed")
+        start = _index(phase7, "transaction start")
+        commit = _index(phase7, "todo-helper transaction commit")
+        assert phase7.count("--completed-at") == 2
+        assert (
+            start < phase7.index("--completed-at") < phase7.rindex("--completed-at") < commit
+        )
+        failures = _h2_section(phases, "Todo status transaction failures")
+        _index(failures, "transaction rollback")
+        _index(failures, "before starting another transaction")
 
         # Handoff decision table (apply main session only)
         _index(handoff, "outcome=skip_commit")
@@ -1405,6 +1416,27 @@ class TestApplyOneStepCompletedSpecAndDedupe:
             # Named recovery must not leave empty-name [] without STOP
             assert phase1.index("empty / missing `$spec_name`") > phase1.index(
                 "--must-done"
+            )
+
+    def test_apply_stops_for_unresolved_todo_transaction(self):
+        phases = _read(APPLY_TASK_PHASES)
+        gate = _h2_section(phases, "Todo status recovery gate")
+        _index(gate, "`$spec_path/todo.json.lock` exists")
+        _index(gate, "stop before building a task")
+        _index(gate, "todo-helper transaction commit")
+        _index(gate, "todo-helper transaction rollback")
+        phase2 = _h2_section(phases, "Phase 2: Validate Branch")
+        assert _index(phase2, "Todo status recovery gate") < _index(
+            phase2, "apply-helper precheck"
+        )
+
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            text = _read(path)
+            phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+            assert _index(phase1, "Todo status recovery gate") < _index(phase1, "post-action")
+            phase3 = _h3_section(text, "Phase 3: Build Prompt / Resume Gate")
+            assert _index(phase3, "Todo status recovery gate") < _index(
+                phase3, "prompt apply-one-task"
             )
 
     def test_apply_one_step_differences_table_and_helper_remaining(self):

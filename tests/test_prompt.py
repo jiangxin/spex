@@ -432,33 +432,45 @@ class TestJsonMode:
         assert data["commit_title"] == ""
         assert data["skip_commit"] == "false"
 
-    def test_prompt_json_resume_review(self, tmp_path, monkeypatch, capsys):
-        """--json with commit_title set emits resume_phase=review."""
-        tasks = [
-            _make_task(
-                "step-1",
-                name="First step",
-                completed=False,
-                commit_title="deadbeef: feat: first",
-            ),
-        ]
-        repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
-        monkeypatch.chdir(repo)
-
-        monkeypatch.setattr(
-            "sys.argv",
-            ["prompt", "apply-one-task", "test-topic", "--json"],
-        )
-        monkeypatch.setattr("sys.stdin", open("/dev/null"))
-
+    def test_resume_review_after_failed_completion(self, tmp_path, monkeypatch, capsys):
+        """Rollback preserves the independently committed title for review."""
+        import todo_helper
         from prompt import main
 
-        main()
+        name = "test-topic"
+        commit_title = "deadbeef: feat: first"
+        repo, spec_dir = _setup_topic(tmp_path, name, [_make_task("step-1")])
+        monkeypatch.chdir(repo)
+        todo_path = spec_dir / "todo.json"
+
+        todo_helper.main(["transaction", "start", name])
+        todo_helper.main(["edit", name, "--id", "step-1", "--commit-title", commit_title])
+        todo_helper.main(["transaction", "commit", name])
+        saved = todo_path.read_bytes()
+
+        def fail_after_edit(*args):
+            raise OSError("interrupted completion")
+
+        monkeypatch.setattr(todo_helper, "_emit_todo_edit_apply_anchor", fail_after_edit)
+        todo_helper.main(["transaction", "start", name])
+        with pytest.raises(OSError, match="interrupted completion"):
+            todo_helper.main([
+                "edit", name, "--id", "step-1", "--completed-at", "now",
+                "--commit-title", "f00dbeef: feat: first",
+            ])
+        interrupted = json.loads(todo_path.read_bytes())[0]
+        assert interrupted["completed_at"]
+        assert interrupted["commit_title"] == "f00dbeef: feat: first"
+        todo_helper.main(["transaction", "rollback", name])
+        assert todo_path.read_bytes() == saved
+        assert not todo_path.with_suffix(".json.lock").exists()
+
+        main(["apply-one-task", name, "--json"])
 
         data = json.loads(capsys.readouterr().out)
         assert data["task_id"] == "step-1"
         assert data["resume_phase"] == "review"
-        assert data["commit_title"] == "deadbeef: feat: first"
+        assert data["commit_title"] == commit_title
         assert data["skip_commit"] == "false"
 
     def test_prompt_json_all_done(self, tmp_path, monkeypatch, capsys):

@@ -219,6 +219,11 @@ def _build_parser() -> ArgumentParser:
         action="store_true",
         help="Only show specs with undone steps",
     )
+    group.add_argument(
+        "--must-undone-or-locked",
+        action="store_true",
+        help="Only show specs with undone steps or an open todo transaction",
+    )
     parser.add_argument(
         "patterns",
         nargs="*",
@@ -244,6 +249,11 @@ def main(argv=None):
         specs = [t for t in specs if t.is_completed]
     elif args.must_undone:
         specs = [t for t in specs if not t.is_completed]
+    elif args.must_undone_or_locked:
+        specs = [
+            t for t in specs
+            if not t.is_completed or (t.path / "todo.json.lock").exists()
+        ]
 
     if args.json:
         # Empty match is a valid result for callers parsing --json

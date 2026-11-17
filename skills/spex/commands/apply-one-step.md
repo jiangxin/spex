@@ -70,8 +70,10 @@ Apply a single step from a specification's todo list.
     $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
     ```
 
-    - IF hit (non-empty array) -> report that the spec is already
-      complete; offer
+    - IF hit (non-empty array) -> run the Todo status recovery gate in
+      `references/apply-task-phases.md` using the returned spec path
+      for each hit. If the gate allows continuation, report that the
+      spec is already complete and offer
       `$spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"`
       to finish the tail -> **STOP**
     - IF still `[]` -> report no match -> **STOP**
@@ -89,6 +91,8 @@ Apply a single step from a specification's todo list.
 
 ### Phase 3: Build Prompt / Resume Gate
 
+- Apply the Todo status recovery gate in
+  `references/apply-task-phases.md` before rendering the task prompt.
 - CMD:
 
 ```bash
@@ -169,7 +173,8 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
   retryable — FAIL; no Phase 7; leave `completed_at` unset
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - Empty `[]` recovery: see Phase 1 empty `[]` handling
-- ON_FAIL Phases 4–5 execution (not intentional STOP) -> Load and
+- ON_FAIL Phases 4–5 execution before a Git commit succeeds (excluding
+  intentional STOP) -> Load and
   follow Phases 4–5 execution-failure retry in
   `references/apply-task-phases.md` (in-session retry)
 - Residual dirty after commit -> follow Phase 5 residual-dirty
@@ -177,7 +182,8 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
   `commit_title` first; STOP without Phase 6/7 / `completed_at`)
 - Phase 6 abnormal STOP -> end invocation per
   `apply-review-loop.md` (no Phase 7/8)
-- ON_FAIL Phase 7 todo edit -> STOP
+- After a Git commit, follow Phase 5 persistence recovery on failure.
+- ON_FAIL Phase 7 todo transaction -> follow Phase 7 recovery and STOP
 
 ## STOP / Outputs
 

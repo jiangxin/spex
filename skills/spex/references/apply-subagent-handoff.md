@@ -27,9 +27,10 @@ Implementation prompt must NOT create the commit — when a commit
 is required, sub-agent runs Phase 5 (`apply-commit`) after
 implementation.
 
-ON_FAIL (implement/commit **execution** errors only — not
-intentional STOP): Load and follow Phases 4–5 execution-failure
-retry in `references/apply-task-phases.md` (fresh sub-agent).
+ON_FAIL (implement/commit **execution** errors before a Git commit
+succeeds, excluding intentional STOP): Load and follow Phases 4–5
+execution-failure retry in `references/apply-task-phases.md` (fresh
+sub-agent). After a Git commit, use Phase 5 persistence recovery.
 
 Phase 4/5 still set `$did_commit` inside the sub-agent for
 **local** routing only.

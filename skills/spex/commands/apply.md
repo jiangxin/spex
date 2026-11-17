@@ -98,9 +98,10 @@ for outer loops; Phase bodies below do not restate the diagram.
 ### Phase 1: Resolve Spec
 
 - IF `$spec_name` is `--all`:
-  - CMD: `$spex_skill_dir/scripts/spex list --json --must-undone`
+  - CMD: `$spex_skill_dir/scripts/spex list --json --must-undone-or-locked`
   - Parse stdout as JSON array `$specs` of objects (`spec_name`,
-    `spec_path`)
+    `spec_path`). A spec with an open todo transaction reaches the
+    Phase 2 recovery gate even if its task list appears complete.
   - **Hard rule:** do **not** re-run `list` inside the `--all`
     loop — only iterate this Phase 1 `$specs` array. Branch base
     is guaranteed by Phase 2 precheck (`meta.branch`); the loop
@@ -133,8 +134,10 @@ for outer loops; Phase bodies below do not restate the diagram.
       $spex_skill_dir/scripts/spex list --json --must-done "$spec_name"
       ```
 
-      - IF hit (non-empty array) -> report that the spec is already
-        complete; offer
+      - IF hit (non-empty array) -> run the Todo status recovery gate in
+        `references/apply-task-phases.md` using the returned spec path
+        for each hit. If the gate allows continuation, report that the
+        spec is already complete and offer
         `$spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"`
         to finish the tail -> **STOP**
       - IF still `[]` -> report no match -> **STOP**
@@ -158,6 +161,8 @@ for outer loops; Phase bodies below do not restate the diagram.
 
 ### Phase 3: Build Prompt / Resume Gate
 
+- Apply the Todo status recovery gate in
+  `references/apply-task-phases.md` before rendering the task prompt.
 - CMD:
 
 ```bash
@@ -242,14 +247,16 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
   treat as `outcome=skip_commit`
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
 - Empty `[]` recovery: see Phase 1 empty `[]` handling
-- ON_FAIL Phases 4–5 execution (not intentional STOP) -> Load and
+- ON_FAIL Phases 4–5 execution before a Git commit succeeds (excluding
+  intentional STOP) -> Load and
   follow Phases 4–5 execution-failure retry in
   `references/apply-task-phases.md` (fresh sub-agent)
 - Unexpected handoff / residual dirty after commit -> STOP; no
   Phase 7
 - Phase 6 abnormal STOP -> end entire `/spex apply` per
   `apply-review-loop.md` (no 7/8/9 / next task / next `$specs`)
-- ON_FAIL Phase 7 todo edit -> STOP
+- After a Git commit, follow Phase 5 persistence recovery on failure.
+- ON_FAIL Phase 7 todo transaction -> follow Phase 7 recovery and STOP
 
 ## STOP / Outputs
 

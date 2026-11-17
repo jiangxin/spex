@@ -1073,6 +1073,28 @@ class TestDoneUndoneFilter:
         assert "done-topic" in names
         assert "undone-topic" not in names
 
+    def test_must_undone_or_locked_retains_pending_local_specs(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+        specs = tmp_path / "specs"
+        for name, project in [
+            ("locked-topic", "project-a"),
+            ("foreign-topic", "project-b"),
+        ]:
+            spec_dir = specs / name
+            _setup_topic(spec_dir, str(tmp_path / project))
+            _make_todo(spec_dir, [_task("1")])
+            (spec_dir / "todo.json.lock").touch()
+
+        main(["--json", "--must-undone-or-locked"])
+        result = json.loads(capsys.readouterr().out)
+        assert {t["spec_name"] for t in result} == {"locked-topic", "undone-topic"}
+
+        main(["--json", "--must-undone"])
+        result = json.loads(capsys.readouterr().out)
+        assert [t["spec_name"] for t in result] == ["undone-topic"]
+
     def test_must_undone_with_pattern(self, tmp_path, monkeypatch, capsys):
         self._setup(tmp_path, monkeypatch)
 
