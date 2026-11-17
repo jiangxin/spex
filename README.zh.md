@@ -271,7 +271,7 @@ Spex 本身使用 SDD 模式开发，下面的输出是使用 `spex list --archi
 开发过程中尝试了其他格式的中间文件，例如 XML 格式，虽然可以生成多行 Markdown 文本作为步骤描述，但 XML 中的字符转码增加了复杂度。最终的方案是开发了 `spex todo-helper` 助手程序，在为 `todo.json` 添加新步骤时使用 heredoc 方式提供多行的详细开发步骤。例如大模型使用如下命令行调用向 `todo.json` 中添加执行步骤：
 
 ```bash
-$ spex todo-helper --name $spec_name append \
+$ spex todo-helper append "$spec_name" \
   --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.

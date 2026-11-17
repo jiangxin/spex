@@ -2657,11 +2657,11 @@ class TestCompactReviewContext:
         from prompt import main
 
         review_helper.main([
-            "--name", "delta-skip", "init",
+            "init", "delta-skip",
             "--step", "step-1", "--commit", "cafebabe",
         ])
         review_helper.main([
-            "--name", "delta-skip", "append",
+            "append", "delta-skip",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "other",
@@ -2669,7 +2669,7 @@ class TestCompactReviewContext:
             "--details", "optional",
         ])
         review_helper.main([
-            "--name", "delta-skip", "set-pending",
+            "set-pending", "delta-skip",
             "--step", "step-1",
             "--ids", "r1-f1",
             "--base-commit", "cafebabe",
@@ -2712,11 +2712,11 @@ class TestCompactReviewContext:
         from prompt import main
 
         review_helper.main([
-            "--name", "delta-major", "init",
+            "init", "delta-major",
             "--step", "step-1", "--commit", "fixed002",
         ])
         review_helper.main([
-            "--name", "delta-major", "append",
+            "append", "delta-major",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "major",
             "--category", "tests",
@@ -2724,7 +2724,7 @@ class TestCompactReviewContext:
             "--details", "Add coverage",
         ])
         review_helper.main([
-            "--name", "delta-major", "set-pending",
+            "set-pending", "delta-major",
             "--step", "step-1",
             "--ids", "r1-f1",
             "--base-commit", "base0001",
@@ -2827,7 +2827,7 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-2", "--commit", "deadbeef",
         ])
         capsys.readouterr()  # drain init path on stdout
@@ -2863,11 +2863,11 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-2", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "test-topic", "append",
+            "append", "test-topic",
             "--step", "step-2",
             "--id", "r1-f1", "--severity", "major",
             "--category", "tests",
@@ -2875,7 +2875,7 @@ class TestApplyReviewAndFix:
             "--details", "Add tests for edge cases",
         ])
         review_helper.main([
-            "--name", "test-topic", "append",
+            "append", "test-topic",
             "--step", "step-2",
             "--id", "r1-f2", "--severity", "minor",
             "--category", "other",
@@ -2931,12 +2931,12 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-2", "--commit", "abc1234",
         ])
         for fid, title in (("r1-f1", "First"), ("r1-f2", "Second")):
             review_helper.main([
-                "--name", "test-topic", "append",
+                "append", "test-topic",
                 "--step", "step-2",
                 "--id", fid, "--severity", "minor",
                 "--category", "other",
@@ -2969,11 +2969,11 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-1", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "test-topic", "append",
+            "append", "test-topic",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "other",
@@ -3004,7 +3004,7 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-1", "--commit", "abc1234",
         ])
         # No findings appended → resolved batch is empty.
@@ -3035,7 +3035,7 @@ class TestApplyReviewAndFix:
         from prompt import main
 
         review_helper.main([
-            "--name", "test-topic", "init",
+            "init", "test-topic",
             "--step", "step-1", "--commit", "abc1234",
         ])
         for fid, title in (
@@ -3044,7 +3044,7 @@ class TestApplyReviewAndFix:
             ("r1-f3", "Outside pending"),
         ):
             review_helper.main([
-                "--name", "test-topic", "append",
+                "append", "test-topic",
                 "--step", "step-1",
                 "--id", fid, "--severity", "minor",
                 "--category", "other",
@@ -3052,7 +3052,7 @@ class TestApplyReviewAndFix:
                 "--details", f"Details {fid}",
             ])
         review_helper.main([
-            "--name", "test-topic", "set-pending",
+            "set-pending", "test-topic",
             "--step", "step-1",
             "--ids", "r1-f1,r1-f2",
             "--base-commit", "abc1234",
@@ -3221,7 +3221,7 @@ class TestApplyReviewAndFix:
         )
 
         review_helper.main([
-            "--name", "large-diff-topic", "init",
+            "init", "large-diff-topic",
             "--step", "step-2", "--commit", sha,
         ])
         capsys.readouterr()

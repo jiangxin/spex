@@ -46,7 +46,7 @@ only.
 ## review-helper CLI cheat sheet
 
 ```text
-REQUIRED: --name <spec> on every call; --step S for show/get/list
+REQUIRED: <spec-name> after the subcommand on every call; --step S for show/get/list
 FORBIDDEN for this fix agent:
   status | next | bump-round | append | init | edit | set-pending
   | complete-batch

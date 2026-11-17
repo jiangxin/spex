@@ -1256,8 +1256,8 @@ class ReviewHelperParser(ArgumentParser):
             and "--step" in message
         ):
             hints.append(
-                "Example: spex review-helper --name <spec> "
-                "status --step step-1",
+                "Example: spex review-helper status <spec-name> "
+                "--step step-1",
             )
         if "invalid choice" in message:
             hints.append(
@@ -1278,10 +1278,6 @@ def _build_parser():
             f"({', '.join(VALID_SUBCOMMANDS)})."
         ),
     )
-    parser.add_argument(
-        "--name", required=True, help="Spec name (required)",
-    )
-
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
 
     p_init = subs.add_parser(
@@ -1520,6 +1516,12 @@ def _build_parser():
         "--workdir", default=None,
         help="Git workdir for HEAD and dirty checks (default: cwd)",
     )
+
+    for subparser in (
+        p_init, p_append, p_edit, p_bump, p_set_commit, p_status,
+        p_show, p_list, p_get, p_next, p_open_batch, p_set_pending, p_complete,
+    ):
+        subparser.add_argument("name", metavar="<spec-name>", help="Spec name")
 
     return parser
 

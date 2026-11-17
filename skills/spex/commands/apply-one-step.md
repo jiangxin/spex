@@ -142,7 +142,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json --name "$spec_name"
   file directly):
 
   ```bash
-  $spex_skill_dir/scripts/spex todo-helper --name "$spec_name" show --undone
+  $spex_skill_dir/scripts/spex todo-helper show "$spec_name" --undone
   ```
 
   Parse JSON stdout array length -> `$remaining`

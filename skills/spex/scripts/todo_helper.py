@@ -380,7 +380,7 @@ def _resolve_todo_path(args):
     return resolve_spec_dir(args.name) / "todo.json"
 
 
-_LOCATOR_FLAGS_WITH_VALUE = ("--name", "--todo-file")
+_LOCATOR_FLAGS_WITH_VALUE = ("--todo-file",)
 # Subcommand options that take a value. Their next argv token must
 # not be classified as a hoistable locator, even when it looks like
 # a flag (e.g. ``--commit-title --name``).
@@ -397,7 +397,7 @@ _VALUE_TAKING_SUB_FLAGS = frozenset({
 def _hoist_locator_flags(argv):
     """Move locator flags before the subcommand for argparse.
 
-    Agents sometimes place ``--name`` / ``--todo-file``
+    Agents sometimes place ``--todo-file``
     after the subcommand; argparse only accepts parent options before
     it. Hoisting keeps mutual exclusivity and existing parse paths.
 
@@ -413,7 +413,7 @@ def _hoist_locator_flags(argv):
         arg = argv[i]
         if arg in _LOCATOR_FLAGS_WITH_VALUE:
             # Only hoist when a value token follows; leave bare
-            # --name / --todo-file in place so argparse reports
+            # --todo-file in place so argparse reports
             # the real missing-argument error instead of rewriting
             # the subcommand into the flag value.
             if i + 1 < n and not argv[i + 1].startswith("-"):
@@ -424,7 +424,7 @@ def _hoist_locator_flags(argv):
                 remaining.append(arg)
                 i += 1
             continue
-        if arg.startswith("--name=") or arg.startswith("--todo-file="):
+        if arg.startswith("--todo-file="):
             hoisted.append(arg)
             i += 1
             continue
@@ -457,15 +457,7 @@ def _build_parser():
             " (validate, append, edit, remove, show)."
         ),
     )
-    locator = parser.add_mutually_exclusive_group()
-    locator.add_argument(
-        "--name",
-        help=(
-            "Resolve spec dir for todo file"
-            " (accepted before or after the subcommand)"
-        ),
-    )
-    locator.add_argument(
+    parser.add_argument(
         "--todo-file",
         help=(
             "Direct path to todo file"
@@ -476,7 +468,7 @@ def _build_parser():
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
 
     # validate
-    subs.add_parser(
+    p_validate = subs.add_parser(
         "validate",
         description=(
             "Validate todo file format and check"
@@ -608,7 +600,23 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
+    for subparser in (p_validate, p_append, p_edit, p_remove, p_show):
+        subparser.add_argument(
+            "name", nargs="?", metavar="<spec-name>",
+            help="Spec name (omit when using --todo-file)",
+        )
+
     return parser
+
+
+def _parse_args(parser, argv):
+    args = parser.parse(_hoist_locator_flags(argv))
+    if args.subcmd:
+        if (args.name is None) == (args.todo_file is None):
+            parser.error("Provide exactly one of <spec-name> or --todo-file.")
+        if args.name == "" or args.todo_file == "":
+            parser.error("<spec-name> and --todo-file must be nonempty when provided.")
+    return args
 
 
 def main(argv=None):
@@ -616,18 +624,11 @@ def main(argv=None):
     parser = _build_parser()
     if argv is None:
         argv = sys.argv[1:]
-    args = parser.parse(_hoist_locator_flags(argv))
+    args = _parse_args(parser, argv)
 
     if not args.subcmd:
         parser.print_help(sys.stderr)
         sys.exit(0)
-
-    if not args.name and not args.todo_file:
-        logger.error(
-            "Error: one of the arguments --name"
-            " --todo-file is required.",
-        )
-        sys.exit(2)
 
     todo_path = _resolve_todo_path(args)
 

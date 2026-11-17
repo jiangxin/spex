@@ -82,14 +82,14 @@ def _patch_git(monkeypatch, head_sha: str, clean: bool = True) -> None:
 
 def _status(capsys, step: str = "step-8") -> dict:
     review_helper.main([
-        "--name", "integ", "status", "--step", step, "--json",
+        "status", "integ", "--step", step, "--json",
     ])
     return json.loads(capsys.readouterr().out)
 
 
 def _open_batch(capsys, step: str = "step-8") -> dict:
     review_helper.main([
-        "--name", "integ", "open-batch", "--step", step,
+        "open-batch", "integ", "--step", step,
     ])
     return json.loads(capsys.readouterr().out)
 
@@ -102,7 +102,7 @@ def _append(
     category: str = "tests",
 ) -> None:
     review_helper.main([
-        "--name", "integ", "append",
+        "append", "integ",
         "--step", step,
         "--id", fid,
         "--severity", severity,
@@ -149,7 +149,7 @@ class ReviewFlowSimulator:
 
     def init_full_review(self) -> None:
         review_helper.main([
-            "--name", "integ", "init",
+            "init", "integ",
             "--step", self.step, "--commit", self.base_sha,
         ])
         self.capsys.readouterr()
@@ -173,7 +173,7 @@ class ReviewFlowSimulator:
         ids = finding_ids or [f["id"] for f in batch["findings"]]
         assert ids, "batch fix requires open findings"
         review_helper.main([
-            "--name", "integ", "set-pending",
+            "set-pending", "integ",
             "--step", self.step,
             "--ids", ",".join(ids),
             "--base-commit", self.base_sha,
@@ -187,7 +187,7 @@ class ReviewFlowSimulator:
         self.counters.record("amend")
         try:
             review_helper.main([
-                "--name", "integ", "complete-batch",
+                "complete-batch", "integ",
                 "--step", self.step,
                 "--ids", ",".join(ids),
                 "--base-commit", self.base_sha,
@@ -226,7 +226,7 @@ class ReviewFlowSimulator:
 
     def bump_full_round(self) -> None:
         review_helper.main([
-            "--name", "integ", "bump-round",
+            "bump-round", "integ",
             "--step", self.step, "--commit", self.base_sha,
         ])
         self.capsys.readouterr()
@@ -354,7 +354,7 @@ class TestInterruptedAmendRecovery:
         batch = _open_batch(capsys)
         ids = [f["id"] for f in batch["findings"]]
         review_helper.main([
-            "--name", "integ", "set-pending",
+            "set-pending", "integ",
             "--step", "step-8",
             "--ids", ",".join(ids),
             "--base-commit", sim.base_sha,
@@ -375,7 +375,7 @@ class TestInterruptedAmendRecovery:
         monkeypatch.setattr(review_helper, "save_review", boom)
         with pytest.raises(OSError, match="simulated"):
             review_helper.main([
-                "--name", "integ", "complete-batch",
+                "complete-batch", "integ",
                 "--step", "step-8",
                 "--ids", ",".join(ids),
                 "--base-commit", "base0001",
@@ -390,7 +390,7 @@ class TestInterruptedAmendRecovery:
 
         monkeypatch.setattr(review_helper, "save_review", real_save)
         review_helper.main([
-            "--name", "integ", "complete-batch",
+            "complete-batch", "integ",
             "--step", "step-8",
             "--ids", ",".join(ids),
             "--base-commit", "base0001",
@@ -462,7 +462,7 @@ class TestDisabledReviewWithMajor:
         import prompt as prompt_mod
 
         review_helper.main([
-            "--name", "integ", "init",
+            "init", "integ",
             "--step", "step-8", "--commit", "abc1234",
         ])
         _append("step-8", "r1-f1", "major", "Must fix")
@@ -512,7 +512,7 @@ class TestDirtyAndDetachedSafetyGates:
         batch = _open_batch(capsys)
         ids = [f["id"] for f in batch["findings"]]
         review_helper.main([
-            "--name", "integ", "set-pending",
+            "set-pending", "integ",
             "--step", "step-8",
             "--ids", ",".join(ids),
             "--base-commit", "base0001",
@@ -521,7 +521,7 @@ class TestDirtyAndDetachedSafetyGates:
         _patch_git(monkeypatch, "fix0002", clean=False)
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "integ", "complete-batch",
+                "complete-batch", "integ",
                 "--step", "step-8",
                 "--ids", ",".join(ids),
                 "--base-commit", "base0001",
@@ -545,7 +545,7 @@ class TestDirtyAndDetachedSafetyGates:
         batch = _open_batch(capsys)
         ids = [f["id"] for f in batch["findings"]]
         review_helper.main([
-            "--name", "integ", "set-pending",
+            "set-pending", "integ",
             "--step", "step-8",
             "--ids", ",".join(ids),
             "--base-commit", "base0001",
@@ -555,7 +555,7 @@ class TestDirtyAndDetachedSafetyGates:
         _patch_git(monkeypatch, "base0001", clean=True)
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "integ", "complete-batch",
+                "complete-batch", "integ",
                 "--step", "step-8",
                 "--ids", ",".join(ids),
                 "--base-commit", "base0001",
@@ -684,7 +684,7 @@ class TestFullRoundCap:
         """At max full round, major complete-batch must not await delta/R4."""
         path = integ / "review-step-8.json"
         review_helper.main([
-            "--name", "integ", "init",
+            "init", "integ",
             "--step", "step-8", "--commit", "base0001",
         ])
         # Force round to max with mode=delta (post-fix at hard cap).
@@ -697,7 +697,7 @@ class TestFullRoundCap:
         capsys.readouterr()
 
         review_helper.main([
-            "--name", "integ", "set-pending",
+            "set-pending", "integ",
             "--step", "step-8",
             "--ids", "r3-f1",
             "--base-commit", "base0001",
@@ -705,7 +705,7 @@ class TestFullRoundCap:
         capsys.readouterr()
         _patch_git(monkeypatch, "fix0002", clean=True)
         review_helper.main([
-            "--name", "integ", "complete-batch",
+            "complete-batch", "integ",
             "--step", "step-8",
             "--ids", "r3-f1",
             "--base-commit", "base0001",
@@ -720,6 +720,6 @@ class TestFullRoundCap:
         assert status["done"] is True
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "integ", "bump-round",
+                "bump-round", "integ",
                 "--step", "step-8", "--commit", "fix0002",
             ])

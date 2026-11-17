@@ -572,13 +572,13 @@ class TestSopCliContract:
         errors = _check_invocation("commands/archive.md", raw, tail)
         assert errors == []
 
-    def test_nested_parent_flags_before_subcmd(self):
+    def test_nested_positional_spec_name(self):
         raw = (
-            '$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" '
-            'edit --id "$current_task_id" --commit-title "$commit_title"'
+            '$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" '
+            '--id "$current_task_id" --commit-title "$commit_title"'
         )
         tail = (
-            'scripts/spex todo-helper --name "$spec_name" edit '
+            'scripts/spex todo-helper edit "$spec_name" '
             '--id "$current_task_id" --commit-title "$commit_title"'
         )
         errors = _check_invocation("references/apply-task-phases.md", raw, tail)
@@ -604,7 +604,7 @@ class TestSopCliContract:
         """Lookahead [\\w-] (not [\\\\w-]) blocks short-opt prefix matches."""
         text = (
             "  -v, --verbose   verbose mode\n"
-            "  --dry-run       dry run\n"
+            " --dry-run       dry run\n"
             "  x--nope         prose noise\n"
             "  -verbose        not a short opt run-on\n"
         )
@@ -786,7 +786,7 @@ class TestSopCliContract:
         )
         assert "$spex_skill_dir" not in rendered
         assert "/tmp/fake-skill/scripts/spex" in rendered
-        assert '--name "demo-spec"' in rendered
+        assert 'todo-helper edit "demo-spec"' in rendered
 
     def test_no_unquoted_name_spec_name_in_sop_or_templates(self):
         """cli-contract rule 4: --name \"$spec_name\", never bare $spec_name."""

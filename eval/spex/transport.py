@@ -133,6 +133,7 @@ def review_arguments(command: str) -> dict:
     if newline:
         if len(words) < 2 or words[-2] != "<<" or not body.rstrip("\n").endswith("\n" + words[-1]):
             return {}
+        words = words[:-2]
     if len(words) < 3 or Path(words[0]).name != "spex":
         return {}
     options = {
@@ -145,12 +146,18 @@ def review_arguments(command: str) -> dict:
         stage = "prompt"
         words = words[3:]
     elif words[1] == "review-helper":
-        stage = next((word for word in words[2:]
-                      if word in {"status", "entry", "complete-batch", "finish-pass"}), None)
-        if stage is None:
+        command_index = 2
+        # Historical and pinned CLI traces may still pass the selector before the command.
+        if words[2] == "--name":
+            command_index += 2
+        elif words[2].startswith("--name="):
+            command_index += 1
+        if len(words) <= command_index:
             return {}
-        words = words[2:]
-        words.remove(stage)
+        stage = words[command_index]
+        if stage not in {"status", "entry", "complete-batch", "finish-pass"}:
+            return {}
+        words = words[2:command_index] + words[command_index + 1:]
     else:
         return {}
     result = {"stage": stage}

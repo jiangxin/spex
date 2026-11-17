@@ -44,7 +44,7 @@ def test_trace_identifies_workflow_commands_and_transport_errors():
     trace = "\n".join(json.dumps(event) for event in (
         {"type": "thread.started", "thread_id": "example-1"},
         {"type": "item.completed", "item": {"type": "command_execution", "exit_code": 1,
-         "command": "/bin/zsh -lc '/fixture/scripts/spex review-helper --name case status'"}},
+         "command": "/bin/zsh -lc '/fixture/scripts/spex review-helper status case'"}},
         {"type": "item.completed", "item": {"type": "command_execution", "exit_code": 0,
          "command": "/bin/zsh -lc '/fixture/scripts/spex apply-helper post-action --name case'"}},
         {"type": "item.completed", "item": {"type": "agent_message", "text": "Done"}},
@@ -60,6 +60,26 @@ def test_trace_identifies_workflow_commands_and_transport_errors():
         transport.parse_events(trace, "wrong-session")
     with pytest.raises(transport.TransportError, match="rate_limit"):
         transport.parse_events('{"type":"turn.failed","error":{"message":"429 rate limit"}}')
+
+
+@pytest.mark.parametrize("selector", ["--name status", "--name=status"])
+def test_review_command_preserves_historical_selectors(selector):
+    command = f"./scripts/spex review-helper {selector} finish-pass --step step-1"
+    assert transport.review_arguments(command) == {
+        "stage": "finish-pass", "spec": "status", "step": "step-1",
+    }
+
+
+def test_review_batch_command_reads_positional_selector_after_options():
+    command = (
+        "./scripts/spex review-helper complete-batch --step=step-1 "
+        "--ids status --base-commit abc1234 demo --new-commit def5678 "
+        "--evidence-from-stdin <<'EVIDENCE'\n{}\nEVIDENCE\n"
+    )
+    assert transport.review_arguments(command) == {
+        "stage": "complete-batch", "spec": "demo", "step": "step-1",
+        "base_commit": "abc1234", "new_commit": "def5678",
+    }
 
 
 @pytest.mark.parametrize(("output", "skipped"), [

@@ -154,7 +154,7 @@ class TestParseNameFromArgv:
         assert parse_name_from_argv(["prompt", "--name", "foo"]) == "foo"
 
     def test_equals_form(self):
-        assert parse_name_from_argv(["todo-helper", "--name=bar"]) == "bar"
+        assert parse_name_from_argv(["prompt", "--name=bar"]) == "bar"
 
     def test_missing(self):
         assert parse_name_from_argv(["spex", "version"]) is None

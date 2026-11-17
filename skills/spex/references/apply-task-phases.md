@@ -213,7 +213,7 @@ git rev-parse --short HEAD
   commit):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
+$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
   --id "$current_task_id" --commit-title "$commit_title"
 ```
 
@@ -262,7 +262,7 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
     sub-agent
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
+$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
   --id "$current_task_id" --completed-at now \
   --commit-title "$commit_title"
 ```
@@ -270,7 +270,7 @@ $spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
 - ELSE (`$did_commit` false — keep `commit_title` empty):
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper --name "$spec_name" edit \
+$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
   --id "$current_task_id" --completed-at now
 ```
 

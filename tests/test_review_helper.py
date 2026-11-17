@@ -47,7 +47,7 @@ class TestStepNumber:
 class TestInit:
     def test_creates_file(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc1234",
         ])
         path = spec_dir / "review-step-1.json"
@@ -73,7 +73,7 @@ class TestInit:
         }), encoding="utf-8")
 
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "newsha",
         ])
         data = _read(path)
@@ -85,11 +85,11 @@ class TestInit:
 class TestAppend:
     def test_append_major(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests",
@@ -111,7 +111,7 @@ class TestAppend:
         path = spec_dir / "review-step-1.json"
         assert not path.exists()
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1", "--commit", "deadbeef",
             "--id", "r1-f1", "--severity", "major",
             "--category", "tests",
@@ -129,7 +129,7 @@ class TestAppend:
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc:
                 review_helper.main([
-                    "--name", "my-topic", "append",
+                    "append", "my-topic",
                     "--step", "step-1",
                     "--id", "r1-f1", "--severity", "major",
                     "--category", "tests",
@@ -141,11 +141,11 @@ class TestAppend:
 
     def test_append_minor_round1(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-2", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-2",
             "--id", "f1", "--severity", "minor",
             "--category", "code-quality",
@@ -156,7 +156,7 @@ class TestAppend:
 
     def test_reject_minor_round2(self, spec_dir, caplog):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         path = spec_dir / "review-step-1.json"
@@ -167,7 +167,7 @@ class TestAppend:
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc:
                 review_helper.main([
-                    "--name", "my-topic", "append",
+                    "append", "my-topic",
                     "--step", "step-1",
                     "--id", "f1", "--severity", "minor",
                     "--category", "other",
@@ -178,7 +178,7 @@ class TestAppend:
 
     def test_allow_major_round2(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         path = spec_dir / "review-step-1.json"
@@ -187,7 +187,7 @@ class TestAppend:
         path.write_text(json.dumps(data) + "\n", encoding="utf-8")
 
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "security",
@@ -198,18 +198,18 @@ class TestAppend:
 
     def test_duplicate_id(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "lint", "--title", "A",
         ])
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "append",
+                "append", "my-topic",
                 "--step", "step-1",
                 "--id", "f1", "--severity", "major",
                 "--category", "lint", "--title", "B",
@@ -219,14 +219,14 @@ class TestAppend:
         import io
 
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         monkeypatch.setattr(
             "sys.stdin", io.StringIO("Line one\nLine two\n"),
         )
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "T",
@@ -239,17 +239,17 @@ class TestAppend:
 class TestEdit:
     def test_mark_complete(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "T",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f1",
             "--completed-at", "now",
         ])
@@ -259,12 +259,12 @@ class TestEdit:
 
     def test_not_found(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "edit",
+                "edit", "my-topic",
                 "--step", "step-1", "--id", "missing",
                 "--completed-at", "now",
             ])
@@ -273,17 +273,17 @@ class TestEdit:
 class TestBumpRound:
     def test_increments_and_updates_commit(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "other", "--title", "Keep me",
         ])
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "bump-round", "my-topic",
             "--step", "step-1", "--commit", "def456",
         ])
         out = _last_json_line(capsys)
@@ -298,27 +298,27 @@ class TestBumpRound:
 
     def test_requires_commit(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "bump-round",
+                "bump-round", "my-topic",
                 "--step", "step-1",
             ])
 
     def test_bump_from_round_2_to_3(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "bump-round", "my-topic",
             "--step", "step-1", "--commit", "def",
         ])
         _last_json_line(capsys)
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "bump-round", "my-topic",
             "--step", "step-1", "--commit", "ghi",
         ])
         out = _last_json_line(capsys)
@@ -329,7 +329,7 @@ class TestBumpRound:
 
     def test_rejects_bump_at_max_round(self, spec_dir):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         path = spec_dir / "review-step-1.json"
@@ -338,7 +338,7 @@ class TestBumpRound:
         path.write_text(json.dumps(data) + "\n", encoding="utf-8")
         with pytest.raises(SystemExit) as exc:
             review_helper.main([
-                "--name", "my-topic", "bump-round",
+                "bump-round", "my-topic",
                 "--step", "step-1", "--commit", "zzz",
             ])
         assert exc.value.code == 1
@@ -351,22 +351,22 @@ class TestSetCommit:
         self, spec_dir, capsys,
     ):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "major",
             "--category", "tests", "--title", "Keep me",
         ])
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "bump-round", "my-topic",
             "--step", "step-1", "--commit", "def",
         ])
         _last_json_line(capsys)
         review_helper.main([
-            "--name", "my-topic", "set-commit",
+            "set-commit", "my-topic",
             "--step", "step-1", "--commit", "ghi789",
         ])
         out = _last_json_line(capsys)
@@ -382,7 +382,7 @@ class TestSetCommit:
     def test_requires_existing_file(self, spec_dir):
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "set-commit",
+                "set-commit", "my-topic",
                 "--step", "step-1", "--commit", "abc",
             ])
 
@@ -391,17 +391,17 @@ class TestStatus:
     def test_needs_fix_when_only_minors(self, spec_dir, capsys):
         """Minor-only findings must still trigger the fix loop."""
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "minor",
             "--category", "other", "--title", "Nit",
         ])
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
@@ -415,7 +415,7 @@ class TestStatus:
     def test_ready_to_complete_minors_at_max_round(self, spec_dir, capsys):
         """At max round, minor-only leftovers may complete the step."""
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         path = spec_dir / "review-step-1.json"
@@ -431,7 +431,7 @@ class TestStatus:
         }]
         path.write_text(json.dumps(data) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
@@ -444,17 +444,17 @@ class TestStatus:
 
     def test_needs_fix_with_open_major(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "T",
         ])
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
@@ -465,22 +465,22 @@ class TestStatus:
 
     def test_done_when_all_findings_complete(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "T",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f1",
             "--completed-at", "now",
         ])
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
@@ -492,11 +492,11 @@ class TestStatus:
 
     def test_no_findings_is_done(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = _last_json_line(capsys)
@@ -507,7 +507,7 @@ class TestStatus:
     def test_missing_file_is_clean(self, spec_dir, capsys):
         """No review file means no findings — not an error."""
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         payload = json.loads(capsys.readouterr().out)
@@ -522,28 +522,28 @@ class TestStatus:
 class TestShow:
     def test_show_open_only(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Open one",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "other", "--title", "Done one",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f2",
             "--completed-at", "now",
         ])
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--open",
         ])
         out = capsys.readouterr().out
@@ -552,12 +552,12 @@ class TestShow:
 
     def test_show_json(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         capsys.readouterr()  # drain init JSON
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--json",
         ])
         data = json.loads(capsys.readouterr().out)
@@ -566,23 +566,23 @@ class TestShow:
 
     def test_show_by_id(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "First",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "other", "--title", "Second",
         ])
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--id", "f2",
         ])
         out = capsys.readouterr().out
@@ -591,18 +591,18 @@ class TestShow:
 
     def test_show_by_id_json(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Only one",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--id", "f1", "--json",
         ])
         data = json.loads(capsys.readouterr().out)
@@ -611,13 +611,13 @@ class TestShow:
 
     def test_show_by_id_not_found(self, spec_dir, caplog):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc:
                 review_helper.main([
-                    "--name", "my-topic", "show",
+                    "show", "my-topic",
                     "--step", "step-1", "--id", "missing",
                 ])
         assert exc.value.code == 1
@@ -626,22 +626,22 @@ class TestShow:
     def test_show_by_id_ignores_open_filter(self, spec_dir, capsys):
         """--id shows a completed finding even when --open is set."""
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Done one",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f1",
             "--completed-at", "now",
         ])
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--id", "f1", "--open",
         ])
         out = capsys.readouterr().out
@@ -652,8 +652,8 @@ class TestListGetAliases:
     """list/get are compatibility aliases so agent probes exit 0."""
 
     def test_list_without_step_exits_0(self, spec_dir, capsys):
-        """Archived probe: review-helper --name … list (no --step)."""
-        review_helper.main(["--name", "my-topic", "list"])
+        """Archived probe: review-helper list <spec-name> (no --step)."""
+        review_helper.main(["list", "my-topic"])
         data = json.loads(capsys.readouterr().out)
         assert data["findings"] == []
         assert "--step" in data["hint"]
@@ -661,24 +661,24 @@ class TestListGetAliases:
 
     def test_list_returns_json_summary(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "First",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "other", "--title", "Second",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "list",
+            "list", "my-topic",
             "--step", "step-1",
         ])
         data = json.loads(capsys.readouterr().out)
@@ -687,29 +687,29 @@ class TestListGetAliases:
 
     def test_list_open_filter(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Open one",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "other", "--title", "Done one",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f2",
             "--completed-at", "now",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "list",
+            "list", "my-topic",
             "--step", "step-1", "--open",
         ])
         data = json.loads(capsys.readouterr().out)
@@ -717,11 +717,11 @@ class TestListGetAliases:
 
     def test_list_matches_show_json(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Same",
@@ -729,12 +729,12 @@ class TestListGetAliases:
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--json",
         ])
         show_data = json.loads(capsys.readouterr().out)
         review_helper.main([
-            "--name", "my-topic", "list",
+            "list", "my-topic",
             "--step", "step-1",
         ])
         list_data = json.loads(capsys.readouterr().out)
@@ -742,18 +742,18 @@ class TestListGetAliases:
 
     def test_get_returns_finding_json(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Only one",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "get",
+            "get", "my-topic",
             "--step", "step-1", "--id", "f1",
         ])
         data = json.loads(capsys.readouterr().out)
@@ -763,23 +763,23 @@ class TestListGetAliases:
 
     def test_get_matches_show_id_json(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Match",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "show",
+            "show", "my-topic",
             "--step", "step-1", "--id", "f1", "--json",
         ])
         show_data = json.loads(capsys.readouterr().out)
         review_helper.main([
-            "--name", "my-topic", "get",
+            "get", "my-topic",
             "--step", "step-1", "--id", "f1",
         ])
         get_data = json.loads(capsys.readouterr().out)
@@ -787,13 +787,13 @@ class TestListGetAliases:
 
     def test_get_not_found_exits_1(self, spec_dir, caplog):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         with caplog.at_level(logging.ERROR):
             with pytest.raises(SystemExit) as exc:
                 review_helper.main([
-                    "--name", "my-topic", "get",
+                    "get", "my-topic",
                     "--step", "step-1", "--id", "missing",
                 ])
         assert exc.value.code == 1
@@ -804,7 +804,7 @@ class TestCliHints:
     def test_unknown_subcommand_lists_valid(self, capsys):
         with pytest.raises(SystemExit) as exc:
             review_helper.main([
-                "--name", "my-topic", "foobar",
+                "foobar", "my-topic",
                 "--step", "step-1",
             ])
         assert exc.value.code == 2
@@ -815,17 +815,17 @@ class TestCliHints:
     def test_status_missing_step_shows_example(self, capsys):
         with pytest.raises(SystemExit) as exc:
             review_helper.main([
-                "--name", "my-topic", "status",
+                "status", "my-topic",
             ])
         assert exc.value.code == 2
         err = capsys.readouterr().err
-        assert "status --step step-1" in err
+        assert "status <spec-name> --step step-1" in err
         assert "Valid subcommands:" not in err
 
     def test_known_subcommand_missing_args_no_subcommand_list(self, capsys):
         with pytest.raises(SystemExit) as exc:
             review_helper.main([
-                "--name", "my-topic", "append",
+                "append", "my-topic",
                 "--step", "step-1",
             ])
         assert exc.value.code == 2
@@ -835,19 +835,19 @@ class TestCliHints:
     def test_status_hint_when_argv_is_none(self, capsys, monkeypatch):
         monkeypatch.setattr(
             sys, "argv",
-            ["spex", "--name", "my-topic", "status"],
+            ["spex", "status", "my-topic"],
         )
         with pytest.raises(SystemExit) as exc:
             review_helper.main()
         assert exc.value.code == 2
         err = capsys.readouterr().err
-        assert "status --step step-1" in err
+        assert "status <spec-name> --step step-1" in err
 
     def test_id_value_get_missing_args_no_valid_list(self, capsys):
         """Missing append args with --id get must not list subcommands."""
         with pytest.raises(SystemExit) as exc:
             review_helper.main([
-                "--name", "my-topic", "append",
+                "append", "my-topic",
                 "--step", "step-1", "--id", "get",
             ])
         assert exc.value.code == 2
@@ -883,24 +883,24 @@ class TestFormatOpenFindings:
 class TestNext:
     def test_returns_first_open(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "other", "--title", "First",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f2", "--severity", "major",
             "--category", "tests", "--title", "Second",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "next", "--step", "step-1",
+            "next", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["id"] == "r1-f1"
@@ -909,29 +909,29 @@ class TestNext:
 
     def test_skips_completed(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "other", "--title", "First",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "r1-f2", "--severity", "major",
             "--category", "tests", "--title", "Second",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "r1-f1",
             "--completed-at", "now",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "next", "--step", "step-1",
+            "next", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["id"] == "r1-f2"
@@ -939,12 +939,12 @@ class TestNext:
 
     def test_none_when_all_done(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "next", "--step", "step-1",
+            "next", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["id"] is None
@@ -953,7 +953,7 @@ class TestNext:
 
     def test_missing_file_returns_null(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "next", "--step", "step-1",
+            "next", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["id"] is None
@@ -967,12 +967,12 @@ class TestOpenBatch:
 
     def test_empty_no_findings(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc123",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["exists"] is True
@@ -987,7 +987,7 @@ class TestOpenBatch:
 
     def test_empty_missing_file(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["exists"] is False
@@ -998,25 +998,25 @@ class TestOpenBatch:
 
     def test_minor_only(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "minor",
             "--category", "other", "--title", "Nit A",
             "--details", "rename helper",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "code-quality", "--title", "Nit B",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["has_major"] is False
@@ -1029,31 +1029,31 @@ class TestOpenBatch:
     def test_mixed_severity_stable_order(self, spec_dir, capsys):
         """File order is preserved; has_major true when any major is open."""
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "minor",
             "--category", "other", "--title", "First",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "major",
             "--category", "tests", "--title", "Second",
             "--details", "add coverage",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f3", "--severity", "minor",
             "--category", "lint", "--title", "Third",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["has_major"] is True
@@ -1062,36 +1062,36 @@ class TestOpenBatch:
         assert payload["findings"][1]["details"] == "add coverage"
         # Same result on a second call (deterministic).
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         again = json.loads(capsys.readouterr().out)
         assert again == payload
 
     def test_skips_completed_findings(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f1", "--severity", "major",
             "--category", "tests", "--title", "Done",
         ])
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f2", "--severity", "minor",
             "--category", "other", "--title", "Open",
         ])
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f1",
             "--completed-at", "now",
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["has_major"] is False
@@ -1124,7 +1124,7 @@ class TestOpenBatch:
             ],
         }) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["exists"] is True
@@ -1170,7 +1170,7 @@ class TestOpenBatch:
             ],
         }) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["mode"] == "full"
@@ -1212,7 +1212,7 @@ class TestOpenBatch:
             ],
         }) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["pending_findings"] == ["f1", "f2"]
@@ -1241,7 +1241,7 @@ class TestOpenBatch:
             ],
         }) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "open-batch", "--step", "step-1",
+            "open-batch", "my-topic", "--step", "step-1",
         ])
         payload = json.loads(capsys.readouterr().out)
         assert payload["pending_findings"] == ["f1"]
@@ -1253,7 +1253,7 @@ class TestOpenBatch:
     ):
         """bump-round advances full rounds only and clears pending batch."""
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc",
         ])
         path = spec_dir / "review-step-1.json"
@@ -1266,7 +1266,7 @@ class TestOpenBatch:
         data["check_evidence"] = {"commit_sha": "def", "checks": []}
         path.write_text(json.dumps(data) + "\n", encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "bump-round",
+            "bump-round", "my-topic",
             "--step", "step-1", "--commit", "ghi",
         ])
         out = _last_json_line(capsys)
@@ -1301,7 +1301,7 @@ class TestOpenBatch:
 class TestInitBatchState:
     def test_init_writes_batch_state_defaults(self, spec_dir, capsys):
         review_helper.main([
-            "--name", "my-topic", "init",
+            "init", "my-topic",
             "--step", "step-1", "--commit", "abc1234",
         ])
         out = json.loads(capsys.readouterr().out)
@@ -1356,17 +1356,17 @@ class TestNormalizeCheckEvidence:
 
 def _seed_open_findings(spec_dir, base_sha="basesha1", capsys=None):
     review_helper.main([
-        "--name", "my-topic", "init",
+        "init", "my-topic",
         "--step", "step-1", "--commit", base_sha,
     ])
     review_helper.main([
-        "--name", "my-topic", "append",
+        "append", "my-topic",
         "--step", "step-1",
         "--id", "f1", "--severity", "minor",
         "--category", "other", "--title", "Nit",
     ])
     review_helper.main([
-        "--name", "my-topic", "append",
+        "append", "my-topic",
         "--step", "step-1",
         "--id", "f2", "--severity", "major",
         "--category", "tests", "--title", "Cover",
@@ -1393,7 +1393,7 @@ class TestSetPending:
     def test_sets_pending_batch(self, spec_dir, capsys):
         _seed_open_findings(spec_dir, "basesha1", capsys=capsys)
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1411,13 +1411,13 @@ class TestSetPending:
     def test_rejects_completed_finding(self, spec_dir):
         path = _seed_open_findings(spec_dir)
         review_helper.main([
-            "--name", "my-topic", "edit",
+            "edit", "my-topic",
             "--step", "step-1", "--id", "f1",
             "--completed-at", "now",
         ])
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "set-pending",
+                "set-pending", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1434,7 +1434,7 @@ class TestCompleteBatch:
     ):
         _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1442,7 +1442,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1470,7 +1470,7 @@ class TestCompleteBatch:
         """Major batch leaves durable awaiting_delta after pending is cleared."""
         _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1478,7 +1478,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1493,7 +1493,7 @@ class TestCompleteBatch:
         assert data["awaiting_delta"] is True
         # status exposes the durable resume marker with no open findings
         review_helper.main([
-            "--name", "my-topic", "status",
+            "status", "my-topic",
             "--step", "step-1", "--json",
         ])
         status = json.loads(capsys.readouterr().out)
@@ -1503,7 +1503,7 @@ class TestCompleteBatch:
         assert status["ready_to_complete"] is False
         # set-pending for a later batch clears awaiting_delta
         review_helper.main([
-            "--name", "my-topic", "append",
+            "append", "my-topic",
             "--step", "step-1",
             "--id", "f3", "--severity", "major",
             "--category", "tests", "--title", "later",
@@ -1516,7 +1516,7 @@ class TestCompleteBatch:
             json.dumps(data), encoding="utf-8",
         )
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f3",
             "--base-commit", "newsha99",
@@ -1534,7 +1534,7 @@ class TestCompleteBatch:
         data["mode"] = "delta"
         path.write_text(json.dumps(data), encoding="utf-8")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f2",
             "--base-commit", "basesha1",
@@ -1547,7 +1547,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f2",
             "--base-commit", "basesha1",
@@ -1563,7 +1563,7 @@ class TestCompleteBatch:
     def test_id_mismatch_writes_nothing(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1572,7 +1572,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1",
                 "--base-commit", "basesha1",
@@ -1586,7 +1586,7 @@ class TestCompleteBatch:
     def test_head_mismatch_writes_nothing(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1595,7 +1595,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "otherhead")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1607,7 +1607,7 @@ class TestCompleteBatch:
     def test_dirty_tree_writes_nothing(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1619,7 +1619,7 @@ class TestCompleteBatch:
         )
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1631,7 +1631,7 @@ class TestCompleteBatch:
     def test_failed_evidence_writes_nothing(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1640,7 +1640,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1654,7 +1654,7 @@ class TestCompleteBatch:
     ):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1663,7 +1663,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1679,7 +1679,7 @@ class TestCompleteBatch:
     ):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1688,7 +1688,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "wrongbase",
@@ -1704,7 +1704,7 @@ class TestCompleteBatch:
     ):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1720,7 +1720,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "newsha99")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1734,7 +1734,7 @@ class TestCompleteBatch:
     def test_same_sha_as_base_rejected(self, spec_dir, monkeypatch):
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1743,7 +1743,7 @@ class TestCompleteBatch:
         _patch_git_ok(monkeypatch, "basesha1")
         with pytest.raises(SystemExit):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1758,7 +1758,7 @@ class TestCompleteBatch:
         """Amend-success / completion-interrupted: findings stay open, resume works."""
         path = _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1772,7 +1772,7 @@ class TestCompleteBatch:
         monkeypatch.setattr(review_helper, "save_review", boom)
         with pytest.raises(OSError, match="simulated"):
             review_helper.main([
-                "--name", "my-topic", "complete-batch",
+                "complete-batch", "my-topic",
                 "--step", "step-1",
                 "--ids", "f1,f2",
                 "--base-commit", "basesha1",
@@ -1787,7 +1787,7 @@ class TestCompleteBatch:
         monkeypatch.setattr(review_helper, "save_review", real_save)
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1807,14 +1807,14 @@ class TestCompleteBatch:
     ):
         _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
         ])
         _patch_git_ok(monkeypatch, "newsha99")
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1823,7 +1823,7 @@ class TestCompleteBatch:
         ])
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1879,7 +1879,7 @@ class TestCompleteBatch:
     def test_evidence_from_stdin(self, spec_dir, capsys, monkeypatch):
         _seed_open_findings(spec_dir, "basesha1")
         review_helper.main([
-            "--name", "my-topic", "set-pending",
+            "set-pending", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",
@@ -1891,7 +1891,7 @@ class TestCompleteBatch:
         )
         capsys.readouterr()
         review_helper.main([
-            "--name", "my-topic", "complete-batch",
+            "complete-batch", "my-topic",
             "--step", "step-1",
             "--ids", "f1,f2",
             "--base-commit", "basesha1",

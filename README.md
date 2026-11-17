@@ -272,7 +272,7 @@ As Anthropic's blog post ([Effective harnesses for long-running agents](https://
 During development, other intermediate file formats were explored, such as XML. While XML can contain multi-line Markdown text for step descriptions, XML character escaping adds complexity. The final solution was the `spex todo-helper` utility, which uses heredoc input to provide detailed multi-line descriptions when adding new steps to `todo.json`. For example, the model invokes the following command to add a step:
 
 ```bash
-$ spex todo-helper --name $spec_name append \
+$ spex todo-helper append "$spec_name" \
   --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
