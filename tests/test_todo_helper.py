@@ -64,7 +64,7 @@ class TestFileLocating:
             lambda name, **kw: spec_dir,
         )
         todo_helper.main([
-            "--name", "my-topic", "validate",
+            "validate", "my-topic",
         ])
 
     def test_todo_file_direct_path(self, todo_file):
@@ -74,7 +74,7 @@ class TestFileLocating:
         ])
 
     def test_name_after_subcommand(self, tmp_path, monkeypatch):
-        """--name after subcommand must succeed (archived apply failure)."""
+        """The positional name can follow value-taking options."""
         spec_dir = tmp_path / "2026-08-04-15-50-create-debug-session"
         spec_dir.mkdir()
         todo = spec_dir / "todo.json"
@@ -84,13 +84,13 @@ class TestFileLocating:
             todo_helper, "resolve_spec_dir",
             lambda name, **kw: spec_dir,
         )
-        # Exact argv shape from debug.log (name after edit flags).
+        # Keep value-taking options distinct from the positional selector.
         todo_helper.main([
             "edit",
             "--id", "step-3",
             "--commit-title",
             "84e59c4: feat(create-helper): handoff session on prepare-spec",
-            "--name", "2026-08-04-15-50-create-debug-session",
+            "2026-08-04-15-50-create-debug-session",
         ])
         result = _read(todo)
         step3 = [i for i in result if i["id"] == "step-3"][0]
@@ -104,7 +104,7 @@ class TestFileLocating:
             "validate", "--todo-file", str(todo_file),
         ])
 
-    def test_name_equals_form_after_subcommand(
+    def test_name_after_boolean_option(
         self, tmp_path, monkeypatch,
     ):
         spec_dir = tmp_path / "my-topic"
@@ -116,14 +116,13 @@ class TestFileLocating:
             todo_helper, "resolve_spec_dir",
             lambda name, **kw: spec_dir,
         )
-        todo_helper.main(["validate", "--name=my-topic"])
+        todo_helper.main(["show", "--undone", "my-topic"])
 
     def test_both_topic_and_todo_file_error(self, todo_file):
         with pytest.raises(SystemExit):
             todo_helper.main([
-                "--name", "x",
+                "validate", "x",
                 "--todo-file", str(todo_file),
-                "validate",
             ])
 
     def test_both_name_and_todo_file_mixed_positions_error(
@@ -131,7 +130,7 @@ class TestFileLocating:
     ):
         with pytest.raises(SystemExit):
             todo_helper.main([
-                "--name", "x", "validate",
+                "validate", "x",
                 "--todo-file", str(todo_file),
             ])
 
@@ -889,15 +888,15 @@ class TestHelp:
 
 
 class TestHoistLocatorFlags:
-    def test_hoists_name_from_end(self):
+    def test_hoists_todo_file_from_end(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3", "--name", "spec",
-        ]) == ["--name", "spec", "edit", "--id", "step-3"]
+            "edit", "--id", "step-3", "--todo-file", "todo.json",
+        ]) == ["--todo-file", "todo.json", "edit", "--id", "step-3"]
 
     def test_preserves_leading_name(self):
         assert todo_helper._hoist_locator_flags([
-            "--name", "spec", "edit", "--id", "step-3",
-        ]) == ["--name", "spec", "edit", "--id", "step-3"]
+            "edit", "spec", "--id", "step-3",
+        ]) == ["edit", "spec", "--id", "step-3"]
 
     def test_leaves_bare_name_in_place(self):
         # Bare --name must not steal the subcommand as its value.
@@ -912,27 +911,27 @@ class TestHoistLocatorFlags:
 
     def test_hoists_equals_form(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3", "--name=spec",
-        ]) == ["--name=spec", "edit", "--id", "step-3"]
+            "edit", "--id", "step-3", "--todo-file=todo.json",
+        ]) == ["--todo-file=todo.json", "edit", "--id", "step-3"]
 
     def test_does_not_steal_option_values(self):
         # --todo-file is the commit-title value, not a locator flag.
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3",
-            "--commit-title", "--todo-file", "--name", "spec",
+            "edit", "spec", "--id", "step-3",
+            "--commit-title", "--todo-file",
         ]) == [
-            "--name", "spec", "edit", "--id", "step-3",
+            "edit", "spec", "--id", "step-3",
             "--commit-title", "--todo-file",
         ]
 
     def test_does_not_steal_equals_option_value(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "--commit-title=--todo-file", "--name", "spec",
-        ]) == ["--name", "spec", "edit", "--commit-title=--todo-file"]
+            "edit", "spec", "--commit-title=--todo-file",
+        ]) == ["edit", "spec", "--commit-title=--todo-file"]
 
 
 class TestSubcommandHelp:
-    """Tests for subcommand -h/--help working without --name/--todo-file."""
+    """Tests for subcommand help working without a todo locator."""
 
     def test_validate_help_exits_0(self, capsys):
         """validate -h should show help and exit 0."""
@@ -958,11 +957,9 @@ class TestSubcommandHelp:
         out = capsys.readouterr().out
         assert "--format" in out
 
-    def test_no_locator_errors(self, caplog):
-        """Without --name or --todo-file, should error with exit 2."""
-        with caplog.at_level(logging.ERROR):
-            with pytest.raises(SystemExit) as exc_info:
-                todo_helper.main(["validate"])
+    def test_no_locator_errors(self, capsys):
+        """Without a name or --todo-file, error with exit 2."""
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["validate"])
         assert exc_info.value.code == 2
-        assert "--name" in caplog.text
-        assert "--todo-file" in caplog.text
+        assert "<spec-name>" in capsys.readouterr().err

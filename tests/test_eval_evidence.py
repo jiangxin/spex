@@ -278,6 +278,14 @@ def test_one_step_rejects_two_completions_and_rewritten_tasks(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "selector", [
+        '"eval-spec" --step "step-1"',
+        '--step "step-1" "eval-spec"',
+        '--ids=r1-f1 --evidence-from-stdin --step "step-1" "eval-spec"',
+        '--workdir "other-spec" --spex-root "root-spec" --step "step-1" "eval-spec"',
+    ],
+)
+@pytest.mark.parametrize(
     ("start", "amend_base", "final", "verdict"),
     [
         ("92590d9", None, "92590d9", "pass"),
@@ -288,7 +296,9 @@ def test_one_step_rejects_two_completions_and_rewritten_tasks(tmp_path):
         ("92590d9", "92590d9", "7777777", "fail"),
     ],
 )
-def test_resumed_review_binds_final_commit_to_seed(tmp_path, start, amend_base, final, verdict):
+def test_resumed_review_binds_final_commit_to_seed(
+    tmp_path, start, amend_base, final, verdict, selector,
+):
     original = state(task("step-1", commit_title="92590d9: Prefix"))
     original["head"] = "92590d94072433285b225f79e51fec80de172381"
     before = evidence.persist_turn(tmp_path, 0, original)
@@ -305,7 +315,7 @@ def test_resumed_review_binds_final_commit_to_seed(tmp_path, start, amend_base, 
     ]
     if amend_base:
         events.append(event(
-            './scripts/spex review-helper --name "eval-spec" complete-batch --step "step-1" '
+            f'./scripts/spex review-helper complete-batch {selector} '
             f'--base-commit "{amend_base}" --new-commit "63d5bac" --evidence-from-stdin '
             "<<'EOF'\n{}\nEOF"
         ))

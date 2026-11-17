@@ -61,7 +61,7 @@ to switch commits.
 ## review-helper CLI cheat sheet
 
 ```text
-REQUIRED: --name <spec> on every call; --step S for append/show/list/get
+REQUIRED: <spec-name> after the subcommand on every call; --step S for append/show/list/get
 FORBIDDEN for this review agent: status | next | bump-round | init
 ALLOWED:  append --step S --commit SHA --id … …
 OPTIONAL: show --step S --id ID --json
@@ -169,8 +169,8 @@ Always pass `--commit` so the first append can create the review
 file when it does not exist yet:
 
 ```bash
-{{ spex_skill_dir }}/scripts/spex review-helper --name {{ spec_name }} \
-  append --step {{ step_id }} --commit {{ commit_sha }} \
+{{ spex_skill_dir }}/scripts/spex review-helper append "{{ spec_name }}" \
+   --step {{ step_id }} --commit {{ commit_sha }} \
   --id r{{ review_round }}-f1 --severity major --category tests \
   --title "Short title" --details-from-stdin <<'DETAILS'
 Markdown details: what is wrong, where, and why it matters.

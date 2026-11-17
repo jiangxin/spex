@@ -64,6 +64,7 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "name",
+        metavar="<spec-name>",
         nargs="?",
         default="",
         help="Spec name or substring to open (interactive selection if omitted)",

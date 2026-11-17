@@ -28,6 +28,7 @@ def _build_submit_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "name",
+        metavar="<spec-name>",
         nargs="?",
         default="",
         help="Spec name to submit",

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -310,8 +311,55 @@ def sum_check_evidence_duration_ms(evidence: dict | None) -> int:
 
 
 def parse_name_from_argv(argv: list[str]) -> str | None:
-    """Parse --name or --name= from argv."""
-    return parse_flag_from_argv(argv, "--name")
+    """Parse helper selectors without dispatching or resolving a spec."""
+    for index, arg in enumerate(argv):
+        if index == 0 and (arg == "spex" or arg.endswith("/spex")):
+            continue
+        if arg in {"-d", "--debug", "-V", "--version", "-h", "--help"}:
+            continue
+        command = arg.replace("_", "-")
+        if command in {
+            "create-helper", "apply-helper", "todo-helper", "review-helper", "prompt",
+            "archive", "run-hook",
+        }:
+            return _parse_helper_selector(command, argv[index + 1:])
+        break
+    return None
+
+
+def _parse_helper_selector(command: str, argv: list[str]) -> str | None:
+    if command == "create-helper":
+        from create_helper import _build_parser
+    elif command == "apply-helper":
+        from apply_helper import _build_parser
+    elif command == "todo-helper":
+        from todo_helper import _build_parser
+    elif command == "review-helper":
+        from review_helper import _build_parser
+
+    try:
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+            if command == "prompt":
+                from prompt import _parse_args as parse_prompt
+
+                args = parse_prompt(argv)
+            elif command == "archive":
+                from archive import _parse_args as parse_archive
+
+                args = parse_archive(argv)
+            elif command == "run-hook":
+                from cli import parse_run_hook_args
+
+                args = parse_run_hook_args(argv)
+            elif command == "todo-helper":
+                from todo_helper import _parse_args as parse_todo
+
+                args = parse_todo(_build_parser(), argv)
+            else:
+                args = _build_parser().parse(argv)
+    except SystemExit:
+        return None
+    return getattr(args, "name", None)
 
 
 def parse_flag_from_argv(argv: list[str], flag: str) -> str | None:
@@ -523,10 +571,10 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
     Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
     1. ``SPEX_LOG_DIR`` → ``<log_dir>/debug.log``
-    2. Exact ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    3. Exact ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
-    4. Unique fuzzy ``--name`` in ``specs/`` → ``<spec_dir>/debug.log``
-    5. Unique fuzzy ``--name`` in ``archives/`` → ``<archived_dir>/debug.log``
+    2. Exact selector in ``specs/`` → ``<spec_dir>/debug.log``
+    3. Exact selector in ``archives/`` → ``<archived_dir>/debug.log``
+    4. Unique fuzzy selector in ``specs/`` → ``<spec_dir>/debug.log``
+    5. Unique fuzzy selector in ``archives/`` → ``<archived_dir>/debug.log``
     6. Active create session → ``sessions/<id>/debug.log``
     7. Fallback → ``<spex_root>/debug.log``
     """
@@ -913,9 +961,9 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
 
     The flush path is chosen via ``safe_flush_debug_log_path`` after the
     command body returns. This matters for ``prepare-spec``: the pre-command
-    path may be the active session log (new ``--name`` does not exist yet),
+    path may be the active session log (the new spec does not exist yet),
     but handoff merges/deletes that file and clears the active pointer, after
-    which ``--name`` uniquely matches the new spec. Flushing the pre-resolved
+    which the selector uniquely matches the new spec. Flushing the pre-resolved
     session path would recreate an orphan session log; re-resolving appends
     the tee block to ``<spec_dir>/debug.log`` instead.
 

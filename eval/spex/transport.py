@@ -56,7 +56,9 @@ def command_event(item: dict) -> dict:
         helper, args = matches[0].groups()
         if helper == "apply-helper" and re.match(r"\s+post-action\b", args):
             action = "apply.post-action"
-        elif helper == "review-helper" or helper == "prompt" and "apply-review" in args:
+        elif helper == "review-helper" or (
+            helper == "prompt" and re.match(r"""\s+['"]?apply[-_]review['"]?(?:\s|$)""", args)
+        ):
             action = "apply.review-command"
         else:
             action = "apply.workflow"
@@ -133,6 +135,7 @@ def review_arguments(command: str) -> dict:
     if newline:
         if len(words) < 2 or words[-2] != "<<" or not body.rstrip("\n").endswith("\n" + words[-1]):
             return {}
+        words = words[:-2]
     if len(words) < 3 or Path(words[0]).name != "spex":
         return {}
     options = {
@@ -141,16 +144,22 @@ def review_arguments(command: str) -> dict:
         "--output": None, "-o": None, "--spex-root": None, "--workdir": None,
         "--ids": None, "--evidence": None,
     }
-    if words[1:3] == ["prompt", "apply-review"]:
+    if words[1] == "prompt" and words[2].replace("_", "-") == "apply-review":
         stage = "prompt"
         words = words[3:]
     elif words[1] == "review-helper":
-        stage = next((word for word in words[2:]
-                      if word in {"status", "entry", "complete-batch", "finish-pass"}), None)
-        if stage is None:
+        command_index = 2
+        # Historical and pinned CLI traces may still pass the selector before the command.
+        if words[2] == "--name":
+            command_index += 2
+        elif words[2].startswith("--name="):
+            command_index += 1
+        if len(words) <= command_index:
             return {}
-        words = words[2:]
-        words.remove(stage)
+        stage = words[command_index]
+        if stage not in {"status", "entry", "complete-batch", "finish-pass"}:
+            return {}
+        words = words[2:command_index] + words[command_index + 1:]
     else:
         return {}
     result = {"stage": stage}

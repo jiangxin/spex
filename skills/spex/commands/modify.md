@@ -95,7 +95,7 @@ EOF
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
-  --json --name "$spec_name" --stdin --remove-undone <<'EOF'
+  "$spec_name" --json --stdin --remove-undone <<'EOF'
 $request
 EOF
 ```
@@ -126,7 +126,7 @@ EOF
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt modify-todo --json --name "$spec_name"
+$spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
 ```
 
 - IF non-zero exit -> report stderr -> STOP

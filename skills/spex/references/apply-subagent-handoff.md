@@ -69,7 +69,7 @@ sub-agent shell vars.
 Numbered steps — follow in order; do not skip:
 
 1. Re-read the current task in **main** (e.g.
-   `todo-helper show --id "$current_task_id"`).
+   `todo-helper show "$spec_name" --id "$current_task_id"`).
 2. IF non-empty `commit_title` AND empty `completed_at`
    AND (sub-agent reported `outcome=committed` OR this is the
    `resume_phase=review` path with no sub-agent) ->

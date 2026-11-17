@@ -16,17 +16,19 @@ _skill_dir = _scripts_dir.parent
 
 GROUPED_HELP = """\
 Commands (run directly):
-  archive [-n] [--name <name>]
+  archive [<spec-name>] [-n]
               Archive completed specs (--dry-run to preview)
   config [get] [--all] [var ...]
                 Show spex configuration variables
   init          Initialize spex environment
   list [--archives] [--all-projects]
                 List specs with progress
-  merge [name]
+  merge [<spec-name>]
                 Merge a spex branch back to target (alias: submit)
-  open          Open spec directory in file browser
-  show [name]   Show detailed spec information (-l for brief)
+  open [<spec-name>]
+                Open spec directory in file browser
+  show [<spec-name>]
+                Show detailed spec information (-l for brief)
 
 Commands (LLM skill only — invoked via /spex, not directly):
   apply       Apply all steps of a spec (or apply-one-step for single step)
@@ -34,22 +36,22 @@ Commands (LLM skill only — invoked via /spex, not directly):
   modify      Modify an existing spec
 
 Internal commands (used by skill):
-  apply-helper <subcommand>
+  apply-helper <subcommand> [--name <spec-name>]
                 Helper utilities for applying specs
                 (precheck, ensure-branch, post-action)
-  create-helper <subcommand>
+  create-helper <subcommand> [--name <spec-name>]
                 Helper utilities for spec creation
                 (precheck, prepare-spec)
-  meta-helper <spec_name> [key] [value] [--stdin]
+  meta-helper <spec-name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
-  prompt <template> [--name <name>] [-o <file>]
+  prompt <template> [<spec-name>] [-o <file>]
                 Render a Spex template with metadata
-  run-hook <hook_name> --event-type <type> --name <name>
+  run-hook <hook-name> [<spec-name>] --event-type <type>
                 Execute a hook script with event data
-  review-helper --name <name> <subcmd>
+  review-helper <subcmd> <spec-name>
                 Operate on per-step review files (init, append, edit,
                 bump-round, status, show, next)
-  todo-helper [--name <name> | --todo-file <path>] <subcmd>
+  todo-helper <subcmd> [<spec-name> | --todo-file <path>]
                 Operate on todo files (validate, append, edit, remove,
                 show)"""
 
@@ -312,12 +314,12 @@ def _run_apply_helper(argv=None):
 
 
 _MERGE_USAGE = """\
-Usage: spex merge [name] [--no-archive] [-n/--dry-run]
+Usage: spex merge [<spec-name>] [--no-archive] [-n/--dry-run]
 
 Merge a spex branch back to target.
 
 Positional arguments:
-  name            Spec name
+  <spec-name>     Spec name
 
 Options:
   --no-archive    Skip automatic archiving after successful merge
@@ -404,14 +406,14 @@ def _run_init(argv=None):
 
 
 _RUN_HOOK_USAGE = """\
-Usage: spex run-hook <hook_name> --event-type <type> --name <name>
+Usage: spex run-hook <hook-name> [<spec-name>] --event-type <type>
        --json-payload '{"key": "value"}'
 
 Execute a hook script with event data.
 
 Options:
   --event-type <type>   Event type (required)
-  --name <name>         Spec name
+  <spec-name>           Optional spec name (after hook name)
   --json-payload <json> JSON payload string
   --workdir <path>      Working directory
   -h, --help            Show this help message and exit
@@ -420,24 +422,12 @@ Options:
 
 def _run_hook(argv=None):
     """Execute a hook script with event data."""
-    import json
-
     import hooks
+    from cli import parse_run_hook_args
 
-    parser = ArgumentParser(prog="spex run-hook", usage=_RUN_HOOK_USAGE)
-    parser.add_argument("hook_name")
-    parser.add_argument("--event-type")
-    parser.add_argument("--name")
-    parser.add_argument("--json-payload")
-    parser.add_argument("--workdir")
-    args = parser.parse(argv)
+    args = parse_run_hook_args(argv, _RUN_HOOK_USAGE)
 
-    if not args.event_type:
-        from common import logger
-        logger.error("Error: --event-type is required")
-        sys.exit(1)
-
-    payload = json.loads(args.json_payload or "{}")
+    payload = args.payload
     if args.name:
         payload = {**payload, "spec_name": args.name}
     event_data = hooks._build_event_data(args.event_type, payload,

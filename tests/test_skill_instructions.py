@@ -932,7 +932,7 @@ class TestApplyStepReviewSop:
         phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
         _index(phase8, "HARD STOP")
         _index(phase8, "todo-helper")
-        _index(phase8, "show --undone")
+        _index(phase8, 'show "$spec_name" --undone')
         assert "todo.json" not in phase8
         assert "null" not in phase8.lower()
         phase3_one = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
@@ -1404,7 +1404,7 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         phase8 = _h3_section(
             one, "Phase 8: Summary and Conditional Post Action"
         )
-        _index(phase8, "todo-helper --name \"$spec_name\" show --undone")
+        _index(phase8, "todo-helper show \"$spec_name\" --undone")
         _index(phase8, "array length")
         assert "todo.json" not in phase8
         assert "empty/`null`" not in phase8
@@ -1691,7 +1691,7 @@ class TestMergeArchiveInitSop:
         """R3-F11 / P2-11 + R4-F10: Probe+Confirm phase; --force confirms."""
         text = _read(ARCHIVE_MD)
         phase1 = _h3_section(text, "Phase 1: Probe + Confirm")
-        _index(phase1, "`--name` is unbound")
+        _index(phase1, "`<spec-name>` is unbound")
         _index(phase1, "--dry-run --json")
         _index(phase1, "results[]")
         _index(phase1, "explicit user confirmation")
@@ -1715,11 +1715,10 @@ class TestMergeArchiveInitSop:
         )
         assert short_i < p1 < p2 < p3
 
-    def test_archive_bare_name_requires_name_flag(self):
-        """R4-F10 / P2-23: bare names must become --name; no positional."""
+    def test_archive_bare_name_is_positional(self):
+        """Bare names remain positional when forwarded to archive."""
         pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
-        _index(pre, "--name <name>")
-        _index(pre, "no positional")
+        _index(pre, "positional `<spec-name>` argument")
         _index(pre, "bare name")
 
     def test_init_edge_notes_and_failure_handling(self):
@@ -1852,7 +1851,7 @@ class TestRound3RegressionGate:
         _index(_h2_section(one, "Differences from `/spex apply`"), "HARD STOP")
         _index(
             _h3_section(one, "Phase 8: Summary and Conditional Post Action"),
-            "todo-helper --name \"$spec_name\" show --undone",
+            "todo-helper show \"$spec_name\" --undone",
         )
         loop = _read(APPLY_REVIEW_LOOP)
         assert "## Round Model" not in loop

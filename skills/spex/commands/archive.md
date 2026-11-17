@@ -5,14 +5,14 @@ Archive completed specs.
 ## Usage
 
 ```text
-/spex archive [--name <name>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects] [--json]
+/spex archive [<spec-name>] [--dry-run | -n] [--force | -f] [--restore] [--all-projects] [--json]
 ```
 
 ## Inputs
 
 | Flag | Description |
 |------|-------------|
-| `--name` | Archive a single spec by name |
+| `<spec-name>` | Archive a single spec by name |
 | `--dry-run, -n` | Preview without moving |
 | `--force, -f` | Bypass spex_branch existence check |
 | `--restore` | Restore a spec from archives to specs |
@@ -24,7 +24,7 @@ Archive completed specs.
 - Load and follow `references/cli-contract.md` exactly
 - Bind from `$user_prompt`: recognize known Usage flags **anywhere** in
   the free-form text. A bare name (remainder after flags) **must** be
-  passed as `--name <name>` — `archive.py` has no positional argument.
+  passed as the positional `<spec-name>` argument.
   Do not require flags before the name token.
 - Do **not** move or rename archive files by hand — only run the CLI
 - Forward Usage flags unchanged; trust the script for completion /
@@ -52,18 +52,18 @@ Archive completed specs.
   real archive/restore.
 
 ```bash
-$spex_skill_dir/scripts/spex archive --json --dry-run [--name <name>] [-f|--force] [--restore] [--all-projects]
+$spex_skill_dir/scripts/spex archive --json --dry-run [<spec-name>] [-f|--force] [--restore] [--all-projects]
 ```
 
 ### Phase 1: Probe + Confirm
 
-- Runs only when `--name` is unbound **or** `--force` / `-f` is
+- Runs only when `<spec-name>` is unbound **or** `--force` / `-f` is
   present (and the user did **not** bind `--dry-run` / `-n` — that
   path already STOPped above).
 - Probe CMD (always `--dry-run --json`; forward other bound flags):
 
 ```bash
-$spex_skill_dir/scripts/spex archive --json --dry-run [--name <name>] [-f|--force] [--restore] [--all-projects]
+$spex_skill_dir/scripts/spex archive --json --dry-run [<spec-name>] [-f|--force] [--restore] [--all-projects]
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -80,7 +80,7 @@ $spex_skill_dir/scripts/spex archive --json --dry-run [--name <name>] [-f|--forc
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex archive --json [--name <name>] [-f|--force] [--restore] [--all-projects]
+$spex_skill_dir/scripts/spex archive --json [<spec-name>] [-f|--force] [--restore] [--all-projects]
 ```
 
 ### Phase 3: Report

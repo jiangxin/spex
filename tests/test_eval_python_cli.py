@@ -186,10 +186,10 @@ def test_seeded_review_reaches_review_status(tmp_path, case_id, review_exit):
 
     precheck = spex("apply-helper", "precheck", "--name", name)
     assert precheck.returncode == 0, precheck.stderr
-    prompt = spex("prompt", "apply-one-task", "--name", name, "--json")
+    prompt = spex("prompt", "apply-one-task", name, "--json")
     assert prompt.returncode == 0, prompt.stderr
     assert json.loads(prompt.stdout)["resume_phase"] == "review"
-    status = spex("review-helper", "--name", name, "status", "--step", "step-1", "--json")
+    status = spex("review-helper", "status", name, "--step", "step-1", "--json")
     assert status.returncode == review_exit, status.stderr
     if review_exit:
         assert "invalid JSON" in status.stderr

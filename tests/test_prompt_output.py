@@ -30,7 +30,7 @@ def test_json_destination(command, to_file, tmp_path, monkeypatch, capsys):
     import debug_log
     monkeypatch.setattr(debug_log, "emit_apply_anchor", lambda *a, **kw: None)
     output = tmp_path / "nested" / "result.json"
-    argv = [command, "--name", "example", "--json"]
+    argv = [command, "example", "--json"]
     if to_file:
         argv += ["--output", str(output)]
     prompt.main(argv)
@@ -47,7 +47,7 @@ def test_all_done_output(command, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(prompt, "get_project_context", lambda: SimpleNamespace(config={}))
     output = tmp_path / "result.json"
     with pytest.raises(SystemExit) as exc:
-        prompt.main([command, "--name", "example", "--json", "-o", str(output)])
+        prompt.main([command, "example", "--json", "-o", str(output)])
     assert exc.value.code == 0
     assert json.loads(output.read_text())["all_done"] is True
     assert capsys.readouterr().out == ""
@@ -63,7 +63,7 @@ def test_skipped_review_output(disabled, tmp_path, monkeypatch, capsys):
                         data.update(skip_delta=True))
     output = tmp_path / "result.json"
     with pytest.raises(SystemExit) as exc:
-        prompt.main(["apply-review", "--name", "example", "--json", "-o", str(output)])
+        prompt.main(["apply-review", "example", "--json", "-o", str(output)])
     assert exc.value.code == 0
     assert json.loads(output.read_text())["skipped"] is True
     assert capsys.readouterr().out == ""

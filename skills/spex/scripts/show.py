@@ -85,7 +85,8 @@ def _build_parser() -> ArgumentParser:
         prog="spex show",
         description="Show detailed information about a spec.",
     )
-    parser.add_argument("name", nargs="?", help="Spec name or substring")
+    parser.add_argument("name", nargs="?", metavar="<spec-name>",
+                        help="Spec name or substring")
     parser.add_argument("-l", "--list", action="store_true",
                         dest="brief",
                         help="Show brief list format instead of full details")

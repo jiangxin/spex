@@ -237,9 +237,9 @@ worktree（不会删除 `spex/*` 分支）。
 
 ```bash
 spex archive --json                     # 归档已完成的 specs
-spex archive --json --name <spec>       # 按名称归档单个 spec
+spex archive <spec> --json              # 按名称归档单个 spec
 spex archive --json --dry-run           # 仅预览，不移动
-spex archive --json --restore --name <spec>
+spex archive <spec> --json --restore
 ```
 
 ### spex merge
@@ -271,7 +271,7 @@ Spex 本身使用 SDD 模式开发，下面的输出是使用 `spex list --archi
 开发过程中尝试了其他格式的中间文件，例如 XML 格式，虽然可以生成多行 Markdown 文本作为步骤描述，但 XML 中的字符转码增加了复杂度。最终的方案是开发了 `spex todo-helper` 助手程序，在为 `todo.json` 添加新步骤时使用 heredoc 方式提供多行的详细开发步骤。例如大模型使用如下命令行调用向 `todo.json` 中添加执行步骤：
 
 ```bash
-$ spex todo-helper --name $spec_name append \
+$ spex todo-helper append "$spec_name" \
   --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -283,6 +283,12 @@ including file changes, logic, and acceptance criteria.
 **Acceptance criteria**: all tests pass, endpoint returns JWT
 DETAILS
 ```
+
+直接调用 CLI 时，spec 名称放在命令后。`todo-helper`、`review-helper`
+和 `prompt` 的 spec 名称放在子命令后，通用 prompt 渲染则放在模板名后。
+`run-hook` 的可选 spec 名称放在 hook 名称后。`todo-helper` 接受一种
+定位方式，可以使用 spec 名称或 `--todo-file <path>`。
+`create-helper` 和 `apply-helper` 的生命周期命令通过 `--name` 选择 spec。
 
 ### 2. 原子化提交：小步快跑
 

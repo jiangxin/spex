@@ -443,7 +443,7 @@ class TestArchiveDryRunWorktree:
             spex_archive, "get_archives_dir", return_value=archives,
         ), caplog.at_level(logging.INFO):
             spex_archive.main([
-                "--json", "--name", spec_name, "-n", "-f",
+                "--json", spec_name, "-n", "-f",
             ])
 
         data = json.loads(capsys.readouterr().out)

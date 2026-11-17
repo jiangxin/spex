@@ -71,8 +71,8 @@ flowchart TD
 Resolve `$commit_sha`, then branch on status (**once**):
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-  status --step "$current_task_id" --json
+$spex_skill_dir/scripts/spex review-helper status "$spec_name" \
+   --step "$current_task_id" --json
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -98,8 +98,8 @@ Save as `$head_sha`. Set `$commit_sha` in this order:
    and the todo SHA, then abnormal STOP for the user to resolve.
 
    ```bash
-   $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-     set-commit --step "$current_task_id" --commit "$commit_sha"
+   $spex_skill_dir/scripts/spex review-helper set-commit "$spec_name" \
+      --step "$current_task_id" --commit "$commit_sha"
    ```
 
 3. Otherwise, if `$commit_sha` is already set from Phase 5, keep it.
@@ -113,7 +113,7 @@ Then (match **in order**):
 
   ```bash
   $spex_skill_dir/scripts/spex prompt apply-review --json \
-    --name "$spec_name" --commit "$commit_sha"
+    "$spec_name" --commit "$commit_sha"
   ```
 
   - IF non-zero exit -> report stderr -> STOP
@@ -163,7 +163,7 @@ is only for **6e** after a major batch fix.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name "$spec_name" --commit "$commit_sha" --mode full
+  "$spec_name" --commit "$commit_sha" --mode full
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -205,8 +205,8 @@ Run `open-batch` **once** (preferred over re-status when deciding
 the fix batch):
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-  open-batch --step "$current_task_id"
+$spex_skill_dir/scripts/spex review-helper open-batch "$spec_name" \
+   --step "$current_task_id"
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -241,8 +241,8 @@ after HEAD/SHA verification.
 ### 6c-i. Establish pending batch
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-  open-batch --step "$current_task_id"
+$spex_skill_dir/scripts/spex review-helper open-batch "$spec_name" \
+   --step "$current_task_id"
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -260,8 +260,8 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
     set, reuse that pending batch (resume). Otherwise:
 
     ```bash
-    $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-      set-pending --step "$current_task_id" \
+    $spex_skill_dir/scripts/spex review-helper set-pending "$spec_name" \
+       --step "$current_task_id" \
       --ids "$batch_ids" --base-commit "$commit_sha"
     ```
 
@@ -281,7 +281,7 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-fix --json \
-  --name "$spec_name" --commit "$commit_sha"
+  "$spec_name" --commit "$commit_sha"
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -331,8 +331,8 @@ After the fix sub-agent returns:
   `check_evidence` JSON:
 
   ```bash
-  $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-    complete-batch --step "$current_task_id" \
+  $spex_skill_dir/scripts/spex review-helper complete-batch "$spec_name" \
+     --step "$current_task_id" \
     --ids "$batch_ids" \
     --base-commit "$commit_sha" \
     --new-commit "$new_sha" \
@@ -381,7 +381,7 @@ hard-cap **6f→6c** batch. Delta does **not** increment `round`.
 
 ```bash
 $spex_skill_dir/scripts/spex prompt apply-review --json \
-  --name "$spec_name" --commit "$commit_sha" --mode delta
+  "$spec_name" --commit "$commit_sha" --mode delta
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -407,8 +407,8 @@ abnormal STOP rule as **6a**), then continue to **6f**.
 ## 6f. Route after delta / full-round cap
 
 ```bash
-$spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-  open-batch --step "$current_task_id"
+$spex_skill_dir/scripts/spex review-helper open-batch "$spec_name" \
+   --step "$current_task_id"
 ```
 
 - IF non-zero exit -> report stderr -> STOP
@@ -422,8 +422,8 @@ $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
    **6a**:
 
    ```bash
-   $spex_skill_dir/scripts/spex review-helper --name "$spec_name" \
-     bump-round --step "$current_task_id" --commit "$commit_sha"
+   $spex_skill_dir/scripts/spex review-helper bump-round "$spec_name" \
+      --step "$current_task_id" --commit "$commit_sha"
    ```
 
    IF non-zero exit (and not the round-cap case below) -> report
@@ -479,7 +479,7 @@ without another status.
 **review-helper CLI:**
 
 ```text
-REQUIRED: --name <spec> on every invocation
+REQUIRED: <spec-name> after the subcommand on every invocation
 REQUIRED: --step <id> for most subcommands (status, open-batch,
           set-pending, complete-batch, show, append, edit,
           bump-round, set-commit, list, get, next)
@@ -488,7 +488,7 @@ USE:      status --json | open-batch | set-pending | complete-batch
 ALIASES:  list → show summary; get → show --id
 ```
 
-`--name` is always required. Prefer `status` / `open-batch` /
+`<spec-name>` is always required. Prefer `status` / `open-batch` /
 `show`. `next` remains available for inspection but the fix loop
 must not walk findings one-by-one. `list` and `get` are supported
 aliases of `show` (compat).

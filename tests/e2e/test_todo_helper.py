@@ -75,13 +75,12 @@ def _create_topic(sandbox, name, *, done=False):
 @pytest.mark.e2e
 class TestTodoHelperValidate:
     def test_validate_json_via_topic(self, sandbox):
-        """Validate a spec's todo.json via --name."""
+        """Validate a spec's todo.json via a positional name."""
         data = _create_topic(sandbox, "val-json")
         spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "validate",
+            "todo-helper", "validate", spec_name,
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
@@ -96,8 +95,7 @@ class TestTodoHelperAppendShow:
         spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "append",
+            "todo-helper", "append", spec_name,
             "--id", "step-3",
             "--step-name", "New step",
             "--details", "New details",
@@ -106,8 +104,7 @@ class TestTodoHelperAppendShow:
         assert result.returncode == 0, result.stderr
 
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "show",
+            "todo-helper", "show", spec_name,
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
@@ -123,8 +120,7 @@ class TestTodoHelperAppendShow:
         spec_name = data["spec_name"]
 
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "show", "--done",
+            "todo-helper", "show", spec_name, "--done",
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
@@ -143,8 +139,7 @@ class TestTodoHelperWorkflow:
 
         # 1. Append step-3
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "append",
+            "todo-helper", "append", spec_name,
             "--id", "step-3",
             "--step-name", "Task 3",
             "--details", "Do thing 3",
@@ -154,8 +149,7 @@ class TestTodoHelperWorkflow:
 
         # 2. Edit step-3
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "edit",
+            "todo-helper", "edit", spec_name,
             "--id", "step-3",
             "--step-name", "Updated Task 3",
             sandbox=sandbox,
@@ -164,8 +158,7 @@ class TestTodoHelperWorkflow:
 
         # 3. Show all — verify updated name
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "show",
+            "todo-helper", "show", spec_name,
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr
@@ -178,8 +171,7 @@ class TestTodoHelperWorkflow:
 
         # 4. Remove step-3
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "remove",
+            "todo-helper", "remove", spec_name,
             "--id", "step-3",
             sandbox=sandbox,
         )
@@ -187,8 +179,7 @@ class TestTodoHelperWorkflow:
 
         # 5. Show again — step-3 should be gone
         result = run_spex(
-            "todo-helper", "--name", spec_name,
-            "show",
+            "todo-helper", "show", spec_name,
             sandbox=sandbox,
         )
         assert result.returncode == 0, result.stderr

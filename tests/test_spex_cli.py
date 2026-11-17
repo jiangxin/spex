@@ -468,8 +468,8 @@ class TestSubcommandRouting:
         fake_mod.main = fake_main
         sys.modules["prompt"] = fake_mod
         try:
-            _spex_mod._run_prompt(["apply-commit", "--name", "test"])
-            assert called["argv"] == ["apply-commit", "--name", "test"]
+            _spex_mod._run_prompt(["apply-commit", "test"])
+            assert called["argv"] == ["apply-commit", "test"]
         finally:
             del sys.modules["prompt"]
 
@@ -641,6 +641,38 @@ class TestLlmErrorHandlers:
 class TestMainEntrypoint:
     """Test main() entry point (lines 513-542)."""
 
+    @pytest.mark.parametrize("command, module, tail", [
+        ("list", "list", ["topic_name", "--json"]),
+        ("show", "show", ["topic_name", "-l"]),
+        ("open", "open", ["topic_name"]),
+        ("merge", "merge", ["topic_name"]),
+        ("submit", "merge", ["topic_name"]),
+        ("meta-helper", "meta_helper", ["topic_name", "description"]),
+        ("meta_helper", "meta_helper", ["topic_name", "description"]),
+        ("apply-helper", "apply_helper", ["dirty", "--name", "topic_name", "--json"]),
+        ("apply_helper", "apply_helper", ["dirty", "--name", "topic_name", "--json"]),
+        ("create-helper", "create_helper", ["post-action", "--name", "topic_name"]),
+        ("create_helper", "create_helper", ["post-action", "--name", "topic_name"]),
+        ("todo-helper", "todo_helper", ["show", "topic_name"]),
+        ("todo_helper", "todo_helper", ["show", "topic_name"]),
+        ("review-helper", "review_helper", ["status", "topic_name", "--step", "s1"]),
+        ("review_helper", "review_helper", ["status", "topic_name", "--step", "s1"]),
+        ("prompt", "prompt", ["show", "topic_name"]),
+        ("archive", "archive", ["topic_name", "--dry-run"]),
+    ])
+    def test_dispatch_preserves_spec_selector(self, monkeypatch, command, module, tail):
+        """Command aliases normalize without rewriting spec-name underscores."""
+        received = []
+        fake_mod = type(sys)(module)
+        fake_mod.main = lambda argv: received.append(argv)
+        fake_mod.cli_submit = lambda argv, command: received.append(argv)
+        monkeypatch.setitem(sys.modules, module, fake_mod)
+        monkeypatch.setattr("debug_log.debug_enabled", lambda argv: False)
+
+        _spex_mod.main([command, *tail])
+
+        assert received == [tail]
+
     def test_no_args_prints_help(self, capsys):
         """main() with no args prints help to stderr and exits 0."""
         with pytest.raises(SystemExit) as exc_info:
@@ -782,13 +814,45 @@ class TestDirectScriptExecution:
 class TestRunHook:
     """Test _run_hook function (lines 385-409)."""
 
-    def test_hook_missing_event_type(self, capsys, caplog):
+    @pytest.mark.parametrize("argv", [
+        ["my-hook", "--name", "topic", "--event-type", "apply"],
+        ["my-hook", "--name=topic", "--event-type", "apply"],
+        ["my-hook", "topic", "extra", "--event-type", "apply"],
+        ["my-hook", "", "--event-type", "apply"],
+        ["my-hook", "topic", "--event-type", "apply", "--json-payload", "{"],
+        ["my-hook", "topic", "--event-type", "apply", "--json-payload", "[]"],
+        [],
+    ])
+    def test_invalid_arguments_fail_before_hooks(self, monkeypatch, argv):
+        def unexpected(*args, **kwargs):
+            pytest.fail("Invalid arguments must not build or execute hook data")
+
+        monkeypatch.setattr("hooks._build_event_data", unexpected)
+        monkeypatch.setattr("hooks.run_hook", unexpected)
+        with pytest.raises(SystemExit) as exc:
+            _spex_mod._run_hook(argv)
+        assert exc.value.code == 2
+
+    @pytest.mark.parametrize("argv", [
+        ["my-hook", "topic", "--event-type", "apply"],
+        ["my-hook", "--event-type", "apply", "topic"],
+        ["--event-type", "apply", "my-hook", "topic"],
+    ])
+    def test_hook_and_spec_order(self, monkeypatch, argv):
+        calls = []
+        monkeypatch.setattr(
+            "hooks._build_event_data", lambda event, payload, workdir: payload,
+        )
+        monkeypatch.setattr("hooks.run_hook", lambda *args: calls.append(args))
+        _spex_mod._run_hook(argv)
+        assert calls == [("my-hook", {"spec_name": "topic"}, None)]
+
+    def test_hook_missing_event_type(self, capsys):
         """_run_hook exits 1 when --event-type is missing."""
-        with caplog.at_level(0):
-            with pytest.raises(SystemExit) as exc_info:
-                _spex_mod._run_hook(["my-hook"])
+        with pytest.raises(SystemExit) as exc_info:
+            _spex_mod._run_hook(["my-hook", "topic"])
         assert exc_info.value.code == 1
-        assert "--event-type is required" in caplog.text
+        assert "--event-type is required" in capsys.readouterr().err
 
     def test_hook_builds_event_data(self, monkeypatch, caplog):
         """_run_hook calls run_hook with event data."""
@@ -803,8 +867,7 @@ class TestRunHook:
         monkeypatch.setattr("hooks._build_event_data", fake_build)
         monkeypatch.setattr("hooks.run_hook", fake_run)
         _spex_mod._run_hook([
-            "my-hook", "--event-type", "spec.created",
-            "--name", "test-spec",
+            "my-hook", "test-spec", "--event-type", "spec.created",
             "--json-payload", '{"key": "val"}',
         ])
         assert run_called["name"] == "my-hook"
@@ -813,7 +876,7 @@ class TestRunHook:
         assert run_called["data"]["payload"]["key"] == "val"
 
     def test_hook_without_name_in_payload(self, monkeypatch):
-        """_run_hook works without --name (no spec_name added)."""
+        """_run_hook works without a spec name (no spec_name added)."""
         def fake_build(event_type, payload, workdir):
             return {"type": event_type, "payload": payload}
         run_called = {}

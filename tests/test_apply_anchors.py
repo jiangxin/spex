@@ -55,7 +55,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-one-task", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-one-task", "my-spec"],
         )
         metadata = {
             "current_task_id": "step-4",
@@ -85,7 +85,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-one-task", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-one-task", "my-spec"],
         )
         metadata = {
             "current_task_id": "",
@@ -110,7 +110,7 @@ class TestPromptApplyAnchors:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-review", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-review", "my-spec"],
         )
         metadata = {
             "current_task_description": "task",
@@ -252,12 +252,12 @@ class TestReviewAndPostActionAnchors:
         )
         monkeypatch.setattr("sys.argv", ["spex", "-d", "review-helper"])
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-1", "--commit", "aaa1111",
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "bump-round",
+                "bump-round", "my-spec",
                 "--step", "step-1", "--commit", "bbb2222",
             ])
         assert "===== APPLY review round → 2 =====\n" in _read_log(tmp_path)
@@ -361,12 +361,12 @@ class TestApplyAnchorSequence:
             lambda name, **kw: spec_dir,
         )
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-4", "--commit", "deadbee",
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "bump-round",
+                "bump-round", "my-spec",
                 "--step", "step-4", "--commit", "cafebabe",
             ])
 
@@ -392,7 +392,7 @@ class TestReviewFlowTelemetry:
         spec_dir.mkdir()
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "prompt", "apply-review", "--name", "my-spec"],
+            ["spex", "-d", "prompt", "apply-review", "my-spec"],
         )
         metadata = {
             "current_task_description": "task",
@@ -435,12 +435,12 @@ class TestReviewFlowTelemetry:
             lambda name, **kw: spec_dir,
         )
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "open-batch", "--step", "step-7",
+                "open-batch", "my-spec", "--step", "step-7",
             ])
 
         content = _read_log(spec_dir)
@@ -467,11 +467,11 @@ class TestReviewFlowTelemetry:
         monkeypatch.setattr("sys.argv", ["spex", "-d", "review-helper"])
 
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "my-spec", "append",
+            "append", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "tests", "--title", "t",
@@ -479,7 +479,7 @@ class TestReviewFlowTelemetry:
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "set-pending",
+                "set-pending", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1", "--base-commit", "abc1234",
             ])
@@ -508,7 +508,7 @@ class TestReviewFlowTelemetry:
             ),
         ):
             review_helper.main([
-                "--name", "my-spec", "complete-batch",
+                "complete-batch", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1",
                 "--base-commit", "abc1234",
@@ -541,11 +541,11 @@ class TestReviewFlowTelemetry:
         monkeypatch.setattr("sys.argv", ["spex", "-d", "review-helper"])
 
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "my-spec", "append",
+            "append", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
             "--id", "r1-f1", "--severity", "minor",
             "--category", "tests", "--title", "t",
@@ -553,7 +553,7 @@ class TestReviewFlowTelemetry:
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "set-pending",
+                "set-pending", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1", "--base-commit", "abc1234",
             ])
@@ -581,7 +581,7 @@ class TestReviewFlowTelemetry:
             ),
         ):
             review_helper.main([
-                "--name", "my-spec", "complete-batch",
+                "complete-batch", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1",
                 "--base-commit", "abc1234",
@@ -612,11 +612,11 @@ class TestReviewFlowTelemetry:
         monkeypatch.setattr("sys.argv", ["spex", "-d"])
 
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "my-spec", "append",
+            "append", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
             "--id", "r1-f1", "--severity", "major",
             "--category", "security", "--title", "t",
@@ -634,7 +634,7 @@ class TestReviewFlowTelemetry:
                 spec_dir, "review", step="step-7", mode="delta", round=1,
             )
             review_helper.main([
-                "--name", "my-spec", "open-batch", "--step", "step-7",
+                "open-batch", "my-spec", "--step", "step-7",
             ])
 
         content = _read_log(spec_dir)
@@ -654,11 +654,11 @@ class TestReviewFlowTelemetry:
         monkeypatch.setattr("sys.argv", ["spex", "-d"])
 
         review_helper.main([
-            "--name", "my-spec", "init",
+            "init", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
         ])
         review_helper.main([
-            "--name", "my-spec", "append",
+            "append", "my-spec",
             "--step", "step-7", "--commit", "abc1234",
             "--id", "r1-f1", "--severity", "major",
             "--category", "security", "--title", "t",
@@ -666,7 +666,7 @@ class TestReviewFlowTelemetry:
         ])
         with patch("debug_log.debug_enabled", return_value=True):
             review_helper.main([
-                "--name", "my-spec", "set-pending",
+                "set-pending", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1", "--base-commit", "abc1234",
             ])
@@ -692,7 +692,7 @@ class TestReviewFlowTelemetry:
             ),
         ):
             review_helper.main([
-                "--name", "my-spec", "complete-batch",
+                "complete-batch", "my-spec",
                 "--step", "step-7",
                 "--ids", "r1-f1",
                 "--base-commit", "abc1234",

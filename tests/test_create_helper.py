@@ -1682,7 +1682,7 @@ class TestPreparePostActionSession:
 
             with patch("debug_log.get_project_context", return_value=ctx):
                 named_path = resolve_debug_log_path(
-                    ["spex", "prompt", "--name", "2026-08-04-15-50-side"],
+                    ["spex", "prompt", "apply-one-task", "2026-08-04-15-50-side"],
                 )
             assert named_path == side_spec / "debug.log"
             named_path.write_text("spec-entry\n", encoding="utf-8")

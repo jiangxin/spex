@@ -40,7 +40,7 @@ def test_docs_acceptance_rejects_unrelated_changes(tmp_path, case_id, skip_commi
     target = case.definition["turns"][0]["input"].split()[-1]
     prompt = subprocess.check_output(
         [sys.executable, str(trial.skill / "scripts" / "spex"),
-         "prompt", "apply-one-task", "--json", "--name", target],
+         "prompt", "apply-one-task", "--json", target],
         cwd=trial.repo, env=trial.env, text=True,
     )
     assert json.loads(prompt)["skip_commit"] == str(skip_commit).lower()

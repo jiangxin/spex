@@ -120,7 +120,7 @@ def test_shared_cli_logs_preserve_spec_anchors(tmp_path, monkeypatch):
     log_dir = tmp_path / "cli-logs"
     monkeypatch.setenv("SPEX_LOG_DIR", str(log_dir))
     monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
-    argv = ["spex", "prompt", "--name", "my-spec"]
+    argv = ["spex", "prompt", "apply-one-task", "my-spec"]
 
     with patch("debug_log.get_project_context", return_value=ctx):
         debug_path = resolve_debug_log_path(argv)
@@ -150,14 +150,45 @@ def test_failed_span_write_preserves_command_failure(tmp_path, monkeypatch):
 
 
 class TestParseNameFromArgv:
-    def test_space_form(self):
-        assert parse_name_from_argv(["prompt", "--name", "foo"]) == "foo"
+    def test_positional_form(self):
+        assert parse_name_from_argv(["prompt", "apply-one-task", "foo"]) == "foo"
 
-    def test_equals_form(self):
-        assert parse_name_from_argv(["todo-helper", "--name=bar"]) == "bar"
+    def test_rejects_legacy_prompt_option(self):
+        assert parse_name_from_argv(["prompt", "apply-one-task", "--name=bar"]) is None
 
     def test_missing(self):
         assert parse_name_from_argv(["spex", "version"]) is None
+
+    @pytest.mark.parametrize("command", ["version", "unknown"])
+    def test_legacy_selector_cannot_route_an_unrelated_command(self, command):
+        assert parse_name_from_argv(["spex", command, "--name", "topic"]) is None
+
+    @pytest.mark.parametrize("command, subcommand", [
+        ("apply_helper", "dirty"),
+        ("create-helper", "post-action"),
+    ])
+    def test_lifecycle_name_option_still_routes(self, command, subcommand):
+        argv = ["spex", "--debug", command, subcommand, "--name", "topic_name"]
+        assert parse_name_from_argv(argv) == "topic_name"
+
+    @pytest.mark.parametrize("argv, expected", [
+        (["archive", "topic", "--json"], "topic"),
+        (["archive", "--restore", "topic"], "topic"),
+        (["archive", "--json"], None),
+        (["archive", "--restore"], None),
+        (["archive", "--restore", ""], None),
+        (["archive", "--name=topic"], None),
+        (["run-hook", "my-hook", "topic", "--event-type", "apply"], "topic"),
+        (["run_hook", "my-hook", "--event-type", "apply", "topic"], "topic"),
+        (["run-hook", "my-hook", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "topic"], None),
+        (["run-hook", "my-hook", "--name", "topic", "--event-type", "apply"], None),
+        (["run-hook", "my-hook", "topic", "--event-type", "apply", "--json-payload", "{"], None),
+    ])
+    def test_archive_and_hook_selector(self, argv, expected, capsys):
+        assert parse_name_from_argv(["spex", "--debug", *argv]) == expected
+        assert not capsys.readouterr().err
 
 
 class TestParseFlagFromArgv:
@@ -388,7 +419,7 @@ class TestSessionHelpers:
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(
-                target, ["spex", "version", "--name", "my-spec"]
+                target, ["spex", "prompt", "show", "my-spec"]
             ):
                 print("after-merge")
 
@@ -409,7 +440,7 @@ class TestResolveDebugLogPath:
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "my-spec"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
 
     def test_name_wins_over_active_session(self, tmp_path, monkeypatch):
@@ -417,7 +448,7 @@ class TestResolveDebugLogPath:
         ctx = _make_ctx(tmp_path)
         session_id = _activate_session(ctx.spex_root)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "my-spec"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
         assert path != session_debug_log_path(ctx.spex_root, session_id)
 
@@ -450,7 +481,7 @@ class TestResolveDebugLogPath:
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "missing"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
     def test_unknown_name_uses_active_session(self, tmp_path, monkeypatch):
@@ -458,7 +489,7 @@ class TestResolveDebugLogPath:
         ctx = _make_ctx(tmp_path)
         session_id = _activate_session(ctx.spex_root)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "missing"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
         assert path == session_debug_log_path(ctx.spex_root, session_id)
 
     def test_ambiguous_name_falls_back_to_spex_root(self, tmp_path, monkeypatch):
@@ -468,7 +499,7 @@ class TestResolveDebugLogPath:
         (specs_dir / "2026-01-01-foo").mkdir()
         (specs_dir / "2026-01-01-foo-bar").mkdir()
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "foo"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
     def test_ambiguous_name_uses_active_session(self, tmp_path, monkeypatch):
@@ -479,7 +510,7 @@ class TestResolveDebugLogPath:
         (specs_dir / "2026-01-01-foo-bar").mkdir()
         session_id = _activate_session(ctx.spex_root)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "foo"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
         assert path == session_debug_log_path(ctx.spex_root, session_id)
 
     def test_no_spex_root_returns_none(self, tmp_path, monkeypatch):
@@ -509,7 +540,7 @@ class TestResolveDebugLogPath:
         # Remove the specs copy created by _make_ctx so only archives matches.
         shutil.rmtree(spex_root / "specs" / "my-spec")
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "archive", "--name", "my-spec"])
+            path = resolve_debug_log_path(["spex", "archive", "my-spec"])
         assert path == archived / "debug.log"
 
     def test_specs_match_wins_over_archives(self, tmp_path, monkeypatch):
@@ -519,7 +550,7 @@ class TestResolveDebugLogPath:
         archived = spex_root / "archives" / "my-spec"
         archived.mkdir(parents=True)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "--name", "my-spec"])
+            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == spex_root / "specs" / "my-spec" / "debug.log"
 
     def test_archived_exact_wins_over_specs_fuzzy_sibling(
@@ -535,7 +566,7 @@ class TestResolveDebugLogPath:
         (specs_dir / "foo-v2").mkdir()
         (archives_dir / "foo").mkdir(parents=True)
         with patch("debug_log.get_project_context", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "archive", "--name", "foo"])
+            path = resolve_debug_log_path(["spex", "archive", "foo"])
         assert path == archives_dir / "foo" / "debug.log"
 
 
@@ -548,7 +579,7 @@ class TestSafeFlushDebugLogPath:
         resolved = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
         with patch("debug_log.get_project_context", return_value=ctx):
             path = safe_flush_debug_log_path(
-                ["spex", "prompt", "--name", "my-spec"],
+                ["spex", "prompt", "apply-one-task", "my-spec"],
                 pre,
             )
         assert path == resolved
@@ -586,7 +617,7 @@ class TestSafeFlushDebugLogPath:
         with patch("debug_log.resolve_debug_log_path", return_value=None):
             with patch("debug_log.get_project_context", return_value=ctx):
                 path = safe_flush_debug_log_path(
-                    ["spex", "archive", "--name", "gone"],
+                    ["spex", "archive", "gone"],
                     pre,
                 )
         assert path == spex_root / "debug.log"
@@ -760,7 +791,7 @@ class TestTraceCommand:
         import sys
 
         log_path = tmp_path / "debug.log"
-        argv = ["spex", "prompt", "apply-one-task", "--name", "my-spec", "--json"]
+        argv = ["spex", "prompt", "apply-one-task", "my-spec", "--json"]
         prompt_body = "x" * 8000
         payload = {
             "task_id": "step-3",
@@ -792,7 +823,7 @@ class TestTraceCommand:
         import sys
 
         log_path = tmp_path / "debug.log"
-        argv = ["spex", "prompt", "apply-commit", "--name", "my-spec"]
+        argv = ["spex", "prompt", "apply-commit", "my-spec"]
         big = "P" * (PROMPT_STDOUT_LOG_BYTES + 1500)
 
         with trace_command(log_path, argv):
@@ -917,7 +948,7 @@ class TestTraceCommandArchiveFollow:
         archives_dir.mkdir(parents=True)
         pre_log = spec_dir / "debug.log"
         pre_log.write_text("===== pre-archive =====\n", encoding="utf-8")
-        argv = ["spex", "archive", "--name", "my-spec"]
+        argv = ["spex", "archive", "my-spec"]
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(pre_log, argv):
@@ -927,7 +958,7 @@ class TestTraceCommandArchiveFollow:
         archived_log = archives_dir / "my-spec" / "debug.log"
         content = archived_log.read_text(encoding="utf-8")
         assert "===== pre-archive =====\n" in content
-        assert "argv: spex archive --name my-spec" in content
+        assert "argv: spex archive my-spec" in content
         span = json.loads(archived_log.with_name("trace.jsonl").read_text(encoding="utf-8"))
         assert span["name"] == "archive"
         assert "===== END exit=0 duration_ms=" in content
@@ -943,7 +974,7 @@ class TestTraceCommandArchiveFollow:
         spec_dir = spex_root / "specs" / "my-spec"
         pre_log = spec_dir / "debug.log"
         pre_log.write_text("keep\n", encoding="utf-8")
-        argv = ["spex", "archive", "--name", "my-spec"]
+        argv = ["spex", "archive", "my-spec"]
 
         with patch("debug_log.get_project_context", return_value=ctx):
             with trace_command(pre_log, argv):
@@ -954,7 +985,7 @@ class TestTraceCommandArchiveFollow:
         root_log = spex_root / "debug.log"
         assert root_log.is_file()
         content = root_log.read_text(encoding="utf-8")
-        assert "argv: spex archive --name my-spec" in content
+        assert "argv: spex archive my-spec" in content
         assert not (spex_root / "specs" / "my-spec").exists()
 
     def test_refuses_mkdir_for_vanished_specs_parent(self, tmp_path, monkeypatch):

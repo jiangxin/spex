@@ -112,6 +112,7 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "spec_name",
+        metavar="<spec-name>",
         help="Spec name to look up",
     )
     parser.add_argument(

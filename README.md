@@ -238,9 +238,9 @@ linked worktree before moving the directory (it does not delete the
 
 ```bash
 spex archive --json                     # Archive completed specs
-spex archive --json --name <spec>       # Archive one spec by name
+spex archive <spec> --json              # Archive one spec by name
 spex archive --json --dry-run           # Preview without moving
-spex archive --json --restore --name <spec>
+spex archive <spec> --json --restore
 ```
 
 ### spex merge
@@ -272,7 +272,7 @@ As Anthropic's blog post ([Effective harnesses for long-running agents](https://
 During development, other intermediate file formats were explored, such as XML. While XML can contain multi-line Markdown text for step descriptions, XML character escaping adds complexity. The final solution was the `spex todo-helper` utility, which uses heredoc input to provide detailed multi-line descriptions when adding new steps to `todo.json`. For example, the model invokes the following command to add a step:
 
 ```bash
-$ spex todo-helper --name $spec_name append \
+$ spex todo-helper append "$spec_name" \
   --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -284,6 +284,13 @@ including file changes, logic, and acceptance criteria.
 **Acceptance criteria**: all tests pass, endpoint returns JWT
 DETAILS
 ```
+
+Pass spec names positionally after the command for direct CLI entries, after
+the subcommand for `todo-helper`, `review-helper`, and `prompt`, or after
+the template name for generic prompt rendering. For `run-hook`, pass the
+optional spec name after the hook name. `todo-helper` accepts exactly one
+locator, either a spec name or `--todo-file <path>`. The `create-helper`
+and `apply-helper` lifecycle commands use `--name` for spec selection.
 
 ### 2. Atomic Commits: Small Steps, Fast Progress
 
