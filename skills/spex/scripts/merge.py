@@ -196,6 +196,11 @@ def cli_submit(argv=None, command="submit") -> None:
         spex_wt, _, _, would_remove = worktree_remove_plan(
             spec_dir, force=True, preserve_worktree=preserve_worktree,
         )
+        would_retain = (
+            str(preserve_worktree)
+            if will_archive and preserve_worktree and spex_wt and not would_remove
+            else ""
+        )
         would_remove = will_archive and would_remove and any(
             same_path(spex_wt, path) for path in plan.worktree_paths
         )
@@ -210,12 +215,16 @@ def cli_submit(argv=None, command="submit") -> None:
         if would_switch:
             logger.info("Would switch to %s", target)
         logger.info("Would git merge %s", source)
+        if plan.restore_branch:
+            logger.info("Would restore branch: %s", plan.restore_branch)
         if spex_wt:
             logger.info("Feature worktree: %s", spex_wt)
         if will_archive:
             logger.info("Would archive: %s", spec_dir.name)
         if would_remove:
             logger.info("Would remove worktree: %s", spex_wt)
+        if would_retain:
+            logger.info("Would retain worktree: %s", would_retain)
         print(json.dumps({
             "action": method,
             "source": source,
@@ -223,11 +232,14 @@ def cli_submit(argv=None, command="submit") -> None:
             "archived": will_archive,
             "dry_run": True,
             "merge_cwd": merge_cwd,
+            "multiple_worktrees": plan.multiple_worktrees,
             "merge_cwd_head": merge_cwd_head,
             "would_switch": would_switch,
             "target_checked_out": plan.target_checked_out,
             "spex_worktree": spex_wt,
             "would_remove_worktree": would_remove,
+            "would_restore_branch": plan.restore_branch,
+            "would_retain_worktree": would_retain,
             "errors": [],
         }))
         return
@@ -303,6 +315,7 @@ def cli_submit(argv=None, command="submit") -> None:
 
     # Auto-archive the spec unless --no-archive is set
     archived = False
+    retained_worktree = ""
     if not parsed.no_archive:
         try:
             import archive as archive_mod
@@ -318,7 +331,30 @@ def cli_submit(argv=None, command="submit") -> None:
             archived = result is not None
         except Exception:
             archived = False
+        if archived and preserve_worktree is not None:
+            archived_meta = common.load_meta(result)
+            if (
+                archived_meta
+                and archived_meta.spex_worktree
+                and same_path(archived_meta.spex_worktree, str(preserve_worktree))
+            ):
+                retained_worktree = str(preserve_worktree)
 
-    print(json.dumps({"action": method, "source": source,
-                      "target": target, "archived": archived,
-                      "errors": errors}))
+    logger.info("Merged '%s' into '%s'.", source, target)
+    if plan.multiple_worktrees:
+        logger.info("Merge worktree: %s", plan.cwd)
+    if plan.restore_branch:
+        logger.info("Restored branch: %s", plan.restore_branch)
+    if retained_worktree:
+        logger.info("Retained worktree: %s", retained_worktree)
+    print(json.dumps({
+        "action": method,
+        "source": source,
+        "target": target,
+        "archived": archived,
+        "merge_cwd": str(plan.cwd),
+        "multiple_worktrees": plan.multiple_worktrees,
+        "restored_branch": plan.restore_branch,
+        "retained_worktree": retained_worktree,
+        "errors": errors,
+    }))

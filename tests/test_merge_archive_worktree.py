@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -372,7 +373,7 @@ class TestTemporaryMergeCheckout:
 
     @pytest.mark.parametrize("archive_mode", ["preserve", "remove", "skip", "stale"])
     def test_archive_after_restoring_worktree(
-        self, linked_merge, capsys, archive_mode,
+        self, linked_merge, capsys, caplog, archive_mode,
     ):
         main, caller, spec_dir, archives, post_action = linked_merge
         bound = caller.parent / "bound-worktree"
@@ -390,15 +391,32 @@ class TestTemporaryMergeCheckout:
         if archive_mode == "skip":
             args.append("--no-archive")
 
-        cli_submit([*args, "--dry-run"])
+        with caplog.at_level(logging.INFO):
+            cli_submit([*args, "--dry-run"])
         preview = json.loads(capsys.readouterr().out)
+        retained = str(caller) if archive_mode == "preserve" else ""
+        assert preview["multiple_worktrees"] is True
+        assert preview["would_restore_branch"] == "caller"
+        assert preview["would_retain_worktree"] == retained
         assert preview["would_remove_worktree"] is (archive_mode == "remove")
+        assert "Would restore branch: caller" in caplog.text
+        assert ("Would retain worktree:" in caplog.text) is bool(retained)
         assert spec_dir.is_dir() and not archives.exists()
         assert bound.is_dir() is (archive_mode != "stale")
 
-        cli_submit(args)
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            cli_submit(args)
         submitted = json.loads(capsys.readouterr().out)
         assert submitted["archived"] is (archive_mode != "skip")
+        assert Path(submitted["merge_cwd"]).resolve() == caller.resolve()
+        assert submitted["multiple_worktrees"] is True
+        assert submitted["restored_branch"] == "caller"
+        assert submitted["retained_worktree"] == retained
+        assert "Merged 'spex/feat' into 'main'." in caplog.text
+        assert f"Merge worktree: {caller}" in caplog.text
+        assert "Restored branch: caller" in caplog.text
+        assert ("Retained worktree:" in caplog.text) is bool(retained)
         assert get_current_branch(caller) == "caller"
         assert is_registered_worktree(caller, cwd=main)
         assert dirty_file.read_text(encoding="utf-8") == "uncommitted work\n"
@@ -411,6 +429,42 @@ class TestTemporaryMergeCheckout:
         else:
             assert not spec_dir.exists()
             assert (archives / spec_dir.name / "meta.json").read_bytes() == meta_before
+
+    @pytest.mark.parametrize("command", ["merge", "submit"])
+    def test_cli_worktree_summary_for_a_single_checkout(self, tmp_path, command):
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        _git(main, "branch", "spex/feat")
+        root = tmp_path / "spex"
+        (main / ".spex.toml").write_text(
+            f'[spex]\ninherit_config = false\nspex_root = "{root}"\n',
+            encoding="utf-8",
+        )
+        spec_dir = root / "specs" / "merge-summary"
+        _write_completed_spec(spec_dir, main=main, spex_branch="spex/feat")
+        cli = Path(__file__).resolve().parents[1] / "skills/spex/scripts/spex"
+        args = [sys.executable, str(cli), command, spec_dir.name, "--no-archive"]
+
+        preview = subprocess.run(
+            [*args, "--dry-run"], cwd=main, check=True, capture_output=True, text=True,
+        )
+        out = json.loads(preview.stdout)
+        assert out["source"] == "spex/feat" and out["target"] == "main"
+        assert out["dry_run"] is True and out["target_checked_out"] is True
+        assert out["multiple_worktrees"] is False
+        assert out["would_restore_branch"] == "" and out["would_retain_worktree"] == ""
+        assert out["would_remove_worktree"] is False
+        assert "Would merge: spex/feat -> main" in preview.stderr
+
+        submitted = subprocess.run(
+            args, cwd=main, check=True, capture_output=True, text=True,
+        )
+        out = json.loads(submitted.stdout)
+        assert out["source"] == "spex/feat" and out["target"] == "main"
+        assert Path(out["merge_cwd"]).resolve() == main.resolve()
+        assert out["multiple_worktrees"] is False and out["archived"] is False
+        assert out["restored_branch"] == "" and out["retained_worktree"] == ""
+        assert "Merged 'spex/feat' into 'main'." in submitted.stderr
 
     def test_restores_caller_branch_when_a_tag_has_the_same_name(
         self, linked_merge, capsys,
