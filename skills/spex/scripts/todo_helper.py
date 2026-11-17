@@ -135,8 +135,8 @@ def cmd_validate(todo_path):
     logger.info("OK")
 
 
-def cmd_append(todo_path, args):
-    """Append a new entry to the todo file."""
+def _new_todo_entry(args):
+    """Build an entry from the append or insert options."""
     if args.details_from_stdin:
         details = sys.stdin.read()
     elif args.details is not None:
@@ -147,7 +147,6 @@ def cmd_append(todo_path, args):
         )
         sys.exit(1)
 
-    data = _read_todo(todo_path)
     entry = {
         "name": args.step_name,
         "details": details,
@@ -160,9 +159,28 @@ def cmd_append(todo_path, args):
         # Omit key for default false so files stay compact.
         if normalized != _SKIP_COMMIT_FALSE:
             entry["skip_commit"] = normalized
+    return entry
+
+
+def cmd_append(todo_path, args):
+    """Append a new entry to the todo file."""
+    entry = _new_todo_entry(args)
+    data = _read_todo(todo_path)
     data.append(entry)
     _write_todo(todo_path, data)
     logger.info("Appended %s.", todo_step_label(len(data), len(data)))
+
+
+def cmd_insert(todo_path, args):
+    """Insert a new entry before or after an existing position."""
+    data = _read_todo(todo_path)
+    if args.before is not None:
+        index = _step_index(data, args.before)
+    else:
+        index = _step_index(data, args.after) + 1
+    data.insert(index, _new_todo_entry(args))
+    _write_todo(todo_path, data)
+    logger.info("Inserted %s.", todo_step_label(index + 1, len(data)))
 
 
 def _short_head_sha() -> str:
@@ -437,6 +455,8 @@ _VALUE_TAKING_SUB_FLAGS = frozenset({
     "--id",
     "--from",
     "--to",
+    "--before",
+    "--after",
     "--step-name",
     "--details",
     "--completed-at",
@@ -514,13 +534,45 @@ def _parse_step_id(value):
     raise ArgumentTypeError(f"expected a positive step ID, got {value!r}")
 
 
+def _add_new_entry_options(parser):
+    """Register fields shared by append and insert."""
+    parser.add_argument(
+        "--step-name", required=True, help="Task name",
+    )
+    parser.add_argument(
+        "--details", default=None, help="Task details text",
+    )
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+        help="Read details from stdin",
+    )
+    parser.add_argument(
+        "--completed-at", default="",
+        help="Completion timestamp (or 'now')",
+    )
+    parser.add_argument(
+        "--commit-title", default="",
+        help="Commit title for the task",
+    )
+    parser.add_argument(
+        "--skip-commit",
+        choices=list(_SKIP_COMMIT_VALUES),
+        default=None,
+        help=(
+            "Skip commit mode: false (default, omit key),"
+            " auto, or true (lowercase strings only)"
+        ),
+    )
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, edit, move, remove, remove-undone, show, transaction)."
+            " (validate, append, insert, edit, move, remove, remove-undone,"
+            " show, transaction)."
         ),
     )
     parser.add_argument(
@@ -549,33 +601,24 @@ def _build_parser():
         description="Append a new entry to the todo file.",
         help="Append a new entry",
     )
-    p_append.add_argument(
-        "--step-name", required=True, help="Task name",
-    )
-    p_append.add_argument(
-        "--details", default=None, help="Task details text",
-    )
-    p_append.add_argument(
-        "--details-from-stdin", action="store_true",
-        help="Read details from stdin",
-    )
-    p_append.add_argument(
-        "--completed-at", default="",
-        help="Completion timestamp (or 'now')",
-    )
-    p_append.add_argument(
-        "--commit-title", default="",
-        help="Commit title for the task",
-    )
-    p_append.add_argument(
-        "--skip-commit",
-        choices=list(_SKIP_COMMIT_VALUES),
-        default=None,
-        help=(
-            "Skip commit mode: false (default, omit key),"
-            " auto, or true (lowercase strings only)"
+    _add_new_entry_options(p_append)
+
+    p_insert = subs.add_parser(
+        "insert",
+        description=(
+            "Insert a new entry before or after a current step position from show."
+            " Assign stored IDs on transaction commit or immediately outside a transaction."
         ),
+        help="Insert a new entry before or after an existing step",
     )
+    anchor = p_insert.add_mutually_exclusive_group(required=True)
+    anchor.add_argument(
+        "--before", type=_parse_step_id, help="Position of the step to insert before",
+    )
+    anchor.add_argument(
+        "--after", type=_parse_step_id, help="Position of the step to insert after",
+    )
+    _add_new_entry_options(p_insert)
 
     # edit
     p_edit = subs.add_parser(
@@ -696,8 +739,8 @@ def _build_parser():
     p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
 
     for subparser in (
-        p_validate, p_append, p_edit, p_move, p_remove, p_remove_undone, p_show,
-        p_transaction,
+        p_validate, p_append, p_insert, p_edit, p_move, p_remove, p_remove_undone,
+        p_show, p_transaction,
     ):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
@@ -734,6 +777,8 @@ def main(argv=None):
         cmd_validate(todo_path)
     elif args.subcmd == "append":
         cmd_append(todo_path, args)
+    elif args.subcmd == "insert":
+        cmd_insert(todo_path, args)
     elif args.subcmd == "edit":
         cmd_edit(todo_path, args)
     elif args.subcmd == "move":

@@ -112,8 +112,23 @@ Verify acceptance criteria without changing tracked files.
 DETAILS
 ```
 
-Optional on `append` / `edit`: `--skip-commit true|auto|false`
+Optional on `append`, `insert`, and `edit`: `--skip-commit true|auto|false`
 (default `false` / omit).
+
+## Insert
+
+Use exactly one of `--before` or `--after` with the current position
+displayed by `show`. Supply the same entry fields as for `append`.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper insert "$spec_name" \
+  --before 2 --step-name "Add input validation" \
+  --details "Reject empty input."
+```
+
+An open transaction preserves existing stored IDs until commit, which
+numbers the full list. Outside a transaction, insertion numbers the
+list on write. Refresh `show` before selecting steps again.
 
 ## Show
 

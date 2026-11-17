@@ -642,6 +642,84 @@ class TestAppendCompletedAtNow:
 
 
 # -----------------------------------------------------------------------
+# insert
+# -----------------------------------------------------------------------
+class TestInsert:
+    @pytest.mark.parametrize(
+        ("anchor", "position", "index"),
+        [("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3)],
+    )
+    def test_insert_by_spec_name(self, todo_file, monkeypatch, anchor, position, index):
+        monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
+        _write(todo_file, SAMPLE_DATA)
+
+        todo_helper.main([
+            "insert", "my-topic", anchor, position,
+            "--step-name", "Inserted", "--details", "Details",
+        ])
+
+        entry = {"name": "Inserted", "details": "Details", "completed_at": "", "commit_title": ""}
+        expected = [*SAMPLE_DATA[:index], entry, *SAMPLE_DATA[index:]]
+        assert _read(todo_file) == [
+            dict(item, id=number) for number, item in enumerate(expected, 1)
+        ]
+
+    @pytest.mark.parametrize(
+        ("anchors", "items", "exit_code"),
+        [
+            ([], SAMPLE_DATA, 2),
+            (["--before", "1", "--after", "2"], SAMPLE_DATA, 2),
+            (["--before", "0"], SAMPLE_DATA, 2),
+            (["--after", "4"], SAMPLE_DATA, 1),
+            (["--before", "1"], [], 1),
+        ],
+    )
+    def test_invalid_anchor_keeps_file(self, todo_file, anchors, items, exit_code):
+        _write(todo_file, items)
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "insert", *anchors,
+                "--step-name", "Inserted", "--details", "Details",
+            ])
+        assert exc.value.code == exit_code
+        assert todo_file.read_bytes() == original
+
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_insert_inside_transaction(self, todo_file, monkeypatch, action):
+        import io
+
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        details = "First line\nSecond line\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(details))
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main([
+            "insert", "--before", "2", "--step-name", "Inserted",
+            "--details-from-stdin", "--skip-commit", "auto",
+            "--completed-at", "2026-01-03", "--commit-title", "feat: inserted",
+            *locator,
+        ])
+
+        entry = {
+            "name": "Inserted", "details": details, "completed_at": "2026-01-03",
+            "commit_title": "feat: inserted", "skip_commit": "auto",
+        }
+        expected = [SAMPLE_DATA[0], entry, *SAMPLE_DATA[1:]]
+        assert _read(todo_file) == expected
+        todo_helper.main(["transaction", action, *locator])
+
+        if action == "rollback":
+            assert todo_file.read_bytes() == original
+        else:
+            assert _read(todo_file) == [
+                dict(item, id=number) for number, item in enumerate(expected, 1)
+            ]
+        assert not todo_file.with_suffix(".json.lock").exists()
+
+
+# -----------------------------------------------------------------------
 # move
 # -----------------------------------------------------------------------
 class TestMove:
