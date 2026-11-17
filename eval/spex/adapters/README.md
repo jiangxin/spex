@@ -40,6 +40,36 @@ file operations in the prepared workspace. Collect each turn before
 resuming its session to send the next input. Keep grading in a separate
 session.
 
+### Account for host capacity
+
+Within each shared session pool, count all active sessions, including the
+coordinator if the host counts it. Reserve room for nested implementation,
+review, and separate grading sessions before claiming another trial. Budget
+independent pools separately. In a four-session pool with one coordinator
+and one reserved session for nested work or grading, at most two trial
+sessions can be open, even with `execution.jobs` set to four.
+
+If the host refuses a launch due to capacity, pause new claims. Wait for a
+session to finish or another observable change that frees a slot. Continue
+at a lower concurrency when needed.
+
+- If the refused operation did not start and the session can continue
+  safely, retry only that operation. If `manual.py start` already ran,
+  keep the bound session and timer. Send the input only if it was the
+  refused operation and did not start. After the final reply, stop the
+  timer and collect the turn once.
+- If the trial cannot continue safely, record the terminal failure with
+  `manual.py --sandbox PATH fail SUITE/CASE --reason REASON`. Use
+  `launch_failed`, `exited`, or `timeout` according to what occurred.
+  This releases the claim and preserves the original trial and evidence.
+  Prepare the same suite and case in a new sandbox with the saved Spex
+  commit, host, model, and `--invocation` mode. Initialize its queue and run
+  it as an independent trial.
+
+Report the phase of the capacity refusal, configured worker limit, and
+observed concurrency. Link the original and rerun trial directories and
+give each outcome when a separate rerun was needed.
+
 ## Cursor (manual / Task)
 
 - Prefer one Task (or chat) per trial workspace; do not share state across cases.

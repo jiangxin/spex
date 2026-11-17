@@ -38,9 +38,10 @@ is recommended for full TOML support.
   Combine filters by intersection. Resolve any requested ref, host, trial
   model, and judge model. Use actual model IDs from host settings or CLI
   configuration. Record unavailable identities as `unknown`.
-- **Other operations:** rerun with the saved suite, case, models, and pinned
-  Spex commit. Use `judge` to regrade saved evidence, `calibrate` to qualify a
-  judge, and `compare` for a paired report. For a migration comparison, use
+- **Other operations:** rerun with the saved suite, case, models, invocation
+  mode, and pinned Spex commit. Use `judge` to regrade saved evidence,
+  `calibrate` to qualify a judge, and `compare` for a paired report.
+  For a migration comparison, use
   both requested models, three repetitions per case, and the same explicit judge.
 
 ## 2. List matching cases
@@ -72,6 +73,12 @@ be reported as partial relative to the original request.
 ## 4. Execute and collect each turn
 
 Use `python3 eval/spex/manual.py --sandbox <sandbox>` with these commands.
+
+Apply the [host capacity and recovery rules](../../../eval/spex/adapters/README.md#account-for-host-capacity)
+before claiming another trial. After a host capacity refusal, pause new
+claims until capacity changes. Resume only the refused operation when
+the original session can safely continue. Record terminal host failures
+in the original queue before preparing a separate rerun.
 
 1. `claim <suite/id>` reserves a worker slot through grade import.
 2. Open an independent trial session using the returned workspace,
@@ -110,7 +117,9 @@ sandbox was allocated, report the runner errors.
   Agent and model alongside the judge Agent and model. Use `unknown`
   for unavailable identities and `ungraded` when no grading ran.
 - Report the configured execution mode and worker limit. For current-host
-  runs, describe this as the adapter's scheduling configuration.
+  runs, also report observed concurrency and the phase of any host capacity
+  restriction. When a capacity failure leads to an independent rerun, link
+  both trial directories and report each outcome.
 - Report observed failures, evidence gaps such as missing tool traces,
   and runner or judge errors. Note missing matching judge calibration
   and any comparison settings that differ.
