@@ -936,7 +936,18 @@ def test_wait_then_advance_collects_and_exports_turns(runner, monkeypatch):
     assert stalled["running"] == 1 and stalled["pending"] == 0
     assert manual.advance_action(sandbox)[0]["advanced"] == []
 
-    Path(start["reply"]).write_text("What type?", encoding="utf-8")
+    reply = Path(start["reply"])
+    staged = reply.with_suffix(".staged")
+    staged.write_text("What type?", encoding="utf-8")
+    timer = manual.host_turn_timer.pending_path(reply)
+    assert wait(0)[0]["ready"] == []
+    for invalid in (b"  \n", b"\xff"):
+        reply.write_bytes(invalid)
+        assert wait(0)[0]["ready"] == []
+        skipped, code = manual.advance_action(sandbox)
+        assert code == 0 and skipped["advanced"] == [] and skipped["errors"] == []
+        assert timer.is_file()
+    staged.replace(reply)
     ready, code = wait(5)
     assert code == 0 and not ready["timed_out"]
     assert ready["ready"] == [{
@@ -951,6 +962,7 @@ def test_wait_then_advance_collects_and_exports_turns(runner, monkeypatch):
     assert advanced["waiting"] == [
         {"case": key, "next_input": "Use a boolean setting"},
     ]
+    assert manual.advance_action(sandbox)[0]["advanced"] == []
 
     second, _ = manual_action(sandbox, "start", key, "2", "--session", "host-2")
     Path(second["reply"]).write_text("Done", encoding="utf-8")

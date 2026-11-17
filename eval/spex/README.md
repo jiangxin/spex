@@ -129,9 +129,9 @@ these commands.
 | `claim SUITE/CASE` | Reserve a trial slot through grading |
 | `exec SUITE/CASE -- COMMAND ...` | Run a shell command with the prepared cwd and environment |
 | `start SUITE/CASE TURN --session ID` | Bind the session and timer, then return the exact input and reply path |
-| `wait --any --timeout SECONDS` | Block until a running turn has a reply; exit 1 on timeout |
-| `advance` | Stop, collect, and export every running turn whose reply exists |
-| `stop SUITE/CASE TURN` | Finish the current timer after the final reply is ready |
+| `wait --any --timeout SECONDS` | Block until a running turn has a readable, nonblank UTF-8 reply; exit 1 on timeout |
+| `advance` | Stop, collect, and export running turns with published replies |
+| `stop SUITE/CASE TURN [--reply-file PATH]` | Finish the current timer and atomically publish a staged reply first when supplied |
 | `collect SUITE/CASE TURN` | Collect the saved reply and timing sidecars, then return the next input |
 | `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot |
 | `fail SUITE/CASE --reason launch_failed\|exited\|timeout` | Record a host failure on a claimed, pending trial and release its slot while preserving collected evidence |

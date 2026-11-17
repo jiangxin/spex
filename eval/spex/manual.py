@@ -233,14 +233,18 @@ def run_command(args, sandbox: Path) -> int:
 
 
 def pending_reply(sandbox: Path, key: str, row: dict) -> dict | None:
-    """Return the reply coordinates when a running turn has finished writing."""
+    """Return a running turn's coordinates once its published reply is readable."""
     dispatch = row.get("dispatch") or {}
     turn = dispatch.get("turn")
     if row.get("status") != "running" or type(turn) is not int:
         return None
     suite, case = key.split("/")
     reply = collect_handoff.handoff_reply(sandbox, suite, case, turn)
-    if reply.is_symlink() or not reply.is_file():
+    if reply.parent.is_symlink():
+        return None
+    try:
+        read_complete_reply(reply)
+    except (OSError, ValueError):
         return None
     return {
         "case": key, "turn": turn,

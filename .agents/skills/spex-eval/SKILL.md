@@ -92,11 +92,15 @@ in the original queue before preparing a separate rerun.
    `exec <suite/id> -- <command> ...` on each shell call.
 3. Immediately before dispatch, call
    `start <suite/id> <turn> --session <id>`. Send the returned `next_input`
-   exactly. Continue in the same session for later turns. Workers save the
-   final reply to the returned path (an optional `.events.jsonl` transcript
-   goes beside it) and do not collect.
+   exactly. Continue in the same session for later turns. Workers write the
+   full reply to a staging file. Finish any optional `.events.jsonl`
+   transcript beside the canonical reply path before publishing the reply.
+   Publish with `stop <suite/id> <turn> --reply-file <staging-file>` or
+   atomically rename the staging file from the same directory to the reply
+   path returned by `start`. The coordinator handles collection.
 4. Run `wait --any --timeout <seconds>` to block until a running trial has a
-   reply. It returns immediately when nothing is running and exits 1 on
+   readable, nonblank UTF-8 reply at the published path. It returns
+   immediately when nothing is running and exits 1 on
    timeout.
 5. Run `advance`. For every running turn with a reply it stops the timer,
    collects the turn, and exports the judge packet when the trial is final.

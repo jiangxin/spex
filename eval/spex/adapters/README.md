@@ -16,8 +16,8 @@ the portable interface documented in [`../README.md`](../README.md):
 | Env | Apply the prepared environment, including `SPEX_LOG_DIR`, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Start each turn, send its exact `next_input` and preserve the session |
-| Output | Save the final reply to the path published by `manual.py start` |
-| Events | Optional supplementary Codex-style JSONL beside the reply with suffix `.events.jsonl` |
+| Output | Stage the full reply and publish with `manual.py stop SUITE/CASE TURN --reply-file PATH` or atomically rename it from the same directory to the reply path returned by `start` |
+| Events | Finish optional supplementary Codex-style JSONL beside the reply with suffix `.events.jsonl` before publishing the reply |
 | Timing | Stop the current turn timer once its final reply is ready |
 | Collect | Use `manual.py collect` before starting the next turn |
 | Host failure | Record a launch failure, host exit or timeout with `manual.py fail` so the next case can claim the slot |
@@ -166,5 +166,6 @@ give each outcome when a separate rerun was needed.
 ## Pure manual (any IDE)
 
 - Paste the input returned by `manual.py start` into the prepared session.
-- Stop the timer, save the reply and run `manual.py collect`.
+- Stage the final reply, then run `manual.py stop SUITE/CASE TURN --reply-file PATH`
+  to publish it and stop the timer. Run `manual.py collect` for that turn.
 - Supply an events sidecar only when a compatible transcript is available.
