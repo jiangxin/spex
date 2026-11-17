@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -157,6 +158,17 @@ def cli_submit(argv=None, command="submit") -> None:
     method = conf["submit_method"]
     errors: list[str] = []
 
+    todo_backup = spec_dir / "todo.json.lock"
+    if todo_backup.exists():
+        quoted_name = shlex.quote(spec_name)
+        errors.append(
+            f"Unfinished todo transaction at '{todo_backup}'. Finish it with "
+            f"`spex todo-helper transaction commit {quoted_name}` or "
+            f"`spex todo-helper transaction rollback {quoted_name}` before retrying."
+        )
+        _fail_with_errors({"action": method, "source": source, "target": target,
+                           "errors": errors})
+
     if not source:
         errors.append("No spex_branch in spec meta.json")
         _fail_with_errors({"action": method, "source": "", "target": target,
@@ -169,20 +181,6 @@ def cli_submit(argv=None, command="submit") -> None:
         errors.append(detail.strip())
         _fail_with_errors({"action": method, "source": source, "target": target,
                            "errors": errors})
-
-    # Run pre-action hook before merge
-    done, total = common.get_todo_progress(spec_dir)
-    hooks.run_pre_action(
-        command,
-        {
-            "source_branch": source,
-            "target_branch": target,
-            "done": done,
-            "undone": total - done,
-        },
-        workdir=ctx.top_workdir,
-        spec_name=spec_dir.name,
-    )
 
     if parsed.dry_run:
         merge_cwd = str(plan.cwd)
@@ -221,6 +219,19 @@ def cli_submit(argv=None, command="submit") -> None:
             "errors": [],
         }))
         return
+
+    done, total = common.get_todo_progress(spec_dir)
+    hooks.run_pre_action(
+        command,
+        {
+            "source_branch": source,
+            "target_branch": target,
+            "done": done,
+            "undone": total - done,
+        },
+        workdir=ctx.top_workdir,
+        spec_name=spec_dir.name,
+    )
 
     # If target branch doesn't exist, create it from the current branch
     if not branch_exists(target, cwd=plan.cwd):

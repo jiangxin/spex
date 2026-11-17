@@ -315,7 +315,9 @@ class TestTemporaryMergeCheckout:
                 spec_dir, main=main, spex_branch="spex/feat", branch=target,
             )
 
-        cli_submit([spec_dir.name, "--dry-run"])
+        with patch("hooks.run_pre_action") as pre_action:
+            cli_submit([spec_dir.name, "--dry-run"])
+        pre_action.assert_not_called()
         preview = json.loads(capsys.readouterr().out)
         assert Path(preview["merge_cwd"]).resolve() == caller.resolve()
         assert preview["merge_cwd_head"] == "caller"
@@ -336,6 +338,37 @@ class TestTemporaryMergeCheckout:
         assert (main / "README").read_text(encoding="utf-8") == "unrelated local edit\n"
         assert not archives.exists()
         post_action.assert_called_once()
+
+    @pytest.mark.parametrize("command", ["merge", "submit"])
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_pending_todo_transaction_blocks_submit(
+        self, linked_merge, capsys, command, dry_run,
+    ):
+        _, caller, spec_dir, archives, post_action = linked_merge
+        backup = spec_dir / "todo.json.lock"
+        backup_bytes = b'[{ "id": "1", "completed_at": "" }]\n'
+        backup.write_bytes(backup_bytes)
+        todo = spec_dir / "todo.json"
+        todo_before = todo.read_bytes()
+        refs_before = _git(caller, "show-ref").stdout
+        args = [spec_dir.name, "--dry-run"] if dry_run else [spec_dir.name]
+
+        with patch("hooks.run_pre_action") as pre_action, \
+             pytest.raises(SystemExit) as exc_info:
+            cli_submit(args, command=command)
+
+        assert exc_info.value.code == 1
+        error = json.loads(capsys.readouterr().out)["errors"][0]
+        assert str(backup) in error
+        for action in ("commit", "rollback"):
+            assert f"spex todo-helper transaction {action} {spec_dir.name}" in error
+        assert backup.read_bytes() == backup_bytes
+        assert todo.read_bytes() == todo_before
+        assert _git(caller, "show-ref").stdout == refs_before
+        assert get_current_branch(caller) == "caller"
+        assert not archives.exists()
+        pre_action.assert_not_called()
+        post_action.assert_not_called()
 
     def test_restores_caller_branch_when_a_tag_has_the_same_name(
         self, linked_merge, capsys,
