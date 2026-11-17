@@ -65,7 +65,7 @@ class TestMergeBranchSkipSwitch:
     def test_skips_switch_when_already_on_target(self, mock_run):
         mock_run.side_effect = [
             subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="main\n", stderr="",
+                args=[], returncode=0, stdout="refs/heads/main\n", stderr="",
             ),
             subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="", stderr="",
@@ -74,7 +74,7 @@ class TestMergeBranchSkipSwitch:
         merge_branch("main", "spex/feature")
         assert mock_run.call_count == 2
         first = mock_run.call_args_list[0][0][0]
-        assert first[:3] == ["git", "symbolic-ref", "--short"]
+        assert first == ["git", "symbolic-ref", "HEAD"]
         second = mock_run.call_args_list[1][0][0]
         assert second[0:1] == ["git"]
         assert "merge" in second

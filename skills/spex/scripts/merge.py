@@ -7,9 +7,48 @@ import io
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 from cli import ArgumentParser
 from common import logger
+
+
+@dataclass(frozen=True)
+class MergePlan:
+    cwd: Path
+    current_branch: str
+    multiple_worktrees: bool
+    target_checked_out: bool
+    restore_branch: str
+
+
+def _plan_merge(target: str, caller: Path | None) -> MergePlan:
+    """Select a checkout and record the branch to restore after merging."""
+    from branch import get_current_branch
+    from worktree import list_worktrees
+
+    if caller is None:
+        raise RuntimeError("Run merge from a Git working tree.")
+    worktrees = [entry for entry in list_worktrees(cwd=caller) if "bare" not in entry]
+    multiple = len(worktrees) > 1
+    target_branch = target.removeprefix("refs/heads/")
+    target_ref = f"refs/heads/{target_branch}"
+    for entry in worktrees:
+        if entry.get("branch") == target_ref:
+            return MergePlan(Path(entry["path"]), target_branch, multiple, True, "")
+
+    try:
+        current_branch = get_current_branch(cwd=caller)
+    except RuntimeError as exc:
+        if multiple:
+            raise RuntimeError(
+                f"Cannot temporarily switch branches in '{caller}' with detached HEAD. "
+                "Check out a local branch and retry."
+            ) from exc
+        current_branch = ""
+    return MergePlan(caller, current_branch, multiple, False,
+                     current_branch if multiple else "")
 
 
 def _fail_with_errors(payload: dict) -> None:
@@ -71,11 +110,10 @@ def cli_submit(argv=None, command="submit") -> None:
     from branch import (
         branch_exists,
         create_and_switch_branch,
-        get_current_branch,
         merge_branch,
         resolve_default_branch,
+        switch_branch,
     )
-    from worktree import find_worktree_for_branch
 
     parser = _build_submit_parser()
     parsed = parser.parse(argv)
@@ -115,13 +153,21 @@ def cli_submit(argv=None, command="submit") -> None:
     source = meta.spex_branch if meta else ""
     target = meta.branch if (meta and meta.branch) else None
     if target is None:
-        target = resolve_default_branch(cwd=ctx.main_worktree)
+        target = resolve_default_branch(cwd=ctx.top_workdir)
     method = conf["submit_method"]
     errors: list[str] = []
 
     if not source:
         errors.append("No spex_branch in spec meta.json")
         _fail_with_errors({"action": method, "source": "", "target": target,
+                           "errors": errors})
+
+    try:
+        plan = _plan_merge(target, ctx.top_workdir)
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        detail = getattr(exc, "stderr", None) or str(exc)
+        errors.append(detail.strip())
+        _fail_with_errors({"action": method, "source": source, "target": target,
                            "errors": errors})
 
     # Run pre-action hook before merge
@@ -138,23 +184,13 @@ def cli_submit(argv=None, command="submit") -> None:
         spec_name=spec_dir.name,
     )
 
-    # Resolve target merge cwd the same way as a real merge (read-only
-    # for --dry-run): prefer the worktree that already has target
-    # checked out; fall back to main_worktree when target is free.
-    found_target_wt = find_worktree_for_branch(target, cwd=ctx.main_worktree)
-    target_checked_out = found_target_wt is not None
-    target_wt = found_target_wt if target_checked_out else ctx.main_worktree
-
     if parsed.dry_run:
-        merge_cwd = str(target_wt)
+        merge_cwd = str(plan.cwd)
         spex_wt = (meta.spex_worktree if meta else "") or ""
         will_archive = not parsed.no_archive
         would_remove = will_archive and bool(spex_wt)
-        try:
-            merge_cwd_head = get_current_branch(cwd=target_wt) or ""
-        except RuntimeError:
-            merge_cwd_head = ""
-        would_switch = merge_cwd_head != target
+        merge_cwd_head = plan.current_branch
+        would_switch = not plan.target_checked_out
         logger.info("Would merge: %s -> %s", source, target)
         logger.info("Would merge in worktree: %s", merge_cwd)
         logger.info(
@@ -179,7 +215,7 @@ def cli_submit(argv=None, command="submit") -> None:
             "merge_cwd": merge_cwd,
             "merge_cwd_head": merge_cwd_head,
             "would_switch": would_switch,
-            "target_checked_out": target_checked_out,
+            "target_checked_out": plan.target_checked_out,
             "spex_worktree": spex_wt,
             "would_remove_worktree": would_remove,
             "errors": [],
@@ -187,30 +223,40 @@ def cli_submit(argv=None, command="submit") -> None:
         return
 
     # If target branch doesn't exist, create it from the current branch
-    if not branch_exists(target, cwd=ctx.main_worktree):
+    if not branch_exists(target, cwd=plan.cwd):
         logger.warning(
             "Warning: target branch '%s' does not exist. "
-            "Creating from '%s'.", target, source,
+            "Creating it from HEAD in '%s'.", target, plan.cwd,
         )
         try:
-            create_and_switch_branch(target, cwd=ctx.main_worktree)
+            create_and_switch_branch(target, cwd=plan.cwd)
         except subprocess.CalledProcessError as e:
             errors.append(
-                f"Failed to create target branch '{target}': "
-                f"{e.stderr.strip() or str(e)}"
+                f"Failed to create target branch '{target}' in '{plan.cwd}': "
+                f"{(e.stderr or str(e)).strip()}"
             )
             _fail_with_errors({"action": method, "source": source,
                                "target": target, "errors": errors})
 
-    # Merge in target_wt (resolved above) — never switch into a branch
-    # locked by another (e.g. feature) worktree.
     if method == "merge":
         try:
-            merge_branch(target, source, cwd=target_wt)
+            merge_branch(target, source, cwd=plan.cwd)
         except subprocess.CalledProcessError as e:
-            errors.append(f"Merge failed: {e.stderr.strip() or str(e)}")
+            detail = (e.stderr or e.stdout or str(e)).strip()
+            errors.append(f"Merge failed in '{plan.cwd}': {detail}")
             _fail_with_errors({"action": method, "source": source,
                                "target": target, "errors": errors})
+        if plan.restore_branch:
+            try:
+                switch_branch(plan.restore_branch, cwd=plan.cwd)
+            except subprocess.CalledProcessError as e:
+                detail = (e.stderr or str(e)).strip()
+                errors.append(
+                    f"Merge completed in '{plan.cwd}', but restoring branch "
+                    f"'{plan.restore_branch}' failed: {detail}"
+                )
+                _fail_with_errors({"action": method, "source": source,
+                                   "target": target, "errors": errors})
     else:
         errors.append(f"submit method '{method}' is not implemented")
         _fail_with_errors({"action": method, "source": source,
