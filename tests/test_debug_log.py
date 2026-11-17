@@ -674,6 +674,7 @@ class TestTraceCommand:
         assert span["attributes"]["process.exit.code"] == 0
         assert span["end_time_unix_nano"] >= span["start_time_unix_nano"] > 0
         assert span["spex"]["duration_ms"] >= 0
+        assert f'===== BEGIN {span["spex"]["debug_logged_at"]} =====' in content
 
     def test_records_nonzero_exit_on_system_exit(self, tmp_path):
         log_path = tmp_path / "debug.log"

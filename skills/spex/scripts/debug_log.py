@@ -836,7 +836,7 @@ def _append_trace(
     stderr_meta: dict,
     exit_code: int,
     duration_ms: int,
-) -> None:
+) -> str | None:
     timestamp = local_iso_timestamp()
     now = _parse_iso_timestamp(timestamp) or datetime.now().astimezone()
     argv_text = " ".join(argv)
@@ -850,13 +850,15 @@ def _append_trace(
         f"===== END exit={exit_code} duration_ms={duration_ms} =====\n"
     )
     if not _prepare_debug_log_parent(log_path):
-        return
+        return None
     try:
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(block)
         _remember_end_instant(log_path, now)
     except OSError as exc:
         logger.debug("Failed to write debug log to %s: %s", log_path, exc)
+        return None
+    return timestamp
 
 
 def _normalize_exit_code(code) -> int:
@@ -872,7 +874,7 @@ def _normalize_exit_code(code) -> int:
 
 def _append_cli_span(
     path: Path, argv: list[str], start_ns: int, end_ns: int,
-    duration_ms: int, exit_code: int,
+    duration_ms: int, exit_code: int, debug_logged_at: str | None,
 ) -> None:
     command = next((arg.replace("_", "-") for arg in argv[1:] if not arg.startswith("-")), "")
     attributes = {
@@ -898,6 +900,8 @@ def _append_cli_span(
             "ended_at": datetime.fromtimestamp(end_ns / 1e9).astimezone().isoformat(),
         },
     }
+    if debug_logged_at is not None:
+        span["spex"]["debug_logged_at"] = debug_logged_at
     if _prepare_debug_log_parent(path):
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(span, separators=(",", ":")) + "\n")
@@ -946,8 +950,9 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
         duration_ms = int((time.monotonic() - start) * 1000)
         end_ns = time.time_ns()
         flush_path = safe_flush_debug_log_path(argv, log_path)
+        debug_logged_at = None
         if flush_path is not None:
-            _append_trace(
+            debug_logged_at = _append_trace(
                 flush_path,
                 argv,
                 stdout_parts,
@@ -962,6 +967,8 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
             if trace_path is not None and (
                 flush_path is None or trace_path.resolve() != flush_path.resolve()
             ):
-                _append_cli_span(trace_path, argv, start_ns, end_ns, duration_ms, exit_code)
+                _append_cli_span(
+                    trace_path, argv, start_ns, end_ns, duration_ms, exit_code, debug_logged_at,
+                )
         except (OSError, RuntimeError, ValueError) as exc:
             logger.debug("Failed to write CLI span: %s", exc)

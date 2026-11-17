@@ -449,6 +449,15 @@ def update(output: Path, *, turn: int | None = None, repo: Path | None = None,
             data.update(metrics)
         else:
             validate_host_timing(metrics["host"], native)
+            if native is not None:
+                metrics["spex_commands"] = [
+                    {key: event[key] for key in (
+                        "log", "sequence", "spec", "command", "subcommand", "exit_code",
+                        "duration_ms", "start_ns", "end_ns", "at",
+                    ) if key in event}
+                    for event in native.get("timing_events", native.get("events", []))
+                    if "command" in event
+                ]
             data["turns"][str(turn)] = metrics
         if repo is not None:
             try:

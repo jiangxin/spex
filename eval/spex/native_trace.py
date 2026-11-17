@@ -6,10 +6,20 @@ import hashlib
 import json
 import re
 import shlex
+from bisect import bisect_left
+from collections import defaultdict
 from itertools import chain
 from pathlib import Path
 
-from performance import CLI_END, IDENTIFIER, TIMELINE, debug_logs, number_field, timestamp
+from performance import (
+    CLI_END,
+    IDENTIFIER,
+    TIMELINE,
+    debug_logs,
+    number_field,
+    stamp_bounds,
+    timestamp,
+)
 
 
 def snapshot(repo: Path) -> dict:
@@ -22,7 +32,6 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
     if baseline is None:
         gaps.add("missing_log_baseline")
     timed = []
-    span_sources = set()
     files = chain(debug_logs(repo), debug_logs(repo, "trace.jsonl"))
     for source, content, error in files:
         if error:
@@ -54,10 +63,7 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
             gaps.add("incomplete_cli_log")
             lines.pop()
         if Path(source).name == "trace.jsonl":
-            spans = parse_timing_spans(lines, source, gaps)
-            if spans:
-                span_sources.add(Path(source).parent)
-                timed.extend(spans)
+            timed.extend(parse_timing_spans(lines, source, gaps))
         else:
             events.extend(parse(lines, source, gaps))
     if baseline is not None and baseline.keys() - checkpoint.keys():
@@ -69,30 +75,117 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
         gaps.add("missing_spex_commands")
     result = {"events": events, "gaps": sorted(gaps)}
     if timed:
-        result["timing_events"] = timed + [
-            event for event in events
-            if "command" not in event or Path(event["log"]).parent not in span_sources
-        ]
+        result["timing_events"] = merge_timing_events(events, timed)
+    for event in chain(events, timed):
+        event.pop("_argv_fingerprint", None)
+        event.pop("_debug_logged_at", None)
     return checkpoint, result
 
 
 def parse_timing_spans(lines: list[str], source: str, gaps: set) -> list[dict]:
-    """Read precise CLI bounds from supported JSONL spans."""
+    """Read precise CLI bounds and normalized command fields from JSONL."""
     spans = []
-    for line in lines:
+    for index, line in enumerate(lines):
         if not line.strip():
             continue
         try:
             span = json.loads(line)
             start, end = span["start_time_unix_nano"], span["end_time_unix_nano"]
-            if (span["schema_version"] != 1 or type(start) is not int
+            if (type(span["schema_version"]) is not int or span["schema_version"] != 1
+                    or type(start) is not int
                     or type(end) is not int or not 0 <= start <= end):
                 raise ValueError("Invalid trace span time")
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, RecursionError):
             gaps.add("unreadable_trace_jsonl")
             continue
-        spans.append({"log": source, "start_ns": start, "end_ns": end})
+        parts = Path(source).parts
+        record = {"log": source, "sequence": index, "start_ns": start, "end_ns": end}
+        if len(parts) == 3 and parts[0] in {"specs", "archives"}:
+            record["spec"] = parts[1]
+        # Older captures can contain bounds without a command payload.
+        if any(key in span for key in ("name", "attributes", "spex")):
+            fields = span_command_fields(span)
+            if fields is None:
+                gaps.add("unreadable_trace_jsonl")
+                continue
+            record.update(fields)
+        spans.append(record)
     return spans
+
+
+def span_command_fields(span: dict) -> dict | None:
+    attributes, spex = span.get("attributes"), span.get("spex")
+    if not isinstance(attributes, dict) or not isinstance(spex, dict):
+        return None
+    name = span.get("name") or spex.get("subcommand")
+    duration, exit_code = spex.get("duration_ms"), attributes.get("process.exit.code")
+    if (not isinstance(name, str) or not IDENTIFIER.fullmatch(name.replace("_", "-"))
+            or type(duration) is not int or duration < 0 or type(exit_code) is not int):
+        return None
+    fields = {"command": name.replace("_", "-"), "duration_ms": duration, "exit_code": exit_code}
+    if stamp_bounds(spex.get("debug_logged_at")) is not None:
+        fields["_debug_logged_at"] = spex["debug_logged_at"]
+    words = attributes.get("process.command_args")
+    if isinstance(words, list) and words and all(isinstance(word, str) for word in words):
+        fields["_argv_fingerprint"] = argv_fingerprint(" ".join(words[1:]))
+        subcommand = command_verb(words[1:], fields["command"])
+        if subcommand:
+            fields["subcommand"] = subcommand
+    return fields
+
+
+def command_verb(words: list[str], name: str) -> str | None:
+    """Find the helper verb, skipping values of legacy selector options."""
+    for index, word in enumerate(words):
+        if word.replace("_", "-") == name:
+            arguments = iter(words[index + 1:])
+            for argument in arguments:
+                if argument in {"--name", "--todo-json", "--todo-file"}:
+                    next(arguments, None)
+                elif not argument.startswith("-"):
+                    return argument if IDENTIFIER.fullmatch(argument) else None
+            break
+    return None
+
+
+def timing_key(record: dict) -> tuple:
+    return (Path(record["log"]).parent, record["command"], record["_argv_fingerprint"],
+            record["duration_ms"], record["exit_code"])
+
+
+def merge_timing_events(events: list[dict], spans: list[dict]) -> list[dict]:
+    """Replace each matching legacy command once, keeping its workflow metadata."""
+    groups = defaultdict(list)
+    for index, span in enumerate(spans):
+        if "_argv_fingerprint" in span:
+            stamp = stamp_bounds(span.get("_debug_logged_at"))
+            instant = stamp[0] if stamp else span["end_ns"]
+            groups[timing_key(span)].append((instant, index))
+    for candidates in groups.values():
+        candidates.sort()
+    next_index = defaultdict(int)
+    matched = set()
+    legacy = sorted(
+        (stamp, index) for index, event in enumerate(events)
+        if "_argv_fingerprint" in event and (stamp := stamp_bounds(event.get("at")))
+    )
+    for stamp, event_index in legacy:
+        event = events[event_index]
+        key = timing_key(event)
+        candidates = groups.get(key, ())
+        index = bisect_left(candidates, (stamp[0], -1), lo=next_index[key])
+        if index < len(candidates) and candidates[index][0] <= stamp[1]:
+            span_index = candidates[index][1]
+            spans[span_index] = {**event, **spans[span_index]}
+            next_index[key] = index + 1
+            matched.add(event_index)
+    return spans + [event for index, event in enumerate(events) if index not in matched]
+
+
+def argv_fingerprint(value: str) -> str:
+    # Legacy debug logs expose only the first line of the argv header.
+    header = value.splitlines()[0] if value else ""
+    return hashlib.sha256(header.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def option(words: list[str], flag: str) -> str | None:
@@ -129,16 +222,12 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                 } else word for word in words]
                 name = next((word for word in words if not word.startswith("-")), "")
                 if IDENTIFIER.fullmatch(name):
-                    command.update(action="spex.command", command=name)
-                    # Legacy helpers put the --name selector before the verb.
-                    arguments = iter(words[words.index(name) + 1:])
-                    for word in arguments:
-                        if word in {"--name", "--todo-json", "--todo-file"}:
-                            next(arguments, None)
-                        elif not word.startswith("-"):
-                            if IDENTIFIER.fullmatch(word):
-                                command["subcommand"] = word
-                            break
+                    command.update(
+                        action="spex.command", command=name,
+                        _argv_fingerprint=argv_fingerprint(line.removeprefix("argv: spex ")),
+                    )
+                    if verb := command_verb(words, name):
+                        command["subcommand"] = verb
                 selector = option(words, "--name")
                 if selector and IDENTIFIER.fullmatch(selector):
                     if spec is None:

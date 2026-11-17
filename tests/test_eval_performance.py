@@ -199,5 +199,7 @@ def test_turn_timing_uses_only_its_saved_events_and_legacy_flush_stamp(tmp_path)
     turns = performance.read_performance(tmp_path)["turns"]
     assert "implausible_host_duration" in turns["1"]["host"]["gaps"]
     assert turns["2"]["host"]["gaps"] == []
+    assert turns["1"]["spex_commands"] == early["events"]
+    assert turns["2"]["spex_commands"] == later["events"]
     nano, end = performance.stamp_bounds("2026-11-17T09:00:21.100000054+08:00")
     assert nano == end and nano % 1000 == 54

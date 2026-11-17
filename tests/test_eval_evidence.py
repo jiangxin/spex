@@ -333,8 +333,51 @@ def test_native_timing_prefers_precise_spans_and_keeps_legacy_only_folders(tmp_p
     checkpoint, evidence = native_trace.window(tmp_path, baseline)
     assert len(evidence["events"]) == 3
     assert [event["log"] for event in evidence["timing_events"]] == [
-        "eval-logs/trace.jsonl", "debug.log", "specs/eval-spec/debug.log",
+        "eval-logs/trace.jsonl", "debug.log", "eval-logs/debug.log", "specs/eval-spec/debug.log",
     ]
     assert evidence["timing_events"][0]["end_ns"] == 9
     _, after = native_trace.window(tmp_path, checkpoint)
     assert "timing_events" not in after and after["events"] == []
+
+
+@pytest.mark.parametrize("flush_delay", [0, 1_000_000_000])
+@pytest.mark.parametrize("extra_args", [[], ["--details", "first line\nsecond line"]])
+def test_native_timing_deduplicates_matching_commands_without_hiding_legacy(
+    tmp_path, flush_delay, extra_args,
+):
+    baseline = native_trace.snapshot(tmp_path)
+    spec = tmp_path / ".spex/specs/eval-spec"
+    spec.mkdir(parents=True)
+    args = ["apply-helper", "--name", "eval-spec", "post-action", *extra_args]
+    command = " ".join(args)
+    other_spec = command.replace("eval-spec", "other-spec")
+    (spec / "debug.log").write_text(
+        cli_log(other_spec, 2) + cli_log(command, 2) + cli_log(command, 2) + cli_log("list"),
+    )
+    stamp = native_trace.stamp_bounds("2026-11-11T10:00:00+08:00")[0]
+    span = {
+        "schema_version": 1,
+        "name": "apply_helper",
+        "start_time_unix_nano": stamp - flush_delay,
+        "end_time_unix_nano": stamp + 10_000_000 - flush_delay,
+        "attributes": {"process.command_args": ["spex", *args], "process.exit.code": 2},
+        "spex": {"duration_ms": 10},
+    }
+    if flush_delay:
+        span["spex"]["debug_logged_at"] = "2026-11-11T10:00:00+08:00"
+    (spec / "trace.jsonl").write_text(
+        json.dumps(span) + "\n" + json.dumps({**span, "schema_version": True}) + "\n{",
+    )
+
+    _, captured = native_trace.window(tmp_path, baseline)
+    assert len(captured["events"]) == 4
+    timing = captured["timing_events"]
+    assert [event["command"] for event in timing] == ["apply-helper"] * 3 + ["list"]
+    assert timing[0]["subcommand"] == "post-action"
+    assert timing[0]["spec"] == "eval-spec"
+    assert timing[0]["end_ns"] == span["end_time_unix_nano"]
+    assert timing[0]["exit_code"] == timing[1]["exit_code"] == 2
+    assert timing[1]["spec"] is None and "end_ns" not in timing[1]
+    assert timing[2]["spec"] == "eval-spec" and "end_ns" not in timing[2]
+    assert all("_argv_fingerprint" not in event for event in [*timing, *captured["events"]])
+    assert {"incomplete_cli_log", "unreadable_trace_jsonl"} <= set(captured["gaps"])
