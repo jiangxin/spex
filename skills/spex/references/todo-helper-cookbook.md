@@ -141,6 +141,19 @@ Updated multi-line details for this step.
 DETAILS
 ```
 
+## Move
+
+Swap two steps by their current positions:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper move "$spec_name" --from 2 --to 5
+```
+
+Each step keeps its stored ID when swapped. The next `show` displays
+IDs based on the new order. Use those displayed IDs for subsequent edits.
+To persist consecutive IDs for the new order, start a transaction before
+moving the steps and commit it after the edits.
+
 ## Remove
 
 ```bash

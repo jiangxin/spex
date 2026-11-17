@@ -235,6 +235,22 @@ def cmd_edit(todo_path, args):
     _emit_todo_edit_apply_anchor(todo_path, args, item)
 
 
+def cmd_move(todo_path, args):
+    """Swap two entries without rewriting their stored IDs."""
+    data = _read_todo(todo_path)
+    first = _step_index(data, args.from_id)
+    second = _step_index(data, args.to_id)
+    if first == second:
+        return
+    data[first], data[second] = data[second], data[first]
+    atomic_write_json(todo_path, data)
+    logger.info(
+        "Swapped %s and %s.",
+        todo_step_label(args.from_id, len(data)),
+        todo_step_label(args.to_id, len(data)),
+    )
+
+
 def cmd_remove(todo_path, args):
     """Remove an entry by ID."""
     data = _read_todo(todo_path)
@@ -419,6 +435,8 @@ _LOCATOR_FLAGS_WITH_VALUE = ("--todo-file",)
 # a flag (e.g. ``--commit-title --name``).
 _VALUE_TAKING_SUB_FLAGS = frozenset({
     "--id",
+    "--from",
+    "--to",
     "--step-name",
     "--details",
     "--completed-at",
@@ -502,7 +520,7 @@ def _build_parser():
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, edit, remove, remove-undone, show, transaction)."
+            " (validate, append, edit, move, remove, remove-undone, show, transaction)."
         ),
     )
     parser.add_argument(
@@ -596,6 +614,23 @@ def _build_parser():
         ),
     )
 
+    p_move = subs.add_parser(
+        "move",
+        description=(
+            "Swap two steps by their current positions from show, preserving stored IDs."
+            " Commit an open transaction to renumber the file."
+        ),
+        help="Swap two steps while preserving stored IDs",
+    )
+    p_move.add_argument(
+        "--from", dest="from_id", required=True, type=_parse_step_id,
+        help="Position of the first step",
+    )
+    p_move.add_argument(
+        "--to", dest="to_id", required=True, type=_parse_step_id,
+        help="Position of the second step",
+    )
+
     # remove
     p_remove = subs.add_parser(
         "remove",
@@ -661,7 +696,8 @@ def _build_parser():
     p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
 
     for subparser in (
-        p_validate, p_append, p_edit, p_remove, p_remove_undone, p_show, p_transaction,
+        p_validate, p_append, p_edit, p_move, p_remove, p_remove_undone, p_show,
+        p_transaction,
     ):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
@@ -700,6 +736,8 @@ def main(argv=None):
         cmd_append(todo_path, args)
     elif args.subcmd == "edit":
         cmd_edit(todo_path, args)
+    elif args.subcmd == "move":
+        cmd_move(todo_path, args)
     elif args.subcmd == "remove":
         cmd_remove(todo_path, args)
     elif args.subcmd == "remove-undone":

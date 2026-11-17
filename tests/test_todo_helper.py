@@ -642,6 +642,64 @@ class TestAppendCompletedAtNow:
 
 
 # -----------------------------------------------------------------------
+# move
+# -----------------------------------------------------------------------
+class TestMove:
+    def test_swap_by_spec_name_preserves_full_entries(self, todo_file, monkeypatch, capsys):
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
+        )
+        _write(todo_file, SAMPLE_DATA)
+
+        todo_helper.main(["move", "my-topic", "--from", "1", "--to", "3"])
+
+        swapped = [SAMPLE_DATA[2], SAMPLE_DATA[1], SAMPLE_DATA[0]]
+        assert _read(todo_file) == swapped
+        todo_helper.main(["show", "my-topic"])
+        assert json.loads(capsys.readouterr().out) == [
+            dict(item, id=index) for index, item in enumerate(swapped, 1)
+        ]
+
+    @pytest.mark.parametrize(
+        ("source", "target", "exit_code"),
+        [("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2)],
+    )
+    def test_invalid_or_same_position_keeps_file(self, todo_file, source, target, exit_code):
+        todo_file.write_text(json.dumps(SAMPLE_DATA), encoding="utf-8")
+        original = todo_file.read_bytes()
+        arguments = ["move", "--from", source, "--to", target, "--todo-file", str(todo_file)]
+
+        if exit_code is None:
+            todo_helper.main(arguments)
+        else:
+            with pytest.raises(SystemExit) as exc:
+                todo_helper.main(arguments)
+            assert exc.value.code == exit_code
+
+        assert todo_file.read_bytes() == original
+
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_transaction_completion(self, todo_file, action):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main([*locator, "move", "--from", "3", "--to", "1"])
+
+        swapped = [SAMPLE_DATA[2], SAMPLE_DATA[1], SAMPLE_DATA[0]]
+        assert _read(todo_file) == swapped
+        todo_helper.main(["transaction", action, *locator])
+
+        if action == "rollback":
+            assert todo_file.read_bytes() == original
+        else:
+            assert _read(todo_file) == [
+                dict(item, id=index) for index, item in enumerate(swapped, 1)
+            ]
+        assert not todo_file.with_suffix(".json.lock").exists()
+
+
+# -----------------------------------------------------------------------
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:
