@@ -480,6 +480,16 @@ spex_root = ".spex"
 
 **说明**：创建的 `.spex` 目录下包含 `.gitignore` 文件，默认忽略 spec 文件，只将 templates 等文件保存到仓库。
 
+### 配置继承
+
+Spex 从当前目录向上查找 `.spex.toml`；在 Git 链接工作树中运行时，
+从主工作树开始。默认继承上级配置文件和 `~/.spex.toml` 中的设置。
+在 `[spex]` 下设置 `inherit_config = false`，即可停止继承该文件以上的设置。
+
+Spec 存储目录（`spex_root`）独立查找。每一级有显式配置时，使用指定的目录并按需创建。
+没有显式配置时，优先使用该级已存在的 `.spex`，否则继续向上查找。
+最后回退到 `~/.spex.toml`，默认使用 `~/.spex`。
+
 ### 平台集成：统一管理多仓库的 Spec
 
 将 Spex 集成到开发平台时，通常需要统一管理多个代码仓库的 spec 生成和执行，而不是让每个仓库各自配置。Spex 支持通过环境变量 `SPEX_CONFIG_FILE` 指定配置文件，跳过仓库中的 `.spex.toml`：

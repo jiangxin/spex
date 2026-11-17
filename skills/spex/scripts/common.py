@@ -396,10 +396,8 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
 def get_spex_root(workdir=None, require_git=False, auto_init=True):
     """Return the spex root directory path.
 
-    Resolution order (delegated to config.get_project_context):
-      1. Merged .spex.toml files (repo-root/.spex.toml, parent dirs,
-         ~/.spex.toml).
-      2. Default: .spex inside the git toplevel.
+    Storage lookup is delegated to config.get_project_context and is
+    independent of the inherit_config setting.
 
     Args:
         workdir: The working directory for git lookup. Defaults to cwd.

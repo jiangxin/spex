@@ -485,6 +485,19 @@ Then run `spex init .` (`.` refers to the current path) to create a `.spex` dire
 
 **Note**: The created `.spex` directory contains a `.gitignore` file that ignores spec files by default, saving only templates and similar files to the repository.
 
+### Configuration Inheritance
+
+Spex searches for `.spex.toml` from the current directory upward, starting
+from the main checkout when run in a linked Git worktree. Settings inherit
+from parent files and `~/.spex.toml` by default. Set `inherit_config = false`
+under `[spex]` to stop inheriting settings above that file.
+
+Spec storage (`spex_root`) is resolved independently. At each level,
+Spex uses an explicit `spex_root` and creates the directory when needed.
+Without an explicit setting, it prefers an existing local `.spex` before
+continuing upward. The final fallback is `~/.spex.toml`, with `~/.spex`
+as the default.
+
 ### Platform Integration: Managing Specs Across Repositories
 
 When integrating Spex into a development platform, you typically need centralized control over spec generation and execution across multiple repositories, rather than letting each repository configure itself. Spex supports the `SPEX_CONFIG_FILE` environment variable to specify a config file, bypassing any `.spex.toml` in the repo:

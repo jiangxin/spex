@@ -29,6 +29,7 @@ class SpexConfig(TypedDict, total=False):
     debug: bool
     step_review: bool
     use_git_worktree: bool
+    inherit_config: bool
 
 _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("spex_root", ".spex", "Root directory for spec storage"),
@@ -38,6 +39,7 @@ _CONFIG_SCHEMA: list[tuple[str, str | bool, str]] = [
     ("debug", False, "Append script traces to <spec_dir>/debug.log"),
     ("step_review", True, "Review each apply step commit before marking it done"),
     ("use_git_worktree", False, "Create a linked git worktree per spec for apply"),
+    ("inherit_config", True, "Inherit settings from ancestor config files"),
 ]
 
 _DEFAULTS: SpexConfig = {k: v for k, v, _ in _CONFIG_SCHEMA}
@@ -111,7 +113,7 @@ class ProjectContext:
 _SENTINEL = object()
 _top_workdir_cache: dict = {}
 _main_worktree_cache: dict = {}
-_config_cache: dict | None = None
+_config_cache: dict[Path, dict] = {}
 _project_context_cache: dict[str, ProjectContext] = {}
 _spex_config_file_override: str | None = None
 
@@ -180,14 +182,22 @@ def _get_top_workdir(workdir: str | Path | None = None) -> Path | None:
     return value
 
 
+def _get_config_worktree(workdir: str | Path | None = None) -> Path | None:
+    """Use the main worktree as the search start only in a linked checkout."""
+    main_worktree = _get_main_worktree(workdir)
+    if main_worktree == _get_top_workdir(workdir):
+        return None
+    return main_worktree
+
+
 def _find_spex_tomls(
     main_worktree: Path | None, workdir: str | Path | None = None
 ) -> list[Path]:
     """Discover .spex.toml files in priority order (highest first).
 
     Walk from a starting directory upward to filesystem root, collecting
-    existing .spex.toml files. When inside a git repo, start from
-    main_worktree; otherwise start from workdir (or cwd).
+    existing .spex.toml files. In a linked checkout, start from the
+    main worktree; otherwise start from workdir (or cwd).
     Then check ~/.spex.toml as a fallback.
 
     If --spex-config-file or SPEX_CONFIG_FILE is set, skip discovery and
@@ -273,25 +283,25 @@ def _merge_configs(spex_tomls: list[Path]) -> dict:
     for path in reversed(spex_tomls):
         data = _load_toml_config(path)
         if data is not None:
-            merged = _deep_merge(merged, data.get("spex", {}))
+            settings = data.get("spex", {})
+            if settings.get("inherit_config") is False:
+                merged = {}
+            merged = _deep_merge(merged, settings)
     return merged
 
 
 def load_config(workdir: str | Path | None = None) -> dict:
     """Main entry point: resolve spex configuration with caching."""
-    global _config_cache
+    key = Path(workdir).resolve() if workdir else Path.cwd().resolve()
+    if key in _config_cache:
+        return _config_cache[key]
 
-    if _config_cache is not None:
-        return _config_cache
-
-    main_wt = _get_main_worktree(workdir)
-    spex_tomls = _find_spex_tomls(main_wt, workdir)
-    merged = _merge_configs(spex_tomls)
+    merged = _merge_configs(get_spex_tomls(workdir))
 
     result: dict = {**_DEFAULTS, **merged}
 
-    _config_cache = result
-    return _config_cache
+    _config_cache[key] = result
+    return result
 
 
 def get_top_workdir(workdir: str | Path | None = None) -> Path | None:
@@ -306,7 +316,7 @@ def get_main_worktree(workdir: str | Path | None = None) -> Path | None:
 
 def get_spex_tomls(workdir: str | Path | None = None) -> list[Path]:
     """Return the discovered TOML config paths (highest priority first)."""
-    main_wt = _get_main_worktree(workdir)
+    main_wt = _get_config_worktree(workdir)
     return _find_spex_tomls(main_wt, workdir)
 
 
@@ -332,9 +342,8 @@ def _resolve_spex_roots(
     spex_root at each level is determined by the nearest .spex.toml at or
     above that level.
 
-    Same-level rule: if the directory being checked is the same directory
-    where the governing .spex.toml lives, the candidate path is added
-    unconditionally (even if it doesn't exist yet).
+    A config file without an explicit setting uses its local .spex if it
+    exists. An explicit setting can select a directory yet to be initialized.
 
     When SPEX_CONFIG_FILE / CLI override is set, only that file's spex_root
     is used — parent directories and the home fallback are ignored so nested
@@ -362,6 +371,7 @@ def _resolve_spex_roots(
 
     # Map toml directories to their index in path_dirs (only if they set spex_root)
     path_set = {d: i for i, d in enumerate(path_dirs)}
+    config_dirs = {path.parent.resolve() for path in spex_tomls}
     toml_at: dict[int, str] = {}  # index -> spex_root value
     unmapped_tomls: list[tuple[Path, str]] = []  # (toml_dir, spex_root) for off-path tomls
 
@@ -390,10 +400,20 @@ def _resolve_spex_roots(
     # Build results
     results: list[str] = []
     visited: set[str] = set()
+    home = Path.home().resolve()
 
     for i, d in enumerate(path_dirs):
         spex_root_val, same_level = governing[i]
         expanded = Path(spex_root_val).expanduser()
+
+        if not same_level and d in config_dirs:
+            default_candidate = d / _DEFAULTS["spex_root"]
+            if default_candidate.is_dir():
+                resolved_default = str(default_candidate.resolve())
+                if resolved_default not in visited:
+                    results.append(resolved_default)
+                    visited.add(resolved_default)
+            continue
 
         if expanded.is_absolute():
             candidate = expanded
@@ -416,7 +436,7 @@ def _resolve_spex_roots(
             visited.add(resolved_str)
 
     # Always append ~/<default_spex_root> as final fallback
-    home_default = str((Path.home() / _DEFAULTS["spex_root"]).resolve())
+    home_default = str((home / _DEFAULTS["spex_root"]).resolve())
     if home_default not in visited:
         results.append(home_default)
 
@@ -430,7 +450,7 @@ def resolve_spex_root_and_roots(
 
     The primary root is the first (highest-priority) entry in the roots list.
     """
-    main_wt = _get_main_worktree(workdir)
+    main_wt = _get_config_worktree(workdir)
     spex_tomls = _find_spex_tomls(main_wt, workdir)
     roots = _resolve_spex_roots(spex_tomls, main_wt, workdir)
     if roots:
@@ -483,9 +503,10 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
         remote_url = ""
         branch = ""
 
-    spex_tomls = _find_spex_tomls(main_worktree, workdir)
+    config_worktree = _get_config_worktree(workdir)
+    spex_tomls = _find_spex_tomls(config_worktree, workdir)
     config = load_config(workdir)
-    spex_roots = _resolve_spex_roots(spex_tomls, main_worktree, workdir)
+    spex_roots = _resolve_spex_roots(spex_tomls, config_worktree, workdir)
     spex_root = spex_roots[0] if spex_roots else ""
 
     ctx = ProjectContext(
@@ -569,7 +590,7 @@ def safe_update_toml(toml_path, dry_run=False):
     if existing is None:
         return False
     user_config = existing.get("spex", {})
-    force = {"spex_root"} if "spex_root" in user_config else set()
+    force = {"spex_root", "inherit_config"} & user_config.keys()
     new_content = generate_updated_toml(user_config, force_keys=force)
     old_content = toml_path.read_text(encoding="utf-8")
     if new_content != old_content:
@@ -587,16 +608,14 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
     are not. Use this to create a new project-level .spex.toml that inherits
     parent settings.
     """
-    main_wt = _get_main_worktree(workdir)
-    spex_tomls = _find_spex_tomls(main_wt, workdir)
-    return _merge_configs(spex_tomls)
+    return _merge_configs(get_spex_tomls(workdir))
 
 
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
-    global _config_cache, _top_workdir_cache, _main_worktree_cache
+    global _top_workdir_cache, _main_worktree_cache
     global _project_context_cache, _spex_config_file_override
-    _config_cache = None
+    _config_cache.clear()
     _top_workdir_cache = {}
     _main_worktree_cache = {}
     _project_context_cache = {}

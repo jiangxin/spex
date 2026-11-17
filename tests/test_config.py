@@ -417,6 +417,87 @@ class TestBranchConfig:
 # ===================== _resolve_spex_roots =====================
 
 
+class TestConfigInheritance:
+    @pytest.mark.parametrize("inherit", ["", "inherit_config = true\n", "inherit_config = false\n"])
+    def test_merge_and_storage_lookup_are_independent(self, tmp_path, monkeypatch, inherit):
+        home = tmp_path / "home"
+        parent = tmp_path / "parent"
+        project = parent / "project"
+        home.mkdir()
+        project.mkdir(parents=True)
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        monkeypatch.setattr("config._get_top_workdir", lambda _: project)
+        monkeypatch.setattr("config._get_main_worktree", lambda _: project)
+        (home / ".spex.toml").write_text('[spex]\nsubmit_method = "pr"\n')
+        (parent / ".spex.toml").write_text('[spex]\nspex_root = "specs"\ndebug = true\n')
+        (parent / "specs").mkdir()
+        (project / ".spex.toml").write_text(f"[spex]\n{inherit}step_review = false\n")
+        clear_config_cache()
+        try:
+            config = load_config(project)
+            assert config["step_review"] is False
+            inherits = "false" not in inherit
+            assert config["debug"] is inherits
+            assert config["submit_method"] == ("pr" if inherits else "merge")
+            assert config["inherit_config"] is inherits
+            assert config["spex_root"] == ("specs" if inherits else ".spex")
+            assert resolve_spex_root_and_roots(project)[0] == str(parent / "specs")
+
+            (project / ".spex").mkdir()
+            assert resolve_spex_root_and_roots(project)[0] == str(project / ".spex")
+        finally:
+            clear_config_cache()
+
+    def test_parent_barrier_cannot_be_reopened_by_child(self, tmp_path):
+        child, parent, ancestor = (tmp_path / name for name in ("child", "parent", "ancestor"))
+        ancestor.write_text("[spex]\ndebug = true\n")
+        parent.write_text("[spex]\ninherit_config = false\nstep_review = false\n")
+        child.write_text("[spex]\ninherit_config = true\nuse_git_worktree = true\n")
+
+        assert _merge_configs([child, parent, ancestor]) == {
+            "inherit_config": True,
+            "step_review": False,
+            "use_git_worktree": True,
+        }
+
+    def test_search_starts_in_current_directory_or_main_worktree(self, tmp_path, monkeypatch):
+        main = tmp_path / "main"
+        subdir = main / "subdir"
+        linked = tmp_path / "linked"
+        subdir.mkdir(parents=True)
+        linked.mkdir()
+        monkeypatch.setattr("config.Path.home", lambda: tmp_path / "home")
+        monkeypatch.setattr("config._get_main_worktree", lambda _: main)
+        monkeypatch.setattr(
+            "config._get_top_workdir", lambda path: linked if path == linked else main
+        )
+        (main / ".spex.toml").write_text("[spex]\ndebug = true\n")
+        (subdir / ".spex.toml").write_text("[spex]\ninherit_config = false\n")
+        (linked / ".spex.toml").write_text("[spex]\ndebug = false\n")
+
+        assert load_config(subdir)["debug"] is False
+        assert load_config(linked)["debug"] is True
+
+    def test_explicit_parent_root_is_created_even_without_inheritance(self, tmp_path, monkeypatch):
+        from common import get_spex_root
+
+        home = tmp_path / "home"
+        parent = tmp_path / "parent"
+        project = parent / "project"
+        home.mkdir()
+        project.mkdir(parents=True)
+        monkeypatch.setattr("config.Path.home", lambda: home)
+        (home / ".spex.toml").write_text('[spex]\nspex_root = "home-specs"\n')
+        (parent / ".spex.toml").write_text('[spex]\nspex_root = "missing"\n')
+        (project / ".spex.toml").write_text("[spex]\ninherit_config = false\n")
+
+        root = parent / "missing"
+        assert resolve_spex_root_and_roots(project)[0] == str(root)
+        assert not root.exists()
+        assert get_spex_root(project) == str(root)
+        assert root.is_dir()
+
+
 class TestResolveSpexRoots:
     def test_same_level_added_unconditionally(self, tmp_path, monkeypatch):
         """Directory with .spex.toml setting spex_root is added even without dir."""
@@ -472,8 +553,7 @@ class TestResolveSpexRoots:
         assert result[1] == str((parent / ".spex").resolve())
         assert result[2] == str((grandparent / ".specs").resolve())
 
-    def test_toml_without_spex_root_is_transparent(self, tmp_path, monkeypatch):
-        """A .spex.toml without spex_root key doesn't affect resolution."""
+    def test_toml_without_spex_root_uses_local_default_or_continues_up(self, tmp_path, monkeypatch):
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         parent = tmp_path / "parent"
         child = parent / "child"
@@ -486,13 +566,16 @@ class TestResolveSpexRoots:
         parent_toml = parent / ".spex.toml"
         parent_toml.write_text('[spex]\nspex_root = ".my-spex"\n', encoding="utf-8")
 
-        # child/.my-spex exists (governed by parent's config, since child's toml is transparent)
+        # The parent's relative setting points to storage at the parent level.
         (child / ".my-spex").mkdir()
 
         result = _resolve_spex_roots([child_toml, parent_toml], child)
 
-        assert result[0] == str((child / ".my-spex").resolve())
-        assert result[1] == str((parent / ".my-spex").resolve())
+        assert result[0] == str((parent / ".my-spex").resolve())
+
+        (child / ".spex").mkdir()
+        result = _resolve_spex_roots([child_toml, parent_toml], child)
+        assert result[:2] == [str(child / ".spex"), str(parent / ".my-spex")]
 
     def test_absolute_path_in_toml(self, tmp_path, monkeypatch):
         """Absolute spex_root is added unconditionally at same level."""
@@ -905,6 +988,7 @@ class TestGenerateDefaultToml:
             "debug",
             "step_review",
             "use_git_worktree",
+            "inherit_config",
         ):
             assert f"# {key} = " in result
         assert "skip_review" not in result
@@ -914,6 +998,7 @@ class TestGenerateDefaultToml:
         assert "# branch_management = true" in result
         assert "# step_review = true" in result
         assert "# use_git_worktree = false" in result
+        assert "# inherit_config = true" in result
         assert "True" not in result
 
     def test_string_formatting(self):
