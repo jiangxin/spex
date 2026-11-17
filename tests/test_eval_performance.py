@@ -115,6 +115,68 @@ def test_old_trials_and_unreadable_logs_remain_reportable(tmp_path):
     assert old["host_turns"] == 1
     assert old["host_duration_ms"] is None
     assert old["automatic_total_ms"] == 45
+    assert (old["duration_ms"], old["duration_s"], old["duration_source"]) == (
+        45, 0.045, "automatic",
+    )
+
+
+@pytest.mark.parametrize(
+    ("host_times", "automatic", "expected"),
+    [
+        ((1000, 2000), 9000, (3000, 3.0, "host")),
+        ((0, 0), 9000, (0, 0.0, "host")),
+        ((1000,), 9000, (9000, 9.0, "automatic")),
+        ((1000, None), 9000, (9000, 9.0, "automatic")),
+        ((1000, None), None, (None, None, "unknown")),
+    ],
+)
+def test_summary_reports_case_duration_and_source(
+    tmp_path, monkeypatch, host_times, automatic, expected,
+):
+    monkeypatch.setattr(run, "RUNS", tmp_path)
+    sandbox = run.resolve_sandbox()
+    output = sandbox / "suite" / "case"
+    output.mkdir(parents=True)
+    run.write_json(output / "trial.json", {
+        "suite": "suite", "case_id": "case", "verdict": "pass",
+        "turn_results": [{"turn": 1}, {"turn": 2}],
+    })
+    for turn, duration in enumerate(host_times, 1):
+        host = performance.host_metrics(None, duration, "runner")
+        performance.update(output, turn=turn, host=host)
+    performance.update(output, automatic_total_ms=automatic)
+
+    result = run.summarize_sandbox(sandbox)
+    report = run.read_json(Path(result["report_json"]))
+    metrics = report["trials"][0]["performance"]
+    assert (metrics["duration_ms"], metrics["duration_s"], metrics["duration_source"]) == expected
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    seconds = "unknown" if expected[1] is None else expected[1]
+    assert f"| suite/case | 2 | {seconds} | {expected[2]} |" in markdown
+
+
+@pytest.mark.parametrize(
+    ("verdict", "duration", "source"),
+    [("pending", None, "unknown"), ("run_error", 250, "host")],
+)
+def test_case_duration_with_unattempted_turns(tmp_path, monkeypatch, verdict, duration, source):
+    monkeypatch.setattr(run, "RUNS", tmp_path)
+    sandbox = run.resolve_sandbox()
+    output = sandbox / "suite" / "case"
+    output.mkdir(parents=True)
+    run.write_json(output / "trial.json", {
+        "suite": "suite", "case_id": "case", "verdict": verdict,
+        "case": {"turns": [{}, {}]}, "turn_results": [{"turn": 1}],
+    })
+    performance.update(output, turn=1, host=performance.host_metrics(None, 250, "runner"))
+
+    result = run.summarize_sandbox(sandbox)
+    report = run.read_json(Path(result["report_json"]))
+    metrics = report["trials"][0]["performance"]
+    assert metrics["host_duration_ms"] == 250
+    assert (metrics["duration_ms"], metrics["duration_source"]) == (duration, source)
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert f"| suite/case | 1 | {performance.format_seconds(duration)} | {source} |" in markdown
 
 
 def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
@@ -140,21 +202,27 @@ def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
 
 def test_report_aggregates_only_available_matching_samples(tmp_path):
     rows = []
-    for index, (duration, jobs) in enumerate(((10, 1), (30, 1), (None, 1), (900, 2)), 1):
+    samples = [
+        (10, None, 1), (30, None, 1), (None, None, 1),
+        (None, 500, 1), (None, 700, 1), (900, None, 2),
+    ]
+    for index, (duration, automatic_total_ms, jobs) in enumerate(samples, 1):
         output = tmp_path / str(index)
         output.mkdir()
         host = performance.host_metrics(None, duration, "adapter")
         performance.update(output, turn=1, host=host)
+        performance.update(output, automatic_total_ms=automatic_total_ms)
         rows.append({
             "suite": "suite", "case_id": "case", "trial": str(index),
-            "host": "cursor", "model": "model", "collection": "manual", "spex_ref": "abc",
+            "host": "codex", "model": "model", "collection": "automatic", "spex_ref": "abc",
             "execution": run.execution(jobs),
             "performance": performance.trial_summary(output, {"turn_results": [{}]}),
         })
     report = "\n".join(performance.report_lines(rows))
     assert "[metrics](1/performance.json)" in report
-    assert "2/3 samples, median 20.0 ms, max 30 ms" in report
-    assert "3/4 samples" not in report
+    assert "host duration for 2/5 samples, median 0.02 s, max 0.03 s" in report
+    assert "automatic duration for 2/5 samples, median 0.6 s, max 0.7 s" in report
+    assert "max 0.9 s" not in report
 
 
 def test_timeout_keeps_host_duration_and_partial_metrics(tmp_path, monkeypatch):

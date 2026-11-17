@@ -480,6 +480,10 @@ def complete_sum(values):
     return sum(values) if values and all(value is not None for value in values) else None
 
 
+def format_seconds(duration_ms: int | float | None) -> str:
+    return "unknown" if duration_ms is None else str(duration_ms / 1000)
+
+
 def trial_summary(output: Path, metadata: dict) -> dict:
     try:
         return summarize_metrics(output, metadata, read_performance(output))
@@ -501,16 +505,33 @@ def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
     host_turns = max(len(turns), len(metadata.get("turn_results", [])))
     all_turns_measured = bool(hosts) and len(hosts) == host_turns
     complete_traces = all_turns_measured and all(host["trace"] == "complete" for host in hosts)
+    host_duration_ms = (
+        complete_sum([nonnegative(host["duration_ms"]) for host in hosts])
+        if all_turns_measured else None
+    )
+    automatic_total_ms = nonnegative(data.get("automatic_total_ms", metadata.get("duration_ms")))
+    case = metadata.get("case")
+    planned_turns = case.get("turns") if isinstance(case, dict) else None
+    pending_turns = (
+        metadata.get("verdict") == "pending"
+        and isinstance(planned_turns, list)
+        and len(metadata.get("turn_results", [])) < len(planned_turns)
+    )
+    duration_ms, duration_source = None, "unknown"
+    if not pending_turns:
+        if host_duration_ms is not None:
+            duration_ms, duration_source = host_duration_ms, "host"
+        elif automatic_total_ms is not None:
+            duration_ms, duration_source = automatic_total_ms, "automatic"
     return {
         "detail": "performance.json" if (output / "performance.json").is_file() else None,
         "host_turns": host_turns,
         "recorded_host_turns": len(turns),
-        "host_duration_ms": (
-            complete_sum([host["duration_ms"] for host in hosts]) if all_turns_measured else None
-        ),
-        "automatic_total_ms": nonnegative(
-            data.get("automatic_total_ms", metadata.get("duration_ms")),
-        ),
+        "host_duration_ms": host_duration_ms,
+        "automatic_total_ms": automatic_total_ms,
+        "duration_ms": duration_ms,
+        "duration_s": None if duration_ms is None else duration_ms / 1000,
+        "duration_source": duration_source,
         "model_requests": None,
         "review_rounds": (
             len({(span["source"], span["step"], span["round"]) for span in reviews
@@ -536,7 +557,8 @@ def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
             reason for condition, reason in (
                 (not all_turns_measured, "missing_turn_metrics"),
                 (not workflow, "missing_workflow_metrics"),
-                (any(host["duration_ms"] is None for host in hosts), "missing_host_duration"),
+                (any(nonnegative(host["duration_ms"]) is None for host in hosts),
+                 "missing_host_duration"),
                 (bool(hosts) and not complete_traces, "incomplete_host_trace"),
                 (any(host["subagent_starts"] is None for host in hosts), "missing_subagent_starts"),
                 (any(host["parent_usage"] is None for host in hosts), "missing_token_usage"),
@@ -548,9 +570,10 @@ def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
 def report_lines(rows: list[dict]) -> list[str]:
     lines = [
         "", "## Performance", "",
-        "| Case | Host turns | Host ms | Slowest step | Rounds; full / delta passes | Subagents | "
+        "| Case | Host turns | Duration (s) | Source | Slowest step | "
+        "Rounds; full / delta passes | Subagents | "
         "Input / cached / output / reasoning tokens | Detail |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     samples = {}
     for row in rows:
@@ -565,7 +588,8 @@ def report_lines(rows: list[dict]) -> list[str]:
             )
             slowest = f"{slowest or 'unknown'} / interrupted {stopped}"
         detail = f"[metrics]({row['trial']}/{perf['detail']})" if perf["detail"] else "—"
-        fields = [case, perf["host_turns"], perf["host_duration_ms"], slowest,
+        duration_ms, source = perf["duration_ms"], perf["duration_source"]
+        fields = [case, perf["host_turns"], format_seconds(duration_ms), source, slowest,
                   f"{display([perf['review_rounds']])}; "
                   f"{display((perf['full_reviews'], perf['delta_reviews']))}",
                   perf["subagent_starts"],
@@ -574,21 +598,34 @@ def report_lines(rows: list[dict]) -> list[str]:
         lines.append("| " + " | ".join(cells) + " |")
         setting = execution_label(row.get("execution", execution(None)))
         key = (case, row["host"], row["model"], row["collection"], row["spex_ref"], setting)
-        samples.setdefault(key, []).append(perf["host_duration_ms"])
-    lines.extend(["", "Model requests are unknown when the host lacks request-level events. "
-                  "Review, fix and checks may overlap.", ""])
+        samples.setdefault(key, {}).setdefault(source, []).append(duration_ms)
+    lines.extend([
+        "",
+        "Duration sums the host turn wall-clock measurements when all are available. "
+        "The automatic source covers the full automated trial, including grading. "
+        "Sample counts show each duration source's coverage among trials with matching settings.",
+        "",
+        "Model requests are unknown when the host lacks request-level events. "
+        "Review, fix and checks may overlap.",
+        "",
+    ])
     for row in rows:
         gaps = row["performance"]["gaps"]
         if gaps:
             lines.append(f"- {row['suite']}/{row['case_id']} diagnostics gaps: "
                          + ", ".join(gaps) + ".")
-    for (case, host, model, collection, ref, setting), values in samples.items():
-        measured = [value for value in values if value is not None]
-        if len(values) > 1 and measured:
-            lines.append(f"- {case} ({host}/{model}, {collection}, {(ref or 'unknown')[:8]}, "
-                         f"{setting}): "
-                         f"host latency for {len(measured)}/{len(values)} samples, "
-                         f"median {median(measured)} ms, max {max(measured)} ms.")
+    for (case, host, model, collection, ref, setting), by_source in samples.items():
+        total = sum(len(values) for values in by_source.values())
+        if total < 2:
+            continue
+        for source, values in by_source.items():
+            if source == "unknown":
+                continue
+            lines.append(
+                f"- {case} ({host}/{model}, {collection}, {(ref or 'unknown')[:8]}, {setting}): "
+                f"{source} duration for {len(values)}/{total} samples, "
+                f"median {format_seconds(median(values))} s, max {format_seconds(max(values))} s."
+            )
     return lines
 
 

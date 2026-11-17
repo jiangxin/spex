@@ -214,9 +214,13 @@ Host adapter notes for Cursor / Codex / pure manual live under
 ## Performance diagnostics
 
 Each trial records timing and activity in `performance.json`. The batch
-report links to the details and summarizes host latency, the slowest Spex
+report links to the details and summarizes case duration, the slowest Spex
 step, full and delta reviews, observed subagent starts, and parent-session
-token usage. Repeated comparable samples show coverage, median, and max.
+token usage. Case duration sums measured host turns when all are available.
+Otherwise it uses the full automatic trial duration when available or shows
+`unknown`. JSON reports include the selected duration in milliseconds and
+seconds and its source. Repeated comparable samples show coverage, median,
+and max by duration source and configured execution.
 
 - For manual collection, pass `collect --host-duration-ms N` if the host
   measured elapsed time from sending input through receiving the final
