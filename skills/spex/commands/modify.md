@@ -1,9 +1,9 @@
 # spex modify
 
-**PLAN only** — updates spec documents + regenerates todo steps.
+**PLAN only** — updates spec documents and adjusts todo steps.
 Does NOT write any application code.
 
-Modify an existing specification's requirements and regenerate the
+Modify an existing specification's requirements and update the
 development plan.
 
 ## Usage
@@ -59,6 +59,9 @@ development plan.
 
 ### Phase 2: Understand Context and Clarify
 
+- If `$spec_path/todo.json.lock` exists, follow the existing-backup
+  recovery in `references/plan-command-common.md` and STOP before
+  saving the request.
 - IF `$request` missing/empty after Phase 1 -> ask user what changes
   they want; full input becomes `$request`. On resolve skip-confirm
   paths, a non-empty `$request` is already adopted — do not re-ask
@@ -91,21 +94,7 @@ EOF
 
 ### Phase 4: Build Prompt
 
-- Start the todo transaction before removing incomplete steps:
-
-```bash
-$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
-```
-
-- IF non-zero exit -> follow the start failure rule in
-  `references/plan-command-common.md` and STOP.
-- Remove incomplete steps before rendering the prompt:
-
-```bash
-$spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
-```
-
-- IF non-zero exit -> follow Failure Handling and STOP.
+- Keep the existing todo list through both prompt renders.
 - CMD:
 
 ```bash
@@ -141,13 +130,34 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
 - IF non-zero exit -> follow Failure Handling and STOP.
 - ELSE `$todo_prompt` ← `"prompt"` field from JSON stdout
 
-### Phase 7: Regenerate Development Steps
+### Phase 7: Update Development Steps
 
-- Using `$todo_prompt`, design and append new development steps to
-  `todo.json` via `spex todo-helper`. Follow `$todo_prompt` for
-  helper syntax.
+- Load and follow `references/todo-helper-cookbook.md` for helper
+  syntax, `details` formatting, and `skip_commit` conventions.
+- Read the full list with `todo-helper show` (default JSON). Use `$todo_prompt`
+  and the current list to choose the smallest plan change:
+  - **No change**: If the plan already fits the updated spec, skip
+    the todo transaction and proceed to Phase 8.
+  - **Targeted edits**: If the remaining steps and dependencies still
+    fit, use `edit` for changed fields, `insert` for a new step next
+    to an anchor, `move` to swap unfinished steps, and `remove` for
+    obsolete steps. Use `append` for new steps at the end or in an
+    empty list. Keep unaffected entries and their relative order.
+  - **Rebuild**: If the structure or dependencies of the remaining
+    plan require overall redesign, use `remove-undone` and append
+    the redesigned steps in dependency order.
 - Principles (keep in-command; do not weaken):
-  - Preserve completed work: never rewrite or re-open completed steps
+  - Preserve completed work: keep each completed step's contents and
+    position so its review records stay associated with it. Insert new
+    steps after the completed prefix. An insertion or removal that
+    shifts a completed step is unsafe, including a rebuild that would
+    remove unfinished entries before it. Use targeted edits that keep
+    those positions, or stop before editing if none fit.
+  - Preserve review recovery: an unfinished step with a recorded
+    `commit_title` is pending review. If the planned changes would
+    alter its contents or position, including any rebuild that would
+    remove it, STOP before editing the list. Resume its review via
+    `/spex apply-one-step`, then retry the plan update.
   - Small batches: minimal working increment per new step
   - Self-contained: production code + tests in same step — never split
   - Ordered by dependency: each builds on previous; no forward refs
@@ -155,13 +165,26 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
     flag). Non-coding / expected no-repo-change steps should use
     `--skip-commit true` (or `auto` when a commit is only needed if
     files change)
-- Load and follow `references/todo-helper-cookbook.md` for
-  `todo-helper` append/show/edit/remove examples, `details`
-  formatting, and `skip_commit` conventions. Append in execution
-  order after the retained steps. Transaction commit numbers the final
-  list from 1.
+- Start one transaction before applying the selected edits:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
+
+- IF non-zero exit -> follow the start failure rule in
+  `references/plan-command-common.md` and STOP.
+- For a rebuild only, clear the unfinished entries before appending:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
+```
+
+- Use current positions for every operation. Refresh positions with
+  `show` after an insertion, removal, or swap before using more
+  positional arguments. Review the final list with `show` before
+  Phase 8. Transaction commit numbers the final list from 1.
 - Writes only under `$spec_path` (`todo.json` via todo-helper)
-- ON_FAIL (append/edit fails) -> follow Failure Handling and STOP
+- ON_FAIL (show or todo edit fails) -> follow Failure Handling and STOP
   before Phase 8.
 
 ### Phase 8: Post-Action
@@ -173,9 +196,11 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   --name "$spec_name" --event-type modify
 ```
 
-- ON_FAIL: correct recoverable errors within the open transaction and
-  re-run post-action. If giving up, follow Failure Handling.
-- After post-action exits successfully, commit the todo transaction:
+- ON_FAIL: correct recoverable errors and re-run post-action. If a
+  todo edit is needed, follow Phase 7 transaction rules. If giving up,
+  follow Failure Handling.
+- After post-action exits successfully, commit the todo transaction
+  if one was started in Phase 7. Otherwise proceed to Phase 9.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
@@ -209,11 +234,12 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
   -> STOP. Empty `[]` alone is not a script error — follow
   `references/resolve-spec-name.md` empty-probe re-list when
   applicable
-- Todo transaction recovery: after successful Phase 4 start,
-  ON_FAIL in Phase 4, Phase 5, Phase 6, or Phase 7 -> roll back and STOP.
+- ON_FAIL in Phase 4, Phase 5, or Phase 6 -> STOP before todo edits.
+- Todo transaction recovery: after successful Phase 7 start,
+  ON_FAIL in Phase 7 -> roll back and STOP.
   For Phase 8 failures or abandonment before successful commit,
   follow the transaction rules in `references/plan-command-common.md`.
-  A rollback restores the original task list before any retry from Phase 4.
+  A rollback restores the original task list before retrying.
 
 ## STOP / Outputs
 

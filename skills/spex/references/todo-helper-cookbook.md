@@ -70,6 +70,10 @@ start and can be committed or rolled back by its owning transaction.
 
 ## Remove unfinished steps
 
+Use this command in `/spex modify` when the remaining plan needs a
+rebuild. Check for unfinished steps with a recorded commit before
+clearing the list. Those steps must finish review first.
+
 ```bash
 $spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
 ```
@@ -132,10 +136,12 @@ list on write. Refresh `show` before selecting steps again.
 
 ## Show
 
-Review current steps before adding more or selecting an entry to edit
-or remove. Labels use `step-<num>/<count>`, where `<count>` is the
-total number of steps even after filtering. Use `<num>` for `--id`.
-Refresh the list after removing steps, since positions can change.
+Review the full current list before choosing targeted edits or a
+rebuild. JSON shows the current positional IDs and completion state.
+Markdown labels use `step-<num>/<count>`, where `<count>` is the total
+number of steps even after filtering. Use the current position for
+positional arguments. Refresh the list after inserting, removing, or
+swapping steps before selecting another entry by position.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper show "$spec_name" \
