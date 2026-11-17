@@ -59,6 +59,9 @@ evaluation, continue to step 3. Read `eval/spex/adapters/README.md` for setup.
 
 ## 3. Prepare each case
 
+For batches, use the [structured preparation example](../../../eval/spex/adapters/README.md#prepare-a-batch-with-structured-arguments)
+to retain successful handoffs and retry failed preparations individually.
+
 Run `prepare --suite <suite> --case <id> --host <agent> --model <trial-model>`
 with `--spex-ref <ref>` and the resolved `--jobs`. The first successful
 prepare returns the batch `sandbox`. Pass it to every later prepare

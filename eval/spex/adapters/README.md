@@ -23,6 +23,83 @@ the portable interface documented in [`../README.md`](../README.md):
 | Host failure | Record a launch failure, host exit or timeout with `manual.py fail` so the next case can claim the slot |
 | Complete | Import grades and complete each case; require terminal status before summarizing |
 
+## Prepare a batch with structured arguments
+
+Run this example from the repository root. Set the filters, host, and
+worker ceiling for the batch. Save the report outside version control.
+
+```bash
+python3 - > prepare-batch.json <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+runner = [sys.executable, "eval/spex/run.py"]
+if len(sys.argv) > 1:
+    previous = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    selected = previous["selected"]
+    pending = previous["failures"]
+    prepared = previous["prepared"]
+    sandbox = previous["sandbox"]
+    options = previous["prepare_options"]
+else:
+    filters = ["--suite", "docs"]
+    ref = "HEAD"
+    commit = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"],
+        text=True,
+    ).strip()
+    options = ["--host", "other", "--spex-ref", commit, "--jobs", "1"]
+    selected = json.loads(subprocess.check_output(
+        [*runner, "list", *filters], text=True,
+    ))["cases"]
+    if not selected:
+        raise SystemExit(f"No cases matched {filters!r}")
+    pending, prepared, sandbox = selected, [], None
+
+failures = []
+for case in pending:
+    suite, case_id = case["suite"], case["id"]
+    command = [*runner, "prepare", "--suite", suite, "--case", case_id, *options]
+    if sandbox:
+        command.extend(["--sandbox", sandbox])
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode:
+        failures.append({
+            "suite": suite, "id": case_id, "exit_code": result.returncode,
+            "stdout": result.stdout, "stderr": result.stderr,
+        })
+        continue
+    handoff = json.loads(result.stdout)
+    sandbox = handoff["sandbox"]
+    prepared.append({"suite": suite, "id": case_id, "handoff": handoff})
+
+report = {"sandbox": sandbox, "prepare_options": options, "selected": selected,
+          "prepared": prepared, "failures": failures}
+if not failures:
+    keys = [f"{case['suite']}/{case['id']}" for case in selected]
+    result = subprocess.run(
+        [sys.executable, "eval/spex/manual.py", "--sandbox", sandbox, "init", *keys],
+        capture_output=True, text=True,
+    )
+    report["queue_init"] = {"exit_code": result.returncode,
+                            "stdout": result.stdout, "stderr": result.stderr}
+
+print(json.dumps(report, indent=2))
+sys.exit(1 if failures else result.returncode)
+PY
+```
+
+Inspect `failures` even when the report has no sandbox. The runner can
+send error JSON to stdout. After correcting the cause, rerun the example
+with the opening line
+`python3 - prepare-batch.json > prepare-retry.json <<'PY'`. Use a new
+output path for each retry. The example keeps successful handoffs and
+reuses the saved options and sandbox. Dispatch cases from the `prepared`
+handoffs once `queue_init.exit_code` is zero. If you deliberately select
+a smaller batch, report its coverage relative to the original request.
+
 ## Schedule current-host trials
 
 Coordinate trials from the current Agent session. Use parallel dispatch
