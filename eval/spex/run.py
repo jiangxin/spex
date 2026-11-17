@@ -14,6 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
+import issues
 import manual_batch
 import native_trace
 import performance
@@ -274,6 +275,17 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                     f"{case} has incomplete workflow evidence for {', '.join(trace_gaps)}"
                 ),
             })
+        for issue in row.get("issues") or []:
+            if issue.get("recovered"):
+                continue
+            priority = "P2" if issue["kind"] == "implausible_host_duration" else "P1"
+            items.append({
+                "priority": priority,
+                "category": "execution",
+                "case": case,
+                "summary": f"{case}: {issue['message']}",
+                "evidence": issue["evidence"],
+            })
         scores = row.get("scores") or []
         weak = [
             s for s in scores
@@ -360,24 +372,41 @@ def render_summary_markdown(report: dict) -> str:
         "",
         "## Score summary",
         "",
-        "| Case | Final | Hard | Score | Criteria |",
-        "| --- | --- | --- | --- | --- |",
+        "| Case | Verdict | Score | Criteria |",
+        "| --- | --- | --- | --- |",
     ]
+    footnotes = []
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
-        if row.get("criteria_scored"):
-            score = f"{row.get('score_sum')}/{row.get('score_max')}"
-            criteria = ", ".join(
-                f"{item.get('criterion_id')}={item.get('score')}"
-                for item in (row.get("scores") or [])
-            ) or "—"
+        final, hard = row.get("final_verdict"), row.get("hard_verdict")
+        verdict = str(final) if final == hard else f"{final} (hard: {hard})"
+        graded, total = row.get("criteria_scored", 0), row.get("criteria_total", 0)
+        if graded:
+            score = f"{row.get('score_sum')}/{row.get('score_max')} ({graded}/{total} criteria)"
         else:
             score = "—"
-            criteria = "ungraded"
-        lines.append(
-            f"| {case} | {row.get('final_verdict')} | {row.get('hard_verdict')} | "
-            f"{score} | {criteria} |"
-        )
+        criteria = ", ".join(
+            f"{item.get('criterion_id')}="
+            f"{item['score'] if item.get('score') is not None else 'ungraded'}"
+            for item in (row.get("scores") or [])
+        ) or "ungraded"
+        if graded and row.get("score_sum") == row.get("score_max") and final != "pass":
+            score += r" \*"
+            reason = (
+                (row.get("observed_fails") or row.get("evidence_gaps") or [None])[0]
+                or row.get("earliest_non_pass") or f"verdict {verdict}"
+            )
+            footnotes.append(
+                f"- `{case}` had {graded}/{total} criteria graded. Reason: `{reason}`."
+            )
+        lines.append(f"| {case} | {verdict} | {score} | {criteria} |")
+    if footnotes:
+        lines.extend([
+            "",
+            r"\* The score excludes ungraded criteria. Hard verdicts take precedence.",
+            "",
+            *footnotes,
+        ])
     lines.extend([
         "",
         "## Trial outcomes",
@@ -404,6 +433,13 @@ def render_summary_markdown(report: dict) -> str:
     performance_rows = [row for row in report["trials"] if "performance" in row]
     if performance_rows:
         lines.extend(performance.report_lines(performance_rows))
+    if any(row.get("issues") for row in report["trials"]):
+        lines.extend(["", "## Execution diagnostics", ""])
+        for row in report["trials"]:
+            case = f"{row.get('suite')}/{row.get('case_id')}"
+            for issue in row.get("issues") or []:
+                recovered = " (recovered by retry)" if issue.get("recovered") else ""
+                lines.append(f"- `{case}` {issue['message']}{recovered} — `{issue['evidence']}`")
     lines.extend([
         "",
         "## Spex skill improvements",
@@ -411,7 +447,8 @@ def render_summary_markdown(report: dict) -> str:
         "Auto-derived from hard checks and semantic scores in this sandbox. "
         "Categories: **functionality** (acceptance/workflow), **execution** "
         "(runtime / non-trace evidence gaps), **efficiency** (trace/host "
-        "friction that slows re-runs).",
+        "friction that slows re-runs). Execution diagnostics with a successful retry "
+        "are excluded from the improvement list.",
         "",
     ])
     improvements = report.get("improvements") or []
@@ -468,7 +505,10 @@ def summarize_sandbox(
         judge_model = judge.get("model") or "unknown"
         if judge.get("source") == "external" and judge_model == "external":
             judge_model = "unknown"
+        hard = metadata.get("hard_verdict", metadata.get("verdict"))
         final = judge.get("verdict") or metadata.get("verdict")
+        if hard in {"fail", "run_error", "pending"}:
+            final = hard
         hosts.add(str(metadata.get("host") or "unknown"))
         models.add(str(metadata.get("model") or "unknown"))
         split = classify_checks(metadata)
@@ -484,7 +524,7 @@ def summarize_sandbox(
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
             "trial": str(path.parent.relative_to(sandbox)),
-            "hard_verdict": metadata.get("hard_verdict", metadata.get("verdict")),
+            "hard_verdict": hard,
             "final_verdict": final,
             "host": metadata.get("host"),
             "model": metadata.get("model"),
@@ -494,6 +534,10 @@ def summarize_sandbox(
             "spex_ref": metadata.get("spex_ref"),
             "execution": metadata.get("execution", execution(None)),
             "performance": performance.trial_summary(path.parent, metadata),
+            "issues": issues.trial_issues(
+                path.parent, str(path.parent.relative_to(sandbox)), metadata, judge,
+                performance.read_performance(path.parent),
+            ),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             "turn_results": metadata.get("turn_results", []),
             **split,

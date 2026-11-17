@@ -130,6 +130,15 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                 name = next((word for word in words if not word.startswith("-")), "")
                 if IDENTIFIER.fullmatch(name):
                     command.update(action="spex.command", command=name)
+                    # Legacy helpers put the --name selector before the verb.
+                    arguments = iter(words[words.index(name) + 1:])
+                    for word in arguments:
+                        if word in {"--name", "--todo-json", "--todo-file"}:
+                            next(arguments, None)
+                        elif not word.startswith("-"):
+                            if IDENTIFIER.fullmatch(word):
+                                command["subcommand"] = word
+                            break
                 selector = option(words, "--name")
                 if selector and IDENTIFIER.fullmatch(selector):
                     if spec is None:
@@ -139,9 +148,14 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                         if selector not in spec:
                             gaps.add("conflicting_trace_spec")
                             command["spec"] = None
-                step = option(words, "--step")
+                step_flag = "--id" if name == "todo-helper" else "--step"
+                step = option(words, step_flag)
                 if step and IDENTIFIER.fullmatch(step):
                     command["step"] = step
+                if name == "todo-helper":
+                    todo_file = option(words, "--todo-file") or option(words, "--todo-json")
+                    if todo_file:
+                        command["todo_file_hash"] = hashlib.sha256(todo_file.encode()).hexdigest()
                 if name == "apply-helper" and "post-action" in words:
                     command["action"] = "apply.post-action"
                 elif name == "review-helper":

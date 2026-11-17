@@ -192,10 +192,17 @@ timestamp directory manually when finished. Both reports list the trial and
 judge Agent hosts and model IDs for each case. Use `import-grades --host`
 and `--model` for the judge's identity. Missing identities appear as
 `unknown`, and trials without a judge record show `ungraded`.
-`report.md` includes a **Score summary** (per-trial 0–2 rubric totals and sandbox `score_sum` /
-`score_max`) plus a prioritized **Spex skill improvements** section
-derived from hard fails, non-trace evidence gaps, weak semantic scores,
-and host trace friction. Pass `--write-improvements` (optional path;
+The **Score summary** shows one verdict per trial, with the hard verdict
+in parentheses when it differs. Scores show how many rubric criteria
+were graded. An asterisk beside full marks on a non-passing trial links
+the score coverage to the verdict reason. Hard failures take precedence.
+
+**Execution diagnostics** links observed Spex helper exits, implausible
+host timing, and judge failures to their saved evidence. A successful
+retry of the same helper operation in the same collected turn keeps the
+failed exit visible but excludes it from **Spex skill improvements**.
+The JSON report keeps the verdicts and scores as separate fields and
+includes the diagnostics under each trial. Pass `--write-improvements` (optional path;
 default `eval/spex/IMPROVEMENTS.md`) to also write a backlog markdown
 file from the same items.
 

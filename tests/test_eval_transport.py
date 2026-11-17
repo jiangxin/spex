@@ -1061,3 +1061,105 @@ def test_collect_retry_uses_saved_timing_evidence(runner, monkeypatch):
     assert metrics["duration_ms"] == 10000
     assert not {"missing_turn_timing_evidence", "implausible_host_duration"} & set(metrics["gaps"])
     assert run.read_json(output / "turn-1.json") == saved
+
+
+def test_summary_explains_partially_graded_hard_failure(runner):
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "partial-score")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "partial-score", "verdict": "fail",
+        "turn_results": [{"turn": 1, "checks": [
+            {"check_id": "no-post-action", "verdict": "fail"},
+        ]}],
+    })
+    run.write_json(out / "judge.json", {
+        "verdict": "pass",
+        "results": [
+            {"criterion_id": "goal", "score": 2, "verdict": "pass"},
+            {"criterion_id": "later", "score": None, "verdict": "insufficient_evidence"},
+        ],
+    })
+    result = run.summarize_sandbox(sandbox)
+    row = run.read_json(Path(result["report_json"]))["trials"][0]
+    assert row["final_verdict"] == row["hard_verdict"] == "fail"
+    assert (row["score_sum"], row["score_max"], row["criteria_scored"], row["criteria_total"]) == (
+        2, 2, 1, 2,
+    )
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "| Case | Verdict | Score | Criteria |" in markdown
+    assert (
+        r"| example/partial-score | fail | 2/2 (1/2 criteria) \* | goal=2, later=ungraded |"
+    ) in markdown
+    assert "`example/partial-score` had 1/2 criteria graded" in markdown
+    assert "`turn1:no-post-action=fail`" in markdown
+
+
+@pytest.mark.parametrize("gaps", [None, "prefix implausible_host_duration suffix"])
+def test_summary_tolerates_malformed_host_gaps(runner, gaps):
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "malformed-timing")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "malformed-timing", "verdict": "pass",
+    })
+    run.write_json(out / "performance.json", {
+        "schema_version": 1, "turns": {"1": {"host": {"gaps": gaps}}},
+    })
+
+    result = run.summarize_sandbox(sandbox)
+    row = run.read_json(Path(result["report_json"]))["trials"][0]
+    assert "unreadable_performance_file" in row["performance"]["gaps"]
+    assert row["issues"] == []
+
+
+def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "retry")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "retry", "verdict": "pass",
+        "turn_results": [{"turn": 1, "checks": []}, {"turn": 2, "checks": []}],
+    })
+
+    def save_trace(turn, calls):
+        log = []
+        for args, code in calls:
+            log.extend([
+                "===== BEGIN 2026-11-16T12:13:14+00:00 =====",
+                f"argv: spex {args}",
+                f"===== END exit={code} duration_ms=1 =====",
+            ])
+        events = run.native_trace.parse(log, "specs/demo/debug.log", set())
+        assert len(events) == len(calls)
+        run.write_json(out / f"turn-{turn}.json", {
+            "artifacts": {"spex-trace": {"value": {"events": events}}},
+        })
+
+    save_trace(1, [
+        ("todo-helper --name demo edit --id step-1", 1),
+        ("todo-helper --name demo edit --id step-1", 0),
+        ("todo-helper --name demo append", 2),
+        ("todo-helper --name demo edit --id step-2", 3),
+        ("todo-helper --name demo edit --id step-3", 0),
+        ("todo-helper --name demo show", 0),
+        ("todo-helper --todo-file path/one.json edit --id step-1", 4),
+        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
+        ("todo-helper --todo-file=path/two.json edit --id step-1", 5),
+        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
+    ])
+    save_trace(2, [("todo-helper --name demo append", 0)])
+    result = run.summarize_sandbox(sandbox)
+    row = run.read_json(Path(result["report_json"]))["trials"][0]
+    assert [(i["command"], i["recovered"]) for i in row["issues"]] == [
+        ("todo-helper edit", True), ("todo-helper append", False),
+        ("todo-helper edit", False), ("todo-helper edit", False), ("todo-helper edit", True),
+    ]
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "todo-helper edit exited with code 1 (recovered by retry)" in markdown
+    assert "example/retry/turn-1.json" in markdown
+    assert [item["summary"] for item in result["improvements"]] == [
+        "example/retry: Turn 1: todo-helper append exited with code 2",
+        "example/retry: Turn 1: todo-helper edit exited with code 3",
+        "example/retry: Turn 1: todo-helper edit exited with code 4",
+    ]
