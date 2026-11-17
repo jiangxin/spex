@@ -97,6 +97,36 @@
     ]
   },
   {
+    "id": "create-source-handoff",
+    "fixture": "source-handoff",
+    "tags": [
+      "recovery"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Use missing-plan.md as the source of requirements for a new greeting spec.",
+        "checks": [
+          "no-code-change",
+          "no-spec-write"
+        ]
+      },
+      {
+        "input": "Use repeat-plan.md and repeat-policy.md as equally authoritative requirements instead.",
+        "checks": [
+          "no-code-change",
+          "no-spec-write"
+        ]
+      },
+      {
+        "input": "Use repeat-plan.md as the only authoritative source. The range 1 through 5 is correct. Create the spec and ordered todo so an implementer can work without the source document.",
+        "checks": [
+          "no-code-change"
+        ],
+        "acceptance": "new-plan"
+      }
+    ]
+  },
+  {
     "id": "apply-ambiguous",
     "turns": [
       {

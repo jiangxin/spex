@@ -118,6 +118,60 @@
         ]
       }
     ],
+    "create-source-handoff": [
+      {
+        "id": "missing-source-clarified",
+        "turn": 1,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Proceeds without the missing source or invents its contents.",
+          "Notes a problem without asking for the source.",
+          "Identifies missing-plan.md and asks for its contents or a usable replacement."
+        ]
+      },
+      {
+        "id": "source-conflict-clarified",
+        "turn": 2,
+        "requires": [
+          "reply"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Silently selects a range or proceeds as though the conflict is resolved.",
+          "Notes a conflict without identifying the decision that differs.",
+          "Identifies the 1–5 versus 1–8 range conflict and asks which source or range governs."
+        ]
+      },
+      {
+        "id": "self-contained-spec",
+        "turn": 3,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Requires the source to determine the intended behavior or contradicts it.",
+          "Spec covers repetition but omits rationale, compatibility, failure, or recovery.",
+          "Spec includes the in-memory buffering rationale, the 1–5 range, default and line output, name and uppercase compatibility, and argparse failure and retry behavior."
+        ]
+      },
+      {
+        "id": "ordered-and-verifiable-tasks",
+        "turn": 3,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "Tasks are missing, depend on the source, or wire the CLI before validating the count.",
+          "Tasks have the right order but omit a compatibility or acceptance check.",
+          "Tasks deliver a tested validator first without CLI changes, then wire up the option with tests for default output, both bounds, uppercase repetition, non-integers, and out-of-range counts, using the specified unittest command."
+        ]
+      }
+    ],
     "apply-ambiguous": [
       {
         "id": "selection-requested",

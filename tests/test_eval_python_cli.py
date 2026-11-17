@@ -117,17 +117,32 @@ def test_python_cli_seeded_fixture_and_acceptance(tmp_path):
 def test_python_cli_recovery_cases_have_checkpoints_and_rubrics():
     cases = select_cases(EVAL / "suites", suite="python-cli", tag="recovery")
     rubrics = json.loads((SUITE / "rubrics.json").read_text(encoding="utf-8"))["cases"]
-    assert [case.id for case in cases] == [
-        "create-clarification", "apply-ambiguous", "apply-review-resume",
+    first_checks = {case.id: case.definition["turns"][0]["checks"] for case in cases}
+    assert list(first_checks) == [
+        "create-clarification", "create-source-handoff", "apply-ambiguous", "apply-review-resume",
         "apply-review-failure", "workflow-lifecycle",
     ]
-    assert "no-spec-write" in cases[0].definition["turns"][0]["checks"]
-    assert "no-progress" in cases[1].definition["turns"][0]["checks"]
-    assert "review-failure-stop" in cases[3].definition["turns"][0]["checks"]
+    assert "no-spec-write" in first_checks["create-clarification"]
+    assert "no-progress" in first_checks["apply-ambiguous"]
+    assert "review-failure-stop" in first_checks["apply-review-failure"]
     for case in cases:
         turns = case.definition["turns"]
         assert all(set(turn["checks"]) <= EXPECTATIONS.keys() for turn in turns)
         assert all(1 <= rubric["turn"] <= len(turns) for rubric in rubrics[case.id])
+
+
+def test_source_handoff_protects_both_clarification_turns():
+    case = select_cases(EVAL / "suites", suite="python-cli", case_id="create-source-handoff")[0]
+    turns = case.definition["turns"]
+    assert len(turns) == 3
+    for turn in turns[:2]:
+        assert set(turn["checks"]) == {"no-code-change", "no-spec-write"}
+    assert turns[2]["checks"] == ["no-code-change"]
+    assert turns[2]["acceptance"] == "new-plan"
+    fixture = SUITE / "fixtures" / case.definition["fixture"]
+    assert not (fixture / "missing-plan.md").exists()
+    assert "1 through 5" in (fixture / "repeat-plan.md").read_text(encoding="utf-8")
+    assert "1 through 8" in (fixture / "repeat-policy.md").read_text(encoding="utf-8")
 
 
 def test_ambiguous_apply_rejects_completing_an_unselected_spec(tmp_path):
