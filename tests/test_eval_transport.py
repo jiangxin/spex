@@ -660,9 +660,23 @@ def test_guarded_manual_dispatch_and_terminal_verdict(runner, monkeypatch):
         assert manual.run_command(args, sandbox) == 0
     assert commands[0] == Path(info["workspace"])
     executable, argv, environment = commands[1]
-    assert Path(executable).parent == Path(info["environment"]["PATH"].split(":")[0])
+    assert Path(executable).parent == Path(sys.executable).parent
     assert argv == ["python3", "-V"]
     assert environment["SPEX_CONFIG_FILE"] == info["environment"]["SPEX_CONFIG_FILE"]
+
+    # A previously prepared batch can still have the old PATH in its index.
+    index_path = sandbox / "batch-index.json"
+    index = run.read_json(index_path)
+    index[key]["environment"]["PATH"] = str(Path(sys.executable).parent)
+    run.write_json(index_path, index)
+    with monkeypatch.context() as worker:
+        worker.setattr(manual.os, "chdir", lambda _: None)
+        worker.setattr(manual.os, "execve", lambda *arguments: commands.append(arguments))
+        args = manual.parser().parse_args([
+            "--sandbox", str(sandbox), "exec", key, "--", "spex", "--version",
+        ])
+        assert manual.run_command(args, sandbox) == 0
+    assert Path(commands[-1][0]) == Path(info["skill"]) / "scripts" / "spex"
 
     Path(start["reply"]).write_text("What type?", encoding="utf-8")
     with pytest.raises(ValueError, match="already started"):

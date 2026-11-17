@@ -8,7 +8,6 @@ import re
 import shlex
 import sqlite3
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -347,11 +346,7 @@ def prepare_codex_runtime(
 
 
 def codex_env(trial: Trial | None, runtime: CodexRuntime) -> dict[str, str]:
-    if trial is None:
-        env = os.environ.copy()
-    else:
-        env = trial.env
-        env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", os.defpath)
+    env = os.environ.copy() if trial is None else trial.env
     env["CODEX_HOME"] = str(runtime.home)
     return env
 

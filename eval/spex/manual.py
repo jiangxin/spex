@@ -185,7 +185,11 @@ def run_command(args, sandbox: Path) -> int:
     if not argv:
         raise ValueError("Pass a command after --")
     os.chdir(trial.repo)
-    executable = shutil.which(argv[0], path=env["PATH"])
+    if argv[0] == "spex":
+        # Older handoffs may have recorded a PATH without the pinned CLI.
+        executable = trial.skill / "scripts" / "spex"
+    else:
+        executable = shutil.which(argv[0], path=env["PATH"])
     if not executable and "/" not in argv[0]:
         raise ValueError(f"Command not found in trial PATH: {argv[0]}")
     os.execve(executable or argv[0], argv, env)

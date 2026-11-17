@@ -207,11 +207,12 @@ class Trial:
         # Keep the pinned skill's per-spec log paths for native attribution.
         env.pop("SPEX_LOG_DIR", None)
         env.pop("PYTHONPATH", None)
-        # Keep the runner's interpreter first on PATH for Python shebangs in the trial.
+        # Prefer the pinned CLI and keep the runner's interpreter ahead of host Python.
+        paths = [str(self.skill / "scripts")]
         python_bin = Path(sys.executable).parent
         if python_bin.is_dir():
-            current = env.get("PATH", os.defpath)
-            env["PATH"] = str(python_bin) + os.pathsep + current
+            paths.append(str(python_bin))
+        env["PATH"] = os.pathsep.join([*paths, env.get("PATH", os.defpath)])
         return env
 
 

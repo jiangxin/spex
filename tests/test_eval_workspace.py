@@ -70,11 +70,12 @@ def test_trial_env_prefers_runner_python_on_path(tmp_path):
     workspace_root = tmp_path / "ws"
     (workspace_root / "repo").mkdir(parents=True)
     trial = workspace.Trial(workspace_root, "deadbeef")
-    first = Path(trial.env["PATH"].split(os.pathsep)[0])
+    skill_bin, python_bin, *_ = map(Path, trial.env["PATH"].split(os.pathsep))
     # Keep the venv bin dir even when sys.executable is a symlink into
     # Frameworks/Homebrew; resolving would hide the runner environment.
-    assert first == Path(sys.executable).parent
-    assert first.is_dir()
+    assert skill_bin == trial.skill / "scripts"
+    assert python_bin == Path(sys.executable).parent
+    assert python_bin.is_dir()
 
 
 def test_trial_env_keeps_the_pinned_skill_log_layout(tmp_path, monkeypatch):
@@ -85,7 +86,7 @@ def test_trial_env_keeps_the_pinned_skill_log_layout(tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
-def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
+def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest, monkeypatch):
     """Sandbox under a tree with parent .spex dirs must still prepare."""
     host = tmp_path / "host"
     (host / ".spex").mkdir(parents=True)
@@ -93,6 +94,12 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
         '[spex]\nspex_root = ".spex"\nstep_review = false\nbranch_management = false\n',
         encoding="utf-8",
     )
+    host_bin = host / "bin"
+    host_bin.mkdir()
+    host_spex = host_bin / "spex"
+    host_spex.write_text("#!/bin/sh\nexit 90\n", encoding="utf-8")
+    host_spex.chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(host_bin), os.environ["PATH"]]))
     runs = host / "project" / "eval" / "spex" / "runs"
     sandbox = workspace.allocate_sandbox(runs)
     case = workspace.select_cases(manifest.parent.parent)[0]
@@ -104,6 +111,8 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     workspace.verify_spex_roots(trial)
     assert "step_review=true" in trial_config(trial)
     assert "branch_management=true" in trial_config(trial)
+    assert shutil.which("spex", path=trial.env["PATH"]) == str(trial.skill / "scripts" / "spex")
+    subprocess.run(["spex", "--version"], cwd=trial.repo, env=trial.env, check=True)
 
 
 def trial_config(trial):

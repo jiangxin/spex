@@ -9,6 +9,8 @@ score.
 Each trial installs the committed `skills/spex` tree from the selected
 `--spex-ref` (default `HEAD`) into the trial workspace. It uses a trial-local
 `HOME` and `SPEX_CONFIG_FILE` to isolate host installs and configuration.
+The trial's `PATH` starts with the pinned skill's CLI directory, so a bare
+`spex` command in the prepared environment resolves to that copy.
 Commit skill edits before using them in a trial. Step review is enabled for
 `python-cli` and disabled for `batch-import` and `docs`.
 
