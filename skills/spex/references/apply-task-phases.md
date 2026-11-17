@@ -63,7 +63,9 @@ route as below.
 
 - Save:
   - `$task_prompt` ← `"prompt"` (never call this `$prompt`)
-  - `$current_task_id` ← `"task_id"`
+  - `$current_task_id` ← `"task_id"` (integer, starting at 1). Pass
+    its decimal value as `--id` to todo-helper and `--step` to
+    review-helper. Use the `step-<num>/<count>` label in summaries.
   - `$resume_phase` ← `"resume_phase"` (`implement` or `review`)
   - `$commit_title` ← `"commit_title"` (may be empty)
   - `$skip_commit` ← `"skip_commit"` (`false` | `auto` | `true`;

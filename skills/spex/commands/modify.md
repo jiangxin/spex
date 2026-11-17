@@ -145,7 +145,7 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
 
 - Using `$todo_prompt`, design and append new development steps to
   `todo.json` via `spex todo-helper`. Follow `$todo_prompt` for
-  command syntax and numbering details.
+  helper syntax.
 - Principles (keep in-command; do not weaken):
   - Preserve completed work: never rewrite or re-open completed steps
   - Small batches: minimal working increment per new step
@@ -157,8 +157,9 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
     files change)
 - Load and follow `references/todo-helper-cookbook.md` for
   `todo-helper` append/show/edit/remove examples, `details`
-  formatting, and `skip_commit` conventions. Continue IDs after the
-  last completed step (`step-N+1`, …)
+  formatting, and `skip_commit` conventions. Append in execution
+  order after the retained steps. Transaction commit numbers the final
+  list from 1.
 - Writes only under `$spec_path` (`todo.json` via todo-helper)
 - ON_FAIL (append/edit fails) -> follow Failure Handling and STOP
   before Phase 8.

@@ -273,7 +273,7 @@ During development, other intermediate file formats were explored, such as XML. 
 
 ```bash
 $ spex todo-helper append "$spec_name" \
-  --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
+  --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -351,19 +351,23 @@ an optimized Phase 6 review loop:
    verification passes. `step_review=false` with open majors is an
    abnormal STOP (not a silent skip).
 
+Transaction commit assigns integer IDs in list order starting at 1.
+Spex reads legacy string IDs by position and displays steps as
+`step-<num>/<count>`. Use the current number with `--id` for edits and removals.
+
 Example `todo.json` content:
 
 ```json
 [
   {
-    "id": "step-1",
+    "id": 1,
     "name": "Update SKILL.md command routing and tables",
     "details": "Update SKILL.md to make `merge` the primary command...",
     "completed_at": "2026-06-17T12:08:42+08:00",
     "commit_title": "fae3c7c: docs: make merge the primary command..."
   },
   {
-    "id": "step-2",
+    "id": 2,
     "name": "Confirm docs-only checklist",
     "details": "Verify README wording without touching the repo.",
     "completed_at": "2026-06-17T12:20:00+08:00",
