@@ -919,6 +919,41 @@ class TestShow:
 # -----------------------------------------------------------------------
 # remove-undone
 # -----------------------------------------------------------------------
+class TestRemoveUndone:
+    @pytest.mark.parametrize("command", ["remove-undone", "remove_undone"])
+    def test_preserves_completed_items_and_is_idempotent(self, todo_file, command):
+        _write(todo_file, SAMPLE_DATA)
+        args = [command, "--todo-file", str(todo_file)]
+
+        todo_helper.main(args)
+
+        assert _read(todo_file) == [SAMPLE_DATA[0], SAMPLE_DATA[2]]
+        todo_file.write_bytes(todo_file.read_bytes().rstrip())
+        original = todo_file.read_bytes()
+        todo_helper.main(args)
+        assert todo_file.read_bytes() == original
+
+    def test_removes_all_unfinished_items(self, todo_file, monkeypatch):
+        _write(todo_file, [SAMPLE_DATA[1]])
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
+        )
+
+        todo_helper.main(["remove-undone", "my-topic"])
+
+        assert _read(todo_file) == []
+
+    def test_invalid_json_fails_without_rewriting(self, todo_file):
+        original = b"[invalid"
+        todo_file.write_bytes(original)
+
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(["remove-undone", "--todo-file", str(todo_file)])
+
+        assert error.value.code == 1
+        assert todo_file.read_bytes() == original
+
+
 # -----------------------------------------------------------------------
 # Help flag
 # -----------------------------------------------------------------------

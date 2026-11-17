@@ -91,22 +91,24 @@ EOF
 
 ### Phase 4: Build Prompt
 
+- Remove incomplete steps before rendering the prompt:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
+```
+
+- IF non-zero exit -> report stderr -> STOP
 - CMD:
 
 ```bash
 $spex_skill_dir/scripts/spex prompt modify-spec \
-  "$spec_name" --json --stdin --remove-undone <<'EOF'
+  "$spec_name" --json --stdin <<'EOF'
 $request
 EOF
 ```
 
 - IF non-zero exit -> report stderr -> STOP
 - ELSE `$modify_prompt` ← `"prompt"` field from JSON stdout
-- `--remove-undone` removes incomplete `todo.json` steps before
-  render so prompt includes completed-step context only. After this
-  runs, a mid-flight FAIL (before Phase 7 append succeeds) can leave
-  only completed steps plus a partially updated `spec.md` — see
-  Failure Handling recovery
 
 ### Phase 5: Modify spec.md
 
@@ -119,7 +121,7 @@ EOF
 - Writes only under `$spec_path` (plan-command-common whitelist)
 - ON_FAIL (cannot apply prompt / write fails) -> STOP; do not
   continue to Phase 6/7 half-done. Prefer Failure Handling
-  `--remove-undone` recovery if undo steps were already removed
+  `remove-undone` recovery if unfinished steps were already removed
 
 ### Phase 6: Build Todo Prompt
 
@@ -152,7 +154,7 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
   last completed step (`step-N+1`, …)
 - Writes only under `$spec_path` (`todo.json` via todo-helper)
 - ON_FAIL (append/edit fails) -> STOP; do not continue half-done.
-  Use Failure Handling `--remove-undone` recovery before retrying
+  Use Failure Handling `remove-undone` recovery before retrying
 
 ### Phase 8: Post-Action
 
@@ -191,15 +193,15 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   `references/resolve-spec-name.md` empty-probe re-list when
   applicable
 - ON_FAIL Phase 4 `modify-spec` prompt -> STOP. IF
-  `--remove-undone` already deleted incomplete todos -> recover
+  `remove-undone` already deleted incomplete todos -> recover
   before any retry (below); do **not** continue half-done
 - ON_FAIL Phase 5 (spec.md write) -> **immediate STOP**; do not
-  enter Phase 6/7. Prefer `--remove-undone` recovery below
+  enter Phase 6/7. Prefer `remove-undone` recovery below
 - ON_FAIL Phase 6 `modify-todo` prompt -> STOP
 - ON_FAIL Phase 7 (todo append/edit) -> **immediate STOP**; do not
-  enter Phase 8 half-done. Prefer `--remove-undone` recovery below
+  enter Phase 8 half-done. Prefer `remove-undone` recovery below
 - ON_FAIL Phase 8 post-action -> fix `todo.json` -> re-run until OK
-- `--remove-undone` recovery: after Phase 4 has removed incomplete
+- `remove-undone` recovery: after Phase 4 has removed incomplete
   todos, a FAIL before successful Phase 7 append must **not** leave
   the agent continuing in a half-done state. Recover by either
   (1) re-running `/spex modify` from Phase 4 with the same

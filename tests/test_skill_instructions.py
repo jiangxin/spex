@@ -637,7 +637,7 @@ class TestModifyPlanOnlySop:
         _index(section, "Phase 7")
         _index(section, "immediate STOP")
         _index(section, "roll")
-        _index(section, "`--remove-undone` recovery")
+        _index(section, "`remove-undone` recovery")
         _index(section, "Phase 4")
         _index(section, "git restore")
         _index(section, "half-done")
