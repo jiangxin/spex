@@ -87,13 +87,13 @@ class TestFileLocating:
         # Keep value-taking options distinct from the positional selector.
         todo_helper.main([
             "edit",
-            "--id", "step-3",
+            "--id", "3",
             "--commit-title",
             "84e59c4: feat(create-helper): handoff session on prepare-spec",
             "2026-08-04-15-50-create-debug-session",
         ])
         result = _read(todo)
-        step3 = [i for i in result if i["id"] == "step-3"][0]
+        step3 = [i for i in result if i["id"] == 3][0]
         assert step3["commit_title"] == (
             "84e59c4: feat(create-helper): handoff session on prepare-spec"
         )
@@ -149,11 +149,66 @@ class TestTransaction:
         todo_helper.main(["transaction", "start", "my-topic"])
         backup = todo_file.with_suffix(".json.lock")
         assert backup.read_bytes() == b"[]"
-        todo_file.write_bytes(b"[{}]")
+        _write(todo_file, SAMPLE_DATA)
 
         todo_helper.main(["transaction", "commit", "my-topic"])
-        assert todo_file.read_bytes() == b"[{}]"
+        assert _read(todo_file) == [
+            dict(item, id=index) for index, item in enumerate(SAMPLE_DATA, 1)
+        ]
         assert not backup.exists()
+
+    def test_pending_appends_get_ids_on_commit(self, todo_file):
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        for name in ("First", "Second"):
+            todo_helper.main(["append", *locator, "--step-name", name, "--details", ""])
+        assert all("id" not in item for item in _read(todo_file))
+        todo_helper.main(["remove", *locator, "--id", "1"])
+        todo_helper.main(["edit", *locator, "--id", "1", "--step-name", "Edited"])
+        assert "id" not in _read(todo_file)[0]
+
+        todo_helper.main(["transaction", "commit", *locator])
+
+        assert _read(todo_file) == [{
+            "id": 1, "name": "Edited", "details": "",
+            "completed_at": "", "commit_title": "",
+        }]
+
+    def test_invalid_commit_keeps_snapshot_available_for_rollback(self, todo_file):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        todo_file.write_bytes(b"[{}]")
+
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(["transaction", "commit", *locator])
+        assert error.value.code == 1
+        assert todo_file.with_suffix(".json.lock").read_bytes() == original
+        assert todo_file.read_bytes() == b"[{}]"
+
+        todo_helper.main(["transaction", "rollback", *locator])
+        assert todo_file.read_bytes() == original
+
+    def test_failed_commit_write_keeps_snapshot_for_retry(self, todo_file, monkeypatch):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+
+        def fail_to_write(*_args):
+            raise OSError("todo write failed")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(todo_helper, "atomic_write_json", fail_to_write)
+            with pytest.raises(SystemExit) as error:
+                todo_helper.main(["transaction", "commit", *locator])
+        assert error.value.code == 1
+        assert todo_file.with_suffix(".json.lock").read_bytes() == original
+        assert todo_file.read_bytes() == original
+
+        todo_helper.main(["transaction", "commit", *locator])
+        assert [item["id"] for item in _read(todo_file)] == [1, 2, 3]
 
     @pytest.mark.parametrize("original", [b"[]", b" [\r\n {} ]\n", b"\xff"])
     def test_rollback_restores_snapshot_bytes(self, todo_file, original):
@@ -334,13 +389,12 @@ class TestAppend:
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "step-4",
             "--step-name", "Fourth step",
             "--details", "Do the fourth thing",
         ])
         result = _read(todo_file)
         assert len(result) == 4
-        assert result[-1]["id"] == "step-4"
+        assert result[-1]["id"] == 4
         assert result[-1]["name"] == "Fourth step"
         assert result[-1]["completed_at"] == ""
         assert result[-1]["commit_title"] == ""
@@ -349,30 +403,31 @@ class TestAppend:
         assert not todo_file.exists()
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "step-1",
             "--step-name", "First",
             "--details", "Details here",
         ])
         result = _read(todo_file)
         assert len(result) == 1
-        assert result[0]["id"] == "step-1"
+        assert result[0]["id"] == 1
 
-    def test_append_duplicate_id_fails(self, todo_file):
+    @pytest.mark.parametrize("id_option", [["--id", "1"], ["--id=1"]])
+    def test_append_rejects_id(self, todo_file, id_option):
         _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
         with pytest.raises(SystemExit) as exc:
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
-                "--id", "step-1",
-                "--step-name", "Dup",
-                "--details", "Dup details",
+                *id_option,
+                "--step-name", "Explicit ID",
+                "--details", "Details",
             ])
-        assert exc.value.code == 1
+        assert exc.value.code == 2
+        assert todo_file.read_bytes() == original
 
     def test_append_with_optional_fields(self, todo_file):
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "Done task",
             "--details", "Already done",
             "--completed-at", "2026-05-30",
@@ -390,7 +445,7 @@ class TestAppend:
         ))
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1", "--step-name", "Stdin step",
+            "--step-name", "Stdin step",
             "--details-from-stdin",
         ])
         result = _read(todo_file)
@@ -402,14 +457,13 @@ class TestAppend:
         with pytest.raises(SystemExit):
             todo_helper.main([
                 "--todo-file", str(todo_file), "append",
-                "--id", "s1", "--step-name", "No details",
+            "--step-name", "No details",
             ])
 
     def test_append_omits_skip_commit_by_default(self, todo_file):
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "Default skip",
             "--details", "No flag",
         ])
@@ -420,7 +474,6 @@ class TestAppend:
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "Explicit false",
             "--details", "Details",
             "--skip-commit", "false",
@@ -432,7 +485,6 @@ class TestAppend:
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "Auto skip",
             "--details", "Details",
             "--skip-commit", "auto",
@@ -444,7 +496,6 @@ class TestAppend:
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "True skip",
             "--details", "Details",
             "--skip-commit", "true",
@@ -465,10 +516,10 @@ class TestEdit:
         ))
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-1", "--details-from-stdin",
+            "--id", "1", "--details-from-stdin",
         ])
         result = _read(todo_file)
-        step1 = [i for i in result if i["id"] == "step-1"][0]
+        step1 = [i for i in result if i["id"] == 1][0]
         assert "Updated multi-line" in step1["details"]
         assert "- New item" in step1["details"]
         assert step1["name"] == SAMPLE_DATA[0]["name"]
@@ -477,11 +528,11 @@ class TestEdit:
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "2",
             "--step-name", "Updated name",
         ])
         result = _read(todo_file)
-        step2 = [i for i in result if i["id"] == "step-2"][0]
+        step2 = [i for i in result if i["id"] == 2][0]
         assert step2["name"] == "Updated name"
         # Unchanged fields remain
         assert step2["details"] == "Do the second thing"
@@ -492,11 +543,11 @@ class TestEdit:
         original = SAMPLE_DATA[0].copy()
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-1",
+            "--id", "1",
             "--details", "New details",
         ])
         result = _read(todo_file)
-        step1 = [i for i in result if i["id"] == "step-1"][0]
+        step1 = [i for i in result if i["id"] == 1][0]
         assert step1["name"] == original["name"]
         assert step1["completed_at"] == original["completed_at"]
         assert step1["commit_title"] == original["commit_title"]
@@ -507,7 +558,7 @@ class TestEdit:
         with pytest.raises(SystemExit) as exc:
             todo_helper.main([
                 "--todo-file", str(todo_file), "edit",
-                "--id", "no-such-id",
+                "--id", "999",
                 "--step-name", "X",
             ])
         assert exc.value.code == 1
@@ -516,11 +567,11 @@ class TestEdit:
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "2",
             "--skip-commit", "auto",
         ])
         result = _read(todo_file)
-        step2 = [i for i in result if i["id"] == "step-2"][0]
+        step2 = [i for i in result if i["id"] == 2][0]
         assert step2["skip_commit"] == "auto"
         assert step2["name"] == "Second step"
 
@@ -528,11 +579,11 @@ class TestEdit:
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "2",
             "--skip-commit", "true",
         ])
         result = _read(todo_file)
-        step2 = [i for i in result if i["id"] == "step-2"][0]
+        step2 = [i for i in result if i["id"] == 2][0]
         assert step2["skip_commit"] == "true"
 
     def test_edit_skip_commit_false_clears_key(self, todo_file):
@@ -540,7 +591,7 @@ class TestEdit:
         _write(todo_file, data)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "1",
             "--skip-commit", "false",
         ])
         result = _read(todo_file)
@@ -555,22 +606,22 @@ class TestEditCompletedAtNow:
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "2",
             "--completed-at", "now",
         ])
         result = _read(todo_file)
-        step2 = [i for i in result if i["id"] == "step-2"][0]
+        step2 = [i for i in result if i["id"] == 2][0]
         assert step2["completed_at"].startswith("2026-")
 
     def test_edit_completed_at_explicit_value(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "edit",
-            "--id", "step-2",
+            "--id", "2",
             "--completed-at", "2026-01-01T00:00:00",
         ])
         result = _read(todo_file)
-        step2 = [i for i in result if i["id"] == "step-2"][0]
+        step2 = [i for i in result if i["id"] == 2][0]
         assert step2["completed_at"] == "2026-01-01T00:00:00"
 
 
@@ -582,7 +633,6 @@ class TestAppendCompletedAtNow:
         _write(todo_file, [])
         todo_helper.main([
             "--todo-file", str(todo_file), "append",
-            "--id", "s1",
             "--step-name", "Task done now",
             "--details", "Details",
             "--completed-at", "now",
@@ -595,23 +645,34 @@ class TestAppendCompletedAtNow:
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:
+    @pytest.mark.parametrize("command", ["edit", "remove"])
+    @pytest.mark.parametrize("selector", [[], ["--id", "0"], ["--id", "step-1"]])
+    def test_mutation_requires_positive_integer_id(self, todo_file, command, selector):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([command, "--todo-file", str(todo_file), *selector])
+        assert exc.value.code == 2
+        assert todo_file.read_bytes() == original
+
     def test_remove_by_id(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "remove",
-            "--id", "step-2",
+            "--id", "2",
         ])
         result = _read(todo_file)
         assert len(result) == 2
         ids = [i["id"] for i in result]
-        assert "step-2" not in ids
+        assert ids == [1, 2]
+        assert result[1]["name"] == "Third step"
 
     def test_id_not_found_fails(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         with pytest.raises(SystemExit) as exc:
             todo_helper.main([
                 "--todo-file", str(todo_file), "remove",
-                "--id", "no-such-id",
+                "--id", "999",
             ])
         assert exc.value.code == 1
 
@@ -621,13 +682,16 @@ class TestRemove:
 # -----------------------------------------------------------------------
 class TestShow:
     def test_show_all_items_json(self, todo_file, capsys):
-        _write(todo_file, SAMPLE_DATA)
+        data = [dict(SAMPLE_DATA[0], id="old-custom-id"), *SAMPLE_DATA[1:]]
+        _write(todo_file, data)
+        original = todo_file.read_bytes()
         todo_helper.main([
             "--todo-file", str(todo_file), "show",
         ])
         out = capsys.readouterr().out
         result = json.loads(out)
-        assert len(result) == 3
+        assert result == [dict(item, id=index) for index, item in enumerate(data, 1)]
+        assert todo_file.read_bytes() == original
 
     def test_show_done_filter(self, todo_file, capsys):
         _write(todo_file, SAMPLE_DATA)
@@ -647,29 +711,29 @@ class TestShow:
         out = capsys.readouterr().out
         result = json.loads(out)
         assert len(result) == 1
-        assert result[0]["id"] == "step-2"
+        assert result[0]["id"] == 2
 
     def test_show_by_id(self, todo_file, capsys):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
-            "--todo-file", str(todo_file), "show", "--id", "step-2",
+            "--todo-file", str(todo_file), "show", "--id", "2",
         ])
         out = capsys.readouterr().out
         result = json.loads(out)
         assert len(result) == 1
-        assert result[0]["id"] == "step-2"
+        assert result[0]["id"] == 2
         assert result[0]["name"] == "Second step"
 
     def test_show_by_id_json(self, todo_file, capsys):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "show",
-            "--id", "step-1", "--format", "json",
+            "--id", "1", "--format", "json",
         ])
         out = capsys.readouterr().out
         result = json.loads(out)
         assert len(result) == 1
-        assert result[0]["id"] == "step-1"
+        assert result[0]["id"] == 1
 
     def test_show_by_id_not_found(self, todo_file, caplog):
         _write(todo_file, SAMPLE_DATA)
@@ -677,30 +741,30 @@ class TestShow:
             with pytest.raises(SystemExit) as exc:
                 todo_helper.main([
                     "--todo-file", str(todo_file), "show",
-                    "--id", "missing",
+                    "--id", "999",
                 ])
         assert exc.value.code == 1
-        assert "missing" in caplog.text
+        assert "999" in caplog.text
 
     def test_show_by_id_ignores_done_filter(self, todo_file, capsys):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "show",
-            "--id", "step-2", "--done",
+            "--id", "2", "--done",
         ])
         out = capsys.readouterr().out
         result = json.loads(out)
         assert len(result) == 1
-        assert result[0]["id"] == "step-2"
+        assert result[0]["id"] == 2
 
     def test_show_by_id_markdown(self, todo_file, capsys):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
             "--todo-file", str(todo_file), "show",
-            "--id", "step-1", "--format", "markdown",
+            "--id", "1", "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
+        assert "1. ✅ step-1/3\n" in out
         assert "step-2" not in out
 
     def test_done_and_undone_mutual_exclusion(self, todo_file):
@@ -719,7 +783,7 @@ class TestShow:
         ])
         out = capsys.readouterr().out
         result = json.loads(out)
-        assert result[0]["id"] == "step-1"
+        assert result[0]["id"] == 1
 
     def test_show_format_markdown_done(self, todo_file, capsys):
         data = [SAMPLE_DATA[0]]  # completed item
@@ -729,7 +793,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
+        assert "1. ✅ step-1/1\n" in out
         assert "   - name: First step\n" in out
         assert "completed_at:" in out
         assert "commit_title:" in out
@@ -742,7 +806,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. 🔲 step-2\n" in out
+        assert "1. 🔲 step-1/1\n" in out
         assert "   - name: Second step\n" in out
         assert "completed_at:" not in out
         assert "commit_title:" not in out
@@ -754,9 +818,17 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
-        assert "2. 🔲 step-2\n" in out
-        assert "3. ✅ step-3\n" in out
+        assert "1. ✅ step-1/3\n" in out
+        assert "2. 🔲 step-2/3\n" in out
+        assert "3. ✅ step-3/3\n" in out
+
+    @pytest.mark.parametrize(
+        ("flag", "label"), [("--done", "step-3/3"), ("--undone", "step-2/3")],
+    )
+    def test_filtered_markdown_uses_full_total(self, todo_file, capsys, flag, label):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main(["--todo-file", str(todo_file), "show", flag, "--format", "markdown"])
+        assert label in capsys.readouterr().out
 
     def test_show_markdown_empty_fields_skipped(
         self, todo_file, capsys,
@@ -771,7 +843,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. 🔲 s1\n" in out
+        assert "1. 🔲 step-1/1\n" in out
         assert "   - name: Test\n" in out
         assert "details:" not in out
         assert "completed_at:" not in out
@@ -927,7 +999,9 @@ class TestRemoveUndone:
 
         todo_helper.main(args)
 
-        assert _read(todo_file) == [SAMPLE_DATA[0], SAMPLE_DATA[2]]
+        assert _read(todo_file) == [
+            dict(SAMPLE_DATA[0], id=1), dict(SAMPLE_DATA[2], id=2),
+        ]
         todo_file.write_bytes(todo_file.read_bytes().rstrip())
         original = todo_file.read_bytes()
         todo_helper.main(args)
@@ -1007,19 +1081,19 @@ class TestHelp:
 class TestHoistLocatorFlags:
     def test_hoists_todo_file_from_end(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3", "--todo-file", "todo.json",
-        ]) == ["--todo-file", "todo.json", "edit", "--id", "step-3"]
+            "edit", "--id", "3", "--todo-file", "todo.json",
+        ]) == ["--todo-file", "todo.json", "edit", "--id", "3"]
 
     def test_preserves_leading_name(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "spec", "--id", "step-3",
-        ]) == ["edit", "spec", "--id", "step-3"]
+            "edit", "spec", "--id", "3",
+        ]) == ["edit", "spec", "--id", "3"]
 
     def test_leaves_bare_name_in_place(self):
         # Bare --name must not steal the subcommand as its value.
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3", "--name",
-        ]) == ["edit", "--id", "step-3", "--name"]
+            "edit", "--id", "3", "--name",
+        ]) == ["edit", "--id", "3", "--name"]
 
     def test_leaves_bare_todo_file_in_place(self):
         assert todo_helper._hoist_locator_flags([
@@ -1028,16 +1102,16 @@ class TestHoistLocatorFlags:
 
     def test_hoists_equals_form(self):
         assert todo_helper._hoist_locator_flags([
-            "edit", "--id", "step-3", "--todo-file=todo.json",
-        ]) == ["--todo-file=todo.json", "edit", "--id", "step-3"]
+            "edit", "--id", "3", "--todo-file=todo.json",
+        ]) == ["--todo-file=todo.json", "edit", "--id", "3"]
 
     def test_does_not_steal_option_values(self):
         # --todo-file is the commit-title value, not a locator flag.
         assert todo_helper._hoist_locator_flags([
-            "edit", "spec", "--id", "step-3",
+            "edit", "spec", "--id", "3",
             "--commit-title", "--todo-file",
         ]) == [
-            "edit", "spec", "--id", "step-3",
+            "edit", "spec", "--id", "3",
             "--commit-title", "--todo-file",
         ]
 
@@ -1064,7 +1138,7 @@ class TestSubcommandHelp:
             todo_helper.main(["append", "-h"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "--id" in out
+        assert "--id" not in out
 
     def test_show_help_exits_0(self, capsys):
         """show -h should show usage and exit 0."""

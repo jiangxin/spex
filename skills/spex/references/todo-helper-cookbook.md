@@ -12,8 +12,7 @@ to build or revise `todo.json` via todo-helper.
 - Self-contained: production code + tests in the same step —
   never split
 - Ordered by dependency: each builds on previous; no forward refs
-- Sequential IDs: `step-1`, `step-2`, … (modify continues after
-  last completed ID)
+- Append in execution order. The helper assigns numeric IDs from 1.
 - No per-step review flag — review runs only when a step produces
   a commit (and global `step_review` allows it)
 
@@ -63,7 +62,8 @@ $spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
 ```
 
 `start` saves the original todo file in `todo.json.lock`. An absent or
-blank todo file produces an empty backup. `commit` deletes the backup.
+blank todo file produces an empty backup. `commit` assigns integer IDs
+in list order and deletes the backup after the write succeeds.
 `rollback` restores the backup or removes both files if it is empty.
 Serialize writes to a given todo file. An existing backup blocks another
 start and can be committed or rolled back by its owning transaction.
@@ -74,15 +74,18 @@ start and can be committed or rolled back by its owning transaction.
 $spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
 ```
 
-Completed entries keep their existing values and order.
+Completed entries retain their order and completion data.
 
 ## Append
+
+Omit `--id`. During a transaction, new entries receive their stored
+IDs at commit. Outside a transaction, the helper numbers them on write.
 
 **Coding step** (default — omit `--skip-commit`):
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper append "$spec_name" \
-  --id step-1 --step-name "Short description for the step" \
+  --step-name "Short description for the step" \
   --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
@@ -100,7 +103,7 @@ DETAILS
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper append "$spec_name" \
-  --id step-N --step-name "Confirm checklist without repo edits" \
+  --step-name "Confirm checklist without repo edits" \
   --skip-commit true \
   --details-from-stdin <<'DETAILS'
 Verify acceptance criteria without changing tracked files.
@@ -114,8 +117,10 @@ Optional on `append` / `edit`: `--skip-commit true|auto|false`
 
 ## Show
 
-Review current steps before adding more (and again after the
-plan is complete):
+Review current steps before adding more or selecting an entry to edit
+or remove. Labels use `step-<num>/<count>`, where `<count>` is the
+total number of steps even after filtering. Use `<num>` for `--id`.
+Refresh the list after removing steps, since positions can change.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper show "$spec_name" \
@@ -128,7 +133,7 @@ Only specified fields are updated:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
-  --id step-1 --details-from-stdin <<'DETAILS'
+  --id 1 --details-from-stdin <<'DETAILS'
 Updated multi-line details for this step.
 
 - Revised implementation approach
@@ -140,5 +145,5 @@ DETAILS
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper remove "$spec_name" \
-  --id step-1
+  --id 1
 ```

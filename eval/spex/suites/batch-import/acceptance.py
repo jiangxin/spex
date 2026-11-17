@@ -276,7 +276,10 @@ def ordered_steps(repo, scenario):
     assert len(tasks) == 4 and len(history) == 5, "expected four step commits after the fixture"
     commits = history[1:]
     for index, (task, sha) in enumerate(zip(tasks, commits), 1):
-        assert task["id"] == f"step-{index}" and task.get("completed_at"), f"step-{index} is incomplete"
+        valid_id = task["id"] == f"step-{index}" or (
+            type(task["id"]) is int and task["id"] == index
+        )
+        assert valid_id and task.get("completed_at"), f"step-{index} is incomplete"
         prefix, separator, subject = task.get("commit_title", "").partition(":")
         assert separator and 7 <= len(prefix) <= 40 and sha.startswith(prefix), (
             f"step-{index} does not identify its ordered commit"

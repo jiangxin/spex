@@ -579,19 +579,15 @@ def cli_prepare_spec(argv=None):
     _do_prepare_spec(args)
 
 
-REQUIRED_FIELDS = ("id", "name", "details", "completed_at", "commit_title")
-
-
 def _do_post_action(args):
     """Validate todo.json and trigger post-action hook."""
     from common import (
         SpecMeta,
-        load_and_validate_todo_json,
         load_meta,
         parse_front_matter_description,
-        validate_unique_ids,
     )
     from config import get_project_context
+    from todo_helper import validate_todo
 
     spec_dir = resolve_spec_dir(args.name)
     json_path = spec_dir / "todo.json"
@@ -600,19 +596,7 @@ def _do_post_action(args):
         logger.error(f"Error: {json_path} not found.")
         sys.exit(1)
 
-    data = load_and_validate_todo_json(json_path)
-    validate_unique_ids(data)
-    from todo_helper import normalize_skip_commit
-    for i, item in enumerate(data):
-        for field in REQUIRED_FIELDS:
-            if field not in item:
-                logger.error(
-                    f"Error: item[{i}]: missing required"
-                    f" field '{field}'.",
-                )
-                sys.exit(1)
-        if "skip_commit" in item:
-            normalize_skip_commit(item["skip_commit"])
+    data = validate_todo(json_path, allow_empty=False)
     logger.info(f"OK: {len(data)} step(s) validated.")
 
     # Update description from spec.md front-matter

@@ -15,6 +15,7 @@ from common import (
     select_spec_interactive,
     split_command,
     strip_front_matter,
+    todo_step_label,
 )
 
 
@@ -63,10 +64,10 @@ def _format_verbose(spec_dir):
     todo = t.todo_data
     if todo:
         for item in todo:
-            step_id = item.get("id", "")
+            step_label = todo_step_label(item["id"], len(todo))
             step_name = item.get("name", "")
             details = item.get("details", "")
-            parts.append(f"- **{step_id}: {step_name}**")
+            parts.append(f"- **{step_label}: {step_name}**")
             parts.append("")
             if details:
                 for line in details.splitlines():

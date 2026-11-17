@@ -30,7 +30,7 @@ def evaluate(repo, scenario):
         raise ValueError("Expected a single task object")
     task = tasks[0]
     checks = {
-        "task-completed": task.get("id") == "step-1" and bool(task.get("completed_at")),
+        "task-completed": str(task.get("id")) in {"1", "step-1"} and bool(task.get("completed_at")),
         "clean-worktree": not git(repo, "status", "--porcelain", "--untracked-files=all"),
     }
     if scenario == "analyze-incident":

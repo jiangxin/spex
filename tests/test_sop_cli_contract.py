@@ -744,8 +744,8 @@ class TestSopCliContract:
             extra_vars={
                 "spec_content_concise": "# Spec\n",
                 "current_task_description": "Do the work",
-                "current_task_id": "step-1",
-                "step_id": "step-1",
+                "current_task_id": 1,
+                "step_id": 1,
                 "commit_sha": "deadbeef",
                 "review_round": 1,
                 "review_file": "/tmp/review.json",
@@ -787,7 +787,14 @@ class TestSopCliContract:
         )
         assert "$spex_skill_dir" not in rendered
         assert "/tmp/fake-skill/scripts/spex" in rendered
-        assert 'todo-helper edit "demo-spec"' in rendered
+        assert re.search(r'todo-helper edit "demo-spec" \\\n  --id 1\b', rendered)
+        assert re.search(r'todo-helper remove "demo-spec" \\\n  --id 1\b', rendered)
+        append_examples = [
+            block for block in FENCE_RE.findall(rendered)
+            if 'todo-helper append "demo-spec"' in block
+        ]
+        assert len(append_examples) == 2
+        assert all("--id" not in block for block in append_examples)
 
     def test_no_unquoted_spec_name_in_sop_or_templates(self):
         """cli-contract rule 4: quote positional spec-name variables."""

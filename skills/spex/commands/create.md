@@ -188,8 +188,8 @@ $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
     a commit (and global `step_review` allows it)
 - Load and follow `references/todo-helper-cookbook.md` for
   `todo-helper` append/show/edit/remove examples, `details`
-  formatting, and `skip_commit` conventions. Number sequentially:
-  `step-1`, `step-2`, etc.
+  formatting, and `skip_commit` conventions. Append in execution
+  order. Transaction commit assigns the numeric IDs.
 - Writes only under `$spec_path` (`todo.json` and its backup via todo-helper).
 - ON_FAIL: use the todo transaction recovery in Failure Handling.
 

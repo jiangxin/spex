@@ -929,8 +929,8 @@ class TestFormatSpec:
         out = format_spec(spec_dir, verbose=2)
         lines = out.splitlines()
         assert "Build the API" in lines[1]
-        assert "1: Design" in out
-        assert "2: Code" in out
+        assert "step-1/2: Design" in out
+        assert "step-2/2: Code" in out
 
     def test_completed_shows_checkmark(self, tmp_path):
         spec_dir = tmp_path / "done"
@@ -1381,12 +1381,13 @@ class TestSpec:
         assert t.spec_content is None
 
     def test_todo_data_delegates(self, tmp_path):
-        todo = [{"id": "1", "name": "Step 1"}]
+        todo = [{"id": "legacy-custom-5", "name": "Step 1"}]
         (tmp_path / "todo.json").write_text(
             json.dumps(todo), encoding="utf-8",
         )
         t = Spec(name="t", path=tmp_path, meta=SpecMeta())
-        assert t.todo_data == todo
+        assert t.todo_data == [{"id": 1, "name": "Step 1"}]
+        assert json.loads((tmp_path / "todo.json").read_text()) == todo
 
     def test_todo_data_missing_returns_none(self, tmp_path):
         t = Spec(name="t", path=tmp_path, meta=SpecMeta())

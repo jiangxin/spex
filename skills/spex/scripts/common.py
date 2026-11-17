@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import shutil
+import string
 import sys
 from dataclasses import dataclass, field, fields
 from datetime import datetime
@@ -493,7 +494,28 @@ def load_todo(spec_dir: Path):
         return None
     if not isinstance(data, list) or len(data) == 0:
         return None
+    return number_todo_items(data)
+
+
+def number_todo_items(data):
+    """Assign todo IDs from list order, starting at one."""
+    for number, item in enumerate(data, 1):
+        if isinstance(item, dict):
+            item["id"] = number
     return data
+
+
+def todo_step_label(step_id, count):
+    """Format a todo position for human-readable output."""
+    return f"step-{step_id}/{count}"
+
+
+def sha_from_commit_title(commit_title):
+    """Extract the abbreviated SHA from a stored Git commit title."""
+    prefix = str(commit_title).split(":", 1)[0].strip()
+    if 4 <= len(prefix) <= 40 and all(c in string.hexdigits for c in prefix):
+        return prefix
+    return ""
 
 
 def load_and_validate_todo_json(path, allow_empty=False):
@@ -531,7 +553,7 @@ def load_and_validate_todo_json(path, allow_empty=False):
     return data
 
 
-def validate_unique_ids(data):
+def validate_unique_ids(data, *, allow_missing=False):
     """Check all items have unique non-empty 'id' fields.
 
     Args:
@@ -545,10 +567,16 @@ def validate_unique_ids(data):
         if not isinstance(item, dict):
             logger.error("Error: item[%d] is not an object.", i)
             sys.exit(1)
-        step_id = item.get("id", "")
-        if not step_id:
+        if allow_missing and "id" not in item:
+            continue
+        step_id = item.get("id")
+        if not (
+            (isinstance(step_id, str) and step_id)
+            or (type(step_id) is int and step_id > 0)
+        ):
             logger.error(
-                "Error: item[%d]: 'id' is missing or empty.", i,
+                "Error: item[%d]: 'id' must be a positive integer"
+                " or a nonempty legacy string.", i,
             )
             sys.exit(1)
         if step_id in seen_ids:
@@ -1003,9 +1031,9 @@ def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
         if todo:
             lines.append("")
             for item in todo:
-                step_id = item.get("id", "")
+                step_label = todo_step_label(item["id"], len(todo))
                 step_name = item.get("name", "")
-                lines.append(f"    {step_id}: {step_name}")
+                lines.append(f"    {step_label}: {step_name}")
 
     return "\n".join(lines)
 

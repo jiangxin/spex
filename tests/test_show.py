@@ -66,8 +66,8 @@ class TestFormatDefault:
         assert "(1/2)" in lines[0]
         assert "my-topic" in lines[0]
         assert "    A desc" in lines[1]
-        assert "    step-1: First" in output
-        assert "    step-2: Second" in output
+        assert "    step-1/2: First" in output
+        assert "    step-2/2: Second" in output
 
     def test_no_spec_no_steps(self, tmp_path):
         spec_dir = _make_topic(tmp_path)
@@ -96,7 +96,7 @@ class TestFormatVerbose:
         assert "Content here." in output
         assert "----" in output
         assert "# **TODO**" in output
-        assert "- **step-1: Do thing**" in output
+        assert "- **step-1/1: Do thing**" in output
         assert "  Detail text" in output
 
     def test_no_spec_file(self, tmp_path):

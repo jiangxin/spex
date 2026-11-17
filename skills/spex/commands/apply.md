@@ -156,8 +156,10 @@ for outer loops; Phase bodies below do not restate the diagram.
   the user's IDE root
 - Pass `$spex_root` and `$spex_worktree` to Phases 4–5 sub-agent
 - Read `$spec_path/todo.json` once before starting this spec's tasks.
-  Record the IDs and titles of steps with a populated `completed_at`
-  for the Phase 9 summary. Reset this record for each spec in `--all`.
+  Record the list positions and titles of steps with a populated
+  `completed_at` for the Phase 9 summary. Display them as
+  `step-<num>/<count>` using the total number of steps. Reset this
+  record for each spec in `--all`.
 
 ### Phase 3: Build Prompt / Resume Gate
 

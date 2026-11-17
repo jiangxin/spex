@@ -272,7 +272,7 @@ Spex 本身使用 SDD 模式开发，下面的输出是使用 `spex list --archi
 
 ```bash
 $ spex todo-helper append "$spec_name" \
-  --id step-1 --step-name "Short description" --details-from-stdin <<'DETAILS'
+  --step-name "Short description" --details-from-stdin <<'DETAILS'
 Markdown-formatted description of what this step does,
 including file changes, logic, and acceptance criteria.
 
@@ -345,19 +345,22 @@ Phase 6 review 循环：
 5. 仅在 amend 成功且 HEAD 校验通过后才标记 finding 完成。
    `step_review=false` 且仍有 open major 时为异常 STOP（不会静默跳过）。
 
+事务提交时按列表顺序分配从 1 开始的整数 ID。Spex 读取旧文件时按位置转换字符串 ID，
+并将步骤显示为 `step-<num>/<count>`。编辑或删除步骤时，用 `--id` 传入当前编号。
+
 `todo.json` 示例如下：
 
 ```json
 [
   {
-    "id": "step-1",
+    "id": 1,
     "name": "Update SKILL.md command routing and tables",
     "details": "Update SKILL.md to make `merge` the primary command...",
     "completed_at": "2026-06-17T12:08:42+08:00",
     "commit_title": "fae3c7c: docs: make merge the primary command..."
   },
   {
-    "id": "step-2",
+    "id": 2,
     "name": "Confirm docs-only checklist",
     "details": "Verify README wording without touching the repo.",
     "completed_at": "2026-06-17T12:20:00+08:00",

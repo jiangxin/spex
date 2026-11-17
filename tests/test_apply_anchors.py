@@ -169,10 +169,10 @@ class TestTodoEditAnchors:
         )
         monkeypatch.setattr(
             "sys.argv",
-            ["spex", "-d", "todo-helper", "edit", "--id", "step-4"],
+            ["spex", "-d", "todo-helper", "edit", "--id", "1"],
         )
         args = Namespace(
-            id="step-4",
+            id=1,
             step_name=None,
             details=None,
             details_from_stdin=False,
@@ -184,7 +184,7 @@ class TestTodoEditAnchors:
             todo_helper.cmd_edit(todo, args)
 
         assert (
-            "===== APPLY task committed id=step-4 sha=abc1234 ts="
+            "===== APPLY task committed id=1 sha=abc1234 ts="
             in _read_log(tmp_path)
         )
 
@@ -202,7 +202,7 @@ class TestTodoEditAnchors:
         )
         monkeypatch.setattr("sys.argv", ["spex", "-d", "todo-helper"])
         args = Namespace(
-            id="step-4",
+            id=1,
             step_name=None,
             details=None,
             details_from_stdin=False,
@@ -214,7 +214,7 @@ class TestTodoEditAnchors:
             todo_helper.cmd_edit(todo, args)
 
         content = _read_log(tmp_path)
-        assert "===== APPLY task done id=step-4 ts=" in content
+        assert "===== APPLY task done id=1 ts=" in content
         assert "task committed" not in content
 
     def test_no_anchor_when_debug_off(self, tmp_path, monkeypatch):
@@ -231,7 +231,7 @@ class TestTodoEditAnchors:
         )
         monkeypatch.setattr("sys.argv", ["spex", "todo-helper"])
         args = Namespace(
-            id="step-4",
+            id=1,
             step_name=None,
             details=None,
             details_from_stdin=False,
@@ -334,7 +334,7 @@ class TestApplyAnchorSequence:
             todo_helper.cmd_edit(
                 todo,
                 Namespace(
-                    id="step-4",
+                    id=1,
                     step_name=None,
                     details=None,
                     details_from_stdin=False,
@@ -346,7 +346,7 @@ class TestApplyAnchorSequence:
             todo_helper.cmd_edit(
                 todo,
                 Namespace(
-                    id="step-4",
+                    id=1,
                     step_name=None,
                     details=None,
                     details_from_stdin=False,
@@ -373,9 +373,9 @@ class TestApplyAnchorSequence:
         content = _read_log(spec_dir)
         begin = content.index("===== APPLY task begin id=step-4 resume_phase=implement ts=")
         committed = content.index(
-            "===== APPLY task committed id=step-4 sha=deadbee ts=",
+            "===== APPLY task committed id=1 sha=deadbee ts=",
         )
-        done = content.index("===== APPLY task done id=step-4 ts=")
+        done = content.index("===== APPLY task done id=1 ts=")
         bumped = content.index("===== APPLY review round → 2 =====\n")
         assert begin < committed < done < bumped
         assert "result=new_major_next_full_round" in content

@@ -107,7 +107,7 @@ class TestResumePhaseFromCommitTitle:
         monkeypatch.chdir(repo)
 
         data = _prompt_apply_one_task_json(monkeypatch, capsys, "resume-topic")
-        assert data["task_id"] == "step-1"
+        assert data["task_id"] == 1
         assert data["resume_phase"] == "review"
         assert data["commit_title"] == (
             "abc1234: fix: persist commit_title first"
@@ -124,7 +124,7 @@ class TestResumePhaseFromCommitTitle:
         monkeypatch.chdir(repo)
 
         data = _prompt_apply_one_task_json(monkeypatch, capsys, "resume-topic")
-        assert data["task_id"] == "step-1"
+        assert data["task_id"] == 1
         assert data["resume_phase"] == "implement"
         assert data["commit_title"] == ""
 
