@@ -19,6 +19,7 @@ apply-one-step single-step STOP + conditional post-action.
 
 ## Phase 2: Validate Branch
 
+- Apply the Todo status recovery gate below before running precheck.
 - CMD:
 
 ```bash
@@ -52,6 +53,9 @@ $spex_skill_dir/scripts/spex config
   sub-agent
 
 ## Phase 3: Build Prompt / Resume Gate
+
+- Before the caller runs `prompt apply-one-task`, apply the Todo
+  status recovery gate below.
 
 Caller runs `prompt apply-one-task` (and handles `"all_done"` /
 command-specific post-action routing). Then parse JSON stdout and
@@ -209,16 +213,30 @@ git rev-parse --short HEAD
   Persist **before** any return to main or residual-dirty STOP:
   `commit_title` is the only resume source of truth — if it is
   missing, the next `prompt apply-one-task` resumes at
-  `implement` and re-implements the step (likely a second
-  commit):
+  `implement` and re-implements the step (likely a second commit).
+  Use a short transaction for this edit:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
   --id "$current_task_id" --commit-title "$commit_title"
 ```
 
-- ON_FAIL of persist: report error -> STOP. Do **not** report
-  `outcome=committed`
+- After the edit succeeds:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+- ON_FAIL of start, edit, or commit: follow Todo status transaction
+  failures below and STOP. Report the task ID and existing Git commit
+  title. Resolve any backup and verify the recorded title before
+  resuming apply. If the title is missing, repeat only the transaction
+  for saving the existing title. Withhold a successful handoff until
+  persistence succeeds.
 - Returning to the main session is only allowed **after** persist
   succeeds
 - Recompute `$dirty` via the same Phase 4 dirty CLI
@@ -231,9 +249,10 @@ $spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
 
 ## Phases 4–5 execution-failure retry
 
-ON_FAIL Phases 4–5 **execution** errors only (not intentional
-Phase 4 STOP — those are **not** retryable): report + retry
-**once**, with retry preconditions:
+ON_FAIL Phases 4–5 **execution** errors only before a Git commit
+succeeds. After a Git commit, use Phase 5 persistence recovery.
+Intentional Phase 4 STOP is **not** retryable. For eligible failures,
+report and retry **once** with these preconditions:
 
 1. Run `apply-helper dirty --json --name "$spec_name"` to
    capture current state
@@ -254,7 +273,13 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
 
 - Only after Phase 6 finishes successfully, or when Phase 4/5
   skipped review because `$did_commit` is false. Set
-  **`completed_at`** (step not done until this runs):
+  **`completed_at`** using a new short transaction. The step is
+  complete after that transaction commits.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
+
 - IF `$did_commit`:
   - Refresh `$commit_title` if needed (from todo `commit_title`,
     or `git log -1 --pretty="%h: %s"`) before the edit below —
@@ -274,4 +299,39 @@ $spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
   --id "$current_task_id" --completed-at now
 ```
 
-- ON_FAIL: report error -> STOP
+- After either edit succeeds:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+- ON_FAIL of start, edit, or commit: follow Todo status transaction
+  failures below and STOP. On rollback, Phase 5's separately committed
+  `commit_title` remains available for review on resume.
+
+## Todo status recovery gate
+
+- If `$spec_path/todo.json.lock` exists, stop before building a task
+  prompt or treating the spec as complete. Report the backup path and
+  the `todo-helper transaction commit` and
+  `todo-helper transaction rollback` recovery commands.
+- Resolve the open transaction before continuing. Use commit when the
+  intended edit succeeded and rollback to restore the saved task list.
+  Check the stored commit title against the existing Git commit before
+  resuming a Phase 5 persistence failure.
+
+## Todo status transaction failures
+
+- Execute each command separately. Continue only after a zero exit.
+- Start failure: report stderr and follow the Todo status recovery
+  gate for an existing backup. Stop before editing.
+- Edit failure or abandonment after a successful start and before
+  attempting commit: report the error if any, then roll back and stop.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
+```
+
+- Commit or rollback failure: report stderr, the backup path, and
+  the failed command for retry. Leave the backup in place. Retry
+  the failed final operation before starting another transaction.

@@ -169,6 +169,14 @@ EOF
 
 ### Phase 6: Plan Implementation Steps
 
+- Start the todo transaction before writing any steps:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
+
+- IF non-zero exit -> follow the start failure rule in
+  `references/plan-command-common.md` and STOP.
 - From `$spec_path/spec.md`, break work into incremental steps.
   Each coding step independently committable + verifiable.
 - Hard principles (keep in-command; examples in cookbook only):
@@ -182,7 +190,8 @@ EOF
   `todo-helper` append/show/edit/remove examples, `details`
   formatting, and `skip_commit` conventions. Number sequentially:
   `step-1`, `step-2`, etc.
-- Writes only under `$spec_path` (`todo.json` via todo-helper)
+- Writes only under `$spec_path` (`todo.json` and its backup via todo-helper).
+- ON_FAIL: use the todo transaction recovery in Failure Handling.
 
 ### Phase 7: Post-Action
 
@@ -195,7 +204,16 @@ $spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
 - With debug enabled, appends a post-action anchor to
   `$spec_path/debug.log` automatically; the agent does not need to
   intervene.
-- ON_FAIL: fix JSON format in `todo.json` -> re-run until validation OK
+- ON_FAIL: correct recoverable errors within the open transaction and
+  re-run post-action. If giving up, follow Failure Handling.
+- After post-action exits successfully, commit the todo transaction:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+- IF non-zero exit -> follow the commit failure rule in
+  `references/plan-command-common.md` and STOP before output.
 
 ### Phase 8: Output
 
@@ -242,13 +260,15 @@ $spex_skill_dir/scripts/spex create-helper discard-incomplete --name "$spec_name
 ```
 
   Refuses to delete directories that already have `spec.md`.
-- ON_FAIL Phase 7 post-action -> fix `todo.json` -> re-run until OK
+
+- Todo transaction recovery: from successful Phase 6 start until
+  successful Phase 7 commit, follow the transaction failure and
+  abandonment rules in `references/plan-command-common.md`.
 
 ## STOP / Outputs
 
-- Writes: `$spec_path/spec.md`, `$spec_path/todo.json`,
-  `$spec_path/meta.json` (+ optional `assets/`) only — never outside
-  `$spec_path` (plan-command-common whitelist)
+- Writes: `spec.md`, `todo.json`, its temporary backup, and `meta.json`
+  (plus optional `assets/`) under `$spec_path` per the shared whitelist.
 - Phase 8: human summary + trailing fenced `json spex-result`
   (`spec_name`, `spec_path`); callers MUST parse the last fenced
   `json` / `json spex-result` block

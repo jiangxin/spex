@@ -42,6 +42,40 @@ Aligned with create Phase 6 and `templates/modify-todo.md`. Do
 
 Prefer `--details-from-stdin` + heredoc for multi-line details.
 
+## Transactions
+
+Start before the first edit in a batch.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
+
+Commit after the batch passes validation.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+Roll back if the batch is abandoned.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
+```
+
+`start` saves the original todo file in `todo.json.lock`. An absent or
+blank todo file produces an empty backup. `commit` deletes the backup.
+`rollback` restores the backup or removes both files if it is empty.
+Serialize writes to a given todo file. An existing backup blocks another
+start and can be committed or rolled back by its owning transaction.
+
+## Remove unfinished steps
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
+```
+
+Completed entries keep their existing values and order.
+
 ## Append
 
 **Coding step** (default — omit `--skip-commit`):

@@ -476,6 +476,12 @@ class TestCreatePlanOnlySop:
         _index(phase6, "Small batches")
         _index(phase6, "skip_commit")
         _index(phase6, "examples in cookbook")
+        assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
+        phase7 = _h3_section(text, "Phase 7: Post-Action")
+        assert _index(phase7, "create-helper post-action") < _index(
+            phase7, "transaction commit"
+        )
+        _index(phase7, "After post-action exits successfully")
 
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
@@ -605,6 +611,18 @@ class TestModifyPlanOnlySop:
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         _index(phase3, "Load and follow `references/spec-assets.md`")
 
+    def test_todo_transaction_wraps_modify(self):
+        text = _read(MODIFY_MD)
+        phase4 = _h3_section(text, "Phase 4: Build Prompt")
+        assert _index(phase4, "transaction start") < _index(
+            phase4, "todo-helper remove-undone"
+        ) < _index(phase4, "prompt modify-spec")
+        phase8 = _h3_section(text, "Phase 8: Post-Action")
+        assert _index(phase8, "create-helper post-action") < _index(
+            phase8, "transaction commit"
+        )
+        _index(phase8, "After post-action exits successfully")
+
     def test_phase5_readonly_updates_spec_md_only(self):
         phase5 = _h3_section(_read(MODIFY_MD), "Phase 5: Modify spec.md")
         _index(phase5, "update **only** `$spec_path/spec.md`")
@@ -633,16 +651,17 @@ class TestModifyPlanOnlySop:
         section = _h2_section(_read(MODIFY_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "plan-command-common.md")
+        _index(section, "Phase 4")
         _index(section, "Phase 5")
         _index(section, "Phase 7")
         _index(section, "immediate STOP")
-        _index(section, "roll")
-        _index(section, "`--remove-undone` recovery")
-        _index(section, "Phase 4")
-        _index(section, "git restore")
-        _index(section, "half-done")
+        _index(section, "roll back and STOP")
+        assert "git restore" not in section
         shared = _read(PLAN_COMMAND_COMMON)
-        _index(shared, "roll back")
+        recovery = _h2_section(shared, "Todo transaction failure handling")
+        _index(recovery, "After a successful start, roll back")
+        _index(recovery, "todo-helper transaction rollback")
+        _index(recovery, "backup left in place")
         _index(shared, "`$spec_path`")
 
 
@@ -975,6 +994,7 @@ class TestApplyStepReviewSop:
         _index(phase5, "`$did_commit`")
         _index(phase5, "Leftover dirty paths poison")
         persist = _index(phase5, "--commit-title")
+        commit = _index(phase5, "transaction commit")
         recompute = _index(phase5, "Recompute `$dirty`")
         outcome = _index(phase5, "outcome=committed")
         assert persist < recompute, (
@@ -985,6 +1005,7 @@ class TestApplyStepReviewSop:
         )
         _index(phase5, "only allowed **after** persist")
         _index(phase5, "do **not** skip persisting on residual dirty")
+        assert _index(phase5, "transaction start") < persist < commit < recompute
 
         # Phase 6 is Load-only pointer; STOP/6c live in review-loop
         phase6 = _h2_section(phases, "Phase 6: Review Loop")
@@ -996,6 +1017,15 @@ class TestApplyStepReviewSop:
         phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
         _index(phase7, "`$did_commit`")
         _index(phase7, "Refresh `$commit_title` if needed")
+        start = _index(phase7, "transaction start")
+        commit = _index(phase7, "todo-helper transaction commit")
+        assert phase7.count("--completed-at") == 2
+        assert (
+            start < phase7.index("--completed-at") < phase7.rindex("--completed-at") < commit
+        )
+        failures = _h2_section(phases, "Todo status transaction failures")
+        _index(failures, "transaction rollback")
+        _index(failures, "before starting another transaction")
 
         # Handoff decision table (apply main session only)
         _index(handoff, "outcome=skip_commit")
@@ -1386,6 +1416,27 @@ class TestApplyOneStepCompletedSpecAndDedupe:
             # Named recovery must not leave empty-name [] without STOP
             assert phase1.index("empty / missing `$spec_name`") > phase1.index(
                 "--must-done"
+            )
+
+    def test_apply_stops_for_unresolved_todo_transaction(self):
+        phases = _read(APPLY_TASK_PHASES)
+        gate = _h2_section(phases, "Todo status recovery gate")
+        _index(gate, "`$spec_path/todo.json.lock` exists")
+        _index(gate, "stop before building a task")
+        _index(gate, "todo-helper transaction commit")
+        _index(gate, "todo-helper transaction rollback")
+        phase2 = _h2_section(phases, "Phase 2: Validate Branch")
+        assert _index(phase2, "Todo status recovery gate") < _index(
+            phase2, "apply-helper precheck"
+        )
+
+        for path in (APPLY_MD, APPLY_ONE_STEP_MD):
+            text = _read(path)
+            phase1 = _h3_section(text, "Phase 1: Resolve Spec")
+            assert _index(phase1, "Todo status recovery gate") < _index(phase1, "post-action")
+            phase3 = _h3_section(text, "Phase 3: Build Prompt / Resume Gate")
+            assert _index(phase3, "Todo status recovery gate") < _index(
+                phase3, "prompt apply-one-task"
             )
 
     def test_apply_one_step_differences_table_and_helper_remaining(self):

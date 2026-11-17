@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -70,6 +71,59 @@ def _create_topic(sandbox, name, *, done=False):
         "spec_name": name,
         "spec_path": str(spec_dir),
     }
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+@pytest.mark.parametrize("event", ["create", "modify"])
+@pytest.mark.parametrize("finish", ["commit", "rollback"])
+def test_plan_todo_transaction(sandbox, event, finish):
+    spec = _create_topic(sandbox, "plan-transaction")
+    name = spec["spec_name"]
+    todo = Path(spec["spec_path"]) / "todo.json"
+    backup = todo.with_suffix(".json.lock")
+    if event == "create":
+        todo.unlink()
+        original = b""
+    else:
+        items = _make_todo_json(done=True)
+        items[1]["completed_at"] = ""
+        items[1]["commit_title"] = ""
+        original = json.dumps(items, indent=4).encode()
+        todo.write_bytes(original)
+
+    def spex(*args):
+        result = run_spex(*args, sandbox=sandbox)
+        assert result.returncode == 0, result.stderr
+
+    spex("todo-helper", "transaction", "start", name)
+    assert backup.read_bytes() == original
+    if event == "modify":
+        spex("todo-helper", "remove-undone", name)
+        assert [item["id"] for item in json.loads(todo.read_bytes())] == ["step-1"]
+
+    new_id = "step-1" if event == "create" else "step-2"
+    spex(
+        "todo-helper", "append", name, "--id", new_id,
+        "--step-name", "New step", "--details", "New details",
+    )
+    updated = todo.read_bytes()
+    if finish == "rollback":
+        todo.write_text("[invalid", encoding="utf-8")
+    post_action = run_spex(
+        "create-helper", "post-action", "--name", name, "--event-type", event,
+        sandbox=sandbox,
+    )
+    assert post_action.returncode == (0 if finish == "commit" else 1), post_action.stderr
+    assert backup.read_bytes() == original
+    spex("todo-helper", "transaction", finish, name)
+    assert not backup.exists()
+    if finish == "commit":
+        assert todo.read_bytes() == updated
+    elif event == "modify":
+        assert todo.read_bytes() == original
+    else:
+        assert not todo.exists()
 
 
 @pytest.mark.e2e

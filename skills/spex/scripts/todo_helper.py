@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""CRUD operations for JSON todo files."""
+"""CRUD and transaction operations for JSON todo files."""
 
 from __future__ import annotations
 
 import json
+import os
 import string
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
 from cli import ArgumentParser
 from common import (
     atomic_write_json,
+    filter_completed_todos,
     load_and_validate_todo_json,
     local_iso_timestamp,
     logger,
@@ -253,6 +256,53 @@ def cmd_remove(todo_path, args):
     logger.info("Removed '%s'.", args.id)
 
 
+def cmd_remove_undone(todo_path):
+    """Remove incomplete entries, preserving completed entries in order."""
+    data = load_todo_json(todo_path)
+    completed = filter_completed_todos(data)
+    removed = len(data) - len(completed)
+    if removed:
+        atomic_write_json(todo_path, completed)
+        logger.info("Removed %d unfinished step(s).", removed)
+
+
+def _start_transaction(todo_path, backup_path):
+    """Publish a complete snapshot without replacing an existing backup."""
+    try:
+        snapshot = todo_path.read_bytes()
+    except FileNotFoundError:
+        snapshot = b""
+
+    with tempfile.NamedTemporaryFile(
+        dir=backup_path.parent, prefix=f".{backup_path.name}.",
+    ) as temporary:
+        if snapshot.decode("utf-8", errors="surrogateescape").strip():
+            temporary.write(snapshot)
+            temporary.flush()
+        os.link(temporary.name, backup_path)
+
+
+def cmd_transaction(todo_path, action):
+    """Start, commit, or roll back a todo file transaction."""
+    backup_path = todo_path.with_name(f"{todo_path.name}.lock")
+    try:
+        if action == "start":
+            _start_transaction(todo_path, backup_path)
+        elif action == "commit":
+            backup_path.unlink()
+        elif backup_path.stat().st_size:
+            backup_path.replace(todo_path)
+        else:
+            todo_path.unlink(missing_ok=True)
+            backup_path.unlink()
+    except OSError as exc:
+        logger.error(
+            "Error: cannot %s todo transaction using '%s': %s",
+            action, backup_path, exc,
+        )
+        sys.exit(1)
+
+
 def _wrap_field(label, text, indent, width=10**9):
     """Wrap a sub-bullet field."""
     prefix = f"{indent}- {label}: "
@@ -445,6 +495,8 @@ def _hoist_locator_flags(argv):
                 continue
         remaining.append(arg)
         i += 1
+    if remaining and not remaining[0].startswith("-"):
+        remaining[0] = remaining[0].replace("_", "-")
     return hoisted + remaining
 
 
@@ -454,7 +506,7 @@ def _build_parser():
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, edit, remove, show)."
+            " (validate, append, edit, remove, remove-undone, show, transaction)."
         ),
     )
     parser.add_argument(
@@ -561,6 +613,11 @@ def _build_parser():
         "--id", required=True, help="Task ID to remove",
     )
 
+    p_remove_undone = subs.add_parser(
+        "remove-undone",
+        help="Remove all unfinished steps",
+    )
+
     # show
     p_show = subs.add_parser(
         "show",
@@ -600,7 +657,19 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
-    for subparser in (p_validate, p_append, p_edit, p_remove, p_show):
+    p_transaction = subs.add_parser(
+        "transaction",
+        description=(
+            "Start by backing up the todo file to a .lock file,"
+            " commit by deleting the backup, or roll back using the backup."
+        ),
+        help="Start, commit, or roll back a todo transaction",
+    )
+    p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
+
+    for subparser in (
+        p_validate, p_append, p_edit, p_remove, p_remove_undone, p_show, p_transaction,
+    ):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
             help="Spec name (omit when using --todo-file)",
@@ -640,8 +709,12 @@ def main(argv=None):
         cmd_edit(todo_path, args)
     elif args.subcmd == "remove":
         cmd_remove(todo_path, args)
+    elif args.subcmd == "remove-undone":
+        cmd_remove_undone(todo_path)
     elif args.subcmd == "show":
         cmd_show(todo_path, args)
+    elif args.subcmd == "transaction":
+        cmd_transaction(todo_path, args.action)
 
 
 if __name__ == "__main__":

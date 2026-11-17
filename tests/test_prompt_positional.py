@@ -53,14 +53,22 @@ def test_empty_selector_never_dispatches(command, monkeypatch, capsys):
     dispatch = Mock()
     monkeypatch.setattr(prompt, handler, dispatch)
     args = [command, ""]
-    if command == "modify-spec":
-        args.append("--remove-undone")
     with pytest.raises(SystemExit) as error:
         prompt.main(args)
     assert error.value.code == 2
     assert "Spec name must not be empty" in capsys.readouterr().err
     dispatch.assert_not_called()
     assert parse_name_from_argv(["spex", "--debug", "prompt", *args]) is None
+
+
+def test_modify_spec_rejects_removed_option(monkeypatch, capsys):
+    dispatch = Mock()
+    monkeypatch.setattr(prompt, "_do_modify_spec", dispatch)
+    with pytest.raises(SystemExit) as error:
+        prompt.main(["modify-spec", "topic", "--remove-undone"])
+    assert error.value.code == 2
+    assert "unrecognized arguments: --remove-undone" in capsys.readouterr().err
+    dispatch.assert_not_called()
 
 
 @pytest.mark.parametrize("spec_name", [None, "topic", "apply-helper"])

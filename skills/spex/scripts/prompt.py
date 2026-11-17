@@ -12,7 +12,6 @@ from typing import Optional
 
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
-    atomic_write_json,
     get_spex_root,
     get_template,
     load_meta,
@@ -22,7 +21,6 @@ from common import (
     resolve_spec_dir,
     strip_front_matter,
 )
-from common import filter_completed_todos as _filter_completed_todos
 from config import get_project_context
 from template import TemplateError
 from template import render as render_template
@@ -1008,10 +1006,6 @@ def _build_parser():
         help="Read raw text from stdin as prompt_context",
     )
     p.add_argument(
-        "--remove-undone", action="store_true", dest="remove_undone",
-        help="Remove undone tasks from todo.json before rendering",
-    )
-    p.add_argument(
         "--json", action="store_true", dest="json_mode",
         help="Output JSON with rendered prompt",
     )
@@ -1455,19 +1449,6 @@ def _do_modify_spec(args):
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
-        # Side-effect: remove undone tasks from todo.json before building metadata
-        if args.remove_undone:
-            spec_dir = resolve_spec_dir(args.name)
-            todo_path = spec_dir / "todo.json"
-            if todo_path.exists():
-                try:
-                    data = json.loads(todo_path.read_text(encoding="utf-8"))
-                    if isinstance(data, list):
-                        completed = _filter_completed_todos(data)
-                        atomic_write_json(todo_path, completed)
-                except json.JSONDecodeError:
-                    pass  # Silently skip if JSON is invalid
-
         metadata = _build_metadata("modify-spec", args.name)
         if extra_vars:
             metadata.update(extra_vars)
@@ -1503,18 +1484,6 @@ def _do_modify_todo(args):
         metadata = _build_metadata("modify-todo", args.name)
         if extra_vars:
             metadata.update(extra_vars)
-
-        # Side-effect: clean undone todos from todo.json
-        spec_dir = resolve_spec_dir(args.name)
-        todo_path = spec_dir / "todo.json"
-        if todo_path.exists():
-            try:
-                data = json.loads(todo_path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    completed = _filter_completed_todos(data)
-                    atomic_write_json(todo_path, completed)
-            except json.JSONDecodeError:
-                pass  # Silently skip if JSON is invalid
 
         rendered = render_prompt("modify-todo", args.name, metadata=metadata)
     except FileNotFoundError as e:

@@ -512,11 +512,12 @@ class TestSopCliContract:
         """Real apply.md one-liner must be checked (no $spec_name)."""
         path = SPEX_ROOT / "commands" / "apply.md"
         tails = {t for _, t in _extract_invocations(path)}
-        assert "scripts/spex list --json --must-undone" in tails
+        tail = "scripts/spex list --json --must-undone-or-locked"
+        assert tail in tails
         errors = _check_invocation(
             "commands/apply.md",
-            'CMD: `$spex_skill_dir/scripts/spex list --json --must-undone`',
-            "scripts/spex list --json --must-undone",
+            f"CMD: `$spex_skill_dir/{tail}`",
+            tail,
         )
         assert errors == []
 
