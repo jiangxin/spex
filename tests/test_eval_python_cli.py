@@ -22,7 +22,8 @@ def test_python_cli_smoke_covers_each_command_and_has_anchored_rubrics():
     cases = select_cases(EVAL / "suites", suite="python-cli", tag="smoke")
     rubrics = json.loads((SUITE / "rubrics.json").read_text(encoding="utf-8"))
     assert [case.id for case in cases] == ["create", "modify", "apply", "apply-one-step"]
-    assert rubrics["version"] == 1
+    assert rubrics["version"] == 2
+    assert rubrics["cases"]["apply-review-failure"][0]["requires"] == ["reply"]
     assert set(rubrics["cases"]) == {
         case.id for case in select_cases(EVAL / "suites", suite="python-cli")
     }

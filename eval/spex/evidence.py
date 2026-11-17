@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
+from datetime import timedelta
 from pathlib import Path
 
+from performance import timestamp
 from workspace import Trial, git
 
 
@@ -73,6 +77,9 @@ def persist_turn(
     reply: str | None = None,
     events: list | None = None,
     acceptance: dict | None = None,
+    native: dict | None = None,
+    log_checkpoint: dict | None = None,
+    supplemental: list | None = None,
 ) -> dict:
     """Persist a complete evidence bundle outside the model worktree."""
     artifacts = {
@@ -81,6 +88,9 @@ def persist_turn(
         "reply": reply,
         "events": events,
         "acceptance": acceptance,
+        "spex-trace": native,
+        "log-checkpoint": log_checkpoint,
+        "adapter-trace": supplemental,
     }
     entries = {
         kind: {"id": f"turn-{turn}:{kind}", "sha256": digest(encode(value)), "value": value}
@@ -88,8 +98,10 @@ def persist_turn(
     }
     bundle = {"turn": turn, "artifacts": entries}
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / f"turn-{turn}.json").open("xb") as stream:
+    with tempfile.NamedTemporaryFile(dir=directory) as stream:
         stream.write(encode(bundle) + b"\n")
+        stream.flush()
+        os.link(stream.name, directory / f"turn-{turn}.json")
     return bundle
 
 
@@ -125,11 +137,24 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
     previous = before["artifacts"]["state"]
     current = after["artifacts"]["state"]
     trace = after["artifacts"].get("events")
+    native = after["artifacts"].get("spex-trace")
+    supplement = after["artifacts"].get("adapter-trace")
     old, new = previous["value"], current["value"]
     done, now = completed(old), completed(new)
     preserved = all(now.get(task) == value for task, value in done.items())
     trace_gate = check in {"no-post-action", "post-action", "review-failure-stop", "resumed-review"}
-    if check == "resumed-review":
+    post_gate = trace_gate and check != "resumed-review"
+    host_post = [
+        event for event in (trace["value"] if trace else [])
+        if event.get("action") == "apply.post-action"
+        and isinstance(event.get("spec"), str)
+        and event["spec"] in new["specs"]
+        and type(event.get("exit_code")) is int
+    ] if post_gate and native is not None else []
+    if trace_gate and native is not None:
+        observed = host_post + (supplement["value"] if supplement else [])
+        passed = native_check(check, old, new, after, native["value"], observed)
+    elif check == "resumed-review":
         passed = resumed_review(old, now, trace)
     elif trace_gate:
         passed = trace_check(check, trace, preserved and now == done)
@@ -148,8 +173,12 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
             "no-progress": preserved and now == done,
         }[check]
     refs = [previous["id"], current["id"]]
-    if trace_gate and trace is not None:
+    if trace_gate and trace is not None and (native is None or host_post):
         refs.append(trace["id"])
+    if trace_gate and native is not None:
+        refs.append(native["id"])
+    if post_gate and supplement:
+        refs.append(supplement["id"])
     verdict = "insufficient_evidence" if passed is None else "pass" if passed else "fail"
     return {
         "check_id": check,
@@ -160,6 +189,80 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
     }
 
 
+def native_check(
+    check: str, old: dict, new: dict, after: dict, trace: dict, extra_post: list[dict],
+) -> bool | None:
+    events = trace["events"]
+    complete = not trace["gaps"]
+    cli_complete = not (
+        set(trace["gaps"]) - {"incomplete_review_log", "unpaired_review_end"}
+    )
+    post = [event for event in events if event["action"] == "apply.post-action"]
+    if check == "no-post-action":
+        return False if post or extra_post else True if cli_complete else None
+    if check == "post-action":
+        names = new["specs"].keys()
+        user_input = after["artifacts"].get("input", {}).get("value", "")
+        targets = names & set(user_input.split())
+        if not targets:
+            done = completed(old)
+            targets = {spec for (spec, step), task in completed(new).items()
+                       if done.get((spec, step)) != task}
+        if not targets and len(names) == 1:
+            targets = set(names)
+        succeeded = {event["spec"] for event in post if event.get("exit_code") == 0}
+        if targets and targets <= succeeded:
+            return True
+        supplemental_success = {event["spec"] for event in extra_post if event["exit_code"] == 0}
+        if targets and targets <= succeeded | supplemental_success:
+            return None if cli_complete else True
+        return False if targets and cli_complete else None
+    if check == "resumed-review":
+        result = resumed_review(old, completed(new), {"value": events}, native=True)
+        return result if result is not None else False if complete else None
+
+    old_todos, new_todos = (
+        {name: artifacts["todo.json"] for name, artifacts in state["specs"].items()
+         if "todo.json" in artifacts}
+        for state in (old, new)
+    )
+    unchanged = old_todos == new_todos and all(
+        old[key] == new[key] for key in ("head", "status", "index", "files")
+    )
+    if not unchanged or post or extra_post:
+        return False
+    pending = {key for key, task in spec_tasks(old) if not task.get("completed_at")}
+    failures = [event for event in events
+                if event["action"] == "apply.review-command" and event.get("stage") == "status"
+                and type(event.get("exit_code")) is int and event["exit_code"] != 0
+                and (event["spec"], event.get("step")) in pending]
+    if not failures:
+        return False if complete else None
+    failure = failures[0]
+    failed_at = timestamp(failure.get("at"))
+    for event in events:
+        if not (event["action"].startswith("apply.") or event.get("command") in {
+            "apply-helper", "prompt", "todo-helper",
+        }):
+            continue
+        if event["log"] == failure["log"]:
+            if event["sequence"] > failure["sequence"]:
+                return False
+            continue
+        ended_at = timestamp(event.get("at"))
+        if ended_at is None or failed_at is None:
+            complete = False
+            continue
+        # Legacy BEGIN records are stamped when the command block is flushed.
+        # Subtract the measured duration to establish a lower bound on start.
+        started_at = ended_at - timedelta(milliseconds=event.get("duration_ms") or 0)
+        if started_at >= failed_at + timedelta(seconds=1):
+            return False
+        if ended_at >= failed_at:
+            complete = False
+    return True if complete else None
+
+
 def same_commit(left: str, right: str) -> bool:
     return bool(
         re.fullmatch(r"[0-9a-f]{7,40}", left)
@@ -168,7 +271,9 @@ def same_commit(left: str, right: str) -> bool:
     )
 
 
-def resumed_review(before: dict, completed_after: dict, trace: dict | None) -> bool | None:
+def resumed_review(
+    before: dict, completed_after: dict, trace: dict | None, *, native: bool = False,
+) -> bool | None:
     if trace is None:
         return None
     seed = before["head"]
@@ -184,21 +289,30 @@ def resumed_review(before: dict, completed_after: dict, trace: dict | None) -> b
     final_sha = str(final.get("commit_title", "")).partition(":")[0]
     events = [
         event for event in trace["value"]
-        if event.get("action") == "apply.review" and event.get("exit_code") == 0
+        if event.get("action") == "apply.review" and (native or event.get("exit_code") == 0)
         and event.get("spec") == spec
+        and (not native or event.get("step") == step)
     ]
     start = next((i for i, event in enumerate(events) if event.get("mode") == "full"), None)
     if start is None:
-        return False
+        if not native and any(
+            event.get("action") == "apply.review-command" and event.get("spec") == spec
+            for event in trace["value"]
+        ):
+            return None
+        return None if native else False
     if not same_commit(seed, events[start].get("commit", "")):
         return False
+    if events[start].get("exit_code") != 0:
+        return None
     current_sha = seed
     for event in events[start + 1:]:
         if event.get("step") == step and "new_commit" in event:
             if not same_commit(current_sha, event.get("base_commit", "")):
                 return False
             current_sha = event["new_commit"]
-    return same_commit(current_sha, final_sha)
+    matches = same_commit(current_sha, final_sha)
+    return None if native and not matches else matches
 
 
 def trace_check(check: str, trace: dict | None, no_progress: bool) -> bool | None:
@@ -217,7 +331,7 @@ def trace_check(check: str, trace: dict | None, no_progress: bool) -> bool | Non
         return False
     review_unknown = False
     for index, event in enumerate(events):
-        if event.get("action") != "apply.review":
+        if event.get("action") not in {"apply.review", "apply.review-command"}:
             continue
         exit_code = event.get("exit_code")
         if type(exit_code) is not int:

@@ -65,6 +65,44 @@ def test_packet_blinds_trial_metadata_and_omits_private_state(tmp_path):
     assert packet["evidence"]["turn-1:state"]["specs"]["spec"]["spec.md"].count("[REDACTED]") == 2
 
 
+def test_packet_distinguishes_historical_commands_from_completed_reviews(tmp_path):
+    command = {"action": "apply.review", "mode": "full", "commit": "abc1234", "exit_code": 0}
+    persist_turn(tmp_path, 1, {"specs": {}}, events=[command], native={
+        "events": [
+            {**command, "action": "apply.review-command"},
+            {**command, "commit": "def5678", "step": "step-1"},
+            {**command, "commit": "def9999", "exit_code": None},
+        ],
+        "gaps": ["incomplete_review_log"],
+    })
+    packet = packet_for(tmp_path, {}, [CRITERION])
+    assert packet["evidence"]["turn-1:events"] == [{**command, "action": "apply.review-command"}]
+    assert packet["evidence"]["turn-1:spex-trace"] == {
+        "completed_reviews": [{"step": "step-1", "mode": "full", "commit": "def5678"}],
+        "skipped_reviews": [],
+        "gaps": ["incomplete_review_log"],
+    }
+
+
+def test_lifecycle_can_cite_only_the_declared_prior_review_trace(tmp_path):
+    persist_turn(tmp_path, 1, {"specs": {}}, reply="Prior reply", native={
+        "events": [{"action": "apply.review", "mode": "full", "exit_code": 0}],
+        "gaps": [],
+    })
+    persist_turn(tmp_path, 2, {"specs": {}}, reply="Completed")
+    criterion = {**CRITERION, "turn": 2, "requires": ["reply"], "review_context_turns": [1]}
+    packet = packet_for(tmp_path, {}, [criterion])
+    assert "turn-1:reply" not in packet["evidence"]
+    row = {
+        "criterion_id": criterion["id"], "score": 2, "verdict": "pass",
+        "reason": "Both turns support the result.",
+        "evidence_refs": ["turn-2:reply", "turn-1:spex-trace"],
+    }
+    assert apply_grades(packet, json.dumps([row]))["results"] == [row]
+    packet["criteria"] = [{**criterion, "review_context_turns": []}]
+    assert apply_grades(packet, json.dumps([row]))["error"] == "judge_invalid_output"
+
+
 @pytest.mark.parametrize("changes", [
     {"criterion_id": "unknown"}, {"score": 3}, {"evidence_refs": ["turn-2:state"]},
     {"evidence_refs": ["turn-1:reply"]},

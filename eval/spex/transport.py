@@ -13,6 +13,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from performance import IDENTIFIER
 from workspace import Trial
 
 SESSION_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,127}")
@@ -57,12 +58,29 @@ def command_event(item: dict) -> dict:
         if helper == "apply-helper" and re.match(r"\s+post-action\b", args):
             action = "apply.post-action"
         elif helper == "review-helper" or helper == "prompt" and "apply-review" in args:
-            action = "apply.review"
+            action = "apply.review-command"
         else:
             action = "apply.workflow"
     event = {"action": action, "exit_code": item.get("exit_code")}
-    if action == "apply.review":
+    if action == "apply.post-action":
+        spec = post_action_target(command)
+        if spec is not None:
+            event["spec"] = spec
+    elif action == "apply.review-command":
         event.update(review_arguments(command))
+        if helper == "prompt" and event.get("spec") and event["exit_code"] == 0:
+            output = item.get("aggregated_output", "")
+            if isinstance(output, str):
+                for line in reversed(output.splitlines()):
+                    if not line.lstrip().startswith("{"):
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(payload, dict) and payload.get("skipped") is True:
+                        event["skipped"] = True
+                    break
     return event
 
 
@@ -76,6 +94,30 @@ def shell_command(command: str) -> str:
             and words[1] in {"-c", "-lc"}):
         return words[2]
     return command
+
+
+def post_action_target(command: str) -> str | None:
+    """Extract the target of a standalone Spex post-action command."""
+    line = shell_command(command)
+    if len(line.splitlines()) != 1:
+        return None
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        words = list(lexer)
+    except ValueError:
+        return None
+    if (len(words) not in {4, 5} or Path(words[0]).name != "spex"
+            or words[1:3] != ["apply-helper", "post-action"]):
+        return None
+    if len(words) == 5:
+        if words[3] != "--name":
+            return None
+        target = words[4]
+    else:
+        target = words[3].removeprefix("--name=")
+    return target if IDENTIFIER.fullmatch(target) else None
 
 
 def review_arguments(command: str) -> dict:
@@ -94,15 +136,35 @@ def review_arguments(command: str) -> dict:
             return {}
     if len(words) < 3 or Path(words[0]).name != "spex":
         return {}
+    options = {
+        "--name": "spec", "--commit": "commit", "--mode": "mode", "--step": "step",
+        "--base-commit": "base_commit", "--new-commit": "new_commit",
+        "--output": None, "-o": None, "--spex-root": None, "--workdir": None,
+        "--ids": None, "--evidence": None,
+    }
     if words[1:3] == ["prompt", "apply-review"]:
-        options = {"--name": "spec", "--commit": "commit", "--mode": "mode"}
-    elif words[1] == "review-helper" and "complete-batch" in words:
-        options = {"--name": "spec", "--step": "step", "--base-commit": "base_commit",
-                   "--new-commit": "new_commit"}
+        stage = "prompt"
+        words = words[3:]
+    elif words[1] == "review-helper":
+        stage = next((word for word in words[2:]
+                      if word in {"status", "entry", "complete-batch", "finish-pass"}), None)
+        if stage is None:
+            return {}
+        words = words[2:]
+        words.remove(stage)
     else:
         return {}
-    return {key: words[index + 1] for index, word in enumerate(words[:-1])
-            if (key := options.get(word))}
+    result = {"stage": stage}
+    args = iter(words)
+    for word in args:
+        flag, separator, value = word.partition("=")
+        if flag in options:
+            value = value if separator else next(args, "")
+            if value and options[flag]:
+                result[options[flag]] = value
+        elif not word.startswith("-") and word not in {"<<", "<<-"}:
+            result.setdefault("spec", word)
+    return result
 
 
 def failure_reason(output: str) -> str:

@@ -49,6 +49,7 @@ def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
     }
     if error:
         record["error"] = error if re.fullmatch(r"[a-z_]{1,64}", error) else "host_error"
+        record["gaps"].append(record["error"])
     if not raw:
         record["gaps"].append("missing_host_trace")
         return record
@@ -278,15 +279,16 @@ def log_lines(segments: list[str]):
         yield from segment.splitlines()
 
 
-def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool = False) -> dict:
+def debug_logs(repo: Path):
+    """Yield bounded workspace logs and read errors without following symlinks."""
     root = repo / ".spex"
-    logs, gaps = [], []
-    prior = {log["source"]: log for log in (previous or {}).get("logs", [])}
     paths = [root / "debug.log"]
     for directory in ("specs", "archives", "sessions"):
         parent = root / directory
         if parent.resolve() == parent:
             paths.extend(parent.glob("*/debug.log"))
+        else:
+            yield directory, None, "unsafe_debug_log"
     for path in sorted(paths):
         if not path.exists() and not path.is_symlink():
             continue
@@ -297,16 +299,30 @@ def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool
             continue
         if len(relative.parts) == 3 and not IDENTIFIER.fullmatch(relative.parts[1]):
             continue
+        source = relative.as_posix()
         try:
             if path.resolve() != path or not path.is_file():
-                gaps.append("unsafe_debug_log")
+                yield source, None, "unsafe_debug_log"
                 continue
             with path.open("rb") as stream:
                 content = stream.read(MAX_LOG_BYTES + 1)
             if len(content) > MAX_LOG_BYTES:
-                gaps.append("oversized_debug_log")
+                yield source, None, "oversized_debug_log"
                 continue
-            source = relative.as_posix()
+            yield source, content, None
+        except OSError:
+            yield source, None, "unreadable_debug_log"
+
+
+def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool = False) -> dict:
+    logs, gaps = [], []
+    prior = {log["source"]: log for log in (previous or {}).get("logs", [])}
+    for source, content, error in debug_logs(repo):
+        if error:
+            gaps.append(error)
+            continue
+        relative = Path(source)
+        try:
             earlier = prior.get(source, {})
             offsets = list(earlier.get("turn_offsets", []))
             size = earlier.get("size_bytes")

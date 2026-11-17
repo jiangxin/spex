@@ -44,6 +44,12 @@ SANDBOX_TOML = (
 )
 
 
+
+def trial_toml(suite: str) -> str:
+    step_review = "false" if suite in {"batch-import", "docs"} else "true"
+    return SANDBOX_TOML + f"step_review = {step_review}\n"
+
+
 def allocate_sandbox(runs_root: Path, *, now: datetime | None = None) -> Path:
     """Create `runs/YYYY-MM-DD-HH-MM-SS` (with -2, -3… on clash) and git-init it.
 
@@ -330,11 +336,7 @@ def prepare_trial(source: Path, case: Case, ref: str = "HEAD", *, parent: Path) 
         (directory / "home").mkdir()
         copy_fixture(case, trial.repo)
         (trial.repo / TRIAL_TMP).mkdir()
-        step_review = "false" if case.suite in {"batch-import", "docs"} else "true"
-        (trial.repo / ".spex.toml").write_text(
-            SANDBOX_TOML + f"step_review = {step_review}\n",
-            encoding="utf-8",
-        )
+        (trial.repo / ".spex.toml").write_text(trial_toml(case.suite), encoding="utf-8")
         initialize_repo(trial)
         install_skill(source, trial)
         if "setup" in case.definition:

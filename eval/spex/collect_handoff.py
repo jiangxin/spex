@@ -74,10 +74,19 @@ def collect_trial(sandbox: Path, trial_json: Path) -> dict:
                 "turns": turns,
                 "verdict": current.get("verdict"),
             }
+        if any(
+            handoff_reply(sandbox, suite, case_id, later).exists()
+            for later in range(turn + 1, len(current["case"]["turns"]) + 1)
+        ):
+            raise ValueError(
+                f"{suite}/{case_id}: cannot collect turn {turn} from a workspace "
+                "with later replies. Collect each turn before dispatching the next input."
+            )
+        sidecar = reply.with_suffix(".events.jsonl")
         args = SimpleNamespace(
             session=session,
             reply=reply,
-            events=None,
+            events=sidecar if sidecar.is_file() and not sidecar.is_symlink() else None,
         )
         result = eval_run.manual_result(eval_run.resolve_trial(trial_dir), args)
         turns.append({

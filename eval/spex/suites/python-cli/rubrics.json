@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "cases": {
     "create": [
       {
@@ -154,8 +154,7 @@
         "id": "failure-explained",
         "turn": 1,
         "requires": [
-          "reply",
-          "events"
+          "reply"
         ],
         "threshold": 2,
         "anchors": [
@@ -182,6 +181,7 @@
       {
         "id": "lifecycle-complete",
         "turn": 4,
+        "review_context_turns": [3],
         "requires": [
           "reply",
           "acceptance"

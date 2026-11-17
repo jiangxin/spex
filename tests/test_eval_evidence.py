@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 try:
     import evidence
+    import native_trace
     from transport import command_event
     from workspace import Trial, initialize_repo
 finally:
@@ -25,6 +26,158 @@ def state(*tasks):
 
 def task(task_id, completed_at="", **extra):
     return {"id": task_id, "completed_at": completed_at, **extra}
+
+
+def cli_log(argv, code=0):
+    return (
+        "===== BEGIN 2026-11-11T10:00:00+08:00 =====\n"
+        f"argv: spex {argv}\n"
+        f"===== END exit={code} duration_ms=10 =====\n"
+    )
+
+
+def test_native_trace_excludes_setup_and_acceptance_between_turns(tmp_path):
+    repo = tmp_path / "repo"
+    log = repo / ".spex/specs/eval-spec/debug.log"
+    log.parent.mkdir(parents=True)
+    post = cli_log("apply-helper post-action eval-spec")
+    log.write_text(post)
+    checkpoint = native_trace.snapshot(repo)
+    out = tmp_path / "evidence"
+    before = evidence.persist_turn(out, 0, state(task("step-1")))
+    with log.open("a") as stream:
+        stream.write(cli_log("todo-helper edit eval-spec"))
+    _, first = native_trace.window(repo, checkpoint)
+    turn1 = evidence.persist_turn(out, 1, state(task("step-1", "done")), native=first)
+    assert evidence.check_gate("no-post-action", before, turn1)["verdict"] == "pass"
+    assert evidence.check_gate("post-action", before, turn1)["verdict"] == "fail"
+    with log.open("a") as stream:
+        stream.write(post)  # Acceptance output belongs to neither trial turn.
+    checkpoint = native_trace.snapshot(repo)
+    with log.open("a") as stream:
+        stream.write(post)
+    _, second = native_trace.window(repo, checkpoint)
+    turn2 = evidence.persist_turn(out, 2, state(task("step-1", "done")), native=second)
+    check = evidence.check_gate("post-action", turn1, turn2)
+    assert check["verdict"] == "pass"
+    assert "turn-2:spex-trace" in check["evidence_refs"]
+    log.write_text(post)
+    _, replaced = native_trace.window(repo, checkpoint)
+    turn3 = evidence.persist_turn(out, 3, state(task("step-1", "done")), native=replaced)
+    assert evidence.check_gate("post-action", turn2, turn3)["verdict"] == "insufficient_evidence"
+
+
+def test_native_review_failure_stop_requires_no_later_workflow(tmp_path):
+    pending = state(task("step-1"))
+    before = evidence.persist_turn(tmp_path, 0, pending)
+    log = "specs/eval-spec/debug.log"
+    failure = cli_log("review-helper --name eval-spec status --step step-1 --json", 1)
+    later = cli_log("prompt apply-one-task eval-spec")
+    for turn, contents, verdict in ((1, failure, "pass"), (2, failure + later, "fail")):
+        gaps = set()
+        events = native_trace.parse(contents.splitlines(), log, gaps)
+        after = evidence.persist_turn(
+            tmp_path, turn, pending, native={"events": events, "gaps": sorted(gaps)},
+        )
+        assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == verdict
+
+
+@pytest.mark.parametrize("wrong_spec", [False, True])
+def test_review_failure_stop_checks_spec_identity_and_pending_order(tmp_path, wrong_spec):
+    pending = state(task("step-1"), task("step-2"))
+    pending["specs"]["other-spec"] = {"todo.json": [task("step-1", "done")]}
+    before = evidence.persist_turn(tmp_path, 0, pending)
+    changed = json.loads(json.dumps(pending))
+    changed["specs"]["eval-spec"]["todo.json"].reverse()
+    selector = "other-spec" if wrong_spec else "eval-spec"
+    log = cli_log(f"review-helper --name {selector} status --step step-1", 1)
+    gaps = set()
+    events = native_trace.parse(log.splitlines(), "debug.log", gaps)
+    for turn, snapshot, expected in [
+        (1, pending, "fail" if wrong_spec else "pass"), (2, changed, "fail"),
+    ]:
+        after = evidence.persist_turn(
+            tmp_path, turn, snapshot, native={"events": events, "gaps": sorted(gaps)},
+        )
+        assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == expected
+
+
+def test_native_prompt_skip_requires_logged_output_and_success():
+    log = cli_log("prompt apply-review --name eval-spec --commit abc1234")
+    log = log.replace(
+        "===== END", "----- stdout -----\n"
+        "[truncated prompt stdout, total=120B; task_id=step-1; skipped=True]\n===== END",
+    )
+    events = native_trace.parse(log.splitlines(), "specs/eval-spec/debug.log", set())
+    assert events[0]["action"] == "apply.review-command"
+    assert events[0]["skipped"] is True
+    assert events[0]["step"] == "step-1"
+    assert events[0]["commit"] == "abc1234"
+
+
+@pytest.mark.parametrize(("fix", "expected"), [(False, "92590d9"), (True, "63d5bac")])
+def test_native_resume_follows_the_reviewed_commit(tmp_path, fix, expected):
+    old = state(task("step-1", commit_title="92590d9: Prefix"))
+    old["head"] = "92590d94072433285b225f79e51fec80de172381"
+    before = evidence.persist_turn(tmp_path, 0, old)
+    lines = [
+        f"===== APPLY review {edge} step=step-1 round=1 mode=full commit=92590d9 ====="
+        for edge in ("begin", "end")
+    ]
+    if fix:
+        lines.append("===== APPLY fix end step=step-1 base=92590d9 new=63d5bac =====")
+    gaps = set()
+    events = native_trace.parse(lines, "specs/eval-spec/debug.log", gaps)
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task("step-1", "done", commit_title=f"{expected}: Prefix")),
+        native={"events": events, "gaps": sorted(gaps)},
+    )
+    assert evidence.check_gate("resumed-review", before, after)["verdict"] == "pass"
+
+
+def test_optional_observations_fill_gaps_without_proving_absence(tmp_path):
+    before = evidence.persist_turn(tmp_path, 0, state(task("step-1")))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task("step-1", "done")),
+        native={"events": [], "gaps": ["missing_spex_commands"]},
+        supplemental=[{"action": "apply.post-action", "spec": "eval-spec",
+                       "exit_code": 0, "source": "observed"}],
+    )
+    assert evidence.check_gate("post-action", before, after)["verdict"] == "pass"
+    assert evidence.check_gate("no-post-action", before, after)["verdict"] == "fail"
+    unsupported = evidence.persist_turn(
+        tmp_path, 2, state(task("step-1", "done")),
+        native={"events": [], "gaps": ["missing_spex_commands"]}, supplemental=[],
+    )
+    assert evidence.check_gate("no-post-action", before, unsupported)["verdict"] == (
+        "insufficient_evidence"
+    )
+
+
+@pytest.mark.parametrize(("command", "gaps", "required", "forbidden"), [
+    ("/fixture/scripts/spex apply-helper post-action --name eval-spec",
+     ["missing_spex_commands"], "pass", "fail"),
+    ("/fixture/scripts/spex apply-helper post-action eval-spec",
+     [], "insufficient_evidence", "fail"),
+    ("/fixture/scripts/spex apply-helper post-action --name other-spec",
+     ["missing_spex_commands"], "insufficient_evidence", "insufficient_evidence"),
+    ("/fixture/scripts/spex apply-helper post-action --name eval-spec || true",
+     ["missing_spex_commands"], "insufficient_evidence", "insufficient_evidence"),
+])
+def test_host_transcript_supplements_native_post_action(
+    tmp_path, command, gaps, required, forbidden,
+):
+    before = evidence.persist_turn(tmp_path, 0, state(task("step-1")))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task("step-1", "done")),
+        native={"events": [], "gaps": gaps},
+        events=[command_event({"command": command, "exit_code": 0})],
+    )
+    required_check = evidence.check_gate("post-action", before, after)
+    assert required_check["verdict"] == required
+    if forbidden == "fail":
+        assert "turn-1:events" in required_check["evidence_refs"]
+    assert evidence.check_gate("no-post-action", before, after)["verdict"] == forbidden
 
 
 def test_early_write_and_evidence_integrity(tmp_path):
@@ -74,7 +227,11 @@ def test_resumed_review_binds_final_commit_to_seed(tmp_path, start, amend_base, 
     before = evidence.persist_turn(tmp_path, 0, original)
 
     def event(command):
-        return command_event({"command": f"/bin/zsh -c {shlex.quote(command)}", "exit_code": 0})
+        normalized = command_event({
+            "command": f"/bin/zsh -c {shlex.quote(command)}", "exit_code": 0,
+        })
+        assert normalized["action"] == "apply.review-command"
+        return {**normalized, "action": "apply.review"}  # Legacy saved events.
 
     events = [
         event(f"./scripts/spex prompt apply-review --name eval-spec --mode full --commit {start}"),

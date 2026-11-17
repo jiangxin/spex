@@ -110,12 +110,9 @@ The runner does not open host sessions. The portable interface is:
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
 | Collect | `collect --session ID --reply <handoff-file> [--events …]` |
 
-Without `--events`, checks such as `post-action` may be
-`insufficient_evidence`. `summary` classifies those as **evidence gaps**,
-distinct from **observed fails**. For **manual** `collection`, those pure
-trace gaps no longer force a hard trial verdict of
-`insufficient_evidence` when every other check passed (acceptance
-included); supply `--events` when you need hard proof of post-action.
+Each collect reads the Spex command log since the previous turn's checkpoint
+and saves workspace snapshots. Required checks report insufficient evidence if
+the available observations cannot establish the required behavior.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
@@ -133,13 +130,10 @@ next input.
 python3 eval/spex/run.py collect "$trial" --session "$session" --reply "$reply"
 ```
 
-Use `--events FILE` only for a compatible Codex-style JSONL transcript whose
-session ID and final reply agree with the collected turn. Without compatible
-events, checks that require tool traces can report insufficient evidence.
-Collection records deterministic checks only. After the trial finishes, export
-the semantic evidence packet, grade it in a separate current-host session, then
-import the JSON results. Workspaces stay on disk for inspection; the runner
-does not delete the sandbox.
+A compatible Codex-style JSONL transcript supplied through `--events FILE`
+adds host observations. Its reply must match the handoff for the transcript
+to be used. Portable positive observations can be supplied through
+`--events-format normalized`.
 
 ```sh
 python3 eval/spex/run.py export-packet "$trial"

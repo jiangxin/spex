@@ -14,6 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
+import native_trace
 import performance
 from calibration import evaluate, load_samples
 from compare import calibration_keys, collection_mode, compare, diagnosis, load_run, markdown
@@ -52,6 +53,7 @@ from workspace import (
     saved_run_id,
     saved_trial_paths,
     select_cases,
+    trial_toml,
     verify_sandbox,
     verify_trial_workspace,
 )
@@ -97,7 +99,9 @@ def trial_order(relative: Path) -> tuple:
                  for part in relative.parts)
 
 
-TRACE_CHECK_IDS = frozenset({"post-action", "no-post-action"})
+TRACE_CHECK_IDS = frozenset({
+    "post-action", "no-post-action", "resumed-review", "review-failure-stop",
+})
 
 
 def earliest_non_pass(turn_results: list) -> str | None:
@@ -235,16 +239,9 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 ),
             })
         for label in row.get("observed_fails") or []:
-            check_id = label.split(":", 1)[-1].split("=", 1)[0]
-            if check_id in TRACE_CHECK_IDS:
-                category = "efficiency"
-                priority = "P2"
-            else:
-                category = "functionality"
-                priority = "P0"
             items.append({
-                "priority": priority,
-                "category": category,
+                "priority": "P0",
+                "category": "functionality",
                 "case": case,
                 "summary": f"{case} failed check {label}",
             })
@@ -267,14 +264,13 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                     "(not a pure tool-trace gap)"
                 ),
             })
-        if trace_gaps and hard == "pass" and not (row.get("observed_fails") or []):
+        if trace_gaps:
             items.append({
                 "priority": "P2",
                 "category": "efficiency",
                 "case": case,
                 "summary": (
-                    f"{case} passed hard checks but lacked --events for "
-                    f"{', '.join(trace_gaps)}; supply traces or keep soft-fail"
+                    f"{case} has incomplete workflow evidence for {', '.join(trace_gaps)}"
                 ),
             })
         scores = row.get("scores") or []
@@ -440,10 +436,8 @@ def render_summary_markdown(report: dict) -> str:
         "",
         "- **pending / run_error**: the trial has no completed hard verdict.",
         "- **fail / observed fails**: deterministic or acceptance checks failed.",
-        "- **evidence_gap / insufficient_evidence**: required artifacts (often "
-        "tool traces via `--events`) were missing. Common for manual "
-        "`collection` without a Codex-style transcript; not proof the workflow "
-        "failed.",
+        "- **evidence_gap / insufficient_evidence**: available evidence could not "
+        "establish a required behavior. Optional adapter diagnostics are reported separately.",
         "- **Semantic score**: each graded criterion is 0–2; sandbox total is "
         "the sum of scores over twice the number of scored criteria.",
         "- Hard verdicts still take precedence over semantic judge scores.",
@@ -500,6 +494,7 @@ def summarize_sandbox(
             "execution": metadata.get("execution", execution(None)),
             "performance": performance.trial_summary(path.parent, metadata),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
+            "turn_results": metadata.get("turn_results", []),
             **split,
             **score,
         }
@@ -671,7 +666,7 @@ def setup(
     output.mkdir(parents=True, exist_ok=False)
     try:
         trial = prepare_trial(SOURCE, case, args.spex_ref, parent=output)
-        persist_turn(output, 0, capture(trial))
+        persist_turn(output, 0, capture(trial), log_checkpoint=native_trace.snapshot(trial.repo))
         write_json(output / "trial.json", {
             "schema_version": 1, "suite": case.suite, "case_id": case.id,
             "case": case.definition, "case_hash": digest(encode(case.definition)),
@@ -753,7 +748,8 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
 
 def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
                host_duration_ms: int | None = None, host_source: str = "runner",
-               collect_started: float | None = None) -> None:
+               collect_started: float | None = None,
+               supplemental_gap: str | None = None, supplemental: list | None = None) -> None:
     index = len(metadata["turn_results"])
     if collect_started is None:
         collect_started = time.monotonic()
@@ -763,29 +759,56 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
     result = None
 
     def record_performance():
+        host_metrics = performance.host_metrics(
+            host.raw, host_duration_ms, host_source, error=supplemental_gap,
+        )
+        if host_source == "adapter" and host.raw:
+            host_metrics.update(trace="partial", trace_source="legacy_jsonl_sidecar")
+            host_metrics["gaps"].append("unverified_host_trace_coverage")
         performance.update(
             output, turn=index + 1, repo=trial.repo,
-            host=performance.host_metrics(host.raw, host_duration_ms, host_source),
+            host=host_metrics,
             collect_ms=performance.elapsed_ms(collect_started) - (acceptance_ms or 0),
             acceptance_ms=acceptance_ms,
         )
 
-    try:
-        verify_trial_workspace(trial)
-        state = capture(trial)
-        if turn.get("acceptance"):
-            acceptance_started = time.monotonic()
-            try:
-                result = acceptance(trial, metadata["suite"], turn["acceptance"])
-            finally:
-                acceptance_ms = performance.elapsed_ms(acceptance_started)
-    except (OSError, ValueError, TransportError):
-        record_performance()
-        raise
-    current = persist_turn(
-        output, index + 1, state, user_input=turn["input"], reply=host.reply,
-        events=host.events, acceptance=result,
-    )
+    saved = output / f"turn-{index + 1}.json"
+    if saved.exists():
+        current = read_json(saved)
+        artifacts = current["artifacts"]
+        if (
+            artifacts["reply"]["value"] != host.reply
+            or artifacts["input"]["value"] != turn["input"]
+        ):
+            raise ValueError("The pending turn already has different saved evidence")
+        result = artifacts.get("acceptance", {}).get("value")
+    else:
+        try:
+            verify_trial_workspace(trial)
+            state = capture(trial)
+            baseline = previous["artifacts"].get("log-checkpoint", {}).get("value")
+            checkpoint, native = native_trace.window(trial.repo, baseline)
+            config = trial.repo / ".spex.toml"
+            if (
+                config.is_symlink() or not config.is_file()
+                or config.read_bytes() != trial_toml(metadata["suite"]).encode()
+            ):
+                native["gaps"].append("debug_configuration_changed")
+            if turn.get("acceptance"):
+                acceptance_started = time.monotonic()
+                try:
+                    result = acceptance(trial, metadata["suite"], turn["acceptance"])
+                finally:
+                    acceptance_ms = performance.elapsed_ms(acceptance_started)
+                checkpoint = native_trace.snapshot(trial.repo)
+        except (OSError, ValueError, TransportError):
+            record_performance()
+            raise
+        current = persist_turn(
+            output, index + 1, state, user_input=turn["input"], reply=host.reply,
+            events=host.events, acceptance=result, native=native, log_checkpoint=checkpoint,
+            supplemental=supplemental,
+        )
     checks = [check_gate(check, previous, current) for check in turn["checks"]]
     if result is not None:
         checks.append({
@@ -797,42 +820,29 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
     if index + 1 < len(turns) and not turns[index + 1]["input"].startswith("/spex "):
         checks.append({
             "check_id": "requests-clarification", "phase": "continuation",
-            "verdict": "pass" if re.search(r"[?？]|\b(?:please|choose|select)\b|请选择|请确认",
-                                          host.reply, re.I) else "fail",
+            "verdict": "pass" if re.search(
+                r"[?？]|\b(?:please|choose|select)\b|请(?:选择|确认|指定|回复|提供|补充)"
+                r"|(?:必须|需要)先(?:确定|确认)[^。！？\n]{1,60}才能继续"
+                r"|(?:补充|提供)[^。！？\n]{1,60}后可(?:重新执行|继续)",
+                host.reply, re.I,
+            ) else "insufficient_evidence",
             "evidence_refs": [current["artifacts"]["reply"]["id"]],
         })
     metadata["session"] = host.session
     metadata["turn_results"].append({"turn": index + 1, "checks": checks})
-    metadata["verdict"] = trial_verdict(
-        metadata["turn_results"],
-        index + 1 == len(turns),
-        collection=str(metadata.get("collection") or ""),
-    )
+    metadata["verdict"] = trial_verdict(metadata["turn_results"], index + 1 == len(turns))
     write_json(output / "trial.json", metadata)
     record_performance()
 
 
-def trial_verdict(
-    turn_results: list, final: bool, *, collection: str = "",
-) -> str:
-    """Aggregate check verdicts into a trial hard verdict.
-
-    For manual collection without Codex-style ``--events``, pure tool-trace
-    checks (``post-action`` / ``no-post-action``) that are only
-    ``insufficient_evidence`` do not force a hard ``insufficient_evidence``
-    verdict — they remain visible as evidence gaps in ``summary``.
-    """
+def trial_verdict(turn_results: list, final: bool) -> str:
+    """Aggregate required checks independently of the collection mode."""
     checks = [check for turn in turn_results for check in turn.get("checks") or []]
     if any(check.get("verdict") == "fail" for check in checks):
         return "fail"
     if not final:
         return "pending"
-    soft_trace = collection == "manual"
-    for check in checks:
-        if check.get("verdict") != "insufficient_evidence":
-            continue
-        if soft_trace and check.get("check_id") in TRACE_CHECK_IDS:
-            continue
+    if any(check.get("verdict") == "insufficient_evidence" for check in checks):
         return "insufficient_evidence"
     return "pass"
 
@@ -1129,7 +1139,7 @@ def automatic(
 def manual_result(output: Path, args: argparse.Namespace) -> dict:
     started = time.monotonic()
     metadata = read_json(output / "trial.json")
-    if collection_mode(metadata) != "manual" or metadata["verdict"] != "pending":
+    if collection_mode(metadata) not in {"manual", "unknown"} or metadata["verdict"] != "pending":
         raise ValueError("Expected a pending manual trial")
     if not SESSION_ID.fullmatch(args.session) or metadata["session"] not in ("", args.session):
         raise ValueError("Use the same valid session ID for all turns of this trial")
@@ -1138,21 +1148,67 @@ def manual_result(output: Path, args: argparse.Namespace) -> dict:
     if not reply.strip():
         raise ValueError("The reply file is empty")
     host = HostTurn(args.session, reply, None, "")
-    if args.events is not None:
-        raw = args.events.read_text(encoding="utf-8")
-        save_host_trace(output / f"host-{len(metadata['turn_results']) + 1}.jsonl", raw)
-        trace = parse_events(raw, args.session)
-        if trace.reply != reply.strip():
-            raise ValueError("The supplied reply and trace disagree")
-        host = trace
+    supplemental_gap = None
+    supplemental = None
+    events_format = getattr(args, "events_format", "legacy-jsonl")
+    if args.events is not None and events_format == "normalized":
+        try:
+            supplemental = normalized_events(
+                args.events, output, args.session, len(metadata["turn_results"]) + 1, reply,
+            )
+        except (OSError, ValueError):
+            supplemental_gap = "unusable_supplemental_trace"
+    elif args.events is not None and events_format == "legacy-jsonl":
+        try:
+            raw = args.events.read_text(encoding="utf-8")
+            trace = parse_events(raw, args.session)
+            if trace.reply.strip() != reply.strip():
+                raise TransportError("reply_mismatch")
+        except (OSError, UnicodeError, TransportError):
+            supplemental_gap = "unusable_supplemental_trace"
+        else:
+            save_host_trace(output / f"host-{len(metadata['turn_results']) + 1}.jsonl", raw)
+            host = HostTurn(args.session, reply, trace.events, trace.raw)
+    elif args.events is not None:
+        supplemental_gap = "unsupported_supplemental_format"
     store_turn(
         output, trial, metadata, host, host_duration_ms=getattr(args, "host_duration_ms", None),
-        host_source="adapter", collect_started=started,
+        host_source="adapter", collect_started=started, supplemental_gap=supplemental_gap,
+        supplemental=supplemental,
     )
     # Manual / current-host collection keeps deterministic checks only. Semantic
     # grades are imported separately so judging does not require Codex CLI.
     write_json(output / "trial.json", metadata)
     return instructions(output, trial, metadata)
+
+
+def normalized_events(path: Path, trial: Path, session: str, turn: int, reply: str) -> list:
+    """Read portable positive observations bound to the current handoff."""
+    with path.open("rb") as stream:
+        raw = stream.read(performance.MAX_LOG_BYTES + 1)
+    if len(raw) > performance.MAX_LOG_BYTES:
+        raise ValueError("Oversized supplemental evidence")
+    data = json.loads(raw)
+    if (not isinstance(data, dict) or data.get("schema_version") != 1
+            or data.get("trial") != str(trial) or data.get("session") != session
+            or data.get("turn") != turn
+            or data.get("reply_sha256") != digest(reply.encode("utf-8"))
+            or not isinstance(data.get("events"), list)):
+        raise ValueError("Supplemental evidence belongs to a different turn or schema")
+    events = []
+    seen = set()
+    for event in data["events"]:
+        if (not isinstance(event, dict) or event.get("action") != "apply.post-action"
+                or event.get("source") != "observed"
+                or not isinstance(event.get("spec"), str)
+                or not performance.IDENTIFIER.fullmatch(event["spec"])
+                or type(event.get("exit_code")) is not int):
+            raise ValueError("Unsupported supplemental event")
+        key = event["spec"], event["exit_code"]
+        if key not in seen:
+            seen.add(key)
+            events.append({name: event[name] for name in ("action", "spec", "exit_code", "source")})
+    return events
 
 
 def host_name(value: str) -> str:
@@ -1235,6 +1291,8 @@ def parser() -> argparse.ArgumentParser:
     collect.add_argument("--session", required=True)
     collect.add_argument("--reply", type=Path, required=True)
     collect.add_argument("--events", type=Path)
+    collect.add_argument("--events-format", default="legacy-jsonl",
+                         help="Supplemental format (legacy-jsonl or normalized)")
     collect.add_argument("--host-duration-ms", type=duration_argument)
     collect.add_argument("--judge-model", default=os.environ.get("SPEX_EVAL_JUDGE_MODEL", ""))
     export = sub.add_parser("export-packet")

@@ -25,6 +25,7 @@ _PROMPT_SUMMARY_KEYS = (
     "commit_sha",
     "review_round",
     "all_done",
+    "skipped",
     "step_id",
     "resume_phase",
     "commit_title",

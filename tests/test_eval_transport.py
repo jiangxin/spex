@@ -51,12 +51,29 @@ def test_trace_identifies_workflow_commands_and_transport_errors():
     result = transport.parse_events(trace, "example-1")
     assert result.reply == "Done"
     assert result.events == [
-        {"action": "apply.review", "exit_code": 1}, {"action": "apply.post-action", "exit_code": 0},
+        {"action": "apply.review-command", "exit_code": 1, "stage": "status", "spec": "case"},
+        {"action": "apply.post-action", "exit_code": 0, "spec": "case"},
     ]
     with pytest.raises(transport.TransportError, match="session_mismatch"):
         transport.parse_events(trace, "wrong-session")
     with pytest.raises(transport.TransportError, match="rate_limit"):
         transport.parse_events('{"type":"turn.failed","error":{"message":"429 rate limit"}}')
+
+
+@pytest.mark.parametrize(("output", "skipped"), [
+    ('{"prompt":"","skipped":true}', True),
+    ('{"prompt":"Review this commit"}', None),
+    ("", None),
+])
+def test_review_prompt_command_records_only_observed_skips(output, skipped):
+    event = transport.command_event({
+        "command": "./scripts/spex prompt apply-review --json spec --mode full --commit abc1234",
+        "exit_code": 0,
+        "aggregated_output": output,
+    })
+    assert event["action"] == "apply.review-command"
+    assert event["mode"] == "full"
+    assert event.get("skipped") is skipped
 
 
 @pytest.mark.parametrize("options,limit", [([], 1), (["--jobs", "2"], 2)])
@@ -274,7 +291,7 @@ def test_failed_host_turn_preserves_sanitized_evidence(tmp_path, monkeypatch, mo
 
 @pytest.mark.slow
 @pytest.mark.parametrize("reply,verdict,turns", [
-    ("What type?", "pass", 2), ("Implementation finished.", "fail", 1),
+    ("What type?", "pass", 2), ("Implementation finished.", "insufficient_evidence", 2),
     ("Acceptance failure", "run_error", 1),
 ])
 def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verdict, turns):
@@ -369,7 +386,7 @@ def test_classify_checks_splits_fails_and_evidence_gaps():
     assert gap_only["classification"] == "evidence_gap"
 
 
-def test_manual_trace_gaps_do_not_force_hard_insufficient_verdict():
+def test_required_trace_gaps_force_hard_insufficient_verdict():
     turns = [{
         "turn": 1,
         "checks": [
@@ -378,11 +395,7 @@ def test_manual_trace_gaps_do_not_force_hard_insufficient_verdict():
             {"check_id": "edit-guide", "verdict": "pass"},
         ],
     }]
-    assert run.trial_verdict(turns, True, collection="manual") == "pass"
-    assert run.trial_verdict(turns, True, collection="automatic") == (
-        "insufficient_evidence"
-    )
-    assert run.trial_verdict(turns, True, collection="") == "insufficient_evidence"
+    assert run.trial_verdict(turns, True) == "insufficient_evidence"
 
 
 def test_cleanup_failed_case_removes_fresh_sandbox(tmp_path, monkeypatch):
@@ -722,7 +735,7 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
     next_turn = run.execute(args)
     assert next_turn["verdict"] == "pending"
     assert next_turn["next_input"] == "/spex apply-one-step example"
-    assert run.execute(args)["verdict"] == "pass"
+    assert run.execute(args)["verdict"] == "insufficient_evidence"
     results = run.read_json(Path(info["trial"]) / "trial.json")["turn_results"]
     assert len(results) == 2
     assert results[0]["checks"][1]["verdict"] == "insufficient_evidence"
@@ -743,12 +756,20 @@ def test_collect_handoff_batch_runs_summary(runner, tmp_path, first_session):
     handoff = sandbox / "_handoff"
     handoff.mkdir(exist_ok=True)
     (handoff / "example-clarify-turn1.txt").write_text("What type?\n", encoding="utf-8")
-    (handoff / "example-clarify-turn2.txt").write_text("Done\n", encoding="utf-8")
+    second_reply = handoff / "example-clarify-turn2.txt"
+    second_reply.write_text("Done\n", encoding="utf-8")
     if first_session:
         run.execute(runner.parse_args([
             "collect", info["trial"], "--session", first_session,
             "--reply", str(handoff / "example-clarify-turn1.txt"),
         ]))
+    else:
+        with pytest.raises(ValueError, match="with later replies"):
+            collect_handoff.collect_sandbox(sandbox, do_summary=True)
+        second_reply.unlink()
+        first = collect_handoff.collect_sandbox(sandbox)
+        assert len(first["missing"]) == 1
+        second_reply.write_text("Done\n", encoding="utf-8")
     payload = collect_handoff.collect_sandbox(sandbox, do_summary=True)
     assert payload["missing"] == []
     assert len(payload["collected"]) == 1
