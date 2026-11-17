@@ -595,9 +595,14 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
     return _merge_configs(get_spex_tomls(workdir))
 
 
-def clear_git_config_cache() -> None:
+def clear_git_config_cache(
+    *, local_only: bool = False, cwd: str | Path | None = None,
+) -> None:
     """Discard Git configuration snapshots and derived project metadata."""
-    git_config.clear_cache()
+    if local_only:
+        git_config.invalidate_local(cwd)
+    else:
+        git_config.clear_cache()
     _project_context_cache.clear()
 
 

@@ -118,7 +118,7 @@ def set_branch_description(
         check=True,
         cwd=cwd,
     )
-    clear_git_config_cache()
+    clear_git_config_cache(local_only=True, cwd=cwd)
 
 
 def merge_branch(

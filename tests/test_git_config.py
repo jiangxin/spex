@@ -215,6 +215,139 @@ def test_real_configuration_syntax_error_then_repair(tmp_path, isolated_git):
     assert git_config.get("sample.key", tmp_path) == "repaired"
 
 
+_CONFIG_LIST = ["--null", "--show-scope", "--includes", "--list"]
+
+
+def test_local_refresh_retries_and_replaces_with_empty_layer(tmp_path, monkeypatch):
+    replies = iter([
+        (0, b"global\0sample.key\nglobal\0local\0sample.key\nlocal\0"),
+        (1, b"local\0sample.key\npartial\0"),
+        (0, b""),
+        (0, b"local\0sample.key\nnew\0"),
+    ])
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command[2:])
+        status, output = next(replies)
+        return subprocess.CompletedProcess(command, status, output)
+
+    monkeypatch.setattr(git_config.subprocess, "run", run)
+    assert git_config.get("sample.key", tmp_path) == "local"
+    git_config.invalidate_local(tmp_path)
+    with pytest.raises(git_config.GitConfigError):
+        git_config.get("sample.key", tmp_path)
+    assert git_config.get_all("sample.key", tmp_path) == ["global"]
+    git_config.invalidate_local(tmp_path)
+    assert git_config.get_all("sample.key", tmp_path) == ["global", "new"]
+    assert calls == [_CONFIG_LIST] + [["--local", *_CONFIG_LIST]] * 3
+
+
+@pytest.mark.slow
+def test_branch_description_refresh_preserves_other_layers(tmp_path, isolated_git, monkeypatch):
+    git = isolated_git
+    repo = tmp_path / "repo"
+    git("init", "-q", "-b", "main", str(repo))
+    git("config", "user.name", "Fixture", cwd=repo)
+    git("config", "user.email", "fixture@example.invalid", cwd=repo)
+    git("commit", "-qm", "Initial", "--allow-empty", cwd=repo)
+    git("config", "extensions.worktreeConfig", "true", cwd=repo)
+    linked = tmp_path / "linked"
+    git("worktree", "add", "-qb", "topic", str(linked), cwd=repo)
+    key = "branch.main.description"
+    for location, scope in [(repo, "local"), (repo, "worktree"), (linked, "worktree")]:
+        git("config", f"--{scope}", key, scope, cwd=location)
+    (tmp_path / "system").write_text('[branch "main"]\n description = system\n')
+    (tmp_path / "home" / ".gitconfig").write_text('[branch "main"]\n description = global\n')
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", key)
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "command")
+    assert git_config.get_all(key, tmp_path) == ["system", "global", "command"]
+    assert git_config.get_all(key, repo) == ["system", "global", "local", "worktree", "command"]
+    assert_git_parity(git, linked, key)
+
+    set_branch_description("main", "updated", cwd=repo)
+    with monkeypatch.context() as patch:
+        original = git_config.subprocess.run
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command[2:])
+            return original(command, **kwargs)
+
+        patch.setattr(git_config.subprocess, "run", run)
+        assert git_config.get_all(key, tmp_path) == ["system", "global", "command"]
+        for directory in (repo, linked):
+            assert git_config.get_all(key, directory) == [
+                "system", "global", "updated", "worktree", "command",
+            ]
+        with pytest.raises(subprocess.CalledProcessError):
+            set_branch_description("main", "bad", cwd=tmp_path)
+        assert git_config.get(key, repo) == "command"
+        assert calls == [["--local", *_CONFIG_LIST]] * 2 + [[key, "bad"]]
+    assert_git_parity(git, linked, key)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("change", ["existing", "introduced", "worktree", "remote"])
+def test_local_refresh_falls_back_for_context_dependent_config(
+    change, tmp_path, isolated_git, monkeypatch,
+):
+    git = isolated_git
+    repo = tmp_path / "repo"
+    git("init", "-q", "-b", "main", str(repo))
+    key = "sample.key"
+    included = tmp_path / "included"
+    included.write_text("[sample]\n key = conditional\n")
+    condition = "includeIf.onbranch:main.path"
+    if change == "existing":
+        git("config", "--global", condition, str(included), cwd=repo)
+    if change == "remote":
+        git(
+            "config", "--system", "includeIf.hasconfig:remote.*.url:https://example.invalid/**.path",
+            str(included), cwd=repo,
+        )
+        git("config", "--global", "remote.fixture.url", "https://example.invalid/project")
+        if git("config", "--includes", "--get", key, cwd=repo, check=False).returncode:
+            pytest.skip("Git does not support hasconfig:remote.*.url includes")
+    git_config.get(key, repo)
+    if change == "introduced":
+        git("config", "--local", condition, str(included), cwd=repo)
+    if change == "worktree":
+        git("config", "extensions.worktreeConfig", "true", cwd=repo)
+        git("config", "--worktree", key, "worktree", cwd=repo)
+    set_branch_description("main", "updated", cwd=repo)
+    with monkeypatch.context() as patch:
+        original = git_config.subprocess.run
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command[2:])
+            return original(command, **kwargs)
+
+        patch.setattr(git_config.subprocess, "run", run)
+        assert git_config.get(key, repo) == (
+            "worktree" if change == "worktree" else "conditional"
+        )
+        expected = [] if change in {"existing", "remote"} else [["--local", *_CONFIG_LIST]]
+        assert calls == [*expected, _CONFIG_LIST]
+    assert_git_parity(git, repo, key)
+
+
+@pytest.mark.slow
+def test_empty_local_snapshot_refreshes_other_directories(tmp_path, isolated_git):
+    git = isolated_git
+    repo = tmp_path / "repo"
+    git("init", "-q", "-b", "main", str(repo))
+    subdirectory = repo / "subdir"
+    subdirectory.mkdir()
+    (repo / ".git" / "config").write_text("")
+    key = "branch.main.description"
+    assert git_config.get(key, subdirectory) is None
+    set_branch_description("main", "updated", cwd=repo)
+    assert git_config.get(key, subdirectory) == "updated"
+
+
 @pytest.mark.slow
 def test_project_identity_refreshes_after_git_changes(tmp_path, isolated_git):
     git = isolated_git
