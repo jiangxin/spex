@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
+import git_config
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -448,6 +450,16 @@ def _get_remote_url(cwd: str | Path | None = None) -> str:
     return ""
 
 
+def _get_git_identity(workdir: Path) -> tuple[str, str]:
+    """Return configured user name and email with the metadata defaults."""
+    try:
+        user_name = git_config.get("user.name", workdir)
+        user_email = git_config.get("user.email", workdir)
+    except git_config.GitConfigError:
+        return "", ""
+    return (user_name or "").strip(), (user_email or "").strip()
+
+
 def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
     """Return a fully resolved ProjectContext, cached by resolved workdir.
 
@@ -462,8 +474,7 @@ def get_project_context(workdir: str | Path | None = None) -> ProjectContext:
 
     top_workdir = _get_top_workdir(workdir)
     main_worktree = _get_main_worktree(workdir)
-    user_name = _git_field(["git", "config", "user.name"], cwd=workdir)
-    user_email = _git_field(["git", "config", "user.email"], cwd=workdir)
+    user_name, user_email = _get_git_identity(workdir)
 
     if top_workdir is not None:
         remote_url = _get_remote_url(cwd=workdir)
@@ -584,12 +595,18 @@ def get_effective_user_config(workdir: str | Path | None = None) -> dict:
     return _merge_configs(get_spex_tomls(workdir))
 
 
+def clear_git_config_cache() -> None:
+    """Discard Git configuration snapshots and derived project metadata."""
+    git_config.clear_cache()
+    _project_context_cache.clear()
+
+
 def clear_config_cache() -> None:
     """Clear the module-level configuration and worktree root caches."""
     global _top_workdir_cache, _main_worktree_cache
-    global _project_context_cache, _spex_config_file_override
+    global _spex_config_file_override
+    clear_git_config_cache()
     _config_cache.clear()
     _top_workdir_cache = {}
     _main_worktree_cache = {}
-    _project_context_cache = {}
     _spex_config_file_override = None

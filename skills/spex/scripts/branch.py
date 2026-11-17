@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from config import clear_git_config_cache
+
 
 def _strip_refs_prefix(name: str) -> str:
     """Strip refs/heads/ prefix if present, returning a short branch name."""
@@ -88,6 +90,7 @@ def create_and_switch_branch(
         check=True,
         cwd=cwd,
     )
+    clear_git_config_cache()
 
 
 def switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
@@ -100,6 +103,7 @@ def switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
         check=True,
         cwd=cwd,
     )
+    clear_git_config_cache()
 
 
 def set_branch_description(
@@ -114,6 +118,7 @@ def set_branch_description(
         check=True,
         cwd=cwd,
     )
+    clear_git_config_cache()
 
 
 def merge_branch(
@@ -138,6 +143,7 @@ def merge_branch(
             check=True,
             cwd=cwd,
         )
+        clear_git_config_cache()
     subprocess.run(
         ["git",
          "-c", "merge.branchdesc=true",

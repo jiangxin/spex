@@ -7,6 +7,7 @@ from pathlib import Path
 
 from branch import branch_exists
 from common import logger, same_path
+from config import clear_git_config_cache
 
 
 def _strip_refs_prefix(name: str) -> str:
@@ -93,6 +94,7 @@ def add_worktree(
         check=True,
         cwd=cwd,
     )
+    clear_git_config_cache()
     logger.info("Added worktree '%s' for branch '%s'", path, branch)
 
 
@@ -117,6 +119,7 @@ def remove_worktree(
         check=True,
         cwd=cwd,
     )
+    clear_git_config_cache()
     logger.info("Removed worktree '%s'", path)
 
 
@@ -129,6 +132,7 @@ def checkout_commit(path: str | Path, commit: str) -> None:
         check=True,
         cwd=path,
     )
+    clear_git_config_cache()
     logger.info("Checked out '%s' in '%s' (detached)", commit, path)
 
 

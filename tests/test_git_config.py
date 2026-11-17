@@ -2,9 +2,14 @@
 
 import os
 import subprocess
+import sys
+from pathlib import Path
 
 import git_config
 import pytest
+from branch import create_and_switch_branch, set_branch_description, switch_branch
+from config import clear_config_cache, get_project_context
+from worktree import checkout_commit
 
 
 @pytest.fixture(autouse=True)
@@ -208,3 +213,88 @@ def test_real_configuration_syntax_error_then_repair(tmp_path, isolated_git):
     assert "synthetic-secret" not in str(error.value)
     config.write_text("[sample]\n key = repaired\n", encoding="utf-8")
     assert git_config.get("sample.key", tmp_path) == "repaired"
+
+
+@pytest.mark.slow
+def test_project_identity_refreshes_after_git_changes(tmp_path, isolated_git):
+    git = isolated_git
+    git("init", "-q", "-b", "main", "project")
+    repo = tmp_path / "project"
+    git("config", "user.name", "  Fixture  ", cwd=repo)
+    git("config", "user.email", "fixture@example.invalid", cwd=repo)
+    git("commit", "-qm", "Initial", "--allow-empty", cwd=repo)
+    git("config", "--unset", "user.email", cwd=repo)
+    (tmp_path / "home" / "alternate").write_text(
+        "[user]\n name = Alternate\n", encoding="utf-8",
+    )
+    (tmp_path / "home" / ".gitconfig").write_text(
+        '[includeIf "onbranch:topic"]\n path = alternate\n', encoding="utf-8",
+    )
+    git("config", "--unset", "user.name", cwd=repo)
+    git("remote", "add", "backup", "example:repo", cwd=repo)
+    git("config", "url.https://example.invalid/.insteadOf", "example:", cwd=repo)
+    ctx = get_project_context(repo)
+    assert (ctx.user_name, ctx.user_email, ctx.remote_url) == (
+        "", "", "https://example.invalid/repo",
+    )
+    git("config", "user.name", "  Fixture  ", cwd=repo)
+    assert get_project_context(repo) is ctx
+    clear_config_cache()
+    assert get_project_context(repo).user_name == "Fixture"
+    git("config", "--unset", "user.name", cwd=repo)
+    create_and_switch_branch("topic", cwd=repo)
+    assert get_project_context(repo).user_name == "Alternate"
+    assert git_config.get("branch.topic.description", repo) is None
+    set_branch_description("topic", "Test description", cwd=repo)
+    assert git_config.get("branch.topic.description", repo) == "Test description"
+    commit = git("rev-parse", "HEAD", cwd=repo).stdout.decode().strip()
+    checkout_commit(repo, commit)
+    assert get_project_context(repo).user_name == ""
+    switch_branch("topic", cwd=repo)
+    assert get_project_context(repo).user_name == "Alternate"
+
+
+@pytest.mark.slow
+def test_cli_reads_one_snapshot_and_new_processes_see_updates(tmp_path, isolated_git):
+    git = isolated_git
+    git("init", "-q", "project")
+    repo = tmp_path / "project"
+    (repo / ".spex.toml").write_text('[spex]\n spex_root = ".spex"\n', encoding="utf-8")
+    scripts = Path(git_config.__file__).resolve().parent
+    instrument = """
+import runpy
+import subprocess
+import sys
+
+script, scripts, *args = sys.argv[1:]
+sys.path.insert(0, scripts)
+run = subprocess.run
+queries = []
+
+def traced(command, *args, **kwargs):
+    if command[:2] == ["git", "config"]:
+        queries.append(command[2:])
+    return run(command, *args, **kwargs)
+
+subprocess.run = traced
+sys.argv = [script, *args]
+try:
+    runpy.run_path(script, run_name="__main__")
+finally:
+    assert queries == [["--null", "--show-scope", "--includes", "--list"]], queries
+"""
+
+    def spex(*args):
+        return subprocess.run(
+            [sys.executable, "-c", instrument, str(scripts / "spex"), str(scripts), *args],
+            cwd=repo, capture_output=True, text=True,
+        )
+
+    listed = spex("list", "--json")
+    assert (listed.returncode, listed.stdout.strip()) == (0, "[]"), listed.stderr
+    git("config", "user.name", "First", cwd=repo)
+    first = spex("config", "user_name")
+    assert first.returncode == 0 and "First" in first.stdout, first.stderr
+    git("config", "user.name", "Second", cwd=repo)
+    second = spex("config", "user_name")
+    assert second.returncode == 0 and "Second" in second.stdout, second.stderr
