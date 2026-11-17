@@ -12,4 +12,13 @@
 # submit_method = "merge"
 
 # Append script traces to <spec_dir>/debug.log
-# debug = false
+debug = true
+
+# Review each apply step commit before marking it done
+# step_review = true
+
+# Create a linked git worktree per spec for apply
+# use_git_worktree = false
+
+# Inherit settings from ancestor config files
+# inherit_config = true

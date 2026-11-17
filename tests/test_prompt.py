@@ -3119,7 +3119,7 @@ class TestApplyReviewAndFix:
         ]
         repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         (repo / ".spex.toml").write_text(
-            "[spex]\nstep_review = false\n", encoding="utf-8",
+            "[spex]\ninherit_config = false\nstep_review = false\n", encoding="utf-8",
         )
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.chdir(repo)
@@ -3154,7 +3154,7 @@ class TestApplyReviewAndFix:
         ]
         repo, spec_dir = _setup_topic(tmp_path, "test-topic", tasks)
         (repo / ".spex.toml").write_text(
-            "[spex]\nstep_review = true\n", encoding="utf-8",
+            "[spex]\ninherit_config = false\nstep_review = true\n", encoding="utf-8",
         )
         monkeypatch.setattr("config.Path.home", lambda: tmp_path / "fakehome")
         monkeypatch.chdir(repo)

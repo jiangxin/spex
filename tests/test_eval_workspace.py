@@ -56,7 +56,9 @@ def test_allocate_sandbox_uses_timestamp_and_isolates_git(tmp_path):
     assert (first / "_handoff").is_dir()
     assert (first / ".spex.toml").is_file()
     assert (first / ".spex" / "specs").is_dir()
-    assert 'spex_root = ".spex"' in (first / ".spex.toml").read_text(encoding="utf-8")
+    config = (first / ".spex.toml").read_text(encoding="utf-8")
+    assert 'spex_root = ".spex"' in config
+    assert "inherit_config = false" in config
     workspace.verify_sandbox(first, REPO)
     top = workspace.git(first, "rev-parse", "--show-toplevel").rstrip(b"\n")
     assert Path(os.fsdecode(top)).resolve() == first
@@ -88,7 +90,8 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
     host = tmp_path / "host"
     (host / ".spex").mkdir(parents=True)
     (host / ".spex.toml").write_text(
-        '[spex]\nspex_root = ".spex"\nstep_review = false\n', encoding="utf-8",
+        '[spex]\nspex_root = ".spex"\nstep_review = false\nbranch_management = false\n',
+        encoding="utf-8",
     )
     runs = host / "project" / "eval" / "spex" / "runs"
     sandbox = workspace.allocate_sandbox(runs)
@@ -97,8 +100,10 @@ def test_prepare_under_repo_runs_ignores_host_spex_roots(tmp_path, manifest):
         REPO, case, parent=workspace.case_dir(sandbox, "python-cli", "create"),
     )
     assert trial.directory.is_relative_to(sandbox)
+    assert "inherit_config = false" in (trial.repo / ".spex.toml").read_text(encoding="utf-8")
     workspace.verify_spex_roots(trial)
     assert "step_review=true" in trial_config(trial)
+    assert "branch_management=true" in trial_config(trial)
 
 
 def trial_config(trial):

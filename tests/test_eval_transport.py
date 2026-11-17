@@ -861,7 +861,8 @@ def test_export_packet_and_import_external_grades(runner, tmp_path, monkeypatch,
 
 
 @pytest.mark.slow
-def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
+@pytest.mark.parametrize("config_state", ["current", "legacy", "changed"])
+def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path, config_state):
     manifest = run.SUITES / "example" / "cases.json"
     cases = run.read_json(manifest)
     cases[0]["turns"][0]["checks"].append("no-post-action")
@@ -872,12 +873,29 @@ def test_manual_collection_continues_without_first_turn_trace(runner, tmp_path):
         "prepare", "--case", "clarify", "--model", "example", "--host", "cursor",
         "--host-version", "1", "--invocation", "native",
     ]))
+    output = Path(info["trial"])
+    metadata_path = output / "trial.json"
+    metadata = run.read_json(metadata_path)
+    trial = workspace.Trial(Path(metadata["trial_directory"]), metadata["spex_ref"])
+    config = trial.repo / ".spex.toml"
+    assert metadata["trial_config_hash"] == run.digest(config.read_bytes())
+    if config_state != "current":
+        config.write_text(
+            config.read_text().replace("inherit_config = false\n", ""),
+            encoding="utf-8",
+        )
+    if config_state == "legacy":
+        metadata.pop("trial_config_hash")
+        run.write_json(metadata_path, metadata)
+
     reply = tmp_path / "reply.txt"
     reply.write_text("First step complete.", encoding="utf-8")
     args = runner.parse_args([
         "collect", info["trial"], "--reply", str(reply), "--session", "example-2",
     ])
     next_turn = run.execute(args)
+    trace = run.read_json(output / "turn-1.json")["artifacts"]["spex-trace"]["value"]
+    assert ("debug_configuration_changed" in trace["gaps"]) == (config_state == "changed")
     assert next_turn["verdict"] == "pending"
     assert next_turn["next_input"] == "/spex apply-one-step example"
     assert run.execute(args)["verdict"] == "insufficient_evidence"

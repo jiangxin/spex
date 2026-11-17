@@ -1463,9 +1463,7 @@ class TestDebugArchiveCliRegression:
         subprocess.run(
             ["git", "init", str(tmp_path)], capture_output=True, check=True
         )
-        lines = ['[spex]', 'spex_root = ".spex"']
-        # Always set debug explicitly so a developer ~/.spex.toml with
-        # debug=true cannot leak into subprocess integration tests.
+        lines = ['[spex]', 'inherit_config = false', 'spex_root = ".spex"']
         lines.append("debug = true" if debug else "debug = false")
         (tmp_path / ".spex.toml").write_text(
             "\n".join(lines) + "\n", encoding="utf-8"

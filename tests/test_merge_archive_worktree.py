@@ -96,7 +96,7 @@ class TestMergeOnTargetWorktree:
         specs = spex_root / "specs"
         archives = spex_root / "archives"
         (main / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{spex_root}"\n',
+            f'[spex]\ninherit_config = false\nspex_root = "{spex_root}"\n',
             encoding="utf-8",
         )
 
@@ -189,7 +189,7 @@ class TestMergeOnTargetWorktree:
         specs = spex_root / "specs"
         archives = spex_root / "archives"
         (main / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{spex_root}"\n',
+            f'[spex]\ninherit_config = false\nspex_root = "{spex_root}"\n',
             encoding="utf-8",
         )
 
@@ -252,7 +252,7 @@ class TestMergeDryRunWorktree:
         specs = spex_root / "specs"
         archives = spex_root / "archives"
         (main / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{spex_root}"\n',
+            f'[spex]\ninherit_config = false\nspex_root = "{spex_root}"\n',
             encoding="utf-8",
         )
 
@@ -346,7 +346,7 @@ class TestMergeDryRunWorktree:
         spex_root = tmp_path / "spex"
         specs = spex_root / "specs"
         (main / ".spex.toml").write_text(
-            f'[spex]\nspex_root = "{spex_root}"\n',
+            f'[spex]\ninherit_config = false\nspex_root = "{spex_root}"\n',
             encoding="utf-8",
         )
 

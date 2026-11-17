@@ -716,6 +716,7 @@ def setup(
             "schema_version": 1, "suite": case.suite, "case_id": case.id,
             "case": case.definition, "case_hash": digest(encode(case.definition)),
             "fixture_hash": fixture_hash(case),
+            "trial_config_hash": digest(trial_toml(case.suite).encode()),
             "sandbox": str(sandbox), "trial_directory": str(trial.directory),
             "spex_ref": trial.ref,
             "host": args.host, "host_version": args.host_version, "model": args.model,
@@ -838,9 +839,16 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
             baseline = previous["artifacts"].get("log-checkpoint", {}).get("value")
             checkpoint, native = native_trace.window(trial.repo, baseline)
             config = trial.repo / ".spex.toml"
+            expected_hash = metadata.get("trial_config_hash")
+            if expected_hash is None:
+                # Existing trials predate the explicit inheritance boundary.
+                legacy_config = trial_toml(metadata["suite"]).replace(
+                    "inherit_config = false\n", "", 1,
+                )
+                expected_hash = digest(legacy_config.encode())
             if (
                 config.is_symlink() or not config.is_file()
-                or config.read_bytes() != trial_toml(metadata["suite"]).encode()
+                or digest(config.read_bytes()) != expected_hash
             ):
                 native["gaps"].append("debug_configuration_changed")
             if turn.get("acceptance"):

@@ -541,7 +541,7 @@ class TestRunInit:
         from init import run_init
 
         (mock_workdir / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 
@@ -561,7 +561,7 @@ class TestRunInit:
         from init import run_init
 
         (mock_workdir / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 
@@ -584,7 +584,7 @@ class TestRunInit:
         from init import run_init
 
         (mock_workdir / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 

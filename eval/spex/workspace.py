@@ -38,6 +38,7 @@ def sandbox_timestamp(now: datetime | None = None) -> str:
 
 SANDBOX_TOML = (
     "[spex]\n"
+    "inherit_config = false\n"
     'spex_root = ".spex"\n'
     "use_git_worktree = false\n"
     "debug = true\n"

@@ -113,7 +113,7 @@ class TestDirectCommands:
     def test_list_exits_zero(self, tmp_path):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         (tmp_path / ".spex" / "specs").mkdir(parents=True)
 
@@ -129,7 +129,7 @@ class TestDirectCommands:
     def test_list_all_exits_zero(self, tmp_path):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         (tmp_path / ".spex" / "specs").mkdir(parents=True)
         (tmp_path / ".spex" / "archives").mkdir(parents=True)
@@ -146,7 +146,7 @@ class TestDirectCommands:
     def test_archive_exits_zero(self, tmp_path):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         (tmp_path / ".spex" / "specs").mkdir(parents=True)
         (tmp_path / ".spex" / "archives").mkdir(parents=True)
@@ -239,7 +239,7 @@ class TestGetTopicCommand:
         """spex get-topic (no matching specs) exits 1."""
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         specs_dir = tmp_path / ".spex" / "specs"
         specs_dir.mkdir(parents=True)

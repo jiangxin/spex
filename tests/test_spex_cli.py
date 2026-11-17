@@ -913,9 +913,7 @@ class TestDebugTracingIntegration:
 
     def _setup_repo(self, tmp_path, *, debug: Optional[bool] = None):
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-        lines = ['[spex]', 'spex_root = ".spex"']
-        # Always set debug explicitly so a developer ~/.spex.toml with
-        # debug=true cannot leak into subprocess integration tests.
+        lines = ['[spex]', 'inherit_config = false', 'spex_root = ".spex"']
         if debug is True:
             lines.append("debug = true")
         else:

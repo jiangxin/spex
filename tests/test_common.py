@@ -52,7 +52,9 @@ def test_default_uses_cwd(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
     monkeypatch.chdir(repo)
 
     result = get_spex_root()
@@ -64,7 +66,9 @@ def test_custom_workdir(tmp_path):
     repo = tmp_path / "project-x"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     result = get_spex_root(str(repo))
     assert result == str(repo / ".spex")
@@ -75,7 +79,9 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
     subdir = repo / "src" / "lib"
     subdir.mkdir(parents=True)
 
@@ -86,7 +92,9 @@ def test_subdirectory_resolves_to_repo_root(tmp_path):
 def test_not_a_git_repo(monkeypatch, tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
-    (workdir / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (workdir / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
     monkeypatch.chdir(workdir)
 
     result = get_spex_root(str(workdir))
@@ -97,7 +105,7 @@ def test_require_git_raises_outside_repo(monkeypatch, tmp_path):
     workdir = tmp_path / "no-repo"
     workdir.mkdir()
     (workdir / ".spex.toml").write_text(
-        '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
     )
 
     with pytest.raises(RuntimeError, match="Not inside a git repository"):
@@ -111,7 +119,7 @@ def test_require_git_ok_inside_repo(monkeypatch, tmp_path):
     _init_git_repo(repo)
     custom_path = tmp_path / "my-specs"
     (repo / ".spex.toml").write_text(
-        f'[spex]\nspex_root = "{custom_path}"\n', encoding="utf-8"
+        f'[spex]\ninherit_config = false\nspex_root = "{custom_path}"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo), require_git=True)
@@ -123,7 +131,9 @@ def test_naming_convention(tmp_path):
     repo = tmp_path / "hello-world"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     result = get_spex_root(str(repo))
     spec_path = Path(result)
@@ -137,7 +147,9 @@ def test_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     result = get_specs_dir(str(repo))
     assert result == repo / ".spex" / "specs"
@@ -148,7 +160,9 @@ def test_archives_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     result = get_archives_dir(str(repo))
     assert result == repo / ".spex" / "archives"
@@ -166,7 +180,7 @@ def test_toml_relative_path_in_repo(tmp_path):
     repo.mkdir()
     _init_git_repo(repo)
     (repo / ".spex.toml").write_text(
-        '[spex]\nspex_root = "shared/specs"\n', encoding="utf-8"
+        '[spex]\ninherit_config = false\nspex_root = "shared/specs"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -181,12 +195,12 @@ def test_repo_toml_takes_priority(monkeypatch, tmp_path):
     custom_path = tmp_path / "from-repo-yaml"
     # Write repo-level .spex.toml
     (repo / ".spex.toml").write_text(
-        f'[spex]\nspex_root = "{custom_path}"\n', encoding="utf-8"
+        f'[spex]\ninherit_config = false\nspex_root = "{custom_path}"\n', encoding="utf-8"
     )
     # Write home-level ~/.spex.toml (should be lower priority)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     (tmp_path / ".spex.toml").write_text(
-        '[spex]\nspex_root = "/should/not/use"\n', encoding="utf-8"
+        '[spex]\ninherit_config = false\nspex_root = "/should/not/use"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -213,7 +227,9 @@ def test_default_creates_specs_dir(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     specs_dir = repo / ".spex"
     assert not specs_dir.exists()
@@ -227,7 +243,9 @@ def test_default_creates_internal_gitignore(tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     get_spex_root(str(repo))
 
@@ -248,7 +266,7 @@ def test_xdg_config_fallback(monkeypatch, tmp_path):
     custom_path = tmp_path / "from-user"
     # No repo-level .spex.toml; use ~/.spex.toml as fallback
     (tmp_path / ".spex.toml").write_text(
-        f'[spex]\nspex_root = "{custom_path}"\n', encoding="utf-8"
+        f'[spex]\ninherit_config = false\nspex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -264,7 +282,7 @@ def test_home_toml_fallback(monkeypatch, tmp_path):
     custom_path = tmp_path / "from-home"
     # No repo-level config; use ~/.spex.toml as fallback
     (tmp_path / ".spex.toml").write_text(
-        f'[spex]\nspex_root = "{custom_path}"\n', encoding="utf-8"
+        f'[spex]\ninherit_config = false\nspex_root = "{custom_path}"\n', encoding="utf-8"
     )
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -279,7 +297,7 @@ def test_toml_auto_initializes(tmp_path):
     _init_git_repo(repo)
     custom_path = tmp_path / "custom-spex"
     (repo / ".spex.toml").write_text(
-        f'[spex]\nspex_root = "{custom_path}"\n', encoding="utf-8"
+        f'[spex]\ninherit_config = false\nspex_root = "{custom_path}"\n', encoding="utf-8"
     )
 
     result = get_spex_root(str(repo))
@@ -482,11 +500,15 @@ def test_auto_init_skips_toml_when_exists(monkeypatch, tmp_path):
     repo = tmp_path / "my-app"
     repo.mkdir()
     _init_git_repo(repo)
-    (repo / ".spex.toml").write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+    (repo / ".spex.toml").write_text(
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
+    )
 
     get_spex_root(str(repo))
 
-    assert (repo / ".spex.toml").read_text() == '[spex]\nspex_root = ".spex"\n'
+    assert (repo / ".spex.toml").read_text() == (
+        '[spex]\ninherit_config = false\nspex_root = ".spex"\n'
+    )
 
 
 class TestResolveSpecDir:
@@ -542,7 +564,7 @@ class TestLinkedWorktreeResolution:
         )
 
         toml = main / ".spex.toml"
-        toml.write_text('[spex]\nspex_root = ".spex"\n', encoding="utf-8")
+        toml.write_text('[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8")
         specs = main / ".spex" / "specs"
         specs.mkdir(parents=True)
         spec = specs / "2026-01-15-10-00-my-feature"
@@ -979,7 +1001,7 @@ class TestGetSpexRoots:
         _init_git_repo(repo)
         (repo / ".spex").mkdir()
         (repo / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 
@@ -1028,7 +1050,7 @@ class TestGetSpexTomls:
         repo.mkdir()
         _init_git_repo(repo)
         (repo / ".spex.toml").write_text(
-            '[spex]\nspex_root = ".spex"\n', encoding="utf-8"
+            '[spex]\ninherit_config = false\nspex_root = ".spex"\n', encoding="utf-8"
         )
         clear_spex_root_cache()
 
