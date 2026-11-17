@@ -1328,6 +1328,10 @@ class TestBeginEndSession:
             session_log.write_text(
                 "===== session history =====\n", encoding="utf-8",
             )
+            trace_history = {"schema_version": 1, "name": "begin-session"}
+            session_log.with_name("trace.jsonl").write_text(
+                json.dumps(trace_history) + "\n", encoding="utf-8",
+            )
             create_helper.main(
                 ["end-session", "--name", "2026-08-04-15-50-demo"]
             )
@@ -1339,6 +1343,11 @@ class TestBeginEndSession:
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_log.exists()
         assert not session_log.parent.exists()
+        spans = [
+            json.loads(line) for line in
+            (spec_dir / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert spans == [trace_history]
         assert (spec_dir / "debug.log").read_text(encoding="utf-8") == (
             "===== existing =====\n"
             "===== session history =====\n"
@@ -1763,6 +1772,8 @@ class TestPreparePostActionSession:
             "argv: spex create-helper prepare-spec",
         )
         assert "===== END exit=0 duration_ms=" in content
+        span = json.loads((spec_dir / "trace.jsonl").read_text(encoding="utf-8"))
+        assert span["name"] == "create-helper"
 
     def test_post_action_writes_anchor_when_debug_enabled(
         self, tmp_path, monkeypatch,

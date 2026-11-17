@@ -358,6 +358,7 @@ class TestBranchConfig:
         assert result["main_branch_name"] == ""
         assert result["submit_method"] == "merge"
         assert result["debug"] is False
+        assert result["trace_file"] == ""
         assert result["step_review"] is True
         assert result["use_git_worktree"] is False
 

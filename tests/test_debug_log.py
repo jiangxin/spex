@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from debug_log import (
     parse_flag_from_argv,
     parse_name_from_argv,
     resolve_debug_log_path,
+    resolve_trace_file_path,
     safe_flush_debug_log_path,
     session_debug_log_path,
     set_active_session,
@@ -81,6 +83,38 @@ class TestDebugEnabled:
         monkeypatch.chdir(tmp_path)
         with patch("debug_log.get_project_context", return_value=_make_ctx(tmp_path)):
             assert debug_enabled(["spex", "version"]) is False
+
+
+def test_trace_path_precedence(tmp_path, monkeypatch):
+    ctx = _make_ctx(tmp_path)
+    debug_path = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+    with patch("debug_log.get_project_context", return_value=ctx):
+        assert resolve_trace_file_path(debug_path) == debug_path.with_name("trace.jsonl")
+        ctx.config["trace_file"] = "custom/configured.jsonl"
+        configured = Path(ctx.spex_root) / "custom/configured.jsonl"
+        assert resolve_trace_file_path(debug_path) == configured
+        absolute = tmp_path / "configured.jsonl"
+        ctx.config["trace_file"] = str(absolute)
+        assert resolve_trace_file_path(debug_path) == absolute
+        monkeypatch.setenv("SPEX_TRACE_FILE", "override.jsonl")
+        assert resolve_trace_file_path(debug_path).absolute() == tmp_path / "override.jsonl"
+        monkeypatch.setenv("SPEX_TRACE_FILE", str(tmp_path / "explicit.jsonl"))
+        assert resolve_trace_file_path(debug_path) == tmp_path / "explicit.jsonl"
+
+
+def test_failed_span_write_preserves_command_failure(tmp_path, monkeypatch):
+    debug_path = tmp_path / "debug.log"
+    monkeypatch.setenv("SPEX_TRACE_FILE", str(tmp_path))
+    with (
+        patch("debug_log.safe_flush_debug_log_path", return_value=debug_path),
+        pytest.raises(SystemExit) as error,
+    ):
+        with trace_command(debug_path, ["spex", "version"]):
+            raise SystemExit(2)
+    assert error.value.code == 2
+    assert "===== END exit=2 " in debug_path.read_text(encoding="utf-8")
 
 
 class TestParseNameFromArgv:
@@ -210,6 +244,21 @@ class TestSessionHelpers:
         assert not (spec_dir / "debug.session-pre.log").exists()
         # merge does not clear the active pointer
         assert get_active_session_id(spex_root) == session_id
+
+    def test_merge_session_trace_does_not_copy_a_hard_link_to_itself(self, tmp_path):
+        spex_root = tmp_path / ".spex"
+        spec_dir = spex_root / "specs" / "my-spec"
+        spec_dir.mkdir(parents=True)
+        session_id = _activate_session(spex_root)
+        source = session_debug_log_path(spex_root, session_id).with_name("trace.jsonl")
+        span = b'{"schema_version":1}\n'
+        source.write_bytes(span)
+        target = spec_dir / "trace.jsonl"
+        target.hardlink_to(source)
+
+        merge_session_log_into_spec(spex_root, session_id, spec_dir)
+
+        assert target.read_bytes() == span
 
     def test_merge_appends_to_existing_spec_debug_log(self, tmp_path):
         spex_root = tmp_path / ".spex"
@@ -586,6 +635,13 @@ class TestTraceCommand:
         assert "----- stderr -----" in content
         assert "hello stderr" in content
         assert "===== END exit=0 duration_ms=" in content
+        span = json.loads(log_path.with_name("trace.jsonl").read_text(encoding="utf-8"))
+        assert span["schema_version"] == 1
+        assert span["name"] == "version"
+        assert span["attributes"]["process.command_args"] == argv
+        assert span["attributes"]["process.exit.code"] == 0
+        assert span["end_time_unix_nano"] >= span["start_time_unix_nano"] > 0
+        assert span["spex"]["duration_ms"] >= 0
 
     def test_records_nonzero_exit_on_system_exit(self, tmp_path):
         log_path = tmp_path / "debug.log"
@@ -597,6 +653,9 @@ class TestTraceCommand:
         assert exc_info.value.code == 2
         content = log_path.read_text(encoding="utf-8")
         assert "===== END exit=2 duration_ms=" in content
+        span = json.loads(log_path.with_name("trace.jsonl").read_text(encoding="utf-8"))
+        assert span["attributes"]["process.exit.code"] == 2
+        assert span["status"]["code"] == "ERROR"
 
     def test_records_exit_one_on_runtime_error(self, tmp_path):
         log_path = tmp_path / "debug.log"
@@ -836,6 +895,8 @@ class TestTraceCommandArchiveFollow:
         content = archived_log.read_text(encoding="utf-8")
         assert "===== pre-archive =====\n" in content
         assert "argv: spex archive --name my-spec" in content
+        span = json.loads(archived_log.with_name("trace.jsonl").read_text(encoding="utf-8"))
+        assert span["name"] == "archive"
         assert "===== END exit=0 duration_ms=" in content
         # Must not recreate a specs stub for tee.
         assert not (spex_root / "specs" / "my-spec").exists()

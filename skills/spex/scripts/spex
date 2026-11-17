@@ -582,10 +582,9 @@ def main(argv=None):
 
     if enabled:
         log_path = resolve_debug_log_path(full_argv)
-        if log_path is not None:
-            with trace_command(log_path, full_argv):
-                args.func(remaining)
-            return
+        with trace_command(log_path, full_argv):
+            args.func(remaining)
+        return
 
     args.func(remaining)
 

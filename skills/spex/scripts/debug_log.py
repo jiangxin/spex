@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -17,6 +18,7 @@ from config import get_project_context
 MAX_STREAM_BYTES = 256 * 1024
 PROMPT_STDOUT_LOG_BYTES = 2 * 1024
 DEBUG_LOG_NAME = "debug.log"
+TRACE_JSONL_NAME = "trace.jsonl"
 SESSIONS_DIR_NAME = "sessions"
 ACTIVE_SESSION_FILENAME = "active"
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -405,6 +407,7 @@ def merge_session_log_into_spec(
 ) -> Path | None:
     """Append session log into ``spec_dir/debug.log``, then delete session log.
 
+    Moves the default JSONL trace alongside the debug log.
     Also relocates the session ``.prev_end`` sidecar onto the target log when
     content was merged (so post-merge ``gap_ms`` continues), and always removes
     the session sidecar so the empty session directory can be cleaned up.
@@ -422,6 +425,7 @@ def merge_session_log_into_spec(
         logger.debug("Ignoring invalid session_id for merge: %r", session_id)
         return None
     session_dir = session_log.parent
+    _merge_session_trace(session_dir, Path(spec_dir))
 
     def _rmdir_if_empty() -> None:
         try:
@@ -480,6 +484,29 @@ def merge_session_log_into_spec(
     return target
 
 
+def _merge_session_trace(session_dir: Path, spec_dir: Path) -> None:
+    source = session_dir / TRACE_JSONL_NAME
+    if not source.is_file():
+        return
+    target = spec_dir / TRACE_JSONL_NAME
+    try:
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        with source.open("rb") as incoming, target.open("ab") as output:
+            snapshot = os.fstat(incoming.fileno())
+            if os.path.samestat(snapshot, os.fstat(output.fileno())):
+                return
+            remaining = snapshot.st_size
+            while remaining:
+                chunk = incoming.read(min(remaining, 64 * 1024))
+                if not chunk:
+                    break
+                output.write(chunk)
+                remaining -= len(chunk)
+        source.unlink()
+    except OSError as exc:
+        logger.debug("Failed to merge session trace %s into %s: %s", source, target, exc)
+
+
 def resolve_debug_log_path(argv: list[str]) -> Path | None:
     """Resolve debug.log with mutual-exclusive routing.
 
@@ -524,6 +551,24 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
         return session_debug_log_path(ctx.spex_root, session_id)
 
     return Path(ctx.spex_root) / DEBUG_LOG_NAME
+
+
+def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
+    """Resolve an explicit trace destination or use the debug log's sibling."""
+    env_path = os.environ.get("SPEX_TRACE_FILE", "").strip()
+    if env_path:
+        return Path(env_path).expanduser()
+
+    ctx = get_project_context()
+    configured = str(ctx.config.get("trace_file") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_absolute():
+            return path
+        if ctx.spex_root:
+            return Path(ctx.spex_root) / path
+        return None
+    return debug_path.with_name(TRACE_JSONL_NAME) if debug_path is not None else None
 
 
 def safe_flush_debug_log_path(
@@ -803,8 +848,41 @@ def _normalize_exit_code(code) -> int:
         return 1
 
 
+def _append_cli_span(
+    path: Path, argv: list[str], start_ns: int, end_ns: int,
+    duration_ms: int, exit_code: int,
+) -> None:
+    command = next((arg.replace("_", "-") for arg in argv[1:] if not arg.startswith("-")), "")
+    attributes = {
+        "process.executable.name": "spex",
+        "process.command_args": argv,
+        "process.pid": os.getpid(),
+        "process.exit.code": exit_code,
+    }
+    if exit_code:
+        attributes["error.type"] = "nonzero_exit"
+    span = {
+        "schema_version": 1,
+        "name": command,
+        "kind": "INTERNAL",
+        "start_time_unix_nano": start_ns,
+        "end_time_unix_nano": end_ns,
+        "attributes": attributes,
+        "status": {"code": "ERROR" if exit_code else "UNSET"},
+        "spex": {
+            "subcommand": command,
+            "duration_ms": duration_ms,
+            "started_at": datetime.fromtimestamp(start_ns / 1e9).astimezone().isoformat(),
+            "ended_at": datetime.fromtimestamp(end_ns / 1e9).astimezone().isoformat(),
+        },
+    }
+    if _prepare_debug_log_parent(path):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(span, separators=(",", ":")) + "\n")
+
+
 @contextmanager
-def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
+def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
     The flush path is chosen via ``safe_flush_debug_log_path`` after the
@@ -820,6 +898,7 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
     ``specs/<name>/`` stub via ``mkdir``.
     """
     start = time.monotonic()
+    start_ns = time.time_ns()
     exit_code = 0
     stdout_parts: list[str] = []
     stderr_parts: list[str] = []
@@ -843,16 +922,24 @@ def trace_command(log_path: Path, argv: list[str]) -> Iterator[None]:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
+        end_ns = time.time_ns()
         flush_path = safe_flush_debug_log_path(argv, log_path)
-        if flush_path is None:
-            return
-        _append_trace(
-            flush_path,
-            argv,
-            stdout_parts,
-            stdout_meta,
-            stderr_parts,
-            stderr_meta,
-            exit_code,
-            duration_ms,
-        )
+        if flush_path is not None:
+            _append_trace(
+                flush_path,
+                argv,
+                stdout_parts,
+                stdout_meta,
+                stderr_parts,
+                stderr_meta,
+                exit_code,
+                duration_ms,
+            )
+        try:
+            trace_path = resolve_trace_file_path(flush_path)
+            if trace_path is not None and (
+                flush_path is None or trace_path.resolve() != flush_path.resolve()
+            ):
+                _append_cli_span(trace_path, argv, start_ns, end_ns, duration_ms, exit_code)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Failed to write CLI span: %s", exc)
