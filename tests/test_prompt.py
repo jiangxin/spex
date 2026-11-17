@@ -171,11 +171,11 @@ class TestFutureTasks:
         metadata = _build_metadata("apply-one-task", "test-topic")
 
         # Current task should be step-2
-        assert metadata["current_task_id"] == "step-2"
+        assert metadata["current_task_id"] == 2
         assert "step-2" in metadata["current_task_description"]
         # future_tasks should contain step-3 and step-4
-        assert "- **step-3**: Third step" in metadata["future_tasks"]
-        assert "- **step-4**: Fourth step" in metadata["future_tasks"]
+        assert "- **step-3/4**: Third step" in metadata["future_tasks"]
+        assert "- **step-4/4**: Fourth step" in metadata["future_tasks"]
         # step-2 should NOT be in future_tasks
         assert "step-2" not in metadata["future_tasks"]
 
@@ -243,8 +243,8 @@ class TestFutureTasks:
 
         metadata = _build_metadata("apply-one-task", "test-topic")
 
-        assert "- **step-2**: Do B" in metadata["future_tasks"]
-        assert "- **step-3**: Do C" in metadata["future_tasks"]
+        assert "- **step-2/3**: Do B" in metadata["future_tasks"]
+        assert "- **step-3/3**: Do C" in metadata["future_tasks"]
 
 
 @pytest.mark.slow
@@ -297,8 +297,8 @@ class TestApplyOneTaskRendering:
 
         rendered = render_prompt("apply-one-task", "test-topic")
         assert "## Future Steps" in rendered
-        assert "- **step-2**: Second step" in rendered
-        assert "- **step-3**: Third step" in rendered
+        assert "- **step-2/3**: Second step" in rendered
+        assert "- **step-3/3**: Third step" in rendered
 
     def test_future_steps_section_absent_when_empty(
         self, tmp_path, monkeypatch
@@ -345,7 +345,7 @@ class TestApplyOneTaskRendering:
         rendered = render_prompt("apply-one-task", "test-topic")
         assert "<completed-steps>" in rendered
         for i in range(1, 6):
-            assert f"- **step-{i}**: Completed step {i}" in rendered
+            assert f"- **step-{i}/6**: Completed step {i}" in rendered
         assert verbose_details not in rendered
         assert "Implement the current task" in rendered
 
@@ -372,7 +372,7 @@ class TestTaskIdStderr:
         main()
 
         captured = capsys.readouterr()
-        assert "task_id=step-2" in captured.err
+        assert "task_id=2" in captured.err
 
     def test_main_no_task_id_for_other_templates(
         self, tmp_path, monkeypatch, capsys
@@ -425,7 +425,7 @@ class TestJsonMode:
         assert "task_id=" not in captured.err
         # stdout must be valid JSON with expected keys
         data = json.loads(captured.out)
-        assert data["task_id"] == "step-2"
+        assert data["task_id"] == 2
         assert "step-2" in data["prompt"]
         assert "all_done" not in data
         assert data["resume_phase"] == "implement"
@@ -444,7 +444,7 @@ class TestJsonMode:
         todo_path = spec_dir / "todo.json"
 
         todo_helper.main(["transaction", "start", name])
-        todo_helper.main(["edit", name, "--id", "step-1", "--commit-title", commit_title])
+        todo_helper.main(["edit", name, "--id", "1", "--commit-title", commit_title])
         todo_helper.main(["transaction", "commit", name])
         saved = todo_path.read_bytes()
 
@@ -455,7 +455,7 @@ class TestJsonMode:
         todo_helper.main(["transaction", "start", name])
         with pytest.raises(OSError, match="interrupted completion"):
             todo_helper.main([
-                "edit", name, "--id", "step-1", "--completed-at", "now",
+                "edit", name, "--id", "1", "--completed-at", "now",
                 "--commit-title", "f00dbeef: feat: first",
             ])
         interrupted = json.loads(todo_path.read_bytes())[0]
@@ -468,7 +468,7 @@ class TestJsonMode:
         main(["apply-one-task", name, "--json"])
 
         data = json.loads(capsys.readouterr().out)
-        assert data["task_id"] == "step-1"
+        assert data["task_id"] == 1
         assert data["resume_phase"] == "review"
         assert data["commit_title"] == commit_title
         assert data["skip_commit"] == "false"
@@ -593,11 +593,11 @@ class TestBuildTaskContext:
         result = _build_task_context(spec_dir)
 
         assert result["spec_content"] == "# My Spec\n\nSpec body."
-        assert "- **step-1**: First step" in result["completed_tasks"]
-        assert result["current_task_id"] == "step-2"
-        assert "- **step-2**: Second step" in result["current_task_description"]
+        assert "- **step-1/3**: First step" in result["completed_tasks"]
+        assert result["current_task_id"] == 2
+        assert "- **step-2/3**: Second step" in result["current_task_description"]
         assert "Do second thing" in result["current_task_description"]
-        assert "- **step-3**: Third step" in result["future_tasks"]
+        assert "- **step-3/3**: Third step" in result["future_tasks"]
         # Current task should NOT appear in future_tasks
         assert "step-2" not in result["future_tasks"]
 
@@ -668,8 +668,8 @@ class TestBuildTaskContext:
         result = _build_task_context(spec_dir)
 
         assert result["spec_content"] == "# Done Spec\n"
-        assert "- **step-1**: First step" in result["completed_tasks"]
-        assert "- **step-2**: Second step" in result["completed_tasks"]
+        assert "- **step-1/2**: First step" in result["completed_tasks"]
+        assert "- **step-2/2**: Second step" in result["completed_tasks"]
         assert result["current_task_id"] == ""
         assert result["current_task_description"] == ""
         assert result["future_tasks"] == ""
@@ -693,7 +693,7 @@ class TestBuildTaskContext:
         from prompt import _build_task_context
 
         result = _build_task_context(spec_dir)
-        assert result["current_task_id"] == "step-1"
+        assert result["current_task_id"] == 1
         assert result["resume_phase"] == "implement"
         assert result["current_commit_title"] == ""
         assert result["skip_commit"] == "false"
@@ -719,7 +719,7 @@ class TestBuildTaskContext:
         from prompt import _build_task_context
 
         result = _build_task_context(spec_dir)
-        assert result["current_task_id"] == "step-1"
+        assert result["current_task_id"] == 1
         assert result["resume_phase"] == "review"
         assert result["current_commit_title"] == "abc1234: feat: something"
         assert result["skip_commit"] == "false"
@@ -965,11 +965,11 @@ class TestApplyCommitWithTopic:
         assert "<requirement>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
-        assert "**step-1**: First step" in rendered
+        assert "**step-1/3**: First step" in rendered
         assert "<current-task>" in rendered
         assert "Add login API" in rendered
         assert "Implement /login endpoint" in rendered
-        assert "**step-3**: Add tests" in rendered
+        assert "**step-3/3**: Add tests" in rendered
 
     def test_spec_all_done_empty_next_task(self, tmp_path, monkeypatch):
         """apply-commit with a spec name but all tasks done returns None."""
@@ -1116,7 +1116,7 @@ class TestModifySpecTemplate:
         assert "Add caching to the API" in rendered
         assert "<old-specification>" in rendered
         assert "# Test Spec" in rendered
-        assert "**step-1**: First step" in rendered
+        assert "**step-1/2**: First step" in rendered
 
     def test_modify_spec_missing_prompt_context_fails(self, tmp_path, monkeypatch):
         """modify-spec without prompt_context fails validation."""
@@ -1181,7 +1181,7 @@ class TestModifyTodoTemplate:
         assert "<updated-specification>" in rendered
         assert "# Test Spec" in rendered
         assert "<completed-steps>" in rendered
-        assert "**step-1**: First step" in rendered
+        assert "**step-1/3**: First step" in rendered
 
     def test_modify_todo_no_completed_tasks(self, tmp_path, monkeypatch):
         """modify-todo without completed tasks omits completed-steps section."""
@@ -1219,7 +1219,7 @@ class TestCliApplyOneTask:
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        assert data["task_id"] == "step-2"
+        assert data["task_id"] == 2
         assert "step-2" in data["prompt"]
         assert "task_id=" not in captured.err
 
@@ -1236,7 +1236,7 @@ class TestCliApplyOneTask:
         cli_apply_one_task(["test-topic"])
 
         captured = capsys.readouterr()
-        assert "task_id=step-1" in captured.err
+        assert "task_id=1" in captured.err
         assert captured.out.strip()  # should have rendered output
 
     def test_all_done_json(self, tmp_path, monkeypatch, capsys):
@@ -1429,7 +1429,7 @@ class TestMainRouting:
 
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        assert data["task_id"] == "step-1"
+        assert data["task_id"] == 1
 
     def test_fallback_to_cli_render(self, tmp_path, monkeypatch, caplog):
         """main() falls back to cli_render for unknown template names."""
@@ -1512,15 +1512,15 @@ class TestFormatItemBrief:
         """_format_item_brief returns concise one-liner."""
         from prompt import _format_item_brief
         result = _format_item_brief({
-            "id": "step-1", "name": "Do something",
-        })
-        assert result == "- step-1: Do something *(details omitted)*"
+            "id": 1, "name": "Do something",
+        }, 2)
+        assert result == "- step-1/2: Do something *(details omitted)*"
 
-    def test_brief_missing_fields(self):
-        """_format_item_brief handles missing id/name."""
+    def test_brief_missing_name(self):
+        """_format_item_brief handles a missing name."""
         from prompt import _format_item_brief
-        result = _format_item_brief({})
-        assert result == "- :  *(details omitted)*"
+        result = _format_item_brief({"id": 1}, 1)
+        assert result == "- step-1/1:  *(details omitted)*"
 
 
 class TestBuildTaskContextNoSpec:
@@ -1733,7 +1733,7 @@ class TestCliApplyOneTaskDirect:
         cli_apply_one_task(["cli-aot", "--json"])
         out = capsys.readouterr().out
         data = json.loads(out)
-        assert data["task_id"] == "s1"
+        assert data["task_id"] == 1
 
     def test_cli_apply_one_task_all_done_json(self, tmp_path, monkeypatch, capsys):
         """cli_apply_one_task --json all-done outputs all_done=true."""
@@ -1897,7 +1897,7 @@ class TestApplyReviewStepReviewGate:
         monkeypatch.setattr(
             prompt_mod,
             "_build_metadata",
-            lambda *a, **k: {"current_task_id": "step-1"},
+            lambda *a, **k: {"current_task_id": 1},
         )
         args = SimpleNamespace(
             name="test-topic", commit_sha="deadbeef", json_mode=True, output=None,
@@ -1909,7 +1909,7 @@ class TestApplyReviewStepReviewGate:
         assert data["skipped"] is True
         assert data["step_review"] is False
         assert data["prompt"] == ""
-        assert data["task_id"] == "step-1"
+        assert data["task_id"] == 1
         assert data["commit_sha"] == "deadbeef"
         assert "skip_review" not in data
 
@@ -2691,8 +2691,10 @@ class TestApplyReviewAndFix:
         assert "Review Checklist" in data["prompt"]
         assert "deadbeef" in data["prompt"]
         assert data["review_round"] == 1
-        assert data["task_id"] == "step-2"
+        assert data["task_id"] == 2
         assert "review-helper" in data["prompt"]
+        assert "step-2/2" in data["prompt"]
+        assert "--step 2" in data["prompt"]
         assert "--commit" in data["prompt"]
         assert "Do NOT call `review-helper init`" in data["prompt"]
         assert "git checkout" in data["prompt"]
@@ -2759,7 +2761,7 @@ class TestApplyReviewAndFix:
         assert "edit --step" not in prompt
         assert "Do **not** mark findings complete" in prompt
         assert "complete-batch" in prompt
-        assert data["task_id"] == "step-2"
+        assert data["task_id"] == 2
         assert data["finding_ids"] == ["r1-f1", "r1-f2"]
         assert "detached HEAD" in prompt
         assert "git checkout" in prompt
@@ -2989,7 +2991,7 @@ class TestApplyReviewAndFix:
             assert data["skipped"] is True
             assert data["step_review"] is False
             assert data["prompt"] == ""
-            assert data["task_id"] == "step-1"
+            assert data["task_id"] == 1
             assert data["commit_sha"] == "deadbeef"
             assert "skip_review" not in data
             assert "Review Checklist" not in data["prompt"]
@@ -3024,7 +3026,7 @@ class TestApplyReviewAndFix:
             assert data["prompt"]
             assert "Review Checklist" in data["prompt"]
             assert data["commit_sha"] == "cafebabe"
-            assert data["task_id"] == "step-1"
+            assert data["task_id"] == 1
         finally:
             clear_config_cache()
 

@@ -458,8 +458,8 @@ class TestVerboseOutput:
         assert "(1/2)" in lines[0]
         assert lines[1] == "    Desc"
         assert lines[2] == ""
-        assert "step-1:" in lines[3]
-        assert "step-2:" in lines[4]
+        assert "step-1/2:" in lines[3]
+        assert "step-2/2:" in lines[4]
 
     def test_level2_no_steps_when_no_todo(self, tmp_path):
         spec_dir = tmp_path / "topic"

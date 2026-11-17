@@ -79,7 +79,7 @@ must inspect an existing finding.
 - Current round: **{{ review_round }}**
 - Commit under review: `{{ commit_sha }}`
 - Review file: `{{ review_file }}`
-- Step ID: `{{ step_id }}`
+- Step: `{{ current_task_label | default(step_id) }}`
 {% if review_mode | default(mode | default('full')) == 'delta' -%}
 - Fix base: `{{ fix_base_commit_sha }}`
 - Fixed commit: `{{ fixed_commit_sha or commit_sha }}`

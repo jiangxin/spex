@@ -764,7 +764,7 @@ class TestShow:
             "--id", "1", "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
+        assert "1. ✅ step-1/3\n" in out
         assert "step-2" not in out
 
     def test_done_and_undone_mutual_exclusion(self, todo_file):
@@ -793,7 +793,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
+        assert "1. ✅ step-1/1\n" in out
         assert "   - name: First step\n" in out
         assert "completed_at:" in out
         assert "commit_title:" in out
@@ -806,7 +806,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. 🔲 step-1\n" in out
+        assert "1. 🔲 step-1/1\n" in out
         assert "   - name: Second step\n" in out
         assert "completed_at:" not in out
         assert "commit_title:" not in out
@@ -818,9 +818,17 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. ✅ step-1\n" in out
-        assert "2. 🔲 step-2\n" in out
-        assert "3. ✅ step-3\n" in out
+        assert "1. ✅ step-1/3\n" in out
+        assert "2. 🔲 step-2/3\n" in out
+        assert "3. ✅ step-3/3\n" in out
+
+    @pytest.mark.parametrize(
+        ("flag", "label"), [("--done", "step-3/3"), ("--undone", "step-2/3")],
+    )
+    def test_filtered_markdown_uses_full_total(self, todo_file, capsys, flag, label):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main(["--todo-file", str(todo_file), "show", flag, "--format", "markdown"])
+        assert label in capsys.readouterr().out
 
     def test_show_markdown_empty_fields_skipped(
         self, todo_file, capsys,
@@ -835,7 +843,7 @@ class TestShow:
             "--format", "markdown",
         ])
         out = capsys.readouterr().out
-        assert "1. 🔲 step-1\n" in out
+        assert "1. 🔲 step-1/1\n" in out
         assert "   - name: Test\n" in out
         assert "details:" not in out
         assert "completed_at:" not in out

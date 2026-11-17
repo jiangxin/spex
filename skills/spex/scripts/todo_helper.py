@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import string
 import subprocess
 import sys
 import tempfile
@@ -22,6 +21,8 @@ from common import (
     logger,
     number_todo_items,
     resolve_spec_dir,
+    sha_from_commit_title,
+    todo_step_label,
     validate_unique_ids,
 )
 
@@ -161,7 +162,7 @@ def cmd_append(todo_path, args):
             entry["skip_commit"] = normalized
     data.append(entry)
     _write_todo(todo_path, data)
-    logger.info("Appended step-%d.", len(data))
+    logger.info("Appended %s.", todo_step_label(len(data), len(data)))
 
 
 def _short_head_sha() -> str:
@@ -178,17 +179,6 @@ def _short_head_sha() -> str:
     if result.returncode != 0:
         return ""
     return (result.stdout or "").strip()
-
-
-def _sha_from_commit_title(commit_title) -> str:
-    """Extract leading short sha from persisted ``%h: %s`` commit_title."""
-    prefix = str(commit_title).split(":", 1)[0].strip()
-    if (
-        4 <= len(prefix) <= 40
-        and all(c in string.hexdigits for c in prefix)
-    ):
-        return prefix
-    return ""
 
 
 def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
@@ -209,7 +199,7 @@ def _emit_todo_edit_apply_anchor(todo_path, args, item) -> None:
     ):
         # Prefer sha already persisted in commit_title over probing HEAD.
         sha = (
-            _sha_from_commit_title(args.commit_title)
+            sha_from_commit_title(args.commit_title)
             or _short_head_sha()
         )
         emit_apply_task(spec_dir, "committed", id=args.id, sha=sha)
@@ -241,7 +231,7 @@ def cmd_edit(todo_path, args):
             item["skip_commit"] = normalized
 
     _write_todo(todo_path, data)
-    logger.info("Updated '%s'.", args.id)
+    logger.info("Updated %s.", todo_step_label(args.id, len(data)))
     _emit_todo_edit_apply_anchor(todo_path, args, item)
 
 
@@ -250,7 +240,7 @@ def cmd_remove(todo_path, args):
     data = _read_todo(todo_path)
     del data[_step_index(data, args.id)]
     _write_todo(todo_path, data)
-    logger.info("Removed '%s'.", args.id)
+    logger.info("Removed %s.", todo_step_label(args.id, len(data) + 1))
 
 
 def cmd_remove_undone(todo_path):
@@ -340,7 +330,7 @@ def _format_block_details(text, indent, width=10**9):
     return "\n".join(lines)
 
 
-def _format_markdown(data, width=0):
+def _format_markdown(data, count, width=0):
     """Format todo entries as markdown.
 
     width=0 disables wrapping (lines may exceed 80 chars).
@@ -348,12 +338,12 @@ def _format_markdown(data, width=0):
     w = width if width > 0 else 10**9
     lines = []
     for idx, item in enumerate(data, 1):
-        step_id = f"step-{item['id']}"
+        step_label = todo_step_label(item["id"], count)
         completed = bool(item.get("completed_at"))
         icon = "✅" if completed else "🔲"
         prefix = f"{idx}. "
         indent = " " * len(prefix)
-        lines.append(f"{prefix}{icon} {step_id}")
+        lines.append(f"{prefix}{icon} {step_label}")
 
         name = item.get("name", "")
         if name:
@@ -391,6 +381,7 @@ def _format_markdown(data, width=0):
 def cmd_show(todo_path, args):
     """Display entries with optional filtering and format."""
     data = load_todo_json(todo_path)
+    count = len(data)
 
     if args.step_id:
         data = [data[_step_index(data, args.step_id)]]
@@ -406,7 +397,7 @@ def cmd_show(todo_path, args):
         ]
 
     if args.fmt == "markdown":
-        print(_format_markdown(data, width=80 if args.wrap else 0))
+        print(_format_markdown(data, count, width=80 if args.wrap else 0))
     else:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 

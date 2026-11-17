@@ -19,7 +19,9 @@ from common import (
     local_iso_timestamp,
     logger,
     resolve_spec_dir,
+    sha_from_commit_title,
     strip_front_matter,
+    todo_step_label,
 )
 from config import get_project_context
 from template import TemplateError
@@ -81,26 +83,26 @@ def validate_required_meta(content, metadata):
         sys.exit(1)
 
 
-def _format_item_verbose(item):
+def _format_item_verbose(item, count):
     """Format a single todo item in verbose markdown style."""
-    task_id = item.get("id", "")
     name = item.get("name", "")
     details = item.get("details", "")
-    lines = [f"- **{task_id}**: {name}"]
+    lines = [f"- **{todo_step_label(item['id'], count)}**: {name}"]
     if details:
         for line in details.splitlines():
             lines.append(f"  {line}" if line else "")
     return "\n".join(lines)
 
 
-def _format_item_brief(item):
+def _format_item_brief(item, count):
     """Format a single todo item as a brief one-liner."""
-    return f"- {item.get('id', '')}: {item.get('name', '')} *(details omitted)*"
+    label = todo_step_label(item["id"], count)
+    return f"- {label}: {item.get('name', '')} *(details omitted)*"
 
 
-def _format_item_concise(item):
+def _format_item_concise(item, count):
     """Format a single todo item as a concise one-liner (id + name only)."""
-    return f"- **{item.get('id', '')}**: {item.get('name', '')}"
+    return f"- **{todo_step_label(item['id'], count)}**: {item.get('name', '')}"
 
 
 def _trim_spec_content(spec_content):
@@ -605,20 +607,21 @@ def _build_task_context(spec_dir, verbose_items=20):
     spec_content_concise = _trim_spec_content(spec_content)
 
     todo = load_todo(spec_dir)
+    count = len(todo or [])
     if todo:
         done = [item for item in todo if item.get("completed_at")]
         if len(done) <= verbose_items:
             completed_tasks = "\n\n".join(
-                _format_item_verbose(item) for item in done
+                _format_item_verbose(item, count) for item in done
             )
         else:
             brief_items = done[:-verbose_items]
             verbose_part = done[-verbose_items:]
-            parts = [_format_item_brief(item) for item in brief_items]
-            parts.extend(_format_item_verbose(item) for item in verbose_part)
+            parts = [_format_item_brief(item, count) for item in brief_items]
+            parts.extend(_format_item_verbose(item, count) for item in verbose_part)
             completed_tasks = "\n\n".join(parts)
         completed_tasks_concise = "\n".join(
-            _format_item_concise(item) for item in done
+            _format_item_concise(item, count) for item in done
         )
 
         undone = [item for item in todo if not item.get("completed_at")]
@@ -626,7 +629,7 @@ def _build_task_context(spec_dir, verbose_items=20):
             current = undone[0]
             task_id = current.get("id", "")
             current_task_id = task_id
-            current_task_description = _format_item_verbose(current)
+            current_task_description = _format_item_verbose(current, count)
             current_commit_title = current.get("commit_title") or ""
             # commit_title set but completed_at empty → resume at review
             resume_phase = (
@@ -638,20 +641,20 @@ def _build_task_context(spec_dir, verbose_items=20):
             if future:
                 if len(future) <= verbose_items:
                     future_tasks = "\n\n".join(
-                        _format_item_verbose(item) for item in future
+                        _format_item_verbose(item, count) for item in future
                     )
                 else:
                     verbose_part = future[:verbose_items]
                     brief_items = future[verbose_items:]
                     parts = [
-                        _format_item_verbose(item) for item in verbose_part
+                        _format_item_verbose(item, count) for item in verbose_part
                     ]
                     parts.extend(
-                        _format_item_brief(item) for item in brief_items
+                        _format_item_brief(item, count) for item in brief_items
                     )
                     future_tasks = "\n\n".join(parts)
                 future_tasks_concise = "\n".join(
-                    _format_item_concise(item) for item in future
+                    _format_item_concise(item, count) for item in future
                 )
             else:
                 future_tasks = ""
@@ -681,6 +684,9 @@ def _build_task_context(spec_dir, verbose_items=20):
         "completed_tasks": completed_tasks,
         "completed_tasks_concise": completed_tasks_concise,
         "current_task_id": current_task_id,
+        "current_task_label": (
+            todo_step_label(current_task_id, count) if current_task_id else ""
+        ),
         "current_task_description": current_task_description,
         "current_commit_title": current_commit_title,
         "resume_phase": resume_phase,
@@ -766,6 +772,9 @@ def _enrich_review_metadata(
         metadata["review_file"] = str(path)
         if path.is_file():
             review_data = review_helper.load_review(path)
+            expected_sha = sha_from_commit_title(metadata.get("current_commit_title"))
+            review_helper.validate_review_commit(path, review_data, expected_sha)
+            review_helper.validate_review_commit(path, review_data, commit_sha)
             # Prefer explicit CLI mode; else file mode; else full.
             if mode is None:
                 review_mode = normalize_review_mode(review_data.get("mode"))

@@ -17,9 +17,12 @@ from typing import Optional
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
     atomic_write_json,
+    load_meta,
+    load_todo,
     local_iso_timestamp,
     logger,
     resolve_spec_dir,
+    sha_from_commit_title,
 )
 
 VALID_SEVERITIES = ("major", "minor")
@@ -56,9 +59,9 @@ _PARSE_ARGV: Optional[list[str]] = None
 _STEP_NUM_RE = re.compile(r"(\d+)$")
 
 
-def step_number(step_id: str) -> str:
+def step_number(step_id: int | str) -> str:
     """Extract trailing digits from a step id (e.g. step-1 → 1)."""
-    match = _STEP_NUM_RE.search(step_id or "")
+    match = _STEP_NUM_RE.search(str(step_id or ""))
     if not match:
         logger.error(
             "Error: cannot derive step number from id '%s'.",
@@ -68,15 +71,67 @@ def step_number(step_id: str) -> str:
     return match.group(1)
 
 
-def review_filename(step_id: str) -> str:
+def review_filename(step_id: int | str) -> str:
     """Return review-step-N.json for the given step id."""
     return f"review-step-{step_number(step_id)}.json"
 
 
-def resolve_review_path(spec_name: str, step_id: str) -> Path:
+def resolve_review_path(spec_name: str, step_id: int | str) -> Path:
     """Resolve the review JSON path under the spec directory."""
     spec_dir = resolve_spec_dir(spec_name)
     return spec_dir / review_filename(step_id)
+
+
+def _is_legacy_amend_chain(path: Path, actual_sha: str, expected_sha: str) -> bool:
+    """Verify contiguous amendments of the original commit at the coding tip."""
+    meta = load_meta(path.parent)
+    cwd = (meta.spex_worktree or meta.workdir or None) if meta else None
+    ref = f"refs/heads/{meta.spex_branch}" if meta and meta.spex_branch else "HEAD"
+    try:
+        result = subprocess.run(
+            ["git", "reflog", "show", "--format=%H%x09%gs", ref],
+            cwd=cwd, capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return False
+    if result.returncode:
+        return False
+    rows = iter(result.stdout.splitlines())
+    tip, _, action = next(rows, "").partition("\t")
+    if not sha_matches(tip, actual_sha):
+        return False
+    for row in rows:
+        if not action.startswith("commit (amend): "):
+            return False
+        previous, _, action = row.partition("\t")
+        if sha_matches(previous, expected_sha):
+            return True
+    return False
+
+
+def validate_review_commit(path: Path, data: dict, expected_sha: str | None) -> None:
+    """Check the commit and the recorded base of a completed amendment."""
+    actual_sha = data.get("commit_sha") or ""
+    base_sha = data.get("fix_base_commit_sha") or ""
+    fixed_sha = data.get("fixed_commit_sha") or ""
+    if not expected_sha or sha_matches(actual_sha, expected_sha):
+        return
+    if sha_matches(data.get("original_commit_sha", ""), expected_sha):
+        return
+    matches_batch = sha_matches(actual_sha, fixed_sha) and sha_matches(base_sha, expected_sha)
+    if matches_batch or (
+        not data.get("original_commit_sha")
+        and _is_legacy_amend_chain(path, actual_sha, expected_sha)
+    ):
+        if not data.get("original_commit_sha"):
+            data["original_commit_sha"] = expected_sha
+            save_review(path, data)
+        return
+    logger.error(
+        "Error: %s belongs to commit %s; expected %s for this step.",
+        path.name, actual_sha or "(missing)", expected_sha,
+    )
+    sys.exit(1)
 
 
 def _resolve_completed_at(value):
@@ -239,11 +294,12 @@ def _format_finding(item: dict) -> str:
     )
 
 
-def _new_review_document(step_id: str, commit_sha: str) -> dict:
+def _new_review_document(step_id: int | str, commit_sha: str) -> dict:
     """Build a fresh review document including batch-state defaults."""
     data = {
         "step_id": step_id,
         "commit_sha": commit_sha,
+        "original_commit_sha": commit_sha,
         "round": 1,
         "findings": [],
     }
@@ -251,7 +307,7 @@ def _new_review_document(step_id: str, commit_sha: str) -> dict:
     return data
 
 
-def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
+def cmd_init(path: Path, step_id: int | str, commit_sha: str) -> None:
     """Create or reset a review file for the step."""
     data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -268,14 +324,17 @@ def cmd_init(path: Path, step_id: str, commit_sha: str) -> None:
 
 
 def _ensure_review_for_append(
-    path: Path, step_id: str, commit_sha: Optional[str],
+    path: Path, step_id: int | str, commit_sha: Optional[str],
 ) -> dict:
     """Load review file, or create it when missing (lazy create).
 
     ``--commit`` is required when the file does not exist yet.
     """
     if path.is_file():
-        return load_review(path)
+        data = load_review(path)
+        if isinstance(step_id, int):
+            validate_review_commit(path, data, commit_sha)
+        return data
     if not commit_sha:
         logger.error(
             "Error: review file '%s' does not exist; "
@@ -496,7 +555,7 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             and (not needs_fix or round_num >= MAX_REVIEW_ROUND)
         )
         payload = {
-            "step_id": data.get("step_id", "") or step_id,
+            "step_id": step_id or data.get("step_id", ""),
             "commit_sha": data.get("commit_sha", ""),
             "round": round_num,
             "open_major": open_major,
@@ -529,6 +588,7 @@ def cmd_show(
     open_only: bool,
     as_json: bool,
     finding_id: Optional[str] = None,
+    step_id: int | str = "",
 ) -> None:
     """Display findings, optionally filtering to open items or one id."""
     data = load_review(path)
@@ -547,7 +607,7 @@ def cmd_show(
 
     if as_json:
         print(json.dumps({
-            "step_id": data.get("step_id", ""),
+            "step_id": _output_step_id(data, step_id),
             "commit_sha": data.get("commit_sha", ""),
             "round": data.get("round", 1),
             "findings": findings,
@@ -649,7 +709,7 @@ def build_open_batch_payload(
     open_items = get_open_findings(data)
     has_major = any(item.get("severity") == "major" for item in open_items)
     return {
-        "step_id": data.get("step_id", "") or step_id,
+        "step_id": step_id or data.get("step_id", ""),
         "commit_sha": data.get("commit_sha", ""),
         "round": int(data.get("round", 1)),
         "mode": data["mode"],
@@ -1192,7 +1252,11 @@ def _emit_complete_batch_telemetry(
         new=new_sha,
     )
 
-def cmd_next(path: Path, step_id: str = "") -> None:
+def _output_step_id(data: dict, step_id: int | str) -> int | str:
+    return step_id if isinstance(step_id, int) else data.get("step_id", "") or step_id
+
+
+def cmd_next(path: Path, step_id: int | str = "") -> None:
     """Print the first open finding as JSON (or id=null if none)."""
     if not path.is_file():
         print(json.dumps({
@@ -1210,7 +1274,7 @@ def cmd_next(path: Path, step_id: str = "") -> None:
         print(json.dumps({
             "id": None,
             "open_count": 0,
-            "step_id": data.get("step_id", "") or step_id,
+            "step_id": _output_step_id(data, step_id),
             "commit_sha": data.get("commit_sha", ""),
             "round": data.get("round", 1),
             "exists": True,
@@ -1224,7 +1288,7 @@ def cmd_next(path: Path, step_id: str = "") -> None:
         "title": item.get("title", ""),
         "details": item.get("details", ""),
         "open_count": len(open_items),
-        "step_id": data.get("step_id", "") or step_id,
+        "step_id": _output_step_id(data, step_id),
         "commit_sha": data.get("commit_sha", ""),
         "round": data.get("round", 1),
         "exists": True,
@@ -1549,7 +1613,16 @@ def main(argv=None):
         return
 
     step_id = args.step
+    if step_id.isascii() and step_id.isdecimal() and int(step_id) > 0:
+        args.step = step_id = int(step_id)
     path = resolve_review_path(args.name, step_id)
+
+    if args.subcmd != "init" and isinstance(step_id, int) and path.is_file():
+        todo = load_todo(path.parent) or []
+        if step_id <= len(todo):
+            expected_sha = sha_from_commit_title(todo[step_id - 1].get("commit_title"))
+            if expected_sha:
+                validate_review_commit(path, load_review(path), expected_sha)
 
     if args.subcmd == "init":
         cmd_init(path, step_id, args.commit_sha)
@@ -1566,16 +1639,16 @@ def main(argv=None):
     elif args.subcmd == "show":
         cmd_show(
             path, args.open_only, args.json_mode,
-            finding_id=args.finding_id,
+            finding_id=args.finding_id, step_id=step_id,
         )
     elif args.subcmd == "list":
         # Alias → show-style JSON summary for the step (no --id).
-        cmd_show(path, args.open_only, as_json=True)
+        cmd_show(path, args.open_only, as_json=True, step_id=step_id)
     elif args.subcmd == "get":
         # Alias → show --id --json.
         cmd_show(
             path, open_only=False, as_json=True,
-            finding_id=args.finding_id,
+            finding_id=args.finding_id, step_id=step_id,
         )
     elif args.subcmd == "next":
         cmd_next(path, step_id=step_id)

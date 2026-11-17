@@ -37,7 +37,7 @@ def cli_log(argv, code=0):
 
 
 def test_integer_task_ids_count_toward_progress(tmp_path):
-    before = evidence.persist_turn(tmp_path, 0, state(task(1, "done"), task(2)))
+    before = evidence.persist_turn(tmp_path, 0, state(task("step-1", "done"), task("step-2")))
     after = evidence.persist_turn(tmp_path, 1, state(task(1, "done"), task(2, "later")))
     changed = evidence.persist_turn(tmp_path, 2, state(task(1, "changed"), task(2)))
     assert evidence.check_gate("one-step", before, after)["verdict"] == "pass"

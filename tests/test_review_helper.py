@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 
 import pytest
@@ -33,6 +34,9 @@ def _last_json_line(capsys):
 
 
 class TestStepNumber:
+    def test_numeric(self):
+        assert review_helper.review_filename(2) == "review-step-2.json"
+
     def test_step_1(self):
         assert review_helper.step_number("step-1") == "1"
 
@@ -45,6 +49,95 @@ class TestStepNumber:
 
 
 class TestInit:
+    def test_numeric_selector_reuses_legacy_file_only_for_matching_commit(
+        self, spec_dir, capsys,
+    ):
+        review_helper.main(["init", "my-topic", "--step", "step-1", "--commit", "abc1234"])
+        capsys.readouterr()
+        todo_path = spec_dir / "todo.json"
+        todo_path.write_text(json.dumps([{"id": 1, "commit_title": "abc1234: Existing"}]))
+
+        review_helper.main(["status", "my-topic", "--step", "1", "--json"])
+        assert _last_json_line(capsys)["step_id"] == 1
+
+        todo_path.write_text(json.dumps([{"id": 1, "commit_title": "deadbee: Different"}]))
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main(["status", "my-topic", "--step", "1", "--json"])
+        assert exc.value.code == 1
+
+    def test_numeric_status_preserves_review_after_amend(self, spec_dir, capsys):
+        review_helper.main(["init", "my-topic", "--step", "1", "--commit", "abc1234"])
+        capsys.readouterr()
+        todo_path = spec_dir / "todo.json"
+        todo_path.write_text(json.dumps([{"id": 1, "commit_title": "abc1234: Existing"}]))
+        review_helper.main(["set-commit", "my-topic", "--step", "1", "--commit", "deadbee"])
+        capsys.readouterr()
+        review_helper.main(["status", "my-topic", "--step", "1", "--json"])
+        assert _last_json_line(capsys)["commit_sha"] == "deadbee"
+
+    @pytest.mark.slow
+    def test_legacy_second_round_accepts_only_verified_amend_chain(
+        self, spec_dir, capsys, monkeypatch,
+    ):
+        monkeypatch.chdir(spec_dir)
+
+        def git(*args):
+            return subprocess.check_output(["git", *args], text=True).strip()
+
+        git("init", "-q")
+        git("config", "user.name", "Spex Test")
+        git("config", "user.email", "spex@example.com")
+        (spec_dir / "meta.json").write_text(json.dumps({
+            "workdir": str(spec_dir),
+            "spex_branch": git("symbolic-ref", "--short", "HEAD"),
+        }))
+        git("commit", "-qm", "Base", "--allow-empty")
+        git("commit", "-qm", "Original", "--allow-empty")
+        original = git("rev-parse", "--short", "HEAD")
+        git("commit", "--amend", "-qm", "Amended", "--allow-empty")
+        git("commit", "--amend", "-qm", "Amended again", "--allow-empty")
+        amended = git("rev-parse", "--short", "HEAD")
+        path = spec_dir / "review-step-1.json"
+        legacy = {
+            "step_id": "step-1", "commit_sha": amended, "round": 2, "findings": [],
+        }
+        path.write_text(json.dumps(legacy))
+        todo = spec_dir / "todo.json"
+        todo.write_text(json.dumps([{
+            "id": "step-1", "commit_title": f"{original}: Original",
+        }]))
+        review_helper.main(["status", "my-topic", "--step", "1", "--json"])
+        assert _last_json_line(capsys)["round"] == 2
+        assert _read(path)["original_commit_sha"] == original
+
+        git("commit", "-qm", "Unrelated step", "--allow-empty")
+        unrelated = git("rev-parse", "--short", "HEAD")
+        path.write_text(json.dumps(dict(legacy, commit_sha=unrelated)))
+        with pytest.raises(SystemExit):
+            review_helper.main(["status", "my-topic", "--step", "1", "--json"])
+        assert "original_commit_sha" not in _read(path)
+
+    @pytest.mark.parametrize(("command", "flags", "has_finding"), [
+        ("show", ["--json"], True),
+        ("list", [], True),
+        ("get", ["--id", "r1-f1"], True),
+        ("next", [], True),
+        ("next", [], False),
+    ])
+    def test_numeric_read_commands_report_numeric_step_id(
+        self, spec_dir, capsys, command, flags, has_finding,
+    ):
+        path = spec_dir / "review-step-1.json"
+        path.write_text(json.dumps({
+            "step_id": "step-1",
+            "commit_sha": "abc1234",
+            "findings": [{"id": "r1-f1"}] if has_finding else [],
+        }))
+        review_helper.main([command, "my-topic", "--step", "1", *flags])
+        assert json.loads(capsys.readouterr().out)["step_id"] == 1
+        review_helper.main([command, "my-topic", "--step", "step-1", *flags])
+        assert json.loads(capsys.readouterr().out)["step_id"] == "step-1"
+
     def test_creates_file(self, spec_dir, capsys):
         review_helper.main([
             "init", "my-topic",
