@@ -9,7 +9,8 @@ PLAN-only guards.
 ## Write whitelist (SCOPE)
 
 - Write **only** under `$spec_path` (`spec.md`, `todo.json`,
-  `meta.json`, optional `assets/`).
+  `meta.json`, the `todo.json.lock` backup and its temporary file
+  managed by todo-helper, optional `assets/`).
 - NO application code. NO existing project file modifications
   outside `$spec_path`.
 - Implementation later via `/spex apply` or `/spex apply-one-step`.
@@ -47,6 +48,24 @@ PLAN-only guards.
 - Any Write / ApplyPatch / tree-changing shell **outside**
   `$spec_path` -> **immediate STOP**; roll back those out-of-scope
   changes if possible; do **not** continue later phases
+
+## Todo transaction failure handling
+
+- Start failure: report stderr and stop before any todo writes.
+  If `$spec_path/todo.json.lock` exists, report its path and the
+  `transaction commit` and `transaction rollback` recovery commands.
+  Leave that backup for its owning transaction.
+- After a successful start, roll back on final failure or abandonment
+  before commit, including a stop for an out-of-whitelist write.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
+```
+
+- Commit or rollback failure: report stderr, the backup path, and the
+  failed command for retry. Stop with the backup left in place.
+- The transaction covers only `todo.json`. Other spec files and
+  post-action side effects are outside its scope.
 
 ## Output format
 

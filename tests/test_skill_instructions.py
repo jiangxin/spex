@@ -476,6 +476,12 @@ class TestCreatePlanOnlySop:
         _index(phase6, "Small batches")
         _index(phase6, "skip_commit")
         _index(phase6, "examples in cookbook")
+        assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
+        phase7 = _h3_section(text, "Phase 7: Post-Action")
+        assert _index(phase7, "create-helper post-action") < _index(
+            phase7, "transaction commit"
+        )
+        _index(phase7, "After post-action exits successfully")
 
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
@@ -605,6 +611,18 @@ class TestModifyPlanOnlySop:
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         _index(phase3, "Load and follow `references/spec-assets.md`")
 
+    def test_todo_transaction_wraps_modify(self):
+        text = _read(MODIFY_MD)
+        phase4 = _h3_section(text, "Phase 4: Build Prompt")
+        assert _index(phase4, "transaction start") < _index(
+            phase4, "todo-helper remove-undone"
+        ) < _index(phase4, "prompt modify-spec")
+        phase8 = _h3_section(text, "Phase 8: Post-Action")
+        assert _index(phase8, "create-helper post-action") < _index(
+            phase8, "transaction commit"
+        )
+        _index(phase8, "After post-action exits successfully")
+
     def test_phase5_readonly_updates_spec_md_only(self):
         phase5 = _h3_section(_read(MODIFY_MD), "Phase 5: Modify spec.md")
         _index(phase5, "update **only** `$spec_path/spec.md`")
@@ -633,16 +651,17 @@ class TestModifyPlanOnlySop:
         section = _h2_section(_read(MODIFY_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "plan-command-common.md")
+        _index(section, "Phase 4")
         _index(section, "Phase 5")
         _index(section, "Phase 7")
         _index(section, "immediate STOP")
-        _index(section, "roll")
-        _index(section, "`remove-undone` recovery")
-        _index(section, "Phase 4")
-        _index(section, "git restore")
-        _index(section, "half-done")
+        _index(section, "roll back and STOP")
+        assert "git restore" not in section
         shared = _read(PLAN_COMMAND_COMMON)
-        _index(shared, "roll back")
+        recovery = _h2_section(shared, "Todo transaction failure handling")
+        _index(recovery, "After a successful start, roll back")
+        _index(recovery, "todo-helper transaction rollback")
+        _index(recovery, "backup left in place")
         _index(shared, "`$spec_path`")
 
 

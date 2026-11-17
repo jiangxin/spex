@@ -91,13 +91,21 @@ EOF
 
 ### Phase 4: Build Prompt
 
+- Start the todo transaction before removing incomplete steps:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
+```
+
+- IF non-zero exit -> follow the start failure rule in
+  `references/plan-command-common.md` and STOP.
 - Remove incomplete steps before rendering the prompt:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
 ```
 
-- IF non-zero exit -> report stderr -> STOP
+- IF non-zero exit -> follow Failure Handling and STOP.
 - CMD:
 
 ```bash
@@ -107,7 +115,7 @@ $request
 EOF
 ```
 
-- IF non-zero exit -> report stderr -> STOP
+- IF non-zero exit -> follow Failure Handling and STOP.
 - ELSE `$modify_prompt` ← `"prompt"` field from JSON stdout
 
 ### Phase 5: Modify spec.md
@@ -119,9 +127,8 @@ EOF
   implementation details, and do NOT modify any file outside
   `$spec_path`
 - Writes only under `$spec_path` (plan-command-common whitelist)
-- ON_FAIL (cannot apply prompt / write fails) -> STOP; do not
-  continue to Phase 6/7 half-done. Prefer Failure Handling
-  `remove-undone` recovery if unfinished steps were already removed
+- ON_FAIL (cannot apply prompt / write fails) -> follow Failure Handling
+  and STOP before Phase 6.
 
 ### Phase 6: Build Todo Prompt
 
@@ -131,7 +138,7 @@ EOF
 $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
 ```
 
-- IF non-zero exit -> report stderr -> STOP
+- IF non-zero exit -> follow Failure Handling and STOP.
 - ELSE `$todo_prompt` ← `"prompt"` field from JSON stdout
 
 ### Phase 7: Regenerate Development Steps
@@ -153,8 +160,8 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
   formatting, and `skip_commit` conventions. Continue IDs after the
   last completed step (`step-N+1`, …)
 - Writes only under `$spec_path` (`todo.json` via todo-helper)
-- ON_FAIL (append/edit fails) -> STOP; do not continue half-done.
-  Use Failure Handling `remove-undone` recovery before retrying
+- ON_FAIL (append/edit fails) -> follow Failure Handling and STOP
+  before Phase 8.
 
 ### Phase 8: Post-Action
 
@@ -165,7 +172,16 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   --name "$spec_name" --event-type modify
 ```
 
-- ON_FAIL: fix JSON format in `todo.json` -> re-run until validation OK
+- ON_FAIL: correct recoverable errors within the open transaction and
+  re-run post-action. If giving up, follow Failure Handling.
+- After post-action exits successfully, commit the todo transaction:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+- IF non-zero exit -> follow the commit failure rule in
+  `references/plan-command-common.md` and STOP before output.
 
 ### Phase 9: Output
 
@@ -192,29 +208,16 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   -> STOP. Empty `[]` alone is not a script error — follow
   `references/resolve-spec-name.md` empty-probe re-list when
   applicable
-- ON_FAIL Phase 4 `modify-spec` prompt -> STOP. IF
-  `remove-undone` already deleted incomplete todos -> recover
-  before any retry (below); do **not** continue half-done
-- ON_FAIL Phase 5 (spec.md write) -> **immediate STOP**; do not
-  enter Phase 6/7. Prefer `remove-undone` recovery below
-- ON_FAIL Phase 6 `modify-todo` prompt -> STOP
-- ON_FAIL Phase 7 (todo append/edit) -> **immediate STOP**; do not
-  enter Phase 8 half-done. Prefer `remove-undone` recovery below
-- ON_FAIL Phase 8 post-action -> fix `todo.json` -> re-run until OK
-- `remove-undone` recovery: after Phase 4 has removed incomplete
-  todos, a FAIL before successful Phase 7 append must **not** leave
-  the agent continuing in a half-done state. Recover by either
-  (1) re-running `/spex modify` from Phase 4 with the same
-  `$spec_name` / `$request`, or (2) `git restore --source=HEAD --`
-  `$spec_path/todo.json` (and `spec.md` if needed) when specs are
-  git-tracked — then restart from Phase 4. Do not invent partial
-  todo steps on top of a stripped list
+- Todo transaction recovery: after successful Phase 4 start,
+  ON_FAIL in Phase 4, Phase 5, Phase 6, or Phase 7 -> roll back and STOP.
+  For Phase 8 failures or abandonment before successful commit,
+  follow the transaction rules in `references/plan-command-common.md`.
+  A rollback restores the original task list before any retry from Phase 4.
 
 ## STOP / Outputs
 
-- Writes: updated `$spec_path/spec.md`, `$spec_path/todo.json`,
-  `$spec_path/meta.json` (+ optional `assets/`) only — never outside
-  `$spec_path` (plan-command-common whitelist)
+- Writes: `spec.md`, `todo.json`, its temporary backup, and `meta.json`
+  (plus optional `assets/`) under `$spec_path` per the shared whitelist.
 - Phase 9: human summary + trailing fenced `json spex-result`
   (`spec_name`, `spec_path`); callers MUST parse the last fenced
   `json spex-result` block
