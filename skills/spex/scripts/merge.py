@@ -12,16 +12,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cli import ArgumentParser
-from common import logger
+from common import logger, same_path
 
 
 @dataclass(frozen=True)
 class MergePlan:
     cwd: Path
     current_branch: str
-    multiple_worktrees: bool
+    worktree_paths: tuple[str, ...]
     target_checked_out: bool
     restore_branch: str
+
+    @property
+    def multiple_worktrees(self) -> bool:
+        return len(self.worktree_paths) > 1
 
 
 def _plan_merge(target: str, caller: Path | None) -> MergePlan:
@@ -32,12 +36,13 @@ def _plan_merge(target: str, caller: Path | None) -> MergePlan:
     if caller is None:
         raise RuntimeError("Run merge from a Git working tree.")
     worktrees = [entry for entry in list_worktrees(cwd=caller) if "bare" not in entry]
-    multiple = len(worktrees) > 1
+    paths = tuple(entry["path"] for entry in worktrees)
+    multiple = len(paths) > 1
     target_branch = target.removeprefix("refs/heads/")
     target_ref = f"refs/heads/{target_branch}"
     for entry in worktrees:
         if entry.get("branch") == target_ref:
-            return MergePlan(Path(entry["path"]), target_branch, multiple, True, "")
+            return MergePlan(Path(entry["path"]), target_branch, paths, True, "")
 
     try:
         current_branch = get_current_branch(cwd=caller)
@@ -48,7 +53,7 @@ def _plan_merge(target: str, caller: Path | None) -> MergePlan:
                 "Check out a local branch and retry."
             ) from exc
         current_branch = ""
-    return MergePlan(caller, current_branch, multiple, False,
+    return MergePlan(caller, current_branch, paths, False,
                      current_branch if multiple else "")
 
 
@@ -182,11 +187,18 @@ def cli_submit(argv=None, command="submit") -> None:
         _fail_with_errors({"action": method, "source": source, "target": target,
                            "errors": errors})
 
+    preserve_worktree = plan.cwd if plan.restore_branch else None
     if parsed.dry_run:
+        from archive import worktree_remove_plan
+
         merge_cwd = str(plan.cwd)
-        spex_wt = (meta.spex_worktree if meta else "") or ""
         will_archive = not parsed.no_archive
-        would_remove = will_archive and bool(spex_wt)
+        spex_wt, _, _, would_remove = worktree_remove_plan(
+            spec_dir, force=True, preserve_worktree=preserve_worktree,
+        )
+        would_remove = will_archive and would_remove and any(
+            same_path(spex_wt, path) for path in plan.worktree_paths
+        )
         merge_cwd_head = plan.current_branch
         would_switch = not plan.target_checked_out
         logger.info("Would merge: %s -> %s", source, target)
@@ -301,6 +313,7 @@ def cli_submit(argv=None, command="submit") -> None:
                     common.get_specs_dir(),
                     common.get_archives_dir(),
                     force=True,
+                    preserve_worktree=preserve_worktree,
                 )
             archived = result is not None
         except Exception:

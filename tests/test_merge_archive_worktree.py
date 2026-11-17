@@ -370,6 +370,48 @@ class TestTemporaryMergeCheckout:
         pre_action.assert_not_called()
         post_action.assert_not_called()
 
+    @pytest.mark.parametrize("archive_mode", ["preserve", "remove", "skip", "stale"])
+    def test_archive_after_restoring_worktree(
+        self, linked_merge, capsys, archive_mode,
+    ):
+        main, caller, spec_dir, archives, post_action = linked_merge
+        bound = caller.parent / "bound-worktree"
+        if archive_mode == "preserve":
+            bound.symlink_to(caller, target_is_directory=True)
+        elif archive_mode != "stale":
+            add_worktree(bound, "bound", base="main", cwd=main)
+        dirty_file = caller / "local.txt"
+        dirty_file.write_text("uncommitted work\n", encoding="utf-8")
+        _write_completed_spec(
+            spec_dir, main=main, spex_branch="spex/feat", spex_worktree=str(bound),
+        )
+        meta_before = (spec_dir / "meta.json").read_bytes()
+        args = [spec_dir.name]
+        if archive_mode == "skip":
+            args.append("--no-archive")
+
+        cli_submit([*args, "--dry-run"])
+        preview = json.loads(capsys.readouterr().out)
+        assert preview["would_remove_worktree"] is (archive_mode == "remove")
+        assert spec_dir.is_dir() and not archives.exists()
+        assert bound.is_dir() is (archive_mode != "stale")
+
+        cli_submit(args)
+        submitted = json.loads(capsys.readouterr().out)
+        assert submitted["archived"] is (archive_mode != "skip")
+        assert get_current_branch(caller) == "caller"
+        assert is_registered_worktree(caller, cwd=main)
+        assert dirty_file.read_text(encoding="utf-8") == "uncommitted work\n"
+        assert bound.is_dir() is (archive_mode in ("preserve", "skip"))
+        assert is_registered_worktree(bound, cwd=main) is bound.is_dir()
+        post_action.assert_called_once()
+
+        if archive_mode == "skip":
+            assert spec_dir.is_dir() and not archives.exists()
+        else:
+            assert not spec_dir.exists()
+            assert (archives / spec_dir.name / "meta.json").read_bytes() == meta_before
+
     def test_restores_caller_branch_when_a_tag_has_the_same_name(
         self, linked_merge, capsys,
     ):
