@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,6 +67,31 @@ def initialize(sandbox: Path, queue_file: Path, entries: dict, cases: list[str])
     return outcome(queue)
 
 
+def read_complete_reply(path: Path) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"Expected a regular reply file: {path}")
+    data = path.read_bytes()
+    if not data.decode("utf-8").strip():
+        raise ValueError(f"The reply file is empty: {path}")
+    return data
+
+
+def publish_reply(source: Path, reply: Path) -> None:
+    data = read_complete_reply(source)
+    fd, name = tempfile.mkstemp(dir=reply.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+        try:
+            os.link(temporary, reply)
+        except FileExistsError:
+            if read_complete_reply(reply) != data:
+                raise ValueError(f"A different reply is already published: {reply}") from None
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict, row: dict,
                 environment: dict, save_dispatch):
     suite, case = metadata["suite"], metadata["case_id"]
@@ -97,7 +123,15 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
     if dispatch.get("turn") != current:
         raise ValueError("Start this turn before stopping or collecting it")
     if args.command == "stop":
-        if not timer.is_file() and wall.is_file() and not wall.is_symlink():
+        stopped = not timer.exists() and not timer.is_symlink() and (
+            wall.is_file() and not wall.is_symlink()
+        )
+        source = getattr(args, "reply_file", None)
+        if source is not None:
+            if not stopped and (timer.is_symlink() or not timer.is_file()):
+                raise ValueError("Start the current turn timer before publishing its reply")
+            publish_reply(source, reply)
+        if stopped:
             return {"turn": current, "reply": str(reply),
                     **collect_handoff.read_host_wall_clock(reply)}
         return host_turn_timer.stop_timer(sandbox, suite, case, current)
@@ -315,6 +349,8 @@ def parser() -> argparse.ArgumentParser:
             action.add_argument("turn", type=int)
         if command == "start":
             action.add_argument("--session", required=True)
+        if command == "stop":
+            action.add_argument("--reply-file", type=Path, help="Publish a completed reply file")
         if command == "fail":
             action.add_argument(
                 "--reason", required=True, choices=("launch_failed", "exited", "timeout"),

@@ -716,6 +716,89 @@ def test_guarded_manual_dispatch_and_terminal_verdict(runner, monkeypatch):
     assert manual_action(sandbox, "status", "--require-terminal")[1] == 0
 
 
+@pytest.mark.parametrize("other_reply", ["Completed reply", "Different reply"])
+def test_manual_publish_preserves_concurrent_reply(tmp_path, monkeypatch, other_reply):
+    source = tmp_path / "staged.txt"
+    source.write_text("Completed reply", encoding="utf-8")
+    reply = tmp_path / "reply.txt"
+    link = manual.os.link
+
+    def publish_first(temporary, destination):
+        reply.write_text(other_reply, encoding="utf-8")
+        link(temporary, destination)
+
+    monkeypatch.setattr(manual.os, "link", publish_first)
+    if other_reply == "Completed reply":
+        manual.publish_reply(source, reply)
+    else:
+        with pytest.raises(ValueError, match="A different reply is already published"):
+            manual.publish_reply(source, reply)
+    assert reply.read_text(encoding="utf-8") == other_reply
+    assert set(tmp_path.iterdir()) == {source, reply}
+
+
+@pytest.mark.slow
+def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
+    runner, tmp_path, monkeypatch,
+):
+    info = run.execute(runner.parse_args([
+        "prepare", "--case", "clarify", "--host", "cursor",
+    ]))
+    sandbox = Path(info["sandbox"])
+    key = "example/clarify"
+    manual_action(sandbox, "init", key)
+    manual_action(sandbox, "claim", key)
+    start, _ = manual_action(sandbox, "start", key, "1", "--session", "trial-1")
+    reply = Path(start["reply"])
+    timer = manual.host_turn_timer.pending_path(reply)
+    wall = collect_handoff.host_wall_clock_sidecar(reply)
+    staged = tmp_path / "reply.txt"
+
+    def stop(turn="1", source=staged):
+        return manual_action(sandbox, "stop", key, turn, "--reply-file", str(source))
+
+    staged.write_bytes(b" \n")
+    with pytest.raises(ValueError, match="empty"):
+        stop()
+    staged.write_bytes(b"\xff")
+    with pytest.raises(UnicodeDecodeError):
+        stop()
+    staged.write_bytes(b"What type?\r\n")
+    linked = tmp_path / "linked.txt"
+    linked.symlink_to(staged)
+    with pytest.raises(ValueError, match="regular reply"):
+        stop(source=linked)
+    with pytest.raises(ValueError, match="pending turn is 1"):
+        stop(turn="2")
+    assert timer.is_file() and not reply.exists() and not wall.exists()
+
+    def interrupt(*_):
+        assert reply.read_bytes() == staged.read_bytes()
+        assert timer.is_file() and not wall.exists()
+        raise OSError("interrupted after publication")
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(manual.host_turn_timer, "stop_timer", interrupt)
+        with pytest.raises(OSError, match="interrupted after publication"):
+            stop()
+    assert timer.is_file() and reply.is_file() and not wall.exists()
+
+    staged.write_text("Another reply", encoding="utf-8")
+    with pytest.raises(ValueError, match="different reply"):
+        stop()
+    assert timer.is_file() and reply.read_bytes() == b"What type?\r\n"
+    staged.write_bytes(reply.read_bytes())
+    timing, _ = stop()
+    assert wall.is_file() and not timer.exists()
+    retried, _ = stop()
+    assert retried["host_duration_ms"] == timing["duration_ms"]
+    assert retried["host_started_at"] == timing["started_at"]
+    assert retried["host_ended_at"] == timing["ended_at"]
+    assert manual_action(sandbox, "collect", key, "1")[0]["next_input"] == (
+        "Use a boolean setting"
+    )
+
+
 @pytest.mark.slow
 def test_guarded_manual_host_failure_releases_slot_and_preserves_evidence(runner):
     manifest = run.SUITES / "example" / "cases.json"
