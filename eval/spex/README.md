@@ -222,6 +222,12 @@ Otherwise it uses the full automatic trial duration when available or shows
 seconds and its source. Repeated comparable samples show coverage, median,
 and max by duration source and configured execution.
 
+The execution timeline shows the case boundaries, host turns and recorded
+Spex CLI commands with their available timestamps, durations and exit codes.
+Elapsed time starts at the first host dispatch and can include waits between
+turns. A legacy debug log can supply a command's log timestamp without
+establishing its wall-clock start or end.
+
 - For manual collection, pass `collect --host-duration-ms N` if the host
   measured elapsed time from sending input through receiving the final
   reply. Pass `import-grades --judge-duration-ms N` for separately measured

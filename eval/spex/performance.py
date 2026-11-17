@@ -7,7 +7,8 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
 
@@ -484,6 +485,117 @@ def format_seconds(duration_ms: int | float | None) -> str:
     return "unknown" if duration_ms is None else str(duration_ms / 1000)
 
 
+def iso_from_ns(value: int | None) -> str | None:
+    if type(value) is not int:
+        return None
+    seconds, nanos = divmod(value, 10**9)
+    try:
+        stamp = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=seconds)
+    except OverflowError:
+        return None
+    return f"{stamp.replace(tzinfo=None).isoformat()}.{nanos:09d}+00:00"
+
+
+def report_stamp(value) -> str | None:
+    if isinstance(value, str) and re.fullmatch(r"[0-9TtZ +:.,-]+", value):
+        return value if timestamp(value) is not None else None
+    return None
+
+
+def timeline_elapsed(at, case_start) -> float | None:
+    point = stamp_bounds(at)
+    origin = stamp_bounds(case_start)
+    return (point[0] - origin[0]) / 10**6 if point and origin else None
+
+
+def legacy_command_key(source: str, command: dict) -> tuple:
+    """Match the fields retained by historical workflow summaries."""
+    return (
+        Path(source).parent, command.get("command"),
+        timestamp(command.get("at") or command.get("logged_at")),
+        command.get("duration_ms"), command.get("exit_code"),
+    )
+
+
+def command_timeline(turns: dict, workflow: dict) -> list[dict]:
+    """Use turn-scoped observations and recover commands from older turns."""
+    observations = [
+        (index, command)
+        for index, turn in sorted(turns.items())
+        for command in turn.get("spex_commands", [])
+    ]
+    if not turns or any("spex_commands" not in turn for turn in turns.values()):
+        covered = Counter(
+            legacy_command_key(command["log"], command)
+            for _, command in observations
+            if "log" in command and timestamp(command.get("at")) is not None
+        )
+        for log in workflow.get("logs", []):
+            for command in log.get("commands", []):
+                key = legacy_command_key(log["source"], command)
+                if covered[key]:
+                    covered[key] -= 1
+                else:
+                    observations.append((None, command))
+    commands = []
+    for index, command in observations:
+        name = command.get("command")
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name):
+            continue
+        verb = command.get("subcommand")
+        exit_code = command.get("exit_code")
+        commands.append({
+            "turn": index,
+            "command": name,
+            "subcommand": verb if isinstance(verb, str) and IDENTIFIER.fullmatch(verb) else None,
+            "started_at": iso_from_ns(command.get("start_ns")),
+            "ended_at": iso_from_ns(command.get("end_ns")),
+            "logged_at": report_stamp(command.get("at") or command.get("logged_at")),
+            "duration_ms": nonnegative(command.get("duration_ms")),
+            "exit_code": exit_code if type(exit_code) is int else None,
+        })
+    return sorted(commands, key=lambda command: timeline_order(
+        command["started_at"] or command["logged_at"],
+    ))
+
+
+def timeline_order(at) -> tuple[bool, int]:
+    bounds = stamp_bounds(at)
+    return bounds is None, bounds[0] if bounds else 0
+
+
+def summarize_timeline(data: dict, metadata: dict, pending_turns: bool) -> dict:
+    recorded = {
+        int(index): turn for index, turn in data.get("turns", {}).items()
+        if str(index).isascii() and str(index).isdecimal() and int(index) > 0
+    }
+    indices = set(recorded)
+    for default, result in enumerate(metadata.get("turn_results", []), 1):
+        index = result.get("turn") if isinstance(result, dict) else None
+        indices.add(index if type(index) is int and index > 0 else default)
+    timeline = []
+    for index in sorted(indices):
+        host = recorded.get(index, {}).get("host", {})
+        timeline.append({
+            "index": index,
+            "started_at": report_stamp(host.get("started_at")),
+            "ended_at": report_stamp(host.get("ended_at")),
+            "duration_ms": nonnegative(host.get("duration_ms")),
+        })
+    case_start = timeline[0]["started_at"] if timeline and timeline[0]["index"] == 1 else None
+    case_end = timeline[-1]["ended_at"] if timeline and not pending_turns else None
+    commands = command_timeline(recorded, data.get("workflow", {}))
+    for interval in [*timeline, *commands]:
+        interval["elapsed_ms"] = timeline_elapsed(interval["started_at"], case_start)
+    return {
+        "case_started_at": case_start,
+        "case_ended_at": case_end,
+        "case_elapsed_ms": timeline_elapsed(case_end, case_start),
+        "host_turns_timeline": timeline,
+        "spex_commands": commands,
+    }
+
+
 def trial_summary(output: Path, metadata: dict) -> dict:
     try:
         return summarize_metrics(output, metadata, read_performance(output))
@@ -532,6 +644,7 @@ def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
         "duration_ms": duration_ms,
         "duration_s": None if duration_ms is None else duration_ms / 1000,
         "duration_source": duration_source,
+        **summarize_timeline(data, metadata, pending_turns),
         "model_requests": None,
         "review_rounds": (
             len({(span["source"], span["step"], span["round"]) for span in reviews
@@ -626,7 +739,61 @@ def report_lines(rows: list[dict]) -> list[str]:
                 f"{source} duration for {len(values)}/{total} samples, "
                 f"median {format_seconds(median(values))} s, max {format_seconds(max(values))} s."
             )
+    return lines + timeline_lines(rows)
+
+
+def timeline_lines(rows: list[dict]) -> list[str]:
+    lines = []
+    for row in rows:
+        perf = row["performance"]
+        turns = perf["host_turns_timeline"]
+        commands = perf["spex_commands"]
+        if not turns and not commands:
+            continue
+        if not lines:
+            lines.extend([
+                "", "## Execution timeline", "",
+                "Elapsed measures time from the first host dispatch. "
+                "Legacy command logs may provide only their log timestamp.", "",
+            ])
+        case = f"{row['suite']}/{row['case_id']}"
+        lines.extend([
+            f"### {case} ({row['trial']})", "",
+            "| Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ])
+        lines.append(timeline_row("Case start", started=perf["case_started_at"],
+                                  elapsed=0 if perf["case_started_at"] else None))
+        entries = []
+        for turn in turns:
+            label = f"Host turn {turn['index']}"
+            start, end = turn["started_at"], turn["ended_at"]
+            entries.extend([
+                (start, timeline_row(f"{label} start", started=start, elapsed=turn["elapsed_ms"])),
+                (end, timeline_row(f"{label} end", ended=end, duration=turn["duration_ms"],
+                                   elapsed=timeline_elapsed(end, perf["case_started_at"]))),
+            ])
+        for command in commands:
+            label = " ".join(filter(None, (command["command"], command["subcommand"])))
+            start, logged = command["started_at"], command["logged_at"]
+            entries.append((start or logged, timeline_row(
+                f"`{label}`", started=start, ended=command["ended_at"], logged=logged,
+                duration=command["duration_ms"], elapsed=command["elapsed_ms"],
+                exit_code=command["exit_code"],
+            )))
+        entries.sort(key=lambda entry: timeline_order(entry[0]))
+        lines.extend(line for _, line in entries)
+        lines.append(timeline_row("Case end", ended=perf["case_ended_at"],
+                                  duration=perf["duration_ms"], elapsed=perf["case_elapsed_ms"]))
+        lines.append("")
     return lines
+
+
+def timeline_row(label, *, started=None, ended=None, logged=None, duration=None, elapsed=None,
+                 exit_code=None) -> str:
+    fields = (label, started, ended, logged, format_seconds(duration), format_seconds(elapsed),
+              exit_code)
+    return "| " + " | ".join("unknown" if value is None else str(value) for value in fields) + " |"
 
 
 def display(values) -> str:

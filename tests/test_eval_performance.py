@@ -103,6 +103,13 @@ def test_timeline_tracks_resumed_task_review_rounds_and_incomplete_spans(tmp_pat
     ]
     assert result["commands"][0]["duration_ms"] == 5
     assert "PRIVATE" not in json.dumps(result)
+    performance.update(tmp_path, repo=repo)
+    old = performance.trial_summary(tmp_path, {})
+    assert old["spex_commands"] == [{
+        "turn": None, "command": "prompt", "subcommand": None,
+        "started_at": None, "ended_at": None, "logged_at": "2026-11-11T10:00:12+08:00",
+        "duration_ms": 5, "exit_code": 0, "elapsed_ms": None,
+    }]
 
 
 def test_old_trials_and_unreadable_logs_remain_reportable(tmp_path):
@@ -177,6 +184,80 @@ def test_case_duration_with_unattempted_turns(tmp_path, monkeypatch, verdict, du
     assert (metrics["duration_ms"], metrics["duration_source"]) == (duration, source)
     markdown = Path(result["report"]).read_text(encoding="utf-8")
     assert f"| suite/case | 1 | {performance.format_seconds(duration)} | {source} |" in markdown
+
+
+def test_summary_renders_ordered_case_timeline(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path)
+    sandbox = run.resolve_sandbox()
+    output = sandbox / "suite" / "case"
+    output.mkdir(parents=True)
+    run.write_json(output / "trial.json", {
+        "suite": "suite", "case_id": "case", "verdict": "pass",
+        "turn_results": [{"turn": 1}, {"turn": 2}],
+    })
+    first = "2026-01-01T00:00:00+00:00"
+    second = "2026-01-01T00:00:10+00:00"
+    end = "2026-01-01T00:00:12+00:00"
+    start_ns = performance.stamp_bounds(second)[0] + 10**9 + 1
+    command = {"command": "apply-helper", "subcommand": "post-action", "duration_ms": 200,
+               "start_ns": start_ns, "end_ns": start_ns + 200 * 10**6, "exit_code": 2,
+               "argv": ["PRIVATE"]}
+    host = performance.host_metrics(None, 2000, "runner", started_at=second, ended_at=end)
+    performance.update(output, turn=2, native={"timing_events": [command]}, host=host)
+    legacy = {"command": "list", "duration_ms": 7, "exit_code": 0,
+              "at": "2026-01-01T00:00:01+00:00"}
+    host = performance.host_metrics(None, 2000, "runner", started_at=first)
+    performance.update(output, turn=1, native={"events": [legacy]}, host=host)
+
+    result = run.summarize_sandbox(sandbox)
+    metrics = run.read_json(Path(result["report_json"]))["trials"][0]["performance"]
+    assert (metrics["case_started_at"], metrics["case_ended_at"]) == (first, end)
+    assert metrics["case_elapsed_ms"] == 12000 and metrics["duration_ms"] == 4000
+    assert [turn["index"] for turn in metrics["host_turns_timeline"]] == [1, 2]
+    assert [cmd["turn"] for cmd in metrics["spex_commands"]] == [1, 2]
+    listed, failed = metrics["spex_commands"]
+    assert listed["started_at"] is listed["ended_at"] is listed["elapsed_ms"] is None
+    assert failed["started_at"] == "2026-01-01T00:00:11.000000001+00:00"
+    assert failed["exit_code"] == 2
+    assert abs(failed["elapsed_ms"] - 11000) < 0.001
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    markers = ["Case start", "Host turn 1 start", "`list`", "Host turn 2 start",
+               "`apply-helper post-action`", "Host turn 2 end", "Case end"]
+    indices = [markdown.index(marker) for marker in markers]
+    assert indices == sorted(indices)
+    assert "| 0.2 | 11.000000001 | 2 |" in markdown
+    assert "| Host turn 1 end | unknown | unknown | unknown | 2.0 | unknown | unknown |" in markdown
+    assert "PRIVATE" not in json.dumps(metrics) + markdown
+
+
+@pytest.mark.parametrize("new_turn_has_command", [False, True])
+def test_timeline_keeps_legacy_commands_in_partly_upgraded_trials(new_turn_has_command):
+    source = "specs/example/debug.log"
+    first_stamp = "2026-01-01T00:00:01+00:00"
+    second_stamp = "2026-01-01T00:00:04+00:00"
+    legacy = {"command": "list", "exit_code": 0, "duration_ms": 5}
+    commands = [dict(legacy, logged_at=first_stamp)]
+    recorded = []
+    if new_turn_has_command:
+        commands.append(dict(legacy, logged_at=second_stamp))
+        recorded.append(dict(legacy, log="specs/example/trace.jsonl", at=second_stamp))
+    turns = {1: {}, 2: {"spex_commands": recorded}}
+    timeline = performance.command_timeline(turns, {
+        "logs": [{"source": source, "commands": commands}],
+    })
+    assert [(command["turn"], command["logged_at"]) for command in timeline] == (
+        [(None, first_stamp), (2, second_stamp)] if new_turn_has_command
+        else [(None, first_stamp)]
+    )
+
+
+@pytest.mark.parametrize("separator", ["|", "\n", "\r"])
+def test_timeline_rejects_unsafe_timestamp_separators(separator):
+    value = f"2026-01-01{separator}00:00:01.000000001+00:00"
+    assert performance.timestamp(value) is not None
+    assert performance.report_stamp(value) is None
+    precise = "2026-01-01T00:00:01.000000001+00:00"
+    assert performance.report_stamp(precise) == precise
 
 
 def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
