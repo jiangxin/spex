@@ -702,6 +702,8 @@ def _build_metadata(template_name, spec_name=None):
 
     Different template names may produce different metadata.
     """
+    if template_name == "create-todo" and not spec_name:
+        raise TemplateError("create-todo.md requires a spec name")
     metadata = {}
     if spec_name:
         spec_dir = resolve_spec_dir(spec_name)
@@ -737,10 +739,11 @@ def _build_metadata(template_name, spec_name=None):
                 and metadata.get("user_email") == ctx.user_email):
             metadata["user_name"] = ""
             metadata["user_email"] = ""
-    # All spec-based templates except spec-template need task context:
-    # apply-commit, apply-one-task, apply-review, apply-fix,
-    # modify-spec, modify-todo
-    if template_name != "spec-template" and spec_name:
+    if template_name == "create-todo" and spec_name:
+        metadata["spec_name"] = spec_dir.name
+        spec_path = spec_dir / "spec.md"
+        metadata["spec_content"] = spec_path.read_bytes().decode("utf-8")
+    elif template_name != "spec-template" and spec_name:
         metadata.update(_build_task_context(spec_dir))
 
     metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
@@ -871,6 +874,11 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
         if extra_vars:
             metadata.update(extra_vars)
 
+    if name == "create-todo":
+        spec_content = metadata.get("spec_content")
+        if not isinstance(spec_content, str) or not spec_content.strip():
+            raise TemplateError("create-todo.md requires a non-empty spec.md")
+
     # All-done detection for task-based templates.
     # apply-one-task / apply-commit: empty description means no current task.
     # apply-review / apply-fix: do NOT reuse the empty-description gate after
@@ -886,6 +894,12 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
         return ""
 
     validate_required_meta(content, metadata)
+    if name == "create-todo":
+        # Preserve the specification's own front matter in custom prompts.
+        rendered = render_template(strip_front_matter(content), metadata)
+        if not rendered.strip():
+            raise TemplateError("create-todo.md rendered an empty prompt")
+        return rendered
     rendered = render_template(content, metadata)
     return strip_front_matter(rendered)
 
@@ -1536,16 +1550,23 @@ def cli_render(argv):
 
 
 def _do_render(args):
+    if args.template == "create-todo" and args.output is not None:
+        logger.error("Error: create-todo writes to stdout and does not accept --output")
+        sys.exit(1)
+
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
         metadata = _build_metadata(args.template, args.name)
         if extra_vars:
+            if args.template == "create-todo":
+                extra_vars.pop("spec_content", None)
+                extra_vars.pop("spec_name", None)
             metadata.update(extra_vars)
 
         rendered = render_prompt(args.template, args.name, metadata=metadata)
-    except FileNotFoundError as e:
-        logger.error("Error: %s", e)
+    except (OSError, UnicodeError) as e:
+        logger.error("Error loading %s prompt input: %s", args.template, e)
         sys.exit(1)
     except TemplateError as e:
         logger.error("Error rendering template: %s", e)

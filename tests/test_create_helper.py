@@ -764,6 +764,101 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
     hook.assert_not_called()
 
 
+@pytest.fixture
+def create_todo_spec(create_template_root, monkeypatch):
+    spec_dir = create_template_root / "specs" / "2026-05-20-14-30-todo"
+    spec_dir.mkdir()
+    (spec_dir / "todo.json").write_bytes(b"[null]\n")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    return spec_dir
+
+
+def test_create_todo_uses_latest_saved_spec_and_its_canonical_name(
+    create_template_root, create_todo_spec, capsys, monkeypatch,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    initial = b"# First specification\n\nPreserve failure behavior.\n"
+    spec.write_bytes(initial)
+    main(["create-todo", "14-30-todo"])
+    captured = capsys.readouterr().out
+    assert create_todo_spec.name in captured
+    assert initial.decode() in captured
+    assert spec.read_bytes() == initial
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+    updated = b"---\r\ndescription: Preserve this header\r\n---\r\n# Latest version\r\n"
+    spec.write_bytes(updated)
+    custom = create_template_root / "templates" / "create-todo.md"
+    custom.write_text(
+        "---\nrequired:\n  - spec_content\n---\n"
+        "{{ spec_content }}\nPlan for {{ spec_name }}.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({
+        "spec_content": "Stale specification", "spec_name": "Other name",
+    })))
+    main(["create-todo", "14-30-todo"])
+    assert capsys.readouterr().out == f"{updated.decode()}\nPlan for {create_todo_spec.name}.\n"
+    assert spec.read_bytes() == updated
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+
+@pytest.mark.parametrize(("option", "filename"), [
+    ("--output", "spec.md"),
+    ("-o", "todo.json"),
+])
+def test_create_todo_rejects_output_option_without_overwriting_inputs(
+    create_todo_spec, capsys, caplog, option, filename,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    spec_content = b"# Specification\n"
+    spec.write_bytes(spec_content)
+
+    with pytest.raises(SystemExit) as failure:
+        main(["create-todo", create_todo_spec.name, option, str(create_todo_spec / filename)])
+
+    assert failure.value.code == 1
+    assert "create-todo writes to stdout" in caplog.text
+    assert capsys.readouterr().out == ""
+    assert spec.read_bytes() == spec_content
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+
+@pytest.mark.parametrize(("spec_content", "custom_prompt", "diagnostic"), [
+    (None, None, "spec.md"),
+    (b" \n", None, "requires a non-empty spec.md"),
+    (b"\xff", None, "invalid start byte"),
+    (b"# Spec\n", b"{% if spec_content %}", "Unclosed if block"),
+    (b"# Spec\n", b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
+    (b"# Spec\n", b" \n", "rendered an empty prompt"),
+    (b"# Spec\n", b"\xff", "invalid start byte"),
+])
+def test_create_todo_reports_input_errors_without_writing(
+    create_template_root, create_todo_spec, capsys, caplog,
+    spec_content, custom_prompt, diagnostic,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    if spec_content is not None:
+        spec.write_bytes(spec_content)
+    if custom_prompt is not None:
+        (create_template_root / "templates" / "create-todo.md").write_bytes(custom_prompt)
+
+    with pytest.raises(SystemExit) as failure:
+        main(["create-todo", create_todo_spec.name])
+
+    assert failure.value.code == 1
+    assert diagnostic in caplog.text
+    assert capsys.readouterr().out == ""
+    assert (spec.read_bytes() if spec.exists() else None) == spec_content
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+
 class TestValidateCreateBranch:
     @patch("branch.get_current_branch", return_value="main")
     def test_returns_current_branch(self, _mock):
