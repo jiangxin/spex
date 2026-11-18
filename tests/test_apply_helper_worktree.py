@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -84,6 +85,77 @@ class TestResolveApplyGitCwd:
 
     def test_none_meta(self):
         assert resolve_apply_git_cwd(None, "/fallback") == "/fallback"
+
+
+@pytest.mark.slow
+def test_general_external_handoff_completes_without_commit(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _git_init_with_commit(repo)
+    root = tmp_path / "spex"
+    config = tmp_path / "spex.toml"
+    config.write_text(f'[spex]\nspex_root = "{root}"\n', encoding="utf-8")
+    monkeypatch.setenv("SPEX_CONFIG_FILE", str(config))
+    spec = root / "specs" / "external-report"
+    spec.mkdir(parents=True)
+    (spec / "meta.json").write_text(json.dumps({
+        "workdir": str(repo), "task_mode": "general", "spex_branch": "main",
+    }))
+    (spec / "spec.md").write_text("# Report\n")
+    steps = [{
+        "id": 1, "name": "Write report", "details": "Report outside Git",
+        "completed_at": "", "commit_title": "", "skip_commit": "auto",
+    }]
+    todo = spec / "todo.json"
+    todo.write_text(json.dumps(steps))
+    script = Path(__file__).resolve().parents[1] / "skills" / "spex" / "scripts" / "spex"
+
+    def cli(*args, stdin=""):
+        return subprocess.run(
+            [sys.executable, str(script), *args], cwd=repo,
+            input=stdin, text=True, capture_output=True,
+        )
+
+    def head():
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+    base = head()
+    task = cli("prompt", "apply-one-task", spec.name, "--json")
+    assert task.returncode == 0, task.stderr
+    route = json.loads(task.stdout)
+    assert route["task_mode"] == "general"
+    assert "<delivery-step>" in route["prompt"]
+    report = tmp_path / "report.md"
+    report.write_text("Verified total: 60\n")
+    evidence = [{
+        "kind": "inspection", "criterion": "Report states total",
+        "location": str(report), "observation": report.read_text().strip(),
+    }]
+    handoff = ("apply-helper", "verify-handoff", "--name", spec.name, "--id", "1")
+    before = todo.read_bytes()
+    assert cli(*handoff, "--head", "unrelated", stdin=json.dumps(evidence)).returncode != 0
+    assert cli(*handoff, "--head", base, stdin="[]").returncode != 0
+    unrelated = repo / "unrelated"
+    unrelated.touch()
+    blocked = cli(*handoff, "--head", base, stdin=json.dumps(evidence))
+    assert blocked.returncode != 0
+    assert "outside spex_root" in blocked.stderr
+    assert cli("prompt", "apply-commit", spec.name).returncode != 0
+    assert todo.read_bytes() == before
+    assert head() == base
+    unrelated.unlink()
+
+    verified = cli(*handoff, "--head", base, stdin=json.dumps(evidence))
+    assert verified.returncode == 0, verified.stderr
+    completion = cli(
+        "todo-helper", "complete", spec.name, "--id", "1", "--acceptance-evidence-stdin",
+        stdin=json.dumps(json.loads(verified.stdout)["acceptance_evidence"]),
+    )
+    assert completion.returncode == 0, completion.stderr
+    done = json.loads(todo.read_text())[0]
+    assert done["completed_at"]
+    assert done["commit_title"] == ""
+    assert done["acceptance_evidence"] == evidence
+    assert head() == base
 
 
 @pytest.mark.slow

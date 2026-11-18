@@ -24,7 +24,7 @@ from common import (
     todo_step_label,
 )
 from config import get_project_context
-from task_mode import SOFTWARE, template_filename
+from task_mode import GENERAL, SOFTWARE, template_filename
 from template import TemplateError
 from template import render as render_template
 from todo_helper import normalize_skip_commit
@@ -1124,6 +1124,7 @@ def _do_apply_one_task(args):
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
             "skip_commit": metadata.get("skip_commit", "false"),
+            **({"task_mode": GENERAL} if metadata.get("task_mode") == GENERAL else {}),
         }), args.output)
     else:
         _output_rendered(rendered, args.output)
@@ -1173,6 +1174,8 @@ def _do_apply_commit(args):
                 _output_rendered(json.dumps({"prompt": "", "all_done": True}), args.output)
             sys.exit(0)
 
+        if metadata.get("task_mode") == GENERAL:
+            raise TemplateError("General tasks requiring a commit are not supported yet.")
         rendered = render_prompt("apply-commit", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)
