@@ -28,7 +28,8 @@ Apply a specification to implement code step by step.
   `resolve-spec-name.md`
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
   stage/commit paths under `$spex_root/`. Phases 4–5 sub-agent may
-  persist `commit_title` only — never `completed_at`
+  split the current todo under the shared split rules and persist
+  `commit_title`. Phase 7 owns `completed_at`.
 - Sub-agent boundary: Phases 4–5 only; main validates return via
   `references/apply-subagent-handoff.md` before Phase 6/7
 - Follow phases in order. Do not skip or reorder

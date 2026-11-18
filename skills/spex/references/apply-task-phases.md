@@ -56,6 +56,9 @@ $spex_skill_dir/scripts/spex config
 
 - Before the caller runs `prompt apply-one-task`, apply the Todo
   status recovery gate below.
+- For an explicitly reported split interruption, follow the matching
+  manual recovery in [the split reference](apply-step-split.md) before
+  normal routing. The operator identifies the interrupted split.
 
 Caller runs `prompt apply-one-task` (and handles `"all_done"` /
 command-specific post-action routing). Then parse JSON stdout and
@@ -109,6 +112,11 @@ route as below.
 - When `$spex_worktree` is non-empty, run file edits and git
   ops in that directory (`working_directory`); do not switch
   the IDE root
+- Before making edits, record the dirty CLI result as the split baseline.
+  If the current task needs multiple independently verifiable commits,
+  load [the active-step split rules](apply-step-split.md). Follow its
+  eligibility checks before editing the todo plan. Continue with the
+  narrowed first step and use its scoped commit path in Phase 5.
 - Deliver production code + tests together when the step changes
   code; docs-only / no-op steps may leave the tree clean
 - For `general`, read the agreed sources and write local outputs only
@@ -208,7 +216,10 @@ EOF
 
 - `$commit_prompt` ← output. Using `$commit_prompt`, stage and
   commit (when `$spex_worktree` is set, run git in that cwd):
-  - Prefer staging **all** dirty paths outside `$spex_root` so the
+  - For a split, follow the scoped staging rules in
+    [the active-step split reference](apply-step-split.md). Stage only
+    the narrowed first step.
+  - Otherwise, prefer staging **all** dirty paths outside `$spex_root` so the
     tree is clean after this commit. Leftover dirty paths poison
     later `skip_commit=true|auto` steps (false STOP / unwanted
     commits)
@@ -261,6 +272,9 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
   resuming apply. If the title is missing, repeat only the transaction
   for saving the existing title. Withhold a successful handoff until
   persistence succeeds.
+- For a split, follow the reference's post-commit cleanup and isolated
+  verification after persisting `commit_title`, before the dirty gate
+  and before handing off to review. Stop if any check fails.
 - Returning to the main session is only allowed **after** persist
   succeeds
 - Recompute `$dirty` via the same Phase 4 dirty CLI
@@ -275,7 +289,9 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 ON_FAIL Phases 4–5 **execution** errors only before a Git commit
 succeeds. After a Git commit, use Phase 5 persistence recovery.
-Intentional Phase 4 STOP is **not** retryable. For eligible failures,
+Intentional Phase 4 STOP is **not** retryable. If a split plan was
+saved, follow the split reference's explicit recovery instead of this
+retry path. For eligible failures,
 report and retry **once** with these preconditions:
 
 1. Run `apply-helper dirty --json --name "$spec_name"` to

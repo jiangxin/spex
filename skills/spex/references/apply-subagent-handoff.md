@@ -19,6 +19,7 @@ Pass:
 
 - `$task_prompt` as Phase 4 guide
 - `$current_task_id`, `$spec_name`, `$skip_commit`, `$spex_root`
+- `$base_head` for the split eligibility check
 - `$task_mode`; for `general`, require the output paths and an
   `acceptance_evidence` array in the
   successful skip handoff.
@@ -29,6 +30,11 @@ Pass:
 Implementation prompt must NOT create the commit — when a commit
 is required, sub-agent runs Phase 5 (`apply-commit`) after
 implementation.
+
+The guarded split in shared Phases 4–5 may edit the current todo and
+insert follow-ups before commit. Bind the narrowed first step to the
+original position. Return `outcome=committed` only after its commit
+is recorded, cleanup succeeds, and isolated verification passes.
 
 ON_FAIL (implement/commit **execution** errors before a Git commit
 succeeds, excluding intentional STOP): Load and follow Phases 4–5

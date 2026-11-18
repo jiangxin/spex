@@ -1520,6 +1520,59 @@ class TestSharedSopReferences:
         _index(recovery, "Verify the full")
         _index(recovery, "keep it out of this explicit")
 
+    def test_both_apply_entry_points_share_split_commit_and_handoff_order(self):
+        phases = _read(APPLY_TASK_PHASES)
+        phase4 = _h2_section(phases, "Phase 4: Execute Task")
+        assert _index(phase4, "Before making edits") < _index(phase4, "split rules")
+        phase5 = _h2_section(phases, "Phase 5: Commit (record commit_title only)")
+        assert (
+            _index(phase5, "scoped staging rules")
+            < _index(phase5, "Otherwise, prefer staging")
+            < _index(phase5, "--commit-title")
+            < _index(phase5, "post-commit cleanup and isolated")
+            < _index(phase5, "Recompute")
+            < _index(phase5, "outcome=committed")
+        )
+        for command in (APPLY_MD, APPLY_ONE_STEP_MD):
+            text = _read(command)
+            for phase in ("Phase 4: Execute Task", "Phase 5: Commit (record commit_title only)"):
+                _index(_h3_section(text, phase), "references/apply-task-phases.md")
+        handoff = _read(APPLY_SUBAGENT_HANDOFF)
+        _index(handoff, "original position")
+        _index(handoff, "isolated verification passes")
+
+    def test_split_recovery_requires_clean_acceptance_before_review(self):
+        text = _read(APPLY_STEP_SPLIT)
+        cleanup = _h2_section(text, "Clean and Verify After the First Commit")
+        assert _index(cleanup, "the index matches HEAD") < _index(cleanup, "restore --worktree")
+        assert (
+            _index(cleanup, "require a clean worktree")
+            < _index(cleanup, "acceptance checks")
+            < _index(cleanup, "Continue to Phase 6")
+        )
+        _index(cleanup, "leave `completed_at` empty")
+        recovery = _h2_section(text, "Resume After a Post-Commit Interruption")
+        assert (
+            _index(recovery, "record the existing commit")
+            < _index(recovery, "even if cleanup has already finished")
+            < _index(recovery, "resume existing review")
+        )
+        _index(recovery, "stay out of review")
+
+    def test_split_cleanup_checks_filesystem_before_scoped_removal(self):
+        cleanup = _h2_section(
+            _read(APPLY_STEP_SPLIT), "Clean and Verify After the First Commit",
+        )
+        assert (
+            _index(cleanup, "inspect the filesystem shape")
+            < _index(cleanup, "without following symlinks")
+            < _index(cleanup, "to be real directories")
+            < _index(cleanup, "regular file or absent")
+            < _index(cleanup, "Stop and preserve all remaining")
+            < _index(cleanup, "restore --worktree")
+        )
+        _index(cleanup, "Git status can omit ignored descendants")
+
 
 class TestApplyOneStepCompletedSpecAndDedupe:
     """R3-F5 / R3-F12 / R3-F17: completed-spec recovery + dedupe."""
