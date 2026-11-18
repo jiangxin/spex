@@ -92,6 +92,27 @@ def publish_reply(source: Path, reply: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def turn_paths(sandbox: Path, suite: str, case: str, turn: int) -> tuple[Path, Path, Path]:
+    """Return the reply, pending-timer, and wall-clock paths for one turn."""
+    reply = collect_handoff.handoff_reply(sandbox, suite, case, turn)
+    if reply.parent.is_symlink():
+        raise ValueError("Refusing to use a symlink handoff directory")
+    timer = host_turn_timer.pending_path(reply)
+    return reply, timer, collect_handoff.host_wall_clock_sidecar(reply)
+
+
+def ensure_unstarted(reply: Path, timer: Path, wall: Path) -> None:
+    if any(path.exists() or path.is_symlink() for path in (reply, timer, wall)):
+        raise ValueError("Turn already started; stop and collect it before dispatching again")
+
+
+def check_session(args, row: dict, metadata: dict) -> None:
+    """Require one valid session ID for every turn of a trial."""
+    session = (row.get("dispatch") or {}).get("session") or metadata["session"]
+    if not runner.SESSION_ID.fullmatch(args.session) or session not in ("", args.session):
+        raise ValueError("Use the same valid session ID for all turns of this trial")
+
+
 def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict, row: dict,
                 environment: dict, save_dispatch):
     suite, case = metadata["suite"], metadata["case_id"]
@@ -105,17 +126,10 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
         return handoff  # Collection is committed by trial.json, even on a retry.
     if args.turn != current or not handoff["next_input"]:
         raise ValueError(f"No next input for turn {args.turn}; pending turn is {current}")
-    reply = collect_handoff.handoff_reply(sandbox, suite, case, current)
-    if reply.parent.is_symlink():
-        raise ValueError("Refusing to use a symlink handoff directory")
-    timer = host_turn_timer.pending_path(reply)
-    wall = collect_handoff.host_wall_clock_sidecar(reply)
+    reply, timer, wall = turn_paths(sandbox, suite, case, current)
     if args.command == "start":
-        if any(path.exists() or path.is_symlink() for path in (reply, timer, wall)):
-            raise ValueError("Turn already started; stop and collect it before dispatching again")
-        session = dispatch.get("session") or metadata["session"]
-        if not runner.SESSION_ID.fullmatch(args.session) or session not in ("", args.session):
-            raise ValueError("Use the same valid session ID for all turns of this trial")
+        ensure_unstarted(reply, timer, wall)
+        check_session(args, row, metadata)
         row["dispatch"] = {"turn": current, "session": args.session}
         save_dispatch()  # Bind the session before creating the pending timer.
         host_turn_timer.start_timer(sandbox, suite, case, current)
@@ -188,6 +202,67 @@ def claim_row(queue: dict, key: str, jobs: int) -> None:
         )
 
 
+def queue_row(queue: dict, key: str) -> dict:
+    if key not in queue:
+        raise ValueError(f"Case was not selected for this batch: {key}")
+    return queue[key]
+
+
+def dispatch_target(args, sandbox: Path, queue: dict, entries: dict) -> dict:
+    """Validate one dispatch without touching the queue; return what it will publish."""
+    key = args.case
+    row = queue_row(queue, key)
+    output, trial, metadata = load_trial(sandbox, key, entries)
+    suite, case = metadata["suite"], metadata["case_id"]
+    current = len(metadata["turn_results"]) + 1
+    if args.turn is not None and args.turn != current:
+        raise ValueError(f"No next input for turn {args.turn}; pending turn is {current}")
+    if row["status"] == "pending":
+        claim_row(queue, key, metadata["execution"]["jobs"])
+    elif row["status"] != "running":
+        raise ValueError(f"Case is already {row['status']}: {key}")
+    check_session(args, row, metadata)
+    handoff = runner.instructions(output, trial, metadata)
+    if not handoff["next_input"]:
+        raise ValueError(f"No next input for turn {current}")
+    reply, timer, wall = turn_paths(sandbox, suite, case, current)
+    ensure_unstarted(reply, timer, wall)
+    script = runner.env_script_path(sandbox, suite, case)
+    if script.is_symlink() or not script.is_file():
+        raise ValueError(
+            f"Missing prepared environment script: {script}; re-run prepare for {key}"
+        )
+    return {
+        "row": row, "suite": suite, "case_id": case, "turn": current,
+        "handoff": handoff, "reply": reply, "script": script,
+    }
+
+
+def dispatch_case(args, sandbox: Path, queue_file: Path, queue: dict, entries: dict) -> dict:
+    """Claim a pending case and start its next turn in one call, returning the bundle."""
+    target = dispatch_target(args, sandbox, queue, entries)
+    row, handoff, current = target["row"], target["handoff"], target["turn"]
+    snapshot = dict(row)
+    row["status"] = "running"
+    row["dispatch"] = {"turn": current, "session": args.session}
+    try:
+        host_turn_timer.start_timer(sandbox, target["suite"], target["case_id"], current)
+        manual_batch.write(queue_file, queue)
+    except BaseException:
+        timer = host_turn_timer.pending_path(target["reply"])
+        if timer.is_file() and not timer.is_symlink():
+            timer.unlink(missing_ok=True)  # Keep the case dispatchable after a failed write.
+        row.clear()
+        row.update(snapshot)
+        raise
+    return {
+        "case": args.case, "turn": current, "session": args.session,
+        "trial": handoff["trial"], "workspace": handoff["workspace"],
+        "skill": handoff["skill"], "env_script": str(target["script"]),
+        "reply": str(target["reply"]), "next_input": handoff["next_input"],
+    }
+
+
 def dispatch(args, sandbox: Path) -> tuple[dict, int]:
     with manual_batch.locked(sandbox):
         queue_file = sandbox / "queue.json"
@@ -198,11 +273,11 @@ def dispatch(args, sandbox: Path) -> tuple[dict, int]:
         if args.command == "status":
             result = outcome(queue)
             return result, int(args.require_terminal and not result["terminal"])
+        if args.command == "dispatch":
+            return dispatch_case(args, sandbox, queue_file, queue, entries), 0
         key = args.case
-        if key not in queue:
-            raise ValueError(f"Case was not selected for this batch: {key}")
+        row = queue_row(queue, key)
         output, trial, metadata = load_trial(sandbox, key, entries)
-        row = queue[key]
         if args.command == "claim":
             claim_row(queue, key, metadata["execution"]["jobs"])
             row["status"] = "running"
@@ -359,13 +434,16 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "advance", help="Stop, collect, and export every finished running turn",
     )
-    for command in ("claim", "start", "stop", "collect", "complete", "fail", "exec"):
+    commands = ("claim", "start", "dispatch", "stop", "collect", "complete", "fail", "exec")
+    for command in commands:
         action = sub.add_parser(command)
         action.add_argument("case", metavar="SUITE/CASE")
         if command in ("start", "stop", "collect"):
             action.add_argument("turn", type=int)
-        if command == "start":
+        if command in ("start", "dispatch"):
             action.add_argument("--session", required=True)
+        if command == "dispatch":
+            action.add_argument("--turn", type=int, help="Assert the next turn number")
         if command == "stop":
             action.add_argument("--reply-file", type=Path, help="Publish a completed reply file")
         if command == "fail":
