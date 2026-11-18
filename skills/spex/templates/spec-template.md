@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 markers: "Do not remove or modify <!-- spex:begin:* --> comment lines."
 description: |
   [Replace this with a brief description of the topic in English.]
@@ -10,27 +10,25 @@ description: |
 <!-- spex:begin:requirement -->
 # Requirement
 
-<!-- Replace this section with requirement analysis
-     based on the user's original prompt -->
+<!-- Describe current behavior, desired outcomes, scope, and the source
+     facts and references the implementer will need. -->
 
 <!-- spex:begin:user-clarification -->
 # User Clarification
 
-<!-- Replace this section with clarifications from
-     the user on ambiguous requirements -->
+<!-- Record confirmed decisions, their rationale, and deferred scope. -->
 
 <!-- spex:begin:detailed-design -->
 # Detailed Design
 
-<!-- Replace this section with detailed design based on
-     analysis of the current repository architecture
-     and codebase -->
+<!-- Describe the design and its dependencies. Record compatibility,
+     failure, and recovery conditions and the state each must preserve. -->
 
 <!-- spex:begin:test-plan -->
 # Test Plan
 
-<!-- Replace this section with a detailed test plan
-     based on the design above -->
+<!-- Give reproducible setup, actions, expected results, and evidence
+     for acceptance, failure, and retry scenarios. -->
 
 <!-- spex:begin:constraints -->
 # Constraints

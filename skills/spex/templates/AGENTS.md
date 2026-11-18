@@ -104,8 +104,9 @@ Do **not** use (the engine rejects them):
 ## Front matter
 
 YAML front matter (`---` … `---`) is stripped by `prompt.py` with
-`strip_front_matter`. For `create-todo`, strip the template front matter
-before rendering so the saved spec's front matter can appear in the output.
+`strip_front_matter`. For `create-todo` and `review-plan`, strip the
+template front matter before rendering. This preserves the saved spec's
+front matter if it appears at the start of the rendered output.
 Optional `required:` / `optional:`
 lists document metadata keys; `validate_required_meta` enforces
 `required` before render. Front matter is plain YAML for agents — it is

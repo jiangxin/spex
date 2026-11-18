@@ -181,8 +181,8 @@ EOF
   source sections for traceability. Assume implementation has only
   the repository source, `spec.md`, and `todo.json`.
 - Using `$spec_template`, create `$spec_path/spec.md` in same language
-  as user's requirement. Replace placeholder sections
-  (`<!-- Replace this section with ... -->`) with analysis/design.
+  as user's requirement. Replace the skeleton's placeholder comments
+  with the corresponding analysis, design, and verification details.
   Fill "User Clarification" from redacted `$requirement`. Keep Constraints as-is.
   Do not remove or modify `<!-- spex:begin:* -->` comment lines.
 - Assets timing CHECK (create):

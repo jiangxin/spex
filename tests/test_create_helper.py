@@ -718,6 +718,13 @@ def test_prepare_renders_independent_templates(
     assert result["spec_name"] in result["spec_prompt"]
     assert result["spec_prompt"].startswith("Custom ") is custom_prompt
     assert (result["spec_template"] == "# Custom skeleton") is custom_skeleton
+    if not custom_prompt:
+        assert "implementation-critical facts" in result["spec_prompt"]
+        assert "any deferred scope" in result["spec_prompt"]
+        assert "any state that must be preserved" in result["spec_prompt"]
+    if not custom_skeleton:
+        assert "confirmed decisions, their rationale, and deferred scope" in result["spec_template"]
+        assert "Give reproducible setup" in result["spec_template"]
     assert (templates / "examples" / "create-spec.md").is_file()
     hook.assert_called_once()
 
@@ -757,6 +764,13 @@ def test_prepare_and_render_general_templates(
     assert "Software override" not in rendered
     if not custom:
         assert "# Local deliverables" in rendered
+        assert "resume from verified artifacts" in prepared["spec_prompt"]
+        assert "confirmed decisions, their rationale, and deferred scope" in (
+            prepared["spec_template"]
+        )
+        assert "output paths, observable acceptance criteria" in rendered
+        assert "Spec sections: <heading>" in rendered
+        assert "规格章节：<标题>" in rendered
     assert not (spec_dir / "todo.json").exists()
 
 
@@ -871,6 +885,8 @@ def test_create_todo_uses_latest_saved_spec_and_its_canonical_name(
     main(["create-todo", "14-30-todo"])
     captured = capsys.readouterr().out
     assert create_todo_spec.name in captured
+    assert "Spec sections: <heading>" in captured
+    assert "规格章节：<标题>" in captured
     assert initial.decode() in captured
     assert spec.read_bytes() == initial
     assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"

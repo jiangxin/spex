@@ -144,7 +144,7 @@
         ]
       },
       {
-        "input": "Use repeat-plan.md as the only authoritative source. The range 1 through 5 is correct. Create the spec and ordered todo so an implementer can work without the source document.",
+        "input": "Use repeat-plan.md as the only authoritative source. The range 1 through 5 is correct. Defer GREET_REPEAT to a later spec so invocations without --repeat keep their current behavior. Create the spec and ordered todo for a handoff containing only the repository code, spec.md, and todo.json.",
         "checks": [
           "no-code-change"
         ],

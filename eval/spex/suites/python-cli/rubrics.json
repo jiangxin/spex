@@ -181,7 +181,7 @@
         "anchors": [
           "Requires the source to determine the intended behavior or contradicts it.",
           "Spec covers repetition but omits rationale, compatibility, failure, or recovery.",
-          "Spec includes the in-memory buffering rationale, the 1–5 range, default and line output, name and uppercase compatibility, and argparse failure and retry behavior."
+          "Spec includes the in-memory buffering rationale, the 1–5 range, default and line output, and name and uppercase compatibility. It includes a reproducible invalid invocation that exits 2 with --repeat and the allowed range on stderr and empty stdout, and a valid retry with two greetings."
         ]
       },
       {
@@ -193,8 +193,21 @@
         "threshold": 2,
         "anchors": [
           "Tasks are missing, depend on the source, or wire the CLI before validating the count.",
-          "Tasks have the right order but omit a compatibility or acceptance check.",
-          "Tasks deliver a tested validator first without CLI changes, then wire up the option with tests for default output, both bounds, uppercase repetition, non-integers, and out-of-range counts, using the specified unittest command."
+          "Tasks have the right order but omit spec section references or an observable compatibility, failure, or retry check.",
+          "Each task includes a standalone Spec sections: or 规格章节： line referencing an actual heading and gives the unittest command. Tasks deliver a tested validator without CLI changes, then wire up the option with tests for default output, both bounds, uppercase repetition, invalid counts with exit 2, diagnostic and empty stdout, and a successful retry."
+        ]
+      },
+      {
+        "id": "scope-decision-preserved",
+        "turn": 3,
+        "requires": [
+          "state"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The spec or tasks schedule GREET_REPEAT behavior.",
+          "The tasks omit GREET_REPEAT, but the spec omits the deferral or its reason.",
+          "The spec records GREET_REPEAT as deferred to preserve no-flag behavior, and the tasks leave that work for a later spec."
         ]
       }
     ],
