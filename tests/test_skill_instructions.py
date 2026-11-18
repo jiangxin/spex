@@ -487,9 +487,19 @@ class TestCreatePlanOnlySop:
         text = _read(CREATE_MD)
         clarify = _h3_section(text, "Phase 2: Clarify Requirement")
         _index(clarify, "Read every explicitly named requirement document in full")
-        _index(clarify, "a critical source cannot be read")
-        _index(clarify, "sources conflict")
-        _index(clarify, "clarify before preparing the spec")
+        assert _index(text, "Stay in Phase 2 until required clarification is resolved") < _index(
+            text, "### Phase 4: Prepare Spec Directory"
+        )
+        assert "exactly, including with custom templates" in " ".join(clarify.split())
+        gate = " ".join(
+            _h2_section(_read(PLAN_COMMAND_COMMON), "Clarification gate").split()
+        )
+        assert gate.index("authoritative sources conflict") < gate.index("skip clarification")
+        assert gate.index("missing, unreadable, or incomplete") < gate.index("skip clarification")
+        _index(gate, "ask which source or requirement governs")
+        _index(gate, "ask for the missing information or a usable replacement")
+        _index(gate, "Recheck any source supplied in the reply")
+        _index(gate, "Wait until the source issue is resolved before preparing")
         post = _h3_section(text, "Phase 7: Post-Action")
         assert _index(post, "Apply these checks with custom templates too") < _index(
             post, "create-helper post-action"
