@@ -87,6 +87,17 @@ def finish_turn(sandbox: Path, key: str, turn: int) -> None:
     collect_handoff.handoff_reply(sandbox, suite, case, turn).write_text("done", encoding="utf-8")
 
 
+def set_verdict(sandbox: Path, key: str, verdict: str, *, hard: bool = False) -> None:
+    """Store the verdict an imported grade or a host failure would leave behind."""
+    suite, case = key.split("/")
+    path = sandbox / suite / case / "trial.json"
+    metadata = run.read_json(path)
+    metadata["verdict"] = verdict
+    if hard:
+        metadata["hard_verdict"] = verdict
+    run.write_json(path, metadata)
+
+
 def test_full_queue_names_occupants_and_keeps_the_refused_case_pending(
     tmp_path, monkeypatch,
 ):
@@ -270,6 +281,170 @@ def test_dispatch_requires_the_prepared_env_script(tmp_path, monkeypatch):
         manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
 
     assert (sandbox / "queue.json").read_bytes() == before
+
+
+def test_complete_all_releases_graded_slots_and_keeps_the_rest(tmp_path, monkeypatch):
+    keys = ["example/alpha", "example/bravo", "example/charlie"]
+    sandbox = build_sandbox(tmp_path, keys, 2, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "pass", hard=True)
+    manual_action(sandbox, "claim", "example/bravo")  # Graded later, still occupies a slot.
+    with pytest.raises(ValueError, match="All configured trial slots are occupied"):
+        manual_action(sandbox, "claim", "example/charlie")
+
+    payload, code = manual_action(sandbox, "complete", "--all")
+
+    assert code == 0
+    assert payload == {
+        "completed": [{"case": "example/alpha", "verdict": "pass"}],
+        "skipped": [
+            {"case": "example/bravo", "reason": "not_graded"},
+            {"case": "example/charlie", "reason": "not_running"},
+        ],
+        "errors": [],
+    }
+    queue = manual_batch.read(sandbox / "queue.json")
+    assert queue["example/alpha"] == {"status": "completed", "verdict": "pass"}
+    assert queue["example/bravo"] == {"status": "running"}
+    assert queue["example/charlie"] == {"status": "pending"}
+    # The released slot is claimable again without another complete round.
+    assert manual_action(sandbox, "claim", "example/charlie")[1] == 0
+    assert manual_batch.read(sandbox / "queue.json")["example/charlie"]["status"] == "running"
+
+
+def test_complete_all_completes_a_host_failure_without_grades(tmp_path, monkeypatch):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "run_error")
+
+    payload, code = manual_action(sandbox, "complete", "--all")
+
+    assert code == 0
+    assert payload["completed"] == [{"case": "example/alpha", "verdict": "run_error"}]
+    assert payload["skipped"] == []
+    assert payload["errors"] == []
+    assert manual_batch.read(sandbox / "queue.json")["example/alpha"] == {
+        "status": "completed", "verdict": "run_error",
+    }
+
+
+def test_complete_all_reports_a_corrupt_trial_and_continues(tmp_path, monkeypatch):
+    keys = ["example/alpha", "example/bravo"]
+    sandbox = build_sandbox(tmp_path, keys, 2, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    manual_action(sandbox, "claim", "example/bravo")
+    set_verdict(sandbox, "example/bravo", "pass", hard=True)
+    (sandbox / "example" / "alpha" / "trial.json").write_text("{not json", encoding="utf-8")
+
+    payload, code = manual_action(sandbox, "complete", "--all")
+
+    assert code == 1
+    assert payload["completed"] == [{"case": "example/bravo", "verdict": "pass"}]
+    assert [item["case"] for item in payload["errors"]] == ["example/alpha"]
+    assert payload["errors"][0]["error"]
+    queue = manual_batch.read(sandbox / "queue.json")
+    assert queue["example/bravo"] == {"status": "completed", "verdict": "pass"}
+    assert queue["example/alpha"]["status"] == "running"
+
+
+def test_complete_all_skips_a_collected_trial_awaiting_grades(tmp_path, monkeypatch):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    finish_turn(sandbox, "example/alpha", 1)
+    set_verdict(sandbox, "example/alpha", "pass")  # Final turn collected, not graded.
+    before = manual_batch.read(sandbox / "queue.json")
+
+    payload, code = manual_action(sandbox, "complete", "--all")
+
+    assert code == 0
+    assert payload == {
+        "completed": [],
+        "skipped": [{"case": "example/alpha", "reason": "not_graded"}],
+        "errors": [],
+    }
+    assert manual_batch.read(sandbox / "queue.json") == before
+
+
+def test_complete_all_reports_a_corrupt_queue_row_and_continues(tmp_path, monkeypatch):
+    keys = ["example/alpha", "example/bravo"]
+    sandbox = build_sandbox(tmp_path, keys, 2, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "pass", hard=True)
+    queue = manual_batch.read(sandbox / "queue.json")
+    queue["example/bravo"] = {}  # A damaged row must not abort the sweep.
+    manual_batch.write(sandbox / "queue.json", queue)
+
+    payload, code = manual_action(sandbox, "complete", "--all")
+
+    assert code == 1
+    assert payload["completed"] == [{"case": "example/alpha", "verdict": "pass"}]
+    assert [item["case"] for item in payload["errors"]] == ["example/bravo"]
+
+
+def test_single_case_complete_keeps_the_graded_release(tmp_path, monkeypatch):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "pass", hard=True)
+
+    result, code = manual_action(sandbox, "complete", "example/alpha")
+
+    assert code == 0
+    assert result == {"case": "example/alpha", "status": "completed", "verdict": "pass"}
+    assert manual_action(sandbox, "status", "--require-terminal") == (
+        {"terminal": True, "cases": {"example/alpha": {
+            "status": "completed", "verdict": "pass",
+        }}},
+        0,
+    )
+
+
+def test_single_case_complete_keeps_the_grade_gate(tmp_path, monkeypatch):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "pass")
+
+    with pytest.raises(ValueError, match="^Import semantic grades before completing"):
+        manual_action(sandbox, "complete", "example/alpha")
+
+    assert manual_batch.read(sandbox / "queue.json")["example/alpha"]["status"] == "running"
+
+
+@pytest.mark.parametrize(("argv", "message"), [
+    ([], "Pass one suite/case ID or --all"),
+    (["example/alpha", "--all"], "--all cannot be combined with a single case"),
+])
+def test_complete_requires_exactly_one_target(capsys, argv, message):
+    with pytest.raises(SystemExit) as exit_info:
+        manual.parse_arguments(["--sandbox", "runs/s", "complete", *argv])
+
+    assert exit_info.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("argv", "attributes"), [
+    (["advance"], {}),
+    (["status", "--require-terminal"], {"require_terminal": True}),
+    (["init", "example/alpha"], {"cases": ["example/alpha"]}),
+    (["claim", "example/alpha"], {"case": "example/alpha"}),
+    (["start", "example/alpha", "2", "--session", "sess-1"],
+     {"turn": 2, "session": "sess-1"}),
+    (["dispatch", "example/alpha", "--session", "sess-1", "--turn", "2"],
+     {"turn": 2, "session": "sess-1"}),
+    (["stop", "example/alpha", "1"], {"turn": 1, "reply_file": None}),
+    (["collect", "example/alpha", "1"], {"turn": 1}),
+    (["fail", "example/alpha", "--reason", "exited"], {"reason": "exited"}),
+    (["exec", "--", "spex", "status"], {"case": "spex", "argv": ["status"]}),
+    (["wait", "--any"], {"any": True, "timeout": 900}),
+    (["complete", "example/alpha"], {"case": "example/alpha", "all_cases": False}),
+])
+def test_parse_arguments_survives_every_subcommand(argv, attributes):
+    """Only complete's target rule may inspect the parsed namespace."""
+    args = manual.parse_arguments(["--sandbox", "runs/s", *argv])
+
+    assert args.command == argv[0]
+    assert str(args.sandbox) == "runs/s"
+    for name, value in attributes.items():
+        assert getattr(args, name) == value
 
 
 def test_manual_initialize_shares_the_batch_bootstrap(tmp_path, monkeypatch):

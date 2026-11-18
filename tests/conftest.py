@@ -22,7 +22,7 @@ import manual  # noqa: E402  imported after the eval/spex path is published
 
 def manual_action(sandbox, *arguments):
     """Dispatch one manual batch command against a prepared sandbox."""
-    return manual.dispatch(manual.parser().parse_args([
+    return manual.dispatch(manual.parse_arguments([
         "--sandbox", str(sandbox), *arguments,
     ]), sandbox)
 

@@ -162,24 +162,72 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
     return result
 
 
-def complete_trial(args, output: Path, metadata: dict, row: dict) -> dict:
+def record_host_failure(reason: str, output: Path, metadata: dict, row: dict) -> None:
+    """Turn a pending trial into a stored host failure; a retry is a no-op."""
+    error = f"manual_host_{reason}"
     verdict = metadata["verdict"]
-    if args.command == "fail":
-        error = f"manual_host_{args.reason}"
-        if verdict == "pending":
-            metadata.update(verdict="run_error", error=error)
-            metadata["session"] = row.get("dispatch", {}).get("session", metadata["session"])
-            manual_batch.write(output / "trial.json", metadata)
-            verdict = "run_error"
-        elif verdict != "run_error" or metadata.get("error") != error:
-            raise ValueError("Only a pending trial can record a host failure")
+    if verdict == "pending":
+        metadata.update(verdict="run_error", error=error)
+        metadata["session"] = row.get("dispatch", {}).get("session", metadata["session"])
+        manual_batch.write(output / "trial.json", metadata)
+    elif verdict != "run_error" or metadata.get("error") != error:
+        raise ValueError("Only a pending trial can record a host failure")
+
+
+def awaiting_grades(metadata: dict) -> bool:
+    """True while the trial's final verdict has no imported grade behind it.
+
+    A collected trial stores a terminal ``verdict`` as soon as its last turn is
+    collected, but only ``import_judge`` writes ``hard_verdict``. So the ordinary
+    pre-grade state is a terminal verdict without grades, not ``pending``.
+    """
+    return metadata["verdict"] != "run_error" and "hard_verdict" not in metadata
+
+
+def complete_row(key: str, metadata: dict, row: dict) -> dict:
+    """Release one trial slot once its verdict is terminal and graded."""
+    verdict = metadata["verdict"]
     if verdict not in TERMINAL_VERDICTS:
         raise ValueError("Trial is still pending")
     if verdict != "run_error" and "hard_verdict" not in metadata:
         raise ValueError("Import semantic grades before completing the trial")
     row.update(status="completed", verdict=verdict)
     row.pop("dispatch", None)
-    return {"case": args.case, **row}
+    return {"case": key, **row}
+
+
+def complete_trial(args, output: Path, metadata: dict, row: dict) -> dict:
+    if args.command == "fail":
+        record_host_failure(args.reason, output, metadata, row)
+    return complete_row(args.case, metadata, row)
+
+
+def complete_all(sandbox: Path, queue_file: Path, queue: dict, entries: dict) -> dict:
+    """Complete every running trial that already holds a terminal verdict.
+
+    Rows are visited in queue insertion order. A running trial that is not
+    graded yet keeps its slot, a row in any other state is skipped, and an
+    unexpected per-case failure is reported without aborting the batch.
+    Callers already hold ``manual_batch.locked(sandbox)`` and pass the state
+    they loaded under it.
+    """
+    completed, skipped, errors = [], [], []
+    for key, row in queue.items():
+        try:
+            if row["status"] != "running":
+                skipped.append({"case": key, "reason": "not_running"})
+                continue
+            _, _, metadata = load_trial(sandbox, key, entries)
+            if awaiting_grades(metadata):
+                skipped.append({"case": key, "reason": "not_graded"})
+                continue
+            result = complete_row(key, metadata, row)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            errors.append({"case": key, "error": str(error)})
+            continue
+        completed.append({"case": result["case"], "verdict": result["verdict"]})
+    manual_batch.write(queue_file, queue)  # One write for the whole close-out.
+    return {"completed": completed, "skipped": skipped, "errors": errors}
 
 
 def running_keys(queue: dict) -> list[str]:
@@ -272,6 +320,9 @@ def dispatch(args, sandbox: Path) -> tuple[dict, int]:
             return result, int(args.require_terminal and not result["terminal"])
         if args.command == "dispatch":
             return dispatch_case(args, sandbox, queue_file, queue, entries), 0
+        if args.command == "complete" and args.all_cases:
+            result = complete_all(sandbox, queue_file, queue, entries)
+            return result, int(bool(result["errors"]))
         key = args.case
         row = queue_row(queue, key)
         output, trial, metadata = load_trial(sandbox, key, entries)
@@ -434,7 +485,20 @@ def parser() -> argparse.ArgumentParser:
     commands = ("claim", "start", "dispatch", "stop", "collect", "complete", "fail", "exec")
     for command in commands:
         action = sub.add_parser(command)
-        action.add_argument("case", metavar="SUITE/CASE")
+        if command == "complete":
+            action.add_argument(
+                "case", metavar="SUITE/CASE", nargs="?",
+                help="One suite/case ID; pass --all instead for a whole batch",
+            )
+            action.add_argument(
+                "--all", dest="all_cases", action="store_true",
+                help=(
+                    "Complete every running case that holds a terminal verdict "
+                    "and exit 1 when any case fails"
+                ),
+            )
+        else:
+            action.add_argument("case", metavar="SUITE/CASE")
         if command in ("start", "stop", "collect"):
             action.add_argument("turn", type=int)
         if command in ("start", "dispatch"):
@@ -452,8 +516,20 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the manual command line and enforce the complete-mode contract."""
+    command = parser()
+    args = command.parse_args(argv)
+    if args.command == "complete":
+        if args.all_cases and args.case is not None:
+            command.error("--all cannot be combined with a single case")
+        if not args.all_cases and args.case is None:
+            command.error("Pass one suite/case ID or --all")
+    return args
+
+
 def main() -> int:
-    args = parser().parse_args()
+    args = parse_arguments()
     try:
         sandbox = runner.resolve_sandbox(args.sandbox)
         if args.command == "exec":
