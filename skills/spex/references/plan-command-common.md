@@ -23,6 +23,15 @@ PLAN-only guards.
 
 ## Clarification gate
 
+- IF authoritative sources conflict, name the sources and the
+  conflicting requirement and ask which source or requirement governs.
+  Resolve the conflict with the user before preparing or updating the
+  spec. Do not reconcile conflicting sources on your own.
+- IF a necessary authoritative source is missing, unreadable, or
+  incomplete, name the source and ask for the missing information or
+  a usable replacement. Recheck any source supplied in the reply.
+  Wait until the source issue is resolved before preparing or updating
+  the spec.
 - IF multiple viable implementation paths affect design -> ask
   at least one question (do not silently pick a path)
 - ELSE IF the requirement/request is already specific/unambiguous

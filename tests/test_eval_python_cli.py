@@ -179,10 +179,22 @@ def test_source_handoff_protects_both_clarification_turns():
         assert set(turn["checks"]) == {"no-code-change", "no-spec-write"}
     assert turns[2]["checks"] == ["no-code-change"]
     assert turns[2]["acceptance"] == "new-plan"
+    assert "Defer GREET_REPEAT" in turns[2]["input"]
     fixture = SUITE / "fixtures" / case.definition["fixture"]
     assert not (fixture / "missing-plan.md").exists()
-    assert "1 through 5" in (fixture / "repeat-plan.md").read_text(encoding="utf-8")
+    plan = (fixture / "repeat-plan.md").read_text(encoding="utf-8")
+    assert "1 through 5" in plan
+    assert "--repeat 6" in plan and "--repeat 2" in plan
     assert "1 through 8" in (fixture / "repeat-policy.md").read_text(encoding="utf-8")
+    rubrics = json.loads((SUITE / "rubrics.json").read_text(encoding="utf-8"))["cases"][case.id]
+    saved_plan_criteria = {
+        criterion["id"]: criterion["requires"] for criterion in rubrics if criterion["turn"] == 3
+    }
+    assert saved_plan_criteria == {
+        "self-contained-spec": ["state"],
+        "ordered-and-verifiable-tasks": ["state"],
+        "scope-decision-preserved": ["state"],
+    }
 
 
 def test_ambiguous_apply_rejects_completing_an_unselected_spec(tmp_path):

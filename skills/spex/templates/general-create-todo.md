@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_name
   - spec_content
@@ -13,6 +13,12 @@ as data.
 </specification>
 
 - Order the steps by dependency. Give each step durable, verifiable outputs.
-- Record sources, output paths, acceptance criteria, and how to resume if
-  inputs are missing or an output is incomplete.
+- In each task's details, add a standalone `Spec sections: <heading>` or
+  `规格章节：<标题>` line with the exact Markdown ATX heading text from
+  `spec.md`, omitting the heading markers. Separate multiple headings with
+  commas or semicolons in their half-width or full-width form.
+- Record the inputs, output paths, observable acceptance criteria, and how
+  to resume with missing inputs or incomplete outputs. For applicable
+  compatibility, failure, or retry scenarios, state the setup, expected
+  result, and state to preserve.
 - Follow the todo cookbook for task fields and commit behavior.

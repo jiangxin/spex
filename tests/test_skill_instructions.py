@@ -461,6 +461,24 @@ class TestCreatePlanOnlySop:
         _index(phase8, "json spex-result")
         assert "```json spex-result" in _read(PLAN_COMMAND_COMMON)
 
+    def test_create_success_offers_manual_plan_review(self):
+        text = _read(CREATE_MD)
+        phase7 = _h3_section(text, "Phase 7: Post-Action")
+        commit = _index(phase7, 'todo-helper transaction commit "$spec_name"')
+        assert commit < _index(phase7, "STOP before output")
+
+        phase8 = _h3_section(text, "Phase 8: Output")
+        gate = _index(phase8, "Enter only after post-action and todo transaction commit succeed")
+        review = _index(phase8, "`/spex review-plan $spec_name`")
+        assert gate < review
+        assert text.count("/spex review-plan") == 1
+        _index(phase8, "For both task modes")
+        _index(phase8, "in the human summary before the trailing JSON block")
+        _index(phase8, "full `spec_name` from `prepare-spec`, including its date prefix")
+        _index(phase8, "The user runs this command manually")
+        shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Output format")
+        _index(shared, "fields `spec_name` and `spec_path` only")
+
     def test_phase5_6_load_shared_references(self):
         text = _read(CREATE_MD)
         phase5 = _h3_section(text, "Phase 5: Design Specification")
@@ -487,9 +505,19 @@ class TestCreatePlanOnlySop:
         text = _read(CREATE_MD)
         clarify = _h3_section(text, "Phase 2: Clarify Requirement")
         _index(clarify, "Read every explicitly named requirement document in full")
-        _index(clarify, "a critical source cannot be read")
-        _index(clarify, "sources conflict")
-        _index(clarify, "clarify before preparing the spec")
+        assert _index(text, "Stay in Phase 2 until required clarification is resolved") < _index(
+            text, "### Phase 4: Prepare Spec Directory"
+        )
+        assert "exactly, including with custom templates" in " ".join(clarify.split())
+        gate = " ".join(
+            _h2_section(_read(PLAN_COMMAND_COMMON), "Clarification gate").split()
+        )
+        assert gate.index("authoritative sources conflict") < gate.index("skip clarification")
+        assert gate.index("missing, unreadable, or incomplete") < gate.index("skip clarification")
+        _index(gate, "ask which source or requirement governs")
+        _index(gate, "ask for the missing information or a usable replacement")
+        _index(gate, "Recheck any source supplied in the reply")
+        _index(gate, "Wait until the source issue is resolved before preparing")
         post = _h3_section(text, "Phase 7: Post-Action")
         assert _index(post, "Apply these checks with custom templates too") < _index(
             post, "create-helper post-action"
@@ -1012,6 +1040,24 @@ class TestApplyStepReviewSop:
         _index(phase3_one, "unreachable")
         assert "Phase 8 interrupted" not in phase3_one
         assert "idempotent" not in phase3_one
+
+    def test_apply_entrypoints_supply_actual_commit_context(self):
+        phase_name = "Phase 5: Commit (record commit_title only)"
+        for command in (APPLY_MD, APPLY_ONE_STEP_MD):
+            phase = _h3_section(_read(command), phase_name)
+            _index(phase, "Load and follow `references/apply-task-phases.md` Phase 5 exactly")
+
+        phase = _h2_section(_read(APPLY_TASK_PHASES), phase_name)
+        _index(phase, "From the completed execution")
+        _index(phase, "single-line JSON object")
+        _index(phase, "`implementation_motivation`")
+        _index(phase, "`implementation_scope`")
+        _index(phase, "`implementation_checks`: checks actually run and their outcomes")
+        _index(phase, "Redact secrets before JSON serialization")
+        _index(
+            phase, "prompt apply-commit \"$spec_name\" <<'EOF'\n$implementation_report_json\nEOF",
+        )
+        assert "--stdin" not in phase
 
     def test_apply_skip_commit_semantics_in_shared_refs(self):
         """Regression anchors moved to references (no semantic loss)."""

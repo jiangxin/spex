@@ -247,6 +247,97 @@ class TestFutureTasks:
         assert "- **step-3/3**: Do C" in metadata["future_tasks"]
 
 
+@pytest.mark.parametrize(("references", "expected"), [
+    ("Child", "## Child\nChild body"),
+    ("Last；Child, Last", "## Last ##\nLast body\n\n## Child\nChild body"),
+    ("Parent", "# Parent\nParent body\n## Child\nChild body\n## Last ##\nLast body"),
+    ("Child; Missing", ""),
+    ("Repeated", ""),
+    ("Fenced", ""),
+    ("Tilde fence", ""),
+    ("Commented", ""),
+    ("Indented", ""),
+    ("", ""),
+])
+def test_spec_excerpt_uses_only_unambiguous_atx_headings(references, expected):
+    from prompt import _spec_excerpt
+
+    content = "\r\n".join([
+        "# Parent", "Parent body", "## Child", "Child body", "## Last ##", "Last body",
+        "# Repeated", "# Repeated", "````markdown", "```", "# Fenced", "<!--",
+        "````", "~~~markdown", "# Tilde fence", "~~~", "<!--", "```", "# Commented",
+        "-->", "    # Indented",
+    ])
+    assert _spec_excerpt(content, references) == expected
+
+
+@pytest.mark.parametrize("empty_heading", ["#", "#   ", "# ###"])
+def test_spec_excerpt_stops_at_empty_heading_and_ignores_inline_comment_markers(empty_heading):
+    from prompt import _spec_excerpt
+
+    selected = "# Delivery\nDeliver the artifact."
+    content = (
+        "# Intro\nUse `` `<!--` `` or `<!--` to mark an example.\n"
+        f"{selected}\n{empty_heading}\nUnrelated text.\n# End\nEnd text.\n"
+    )
+    assert _spec_excerpt(content, "Delivery") == selected
+    assert _spec_excerpt(content, "Delivery,") == ""
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(("mode", "details"), [
+    ("software", "Spec sections: Verification\nAcceptance commands: make check"),
+    ("general", "规格章节：Verification\n验收命令：make check"),
+])
+def test_create_todo_section_reference_drives_apply_prompt(
+    tmp_path, monkeypatch, capsys, mode, details,
+):
+    from prompt import main
+
+    name = "test-topic"
+    repo, spec_dir = _setup_topic(tmp_path, name, [])
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    spec = "# Goal\nFull scope.\n\n## Verification\nUse the verified output.\n"
+    spec_path = spec_dir / "spec.md"
+    spec_path.write_text(spec, encoding="utf-8")
+    (spec_dir / "meta.json").write_text(json.dumps({"task_mode": mode}), encoding="utf-8")
+
+    main(["create-todo", name])
+    create_prompt = capsys.readouterr().out
+    reference_format = "Spec sections: <heading>" if mode == "software" else "规格章节：<标题>"
+    assert reference_format in create_prompt
+
+    todo_path = spec_dir / "todo.json"
+    task = _make_task(
+        1, name="Current step", details=f"{details}\n已知文件：out.md\n依赖：Prior work",
+    )
+    todo_path.write_text(json.dumps([task]), encoding="utf-8")
+    main(["apply-one-task", name, "--json"])
+    excerpt_prompt = json.loads(capsys.readouterr().out)["prompt"]
+    assert excerpt_prompt.index("Current step") < excerpt_prompt.index("<specification>")
+    assert "## Verification\nUse the verified output." in excerpt_prompt
+    assert "Full scope." not in excerpt_prompt
+    assert str(spec_path.resolve()) in excerpt_prompt
+    assert "Acceptance commands: make check" in excerpt_prompt
+    assert "Known files: out.md" in excerpt_prompt
+    assert "Dependencies: Prior work" in excerpt_prompt
+
+    for legacy_details in ("Legacy step", "Reference: Verification", "规格章节：Missing"):
+        task["details"] = legacy_details
+        todo_path.write_text(json.dumps([task]), encoding="utf-8")
+        main(["apply-one-task", name, "--json"])
+        assert spec in json.loads(capsys.readouterr().out)["prompt"]
+
+    task["details"] = details
+    todo_path.write_text(json.dumps([task]), encoding="utf-8")
+    prefix = "general-" if mode == "general" else ""
+    override = repo / ".spex" / "templates" / f"{prefix}apply-one-task.md"
+    override.write_text("Custom prompt:\n{{ spec_content }}", encoding="utf-8")
+    main(["apply-one-task", name, "--json"])
+    assert json.loads(capsys.readouterr().out)["prompt"] == f"Custom prompt:\n{spec}"
+
+
 @pytest.mark.slow
 class TestApplyOneTaskRendering:
     """Test rendered output of apply-one-task template."""
@@ -533,6 +624,38 @@ class TestStdinExtraVars:
         captured = capsys.readouterr()
         assert "<current-task>" in captured.out
         assert "First step" in captured.out
+
+    @pytest.mark.parametrize("mode", ["software", "general"])
+    def test_apply_commit_renders_optional_implementation_report(
+        self, tmp_path, monkeypatch, capsys, mode,
+    ):
+        from prompt import main
+
+        name = "test-topic"
+        repo, spec_dir = _setup_topic(tmp_path, name, [_make_task(1)])
+        monkeypatch.chdir(repo)
+        (spec_dir / "meta.json").write_text(json.dumps({"task_mode": mode}), encoding="utf-8")
+        args = ["apply-commit", name, "--json"]
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        main(args)
+        assert "<implementation-report>" not in json.loads(capsys.readouterr().out)["prompt"]
+
+        report = {
+            "implementation_motivation": "Identify the actual reason",
+            "implementation_scope": 'Updated "out.md"',
+            "implementation_checks": 'make check passed\nInspected `$output`',
+        }
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(report)))
+        main(args)
+        rendered = json.loads(capsys.readouterr().out)["prompt"]
+        actual = rendered.split("<implementation-report>\n", 1)[1].split(
+            "\n</implementation-report>", 1,
+        )[0]
+        assert actual == (
+            'Motivation: Identify the actual reason\nScope: Updated "out.md"\n'
+            'Verification: make check passed\nInspected `$output`'
+        )
 
     def test_without_stdin_flag_json_provides_extra_vars(
         self, tmp_path, monkeypatch, capsys

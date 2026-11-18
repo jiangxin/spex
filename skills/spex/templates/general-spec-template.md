@@ -1,26 +1,29 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 ---
 
 <!-- spex:begin:requirement -->
 # Requirement
 
-<!-- Describe the goal, audience, sources, scope, and local deliverables. -->
+<!-- Describe the goal, audience, scope, local deliverables, and the
+     source facts and references the executor will need. -->
 
 <!-- spex:begin:user-clarification -->
 # User Clarification
 
-<!-- Record confirmed decisions and assumptions. -->
+<!-- Record confirmed decisions, their rationale, and deferred scope. -->
 
 <!-- spex:begin:detailed-design -->
 # Delivery Plan
 
-<!-- Describe the workflow, intermediate artifacts, and output paths. -->
+<!-- Describe inputs, workflow, intermediate artifacts, and output paths.
+     Explain how to resume after missing inputs or incomplete outputs. -->
 
 <!-- spex:begin:test-plan -->
 # Acceptance Plan
 
-<!-- Specify the checks and expected results for each deliverable. -->
+<!-- Give reproducible setup, checks, expected results, and any state to
+     preserve for each deliverable, including applicable failure cases. -->
 
 <!-- spex:begin:constraints -->
 # Constraints
