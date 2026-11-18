@@ -247,6 +247,41 @@ class TestFileLocating:
 
 
 class TestTransaction:
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_split_pending_step_preserves_prior_progress(self, todo_file, action):
+        completed, pending, following = [
+            dict(item, id=idx) for idx, item in enumerate(SAMPLE_DATA, 1)
+        ]
+        following.update(completed_at="", commit_title="")
+        _write(todo_file, [completed, pending, following])
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main([
+            "edit", *locator, "--id", "2", "--step-name", "Narrowed step",
+            "--details", "Verify the first increment",
+        ])
+        for position, name in [(2, "First follow-up"), (3, "Second follow-up")]:
+            todo_helper.main([
+                "insert", *locator, "--after", str(position), "--step-name", name,
+                "--details", "Verify the follow-up increment",
+            ])
+        todo_helper.main(["transaction", action, *locator])
+
+        assert not todo_file.with_suffix(".json.lock").exists()
+        if action == "rollback":
+            assert todo_file.read_bytes() == original
+            return
+
+        finished, first, *follow_ups, last = _read(todo_file)
+        assert finished == completed
+        assert first == dict(pending, name="Narrowed step", details="Verify the first increment")
+        assert [task["id"] for task in follow_ups] == [3, 4]
+        assert [task["name"] for task in follow_ups] == ["First follow-up", "Second follow-up"]
+        assert all(task["commit_title"] == task["completed_at"] == "" for task in follow_ups)
+        assert last == dict(following, id=5)
+
     def test_commit_by_spec_name(self, todo_file, monkeypatch):
         monkeypatch.setattr(
             todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,

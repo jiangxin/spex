@@ -28,6 +28,9 @@ APPLY_TASK_PHASES = (
 APPLY_SUBAGENT_HANDOFF = (
     REPO_ROOT / "skills" / "spex" / "references" / "apply-subagent-handoff.md"
 )
+APPLY_STEP_SPLIT = (
+    REPO_ROOT / "skills" / "spex" / "references" / "apply-step-split.md"
+)
 PLAN_COMMAND_COMMON = (
     REPO_ROOT / "skills" / "spex" / "references" / "plan-command-common.md"
 )
@@ -1485,6 +1488,37 @@ class TestSharedSopReferences:
         _index(text, "apply-helper dirty --json")
         _index(text, "Do **not** rely on sub-agent")
         _index(text, "`$task_prompt`")
+
+    def test_step_split_checks_baseline_and_protected_positions_before_writes(self):
+        text = _read(APPLY_STEP_SPLIT)
+        eligibility = _h2_section(text, "Eligibility")
+        for gate in (
+            "apply-helper dirty --json",
+            "Require a clean baseline",
+            "confirm HEAD still matches",
+            "first unfinished",
+            "empty `commit_title`",
+            "Require a closed todo transaction",
+            "attribution is unclear",
+        ):
+            _index(eligibility, gate)
+        save = _h2_section(text, "Save the Split Plan")
+        assert _index(save, "completed steps or") < _index(save, "Use one existing")
+        assert _index(save, "Check the edited list") < _index(save, "After transaction commit")
+        _index(save, "Roll back the todo transaction")
+        _index(save, "Refresh its task description")
+
+    def test_step_split_resume_rechecks_the_commit_boundary(self):
+        recovery = _h2_section(
+            _read(APPLY_STEP_SPLIT), "Resume After a Pre-Commit Interruption",
+        )
+        _index(recovery, "pre-commit base")
+        assert _index(recovery, "Inspect staged and unstaged diffs and untracked files") < (
+            _index(recovery, "Resume using scoped staging")
+        )
+        _index(recovery, "Keep all changes and stop")
+        _index(recovery, "Verify the full")
+        _index(recovery, "keep it out of this explicit")
 
 
 class TestApplyOneStepCompletedSpecAndDedupe:
