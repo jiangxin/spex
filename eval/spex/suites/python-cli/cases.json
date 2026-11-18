@@ -40,7 +40,7 @@
     "turns": [
       {
         "input": "/spex modify 2000-01-01-00-00-greeting-format Replace the entire remaining plan. Cancel --prefix, --suffix, and --separator. First plan --repeat COUNT (1 through 5, default 1), printing one greeting per line. Then plan --line-number to number those lines starting at 1 when requested. Each step should include its own tests. Preserve the completed --upper step and default greeting.",
-        "checks": ["no-code-change", "completed-preserved", "one-spec-changed"],
+        "checks": ["no-code-change", "completed-preserved", "one-spec-changed", "modify-rebuild-path"],
         "acceptance": "modify-rebuild"
       }
     ]
@@ -53,7 +53,7 @@
     "turns": [
       {
         "input": "/spex modify 2000-01-01-00-00-greeting-format Add a plan step for --punctuation accepting ! or . with default ! before the --prefix step. Exchange the order of --suffix and --separator. Drop the --repeat requirement and its step. Keep the completed --upper step and keep the existing --prefix, --suffix, and --separator step names, details, and test plans.",
-        "checks": ["no-code-change", "completed-preserved", "one-spec-changed"],
+        "checks": ["no-code-change", "completed-preserved", "one-spec-changed", "modify-targeted-path"],
         "acceptance": "modify-targeted"
       }
     ]

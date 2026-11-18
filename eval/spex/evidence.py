@@ -8,9 +8,11 @@ import os
 import re
 import tempfile
 from datetime import timedelta
+from functools import cmp_to_key
+from itertools import combinations
 from pathlib import Path
 
-from performance import timestamp
+from performance import stamp_bounds, timestamp
 from workspace import Trial, git
 
 
@@ -137,7 +139,18 @@ EXPECTATIONS = {
     "post-action": "Apply post-action succeeded",
     "review-failure-stop": "A review failure ended the turn without further workflow activity",
     "resumed-review": "Review started at the existing step commit and tracked any fixes",
+    "modify-rebuild-path": "Modify rebuilt the unfinished plan in a validated transaction",
+    "modify-targeted-path": "Modify applied local edits in a validated transaction",
 }
+
+MODIFY_PATHS = {
+    "modify-rebuild-path": {"remove-undone", "append"},
+    "modify-targeted-path": {"insert", "move", "remove"},
+}
+TODO_MUTATIONS = {
+    "append", "edit", "insert", "move", "remove", "remove-undone", "renumber",
+}
+TODO_COMMANDS = TODO_MUTATIONS | {"transaction"}
 
 
 def check_gate(check: str, before: dict, after: dict) -> dict:
@@ -150,8 +163,8 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
     old, new = previous["value"], current["value"]
     done, now = completed(old), completed(new)
     preserved = all(now.get(task) == value for task, value in done.items())
-    trace_gate = check in {"no-post-action", "post-action", "review-failure-stop", "resumed-review"}
-    post_gate = trace_gate and check != "resumed-review"
+    post_gate = check in {"no-post-action", "post-action", "review-failure-stop"}
+    trace_gate = post_gate or check == "resumed-review" or check in MODIFY_PATHS
     host_post = [
         event for event in (trace["value"] if trace else [])
         if event.get("action") == "apply.post-action"
@@ -159,7 +172,9 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
         and event["spec"] in new["specs"]
         and type(event.get("exit_code")) is int
     ] if post_gate and native is not None else []
-    if trace_gate and native is not None:
+    if check in MODIFY_PATHS:
+        passed = modify_path_check(check, old, new, native["value"] if native else None)
+    elif trace_gate and native is not None:
         observed = host_post + (supplement["value"] if supplement else [])
         passed = native_check(check, old, new, after, native["value"], observed)
     elif check == "resumed-review":
@@ -181,7 +196,8 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
             "no-progress": preserved and now == done,
         }[check]
     refs = [previous["id"], current["id"]]
-    if trace_gate and trace is not None and (native is None or host_post):
+    if (trace_gate and check not in MODIFY_PATHS
+            and trace is not None and (native is None or host_post)):
         refs.append(trace["id"])
     if trace_gate and native is not None:
         refs.append(native["id"])
@@ -195,6 +211,86 @@ def check_gate(check: str, before: dict, after: dict) -> dict:
         "verdict": verdict,
         "evidence_refs": refs,
     }
+
+
+def modify_path_check(check: str, old: dict, new: dict, trace: dict | None) -> bool | None:
+    """Grade commands for the single modified spec using native evidence."""
+    names = old["specs"].keys()
+    changed = [name for name in names if old["specs"][name] != new["specs"].get(name)]
+    if new["specs"].keys() != names or len(changed) != 1:
+        return False
+    if trace is None:
+        return None
+    target = changed[0]
+    candidates = [event for event in trace["events"] if modify_operation(event)]
+    events = [event for event in candidates if event.get("spec") == target]
+    if check == "modify-targeted-path" and any(
+        event["subcommand"] == "remove-undone" for event in events
+    ):
+        return False
+    if (set(trace["gaps"]) - {"incomplete_review_log", "unpaired_review_end"}
+            or any(event.get("spec") is None for event in candidates)
+            or not order_modify_events(events)):
+        return None
+    operations = [modify_operation(event) for event in events if event.get("exit_code") == 0]
+    return committed_modify_path(check, operations)
+
+
+def modify_operation(event: dict) -> str | None:
+    command, verb = event.get("command"), event.get("subcommand")
+    if command == "todo-helper" and verb in TODO_COMMANDS:
+        return event.get("transaction_action", "transaction") if verb == "transaction" else verb
+    if command == "create-helper" and verb == "post-action" and event.get("event_type") == "modify":
+        return "post-action"
+    return None
+
+
+def compare_modify_events(left: dict, right: dict) -> int:
+    if left["log"] == right["log"]:
+        return left["sequence"] - right["sequence"]
+    # Debug log timestamps are stamped at flush time. Compare complete
+    # execution intervals using the precision recorded in each timestamp.
+    left_end, right_end = stamp_bounds(left.get("at")), stamp_bounds(right.get("at"))
+    if left_end is None or right_end is None:
+        return 0
+    if left_end[1] < right_end[0] - (right["duration_ms"] + 1) * 10**6:
+        return -1
+    if right_end[1] < left_end[0] - (left["duration_ms"] + 1) * 10**6:
+        return 1
+    return 0
+
+
+def order_modify_events(events: list[dict]) -> bool:
+    events.sort(key=cmp_to_key(compare_modify_events))
+    return all(compare_modify_events(left, right) < 0 for left, right in combinations(events, 2))
+
+
+def committed_modify_path(check: str, operations: list[str]) -> bool:
+    """Accept only mutations in the committed, post-action-validated batch."""
+    edits, committed = None, False
+    for operation in operations:
+        if operation == "start" and edits is None:
+            edits = []
+        elif operation == "rollback" and edits is not None:
+            edits = None
+        elif operation == "commit" and edits is not None and not committed:
+            committed = valid_modify_edits(check, edits)
+            if not committed:
+                return False
+            edits = None
+        elif operation in TODO_MUTATIONS | {"post-action"} and edits is not None:
+            edits.append(operation)
+        else:
+            return False
+    return committed and edits is None
+
+
+def valid_modify_edits(check: str, edits: list[str]) -> bool:
+    if not edits or edits[-1] != "post-action" or not MODIFY_PATHS[check] <= set(edits):
+        return False
+    if check == "modify-rebuild-path":
+        return "remove-undone" not in edits[edits.index("append"):]
+    return True
 
 
 def native_check(

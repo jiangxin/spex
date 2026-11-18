@@ -236,6 +236,52 @@ def option(words: list[str], flag: str) -> str | None:
     return None
 
 
+TODO_VALUE_OPTIONS = {
+    "--name", "--todo-file", "--todo-json", "--id", "--from", "--to",
+    "--before", "--after", "--step-name", "--details", "--completed-at",
+    "--commit-title", "--skip-commit", "--format",
+}
+TODO_SWITCHES = {
+    "--details-from-stdin", "--done", "--undone", "--wrap", "--no-wrap",
+    "-h", "--help",
+}
+
+
+def todo_selector(words: list[str], verb: str) -> tuple[str | None, str | None]:
+    """Read the transaction action and spec without mistaking option values for them."""
+    positionals, locators = [], {}
+    arguments = iter(words[words.index("todo-helper") + 1:])
+    for word in arguments:
+        if word == "--":
+            positionals.extend(arguments)
+            break
+        flag, equals, value = word.partition("=")
+        if flag in TODO_VALUE_OPTIONS:
+            value = value if equals else next(arguments, None)
+            if value is None:
+                return None, None
+            if flag in {"--name", "--todo-file", "--todo-json"}:
+                locators[flag] = value
+        elif word in TODO_SWITCHES:
+            continue
+        elif word.startswith("-"):
+            return None, None
+        else:
+            positionals.append(word)
+    if not positionals or positionals.pop(0) != verb:
+        return None, None
+    action = None
+    if verb == "transaction":
+        if not positionals or positionals[0] not in {"start", "commit", "rollback"}:
+            return None, None
+        action = positionals.pop(0)
+    if len(positionals) > 1 or len(positionals) + len(locators) != 1:
+        return action, None
+    if {"--todo-file", "--todo-json"} & locators.keys():
+        return action, None
+    return action, locators.get("--name", positionals[0] if positionals else None)
+
+
 def parse(lines: list[str], source: str, gaps: set) -> list:
     parts = Path(source).parts
     spec = parts[1] if len(parts) == 3 and parts[0] == "specs" else None
@@ -257,7 +303,7 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                     gaps.add("unrecognized_cli_log")
                     words = []
                 words = [word.replace("_", "-") if word in {
-                    "apply_helper", "review_helper", "todo_helper",
+                    "apply_helper", "create_helper", "review_helper", "todo_helper",
                 } else word for word in words]
                 name = next((word for word in words if not word.startswith("-")), "")
                 if IDENTIFIER.fullmatch(name):
@@ -266,14 +312,21 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                         _argv_fingerprint=argv_fingerprint(line.removeprefix("argv: spex ")),
                     )
                     if verb := command_verb(words, name):
-                        command["subcommand"] = verb
-                selector = option(words, "--name")
+                        command["subcommand"] = verb.replace("_", "-")
+                        if name == "create-helper" and verb.replace("_", "-") == "post-action":
+                            command["event_type"] = option(words, "--event-type")
+                if name == "todo-helper" and command.get("subcommand"):
+                    action, selector = todo_selector(words, verb)
+                    if action:
+                        command["transaction_action"] = action
+                else:
+                    selector = option(words, "--name")
                 if (selector is None and source == CENTRAL_DEBUG_LOG
-                        and name in {"apply-helper", "review-helper", "prompt", "todo-helper"}
-                        and (verb := command.get("subcommand"))):
+                        and name in {"apply-helper", "review-helper", "prompt"}
+                        and command.get("subcommand")):
                     # Some pinned refs use a positional spec selector after the verb.
-                    index = words.index(verb) + 1
-                    selector = words[index] if index < len(words) else None
+                    start = words.index(verb) + 1
+                    selector = words[start] if start < len(words) else None
                 if selector and IDENTIFIER.fullmatch(selector):
                     if spec is None:
                         command["spec"] = selector

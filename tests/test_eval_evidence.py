@@ -36,6 +36,114 @@ def cli_log(argv, code=0):
     )
 
 
+@pytest.mark.parametrize(
+    ("path", "edits", "verdict"),
+    [
+        ("rebuild", ("remove_undone", "append"), "pass"),
+        ("targeted", ("insert", "move", "remove"), "pass"),
+        ("targeted", ("insert-options", "move-options", "remove"), "pass"),
+        ("targeted", ("remove-undone", "append"), "fail"),
+        ("targeted", ("remove-undone:1", "insert", "move", "remove"), "fail"),
+        ("rebuild", ("append", "remove-undone"), "fail"),
+        ("rebuild", ("remove-undone", "append@other-spec"), "fail"),
+        ("rebuild", ("remove-undone", "append:1"), "fail"),
+        ("rebuild", ("remove-undone", "append", "rollback", "start"), "fail"),
+        ("targeted", ("insert", "move", "remove", "commit"), "fail"),
+        ("targeted", ("insert", "move", "remove", "post-action", "edit"), "pass"),
+    ],
+)
+def test_modify_native_path(tmp_path, path, edits, verdict):
+    source = native_trace.CENTRAL_DEBUG_LOG
+    commands = {
+        action: f"todo_helper transaction {action} eval-spec"
+        for action in ("start", "commit", "rollback")
+    }
+    commands["post-action"] = "create-helper post-action --event-type=modify --name eval-spec"
+    commands["insert-options"] = (
+        "todo-helper insert --before 2 --skip-commit=auto eval-spec "
+        "--step-name Punctuation --details-from-stdin"
+    )
+    commands["move-options"] = "todo-helper move --from 3 --to=4 eval-spec"
+    lines = []
+    for edit in ("start", *edits, "post-action", "commit"):
+        verb, _, code = edit.partition(":")
+        verb, _, spec = verb.partition("@")
+        lines.extend(cli_log(
+            commands.get(verb, f"todo-helper {verb} {spec or 'eval-spec'}"),
+            int(code) if code else 0,
+        ).splitlines())
+    gaps = set()
+    events = native_trace.parse(lines, source, gaps)
+    assert events[0]["transaction_action"] == "start"
+    assert events[-1]["transaction_action"] == "commit"
+    assert events[-2]["event_type"] == "modify"
+    assert events[0]["spec"] == events[-1]["spec"] == events[-2]["spec"] == "eval-spec"
+    assert not gaps
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task(2)), native={"gaps": [], "events": events},
+    )
+    result = evidence.check_gate(f"modify-{path}-path", before, after)
+    assert result["verdict"] == verdict
+    assert "turn-1:spex-trace" in result["evidence_refs"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "spec", "action"),
+    [
+        ("todo-helper transaction --name=eval-spec commit", "eval-spec", "commit"),
+        ("todo-helper transaction rollback --todo-file /tmp/todo.json", None, "rollback"),
+        ("todo-helper move --from 3 --to 4", None, None),
+        ("todo-helper insert --details=eval-spec --before 2 --step-name Example", None, None),
+        ("todo-helper edit --details --name --id=1 eval-spec", "eval-spec", None),
+    ],
+)
+def test_native_todo_selector(argv, spec, action):
+    event, = native_trace.parse(cli_log(argv).splitlines(), native_trace.CENTRAL_DEBUG_LOG, set())
+    assert event["spec"] == spec
+    assert event.get("transaction_action") == action
+
+
+@pytest.mark.parametrize(
+    ("missing", "verdict"),
+    [
+        ("artifact", "insufficient_evidence"),
+        ("truncated", "insufficient_evidence"),
+        ("ambiguous-order", "insufficient_evidence"),
+        ("unbound-spec", "insufficient_evidence"),
+        ("ordered-logs", "pass"),
+    ],
+)
+def test_modify_path_requires_native_evidence(tmp_path, missing, verdict):
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    gaps, events = [], []
+    if missing == "truncated":
+        gaps.append("incomplete_cli_log")
+    if missing in {"ambiguous-order", "ordered-logs"}:
+        stamp = "T10:00:02" if missing == "ordered-logs" else "T10:00:00"
+        events += native_trace.parse(
+            cli_log("todo-helper transaction start eval-spec").splitlines(),
+            native_trace.CENTRAL_DEBUG_LOG, set(),
+        ) + native_trace.parse(
+            (
+                cli_log("todo-helper remove-undone eval-spec")
+                + cli_log("todo-helper append eval-spec")
+                + cli_log("create-helper post-action --name eval-spec --event-type modify")
+                + cli_log("todo-helper transaction commit eval-spec")
+            ).replace("T10:00:00", stamp).splitlines(),
+            "specs/eval-spec/debug.log", set(),
+        )
+    if missing == "unbound-spec":
+        events += native_trace.parse(
+            cli_log("todo-helper remove-undone --todo-file todo.json").splitlines(),
+            native_trace.CENTRAL_DEBUG_LOG, set(),
+        )
+    trace = None if missing == "artifact" else {"gaps": gaps, "events": events}
+    after = evidence.persist_turn(tmp_path, 1, state(task(2)), native=trace)
+    result = evidence.check_gate("modify-rebuild-path", before, after)
+    assert result["verdict"] == verdict
+
+
 def test_integer_task_ids_count_toward_progress(tmp_path):
     before = evidence.persist_turn(tmp_path, 0, state(task("step-1", "done"), task("step-2")))
     after = evidence.persist_turn(tmp_path, 1, state(task(1, "done"), task(2, "later")))
