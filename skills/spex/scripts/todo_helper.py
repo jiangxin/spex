@@ -12,11 +12,13 @@ import textwrap
 from argparse import ArgumentTypeError
 from pathlib import Path
 
+from acceptance import validate_acceptance_evidence
 from cli import ArgumentParser
 from common import (
     atomic_write_json,
     filter_completed_todos,
     load_and_validate_todo_json,
+    load_meta,
     local_iso_timestamp,
     logger,
     number_todo_items,
@@ -25,6 +27,7 @@ from common import (
     todo_step_label,
     validate_unique_ids,
 )
+from task_mode import GENERAL
 
 REQUIRED_FIELDS = ("name", "details", "completed_at", "commit_title")
 
@@ -158,8 +161,21 @@ def cmd_renumber(todo_path):
     logger.info("Renumbered %d step(s).", len(data))
 
 
-def _new_todo_entry(args):
+def _is_general_todo(todo_path):
+    meta = load_meta(todo_path.resolve().parent)
+    return meta is not None and meta.task_mode == GENERAL
+
+
+def _require_completion_command(todo_path):
+    if _is_general_todo(todo_path):
+        logger.error("Error: use todo-helper complete to finish a general task with evidence.")
+        sys.exit(1)
+
+
+def _new_todo_entry(todo_path, args):
     """Build an entry from the append or insert options."""
+    if args.completed_at:
+        _require_completion_command(todo_path)
     if args.details_from_stdin:
         details = sys.stdin.read()
     elif args.details is not None:
@@ -187,7 +203,7 @@ def _new_todo_entry(args):
 
 def cmd_append(todo_path, args):
     """Append a new entry to the todo file."""
-    entry = _new_todo_entry(args)
+    entry = _new_todo_entry(todo_path, args)
     data = _read_todo(todo_path)
     data.append(entry)
     _write_todo(todo_path, data)
@@ -201,7 +217,7 @@ def cmd_insert(todo_path, args):
         index = _step_index(data, args.before)
     else:
         index = _step_index(data, args.after) + 1
-    data.insert(index, _new_todo_entry(args))
+    data.insert(index, _new_todo_entry(todo_path, args))
     _write_todo(todo_path, data)
     logger.info("Inserted %s.", todo_step_label(index + 1, len(data)))
 
@@ -253,6 +269,7 @@ def cmd_edit(todo_path, args):
         details = sys.stdin.read()
 
     if args.completed_at is not None:
+        _require_completion_command(todo_path)
         args.completed_at = _resolve_completed_at(args.completed_at)
 
     data = _read_todo(todo_path)
@@ -274,6 +291,38 @@ def cmd_edit(todo_path, args):
     _write_todo(todo_path, data)
     logger.info("Updated %s.", todo_step_label(args.id, len(data)))
     _emit_todo_edit_apply_anchor(todo_path, args, item)
+
+
+def cmd_complete(todo_path, args):
+    """Persist completion and its required evidence in a single write."""
+    from debug_log import emit_apply_task
+
+    data = validate_todo(todo_path)
+    task = data[_step_index(data, args.id)]
+    if task["completed_at"]:
+        logger.info("%s is already complete.", todo_step_label(args.id, len(data)))
+        return
+
+    try:
+        general = _is_general_todo(todo_path)
+        if general and task is not next(item for item in data if not item["completed_at"]):
+            raise ValueError("only the first unfinished general task can be completed")
+        if general and not args.acceptance_evidence_stdin:
+            raise ValueError("completing a general task requires --acceptance-evidence-stdin")
+        if args.acceptance_evidence_stdin:
+            if not general:
+                raise ValueError("--acceptance-evidence-stdin is for general tasks")
+            task["acceptance_evidence"] = validate_acceptance_evidence(json.load(sys.stdin))
+        task["completed_at"] = local_iso_timestamp()
+        if args.commit_title is not None:
+            task["commit_title"] = args.commit_title
+        _write_todo(todo_path, data)
+    except (OSError, ValueError) as exc:
+        logger.error("Error: cannot complete step-%s: %s", args.id, exc)
+        sys.exit(1)
+
+    logger.info("Completed %s.", todo_step_label(args.id, len(data)))
+    emit_apply_task(todo_path.parent, "done", id=args.id)
 
 
 def cmd_move(todo_path, args):
@@ -594,7 +643,7 @@ def _build_parser():
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, insert, edit, move, remove, remove-undone,"
+            " (validate, append, insert, edit, complete, move, remove, remove-undone,"
             " renumber, show, transaction)."
         ),
     )
@@ -770,8 +819,16 @@ def _build_parser():
     )
     p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
 
+    p_complete = subs.add_parser("complete", help="Complete a task with its acceptance evidence")
+    p_complete.add_argument("--id", required=True, type=_parse_step_id, help="Task number")
+    p_complete.add_argument("--commit-title", help="Final commit title for the task")
+    p_complete.add_argument(
+        "--acceptance-evidence-stdin", action="store_true",
+        help="Read a JSON array of successful acceptance records for a general task",
+    )
+
     for subparser in (
-        p_validate, p_append, p_insert, p_edit, p_move, p_remove, p_remove_undone,
+        p_validate, p_append, p_insert, p_edit, p_complete, p_move, p_remove, p_remove_undone,
         p_renumber, p_show, p_transaction,
     ):
         subparser.add_argument(
@@ -813,6 +870,8 @@ def main(argv=None):
         cmd_insert(todo_path, args)
     elif args.subcmd == "edit":
         cmd_edit(todo_path, args)
+    elif args.subcmd == "complete":
+        cmd_complete(todo_path, args)
     elif args.subcmd == "move":
         cmd_move(todo_path, args)
     elif args.subcmd == "remove":

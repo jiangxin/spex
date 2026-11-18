@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from io import StringIO
 
 import pytest
 import todo_helper
@@ -47,6 +48,112 @@ SAMPLE_DATA = [
         "commit_title": "feat: third step",
     },
 ]
+
+EVIDENCE = [
+    {"kind": "command", "criterion": "Valid report", "command": "check", "exit_code": 0},
+    {"kind": "inspection", "criterion": "Readable", "location": "/tmp/report",
+     "observation": "All sections are present"},
+]
+
+
+@pytest.fixture
+def general_todo(todo_file):
+    _write(todo_file, SAMPLE_DATA)
+    _write(todo_file.parent / "meta.json", {"task_mode": "general"})
+    return todo_file
+
+
+def _complete(path, *flags):
+    return ["complete", "--todo-file", str(path), "--id", "2", *flags]
+
+
+def test_complete_general_is_atomic_and_idempotent(general_todo, monkeypatch):
+    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(EVIDENCE)))
+    todo_helper.main(_complete(
+        general_todo, "--acceptance-evidence-stdin", "--commit-title", "abc: docs",
+    ))
+    task = _read(general_todo)[1]
+    assert task["completed_at"]
+    assert task["acceptance_evidence"] == EVIDENCE
+    assert task["commit_title"] == "abc: docs"
+    snapshot = general_todo.read_bytes()
+    monkeypatch.setattr("sys.stdin", StringIO("invalid"))
+    todo_helper.main(_complete(general_todo, "--acceptance-evidence-stdin"))
+    assert general_todo.read_bytes() == snapshot
+
+
+def test_complete_cannot_skip_general_tasks(general_todo, monkeypatch):
+    data = _read(general_todo)
+    data[2]["completed_at"] = ""
+    _write(general_todo, data)
+    snapshot = general_todo.read_bytes()
+    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(EVIDENCE)))
+    with pytest.raises(SystemExit) as error:
+        todo_helper.main([
+            "complete", "--todo-file", str(general_todo), "--id", "3",
+            "--acceptance-evidence-stdin",
+        ])
+    assert error.value.code == 1
+    assert general_todo.read_bytes() == snapshot
+
+
+@pytest.mark.parametrize("payload", [
+    None, "invalid JSON", "[]", "{}", "[false]", '[{"kind":[]}]',
+    json.dumps([{**EVIDENCE[0], "exit_code": False}]),
+    json.dumps([{**EVIDENCE[0], "exit_code": 0.0}]),
+    json.dumps([{**EVIDENCE[0], "exit_code": 1}]),
+    json.dumps([{**EVIDENCE[0], "command": " "}]),
+    json.dumps([{**EVIDENCE[1], "location": None}]),
+])
+def test_complete_rejects_missing_or_invalid_evidence(general_todo, monkeypatch, payload):
+    snapshot = general_todo.read_bytes()
+    flags = []
+    if payload is not None:
+        monkeypatch.setattr("sys.stdin", StringIO(payload))
+        flags.append("--acceptance-evidence-stdin")
+    with pytest.raises(SystemExit) as error:
+        todo_helper.main(_complete(general_todo, *flags))
+    assert error.value.code == 1
+    assert general_todo.read_bytes() == snapshot
+
+
+@pytest.mark.parametrize("subcommand, flags", [
+    ("append", ["--step-name", "Extra", "--details", "New"]),
+    ("insert", ["--before", "2", "--step-name", "Extra", "--details", "New"]),
+    ("edit", ["--id", "2"]),
+])
+def test_general_plan_mutations_cannot_set_completion(general_todo, subcommand, flags):
+    snapshot = general_todo.read_bytes()
+    with pytest.raises(SystemExit) as error:
+        todo_helper.main([
+            subcommand, "--todo-file", str(general_todo), "--completed-at", "now", *flags,
+        ])
+    assert error.value.code == 1
+    assert general_todo.read_bytes() == snapshot
+
+
+def test_complete_general_write_failure_and_transaction_rollback(general_todo, monkeypatch):
+    snapshot = general_todo.read_bytes()
+    locator = ["--todo-file", str(general_todo)]
+    todo_helper.main(["transaction", "start", *locator])
+
+    def fail_to_write(*_args):
+        raise OSError("todo write failed")
+
+    args = _complete(general_todo, "--acceptance-evidence-stdin")
+    with monkeypatch.context() as patch:
+        patch.setattr(todo_helper, "atomic_write_json", fail_to_write)
+        patch.setattr("sys.stdin", StringIO(json.dumps(EVIDENCE)))
+        with pytest.raises(SystemExit) as error:
+            todo_helper.main(args)
+        assert error.value.code == 1
+    assert general_todo.read_bytes() == snapshot
+
+    monkeypatch.setattr("sys.stdin", StringIO(json.dumps(EVIDENCE)))
+    todo_helper.main(args)
+    assert _read(general_todo)[1]["acceptance_evidence"] == EVIDENCE
+    todo_helper.main(["transaction", "rollback", *locator])
+    assert general_todo.read_bytes() == snapshot
 
 
 # -----------------------------------------------------------------------
