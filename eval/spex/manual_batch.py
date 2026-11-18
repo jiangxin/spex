@@ -6,6 +6,7 @@ import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -58,6 +59,34 @@ def check_prepare(sandbox: Path, suite: str, case: str) -> None:
         key = f"{suite}/{case}"
         if key not in entries:
             check_unpublished_case(sandbox, key, entries)
+
+
+def initialize(
+    sandbox: Path, keys: list[str], loader: Callable[[str], object] | None = None,
+) -> dict:
+    """Bootstrap ``queue.json`` from the published batch index.
+
+    Callers already hold ``locked(sandbox)``; re-acquiring it here would
+    deadlock on a second flock of the same process. ``loader`` validates each
+    key's prepared trial and only runs when a new queue is written.
+    """
+    entries = read(sandbox / "batch-index.json", {})
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    missing = sorted(set(entries) - set(keys))
+    unexpected = sorted(set(keys) - set(entries))
+    if duplicates or missing or unexpected:
+        raise ValueError(
+            "Pass the exact selected suite/case IDs after all prepares succeed; "
+            f"missing={missing} unexpected={unexpected} duplicates={duplicates}"
+        )
+    queue_file = sandbox / "queue.json"
+    if queue_file.exists():
+        return {"status": "existing", "cases": len(read(queue_file))}
+    if loader is not None:
+        for key in keys:
+            loader(key)
+    write(queue_file, {key: {"status": "pending"} for key in keys})
+    return {"status": "initialized", "cases": len(keys)}
 
 
 def publish(sandbox: Path, suite: str, case: str, output: Path, environment: dict) -> dict:

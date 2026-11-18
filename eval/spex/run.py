@@ -1404,6 +1404,10 @@ def parser() -> argparse.ArgumentParser:
                 "--all", dest="all_cases", action="store_true",
                 help="Prepare every matching case into one shared sandbox",
             )
+            command.add_argument(
+                "--init", action="store_true",
+                help="Also initialize the dispatch queue once every case is prepared",
+            )
     collect = sub.add_parser("collect")
     collect.add_argument("trial", type=Path)
     collect.add_argument("--session", required=True)
@@ -1491,6 +1495,24 @@ def prepare_case(
     return handoff
 
 
+def initialize_queue(sandbox: Path, prepared: list[dict], errors: list[dict]) -> dict:
+    """Bootstrap the dispatch queue for one full-batch prepare and report it.
+
+    Queue wiring is best-effort: a batch index that legitimately holds keys
+    outside this selection must not turn a fully prepared batch into a hard
+    failure, so the strict key-set error is reported instead of raised.
+    """
+    if errors:
+        return {"status": "skipped", "reason": "prepare_errors"}
+    with manual_batch.locked(sandbox):
+        try:
+            return manual_batch.initialize(
+                sandbox, [f"{item['suite']}/{item['case']}" for item in prepared],
+            )
+        except ValueError as error:
+            return {"status": "skipped", "reason": "batch_mismatch", "detail": str(error)}
+
+
 def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
     """Prepare every selected case into one sandbox and report per-case errors."""
     if not cases:
@@ -1514,11 +1536,11 @@ def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
         prepare_one, cases, args.execution["jobs"] or DEFAULT_JOBS,
     )
     prepared = [
-        {"suite": case.suite, "case": case.id, **handoff}
+        {"suite": case.suite, "id": case.id, "case": case.id, **handoff}
         for case, handoff, _ in results if handoff is not None
     ]
     errors = [
-        {"suite": case.suite, "case": case.id, "error": error}
+        {"suite": case.suite, "id": case.id, "case": case.id, "error": error}
         for case, _, error in results if error is not None
     ]
     if not prepared:
@@ -1528,13 +1550,16 @@ def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
             f"{item['suite']}/{item['case']}: {item['error']}" for item in errors
         )
         raise ValueError(f"No cases could be prepared: {details}")
-    return {
+    payload = {
         "sandbox": str(sandbox),
         "execution": args.execution,
         "prepared": prepared,
         "errors": errors,
         "cleanup_hint": cleanup_hint(sandbox),
     }
+    if args.init:
+        payload["queue_init"] = initialize_queue(sandbox, prepared, errors)
+    return payload
 
 
 def existing_prepare(case: Case, output: Path, sandbox: Path, args: argparse.Namespace):
@@ -1627,7 +1652,10 @@ def execute(args: argparse.Namespace) -> dict:
 
 
 def main() -> int:
-    args = parser().parse_args()
+    command = parser()
+    args = command.parse_args()
+    if args.command == "prepare" and args.init and not args.all_cases:
+        command.error("--init requires --all")
     try:
         result = execute(args)
     except (ValueError, OSError, TransportError, subprocess.SubprocessError) as error:

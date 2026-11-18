@@ -56,15 +56,12 @@ def outcome(queue: dict) -> dict:
 
 def initialize(sandbox: Path, queue_file: Path, entries: dict, cases: list[str]) -> dict:
     validate_keys(sandbox, cases)
-    if len(set(cases)) != len(cases) or set(cases) != set(entries):
-        raise ValueError("Pass the exact selected suite/case IDs after all prepares succeed")
-    if queue_file.exists():
-        return outcome(manual_batch.read(queue_file))
-    for key in cases:
-        load_trial(sandbox, key, entries)
-    queue = {key: {"status": "pending"} for key in cases}
-    manual_batch.write(queue_file, queue)
-    return outcome(queue)
+    # The shared bootstrap validates the keys, keeps an existing queue as-is, and
+    # only loads each prepared trial when it creates the queue.
+    manual_batch.initialize(
+        sandbox, cases, loader=lambda key: load_trial(sandbox, key, entries),
+    )
+    return outcome(manual_batch.read(queue_file))
 
 
 def read_complete_reply(path: Path) -> bytes:
