@@ -530,14 +530,14 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert backlog.is_file()
     backlog_text = backlog.read_text(encoding="utf-8")
     assert "# Spex-eval improvement backlog" in backlog_text
-    assert "### P2" in backlog_text
+    assert "**P2**" in backlog_text
     report = Path(result["report"]).read_text(encoding="utf-8")
     assert "example/clarify" in report
     assert "evidence_gap" in report
     assert "## Score summary" in report
     assert "Semantic score total: 1/2" in report
-    assert "## Spex skill improvements" in report
-    assert "### P2" in report
+    assert "### Proposed improvements" in report
+    assert "**P2**" in report
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
@@ -617,7 +617,7 @@ def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch)
     assert result["trials"][0]["judge_host"] == "ungraded"
     assert result["trials"][0]["judge_model"] == "ungraded"
     report = Path(result["report"]).read_text(encoding="utf-8")
-    assert "### P0" in report
+    assert "**P0**" in report
     assert "functionality" in report
 
 
@@ -1539,7 +1539,8 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         i["evidence"] == ["example/retry/performance.json"] for i in row["issues"]
     )
     markdown = Path(result["report"]).read_text(encoding="utf-8")
-    assert "todo-helper edit exited with code 1 (recovered by retry)" in markdown
+    assert "todo-helper edit exited with code 1" in markdown
+    assert "recovered: yes" in markdown
     assert "example/retry/performance.json" in markdown
     assert [item["summary"] for item in result["improvements"]] == [
         "example/retry: Turn 1: todo-helper append exited with code 2",
@@ -1547,3 +1548,103 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         "example/retry: Turn 1: todo-helper show exited with code 6",
         "example/retry: Turn 1: todo-helper edit exited with code 4",
     ]
+
+
+def test_record_issue_writes_a_file_and_summary_merges_it(
+    runner, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "merge")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "merge", "verdict": "pass",
+        "turn_results": [{"turn": 1, "checks": []}],
+    })
+    run.write_json(out / "performance.json", {
+        "schema_version": 1,
+        "turns": {"1": {"host": {
+            "started_at": "2026-11-16T12:00:00+00:00",
+            "ended_at": "2026-11-16T12:10:00+00:00",
+            "duration_ms": 600000, "trace": "complete", "gaps": [],
+            "parent_usage": None, "subagent_starts": None,
+        }, "spex_commands": [{
+            "command": "todo-helper", "subcommand": "edit", "exit_code": 1,
+            "duration_ms": 1, "spec": "demo", "step": "step-1",
+            "todo_file_hash": None,
+            "start_ns": 1_700_000_000_000_000_000,
+            "end_ns": 1_700_000_000_000_000_001,
+        }]}},
+    })
+    recorded = run.record_issue(run.parser().parse_args([
+        "record-issue", str(sandbox), "--suite", "example", "--case", "merge",
+        "--stage", "script", "--kind", "script_exit", "--turn", "1",
+        "--trial", "example/merge", "--unrecovered",
+        "--message", "adapter saw the retry fail",
+    ]))
+    assert recorded["sandbox"] == str(sandbox)
+    assert recorded["issue"]["case"] == "example/merge"
+    files = list((sandbox / "_issues").glob("*.json"))
+    assert len(files) == 1
+
+    backlog = tmp_path / "IMPROVEMENTS.md"
+    result = run.summarize_sandbox(sandbox, write_improvements=backlog)
+    report = run.read_json(Path(result["report_json"]))
+    issue = next(item for item in report["issues"] if item["kind"] == "script_exit")
+    assert issue["turn"] == 1
+    assert issue["message"].endswith("adapter saw the retry fail")
+    assert issue["evidence"] == [
+        "example/merge/performance.json", "_issues/" + files[0].name,
+    ]
+    assert issue["id"].startswith("I")
+    improvement = next(item for item in report["improvements"] if item["issue_id"] == issue["id"])
+    assert improvement["case"] == "example/merge"
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert f"**{issue['id']}**" in markdown
+    assert f"— {issue['id']}" in markdown
+    assert f"— {issue['id']}" in backlog.read_text(encoding="utf-8")
+
+
+def test_record_issue_rejects_unsafe_requests(runner, tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    command = run.parser()
+
+    def attempt(*extra):
+        args = command.parse_args([
+            "record-issue", str(sandbox), "--suite", "example", "--case", "merge",
+            "--stage", "host", "--kind", "capacity", *extra,
+        ])
+        return run.record_issue(args)
+
+    with pytest.raises(ValueError, match="message"):
+        attempt("--message", "   ")
+    with pytest.raises(ValueError, match="workspace"):
+        attempt("--message", "refused", "--trial", "example/merge/workspace/repo")
+    with pytest.raises(ValueError, match="sandbox-relative"):
+        attempt("--message", "refused", "--trial", "../escape")
+    (sandbox / "_issues").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        attempt("--message", "refused")
+
+
+def test_record_issue_cli_round_trips_the_recovered_flag(
+    runner, tmp_path, monkeypatch, capsys,
+):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    monkeypatch.setattr(sys, "argv", [
+        "run.py", "record-issue", str(sandbox), "--suite", "example",
+        "--case", "merge", "--stage", "host", "--kind", "capacity",
+        "--message", "host refused a session", "--recovered",
+    ])
+    assert run.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["sandbox"] == str(sandbox)
+    assert payload["issue"]["recovered"] is True
+
+    result = run.summarize_sandbox(sandbox)
+    issue = next(item for item in result["issues"] if item["kind"] == "capacity")
+    assert issue["recovered"] is True
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "recovered: yes" in markdown
