@@ -34,6 +34,7 @@ Commands (LLM skill only — invoked via /spex, not directly):
   apply       Apply all steps of a spec (or apply-one-step for single step)
   create      Create a new spec
   modify      Modify an existing spec
+  review-plan Review a spec and its development plan
 
 Internal commands (used by skill):
   apply-helper <subcommand> [--name <spec-name>]
@@ -470,7 +471,7 @@ _CLI_COMMANDS = [
     ("show", _run_show),
 ]
 
-_LLM_COMMAND_NAMES = ["apply", "create", "modify", "new"]
+_LLM_COMMAND_NAMES = ["apply", "create", "modify", "new", "review-plan"]
 
 _INTERNAL_COMMANDS = [
     ("apply-helper", _run_apply_helper),

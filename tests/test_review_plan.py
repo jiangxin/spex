@@ -10,6 +10,21 @@ import pytest
 SPEX_DIR = Path(__file__).resolve().parents[1] / "skills" / "spex"
 
 
+def test_review_plan_routes_explicit_and_free_form_requests():
+    skill = (SPEX_DIR / "SKILL.md").read_text(encoding="utf-8")
+    metadata, body = skill.split("---", 2)[1:]
+    assert "modify, review-plan, apply" in metadata
+    assert "`commands/review-plan.md`" in body
+    intent = body.split("### Free-form Intent Inference", 1)[1]
+    assert "review the development plan" in intent
+    assert "检查任务拆分" in intent
+    assert "combined plan review and edits are conflicting" in intent
+    assert "changing the requirements, spec, or development plan" in intent
+    assert "Match command words as whole tokens" in intent
+    assert "`2026-11-18-14-56-review-plan`" in intent
+    assert 'Too short/vague (e.g. "help", "review", "评审"' in intent
+
+
 def test_review_plan_requires_a_read_only_probe_and_manual_handoff():
     sop = (SPEX_DIR / "commands" / "review-plan.md").read_text(encoding="utf-8")
     assert 'list --read-only --json -- "<probe>"' in sop

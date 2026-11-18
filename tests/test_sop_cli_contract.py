@@ -422,7 +422,7 @@ def _check_invocation(rel: str, raw: str, tail: str) -> list[str]:
         ]
 
     # LLM-only surface commands have no real flag parser beyond the stub
-    if command in ("apply", "create", "modify", "new"):
+    if command in _load_spex_entry()._LLM_COMMAND_NAMES:
         # SOPs should not invoke these via scripts/spex; if they do, only
         # the command name is checked above.
         extra = [t for t in rest[1:] if _is_flag(t)] + bracket_flags

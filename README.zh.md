@@ -140,6 +140,8 @@ disable-model-invocation: true
 
 - **`/spex modify [spec-name] [变更]`** - 修改已创建的 spec。更新 `todo.json` 开发步骤，保留已完成步骤，重新生成未完成的任务。
 
+- **`/spex review-plan [spec-name] [评审重点]`** - 评审规格和开发计划，检查需求覆盖、依赖顺序、步骤大小和验收条件。评审全程只读，采纳意见时可手动执行建议的 `/spex modify` 命令。
+
 - **`/spex apply [spec-name]`** - 开始按步骤实施开发。默认以 `meta.branch`（创建 spec 时记录的项目主干）为起点创建 `spex/` 本地分支，而不是当前 HEAD。开发过程中可以用 `spex list` 命令行查看进度。
 
 - **`/spex apply-one-step [spec-name]`** - 与 `/spex apply` 相同，但每次只执行一个步骤。适合需要逐步精细控制的场景。

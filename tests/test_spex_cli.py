@@ -1042,12 +1042,13 @@ class TestAllCommandsRegistered:
 
     def test_llm_commands_use_error_handler(self, capsys):
         """LLM commands route to error handler, not real implementation."""
-        for cmd in ["apply", "create", "modify", "new"]:
+        for cmd in ["apply", "create", "modify", "new", "review-plan"]:
             with pytest.raises(SystemExit) as exc_info:
                 _spex_mod.main([cmd])
             assert exc_info.value.code == 1
             err = capsys.readouterr().err
             assert f"'spex {cmd}' requires an AI coding agent" in err
+            assert f"Run '/spex {cmd}'" in err
 
     def test_internal_commands_exist(self):
         """Internal commands are registered in _INTERNAL_COMMANDS."""
