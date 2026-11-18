@@ -10,7 +10,7 @@ from debug_log import parse_name_from_argv
 COMMANDS = sorted(prompt._KNOWN_SUBCMDS)
 
 
-@pytest.mark.parametrize("command", COMMANDS)
+@pytest.mark.parametrize("command", sorted(prompt._KNOWN_SUBCMDS - {"review-plan"}))
 def test_specialized_positional_selector(command):
     args = prompt._build_parser().parse([command, "topic", "--json"])
     assert args.name == "topic"
@@ -56,7 +56,10 @@ def test_empty_selector_never_dispatches(command, monkeypatch, capsys):
     with pytest.raises(SystemExit) as error:
         prompt.main(args)
     assert error.value.code == 2
-    assert "Spec name must not be empty" in capsys.readouterr().err
+    message = "requires an absolute spec path" if command == "review-plan" else (
+        "Spec name must not be empty"
+    )
+    assert message in capsys.readouterr().err
     dispatch.assert_not_called()
     assert parse_name_from_argv(["spex", "--debug", "prompt", *args]) is None
 

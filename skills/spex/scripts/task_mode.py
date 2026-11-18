@@ -7,6 +7,7 @@ TASK_MODES = (SOFTWARE, GENERAL)
 _GENERAL_TEMPLATES = frozenset({
     "create-spec", "spec-template", "create-todo", "modify-spec", "modify-todo",
     "apply-one-task", "apply-commit", "apply-review", "apply-fix",
+    "review-plan",
 })
 
 

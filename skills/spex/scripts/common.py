@@ -864,6 +864,17 @@ def _resolve_template_roots(workdir=None):
     return roots
 
 
+def find_template_path(template_name: str, workdir=None) -> Path:
+    """Find the effective template without initializing or syncing storage."""
+    for root in _resolve_template_roots(workdir):
+        candidate = root / template_name
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        f"Template '{template_name}' not found in any template root"
+    )
+
+
 def get_template(template_name: str, workdir=None) -> str:
     """Return raw template content for the given template name.
 
@@ -888,15 +899,7 @@ def get_template(template_name: str, workdir=None) -> str:
         FileNotFoundError: If the template is not found in any root.
     """
     _sync_builtin_template(template_name, workdir)
-
-    for root in _resolve_template_roots(workdir):
-        candidate = root / template_name
-        if candidate.is_file():
-            return candidate.read_text(encoding="utf-8")
-
-    raise FileNotFoundError(
-        f"Template '{template_name}' not found in any template root"
-    )
+    return find_template_path(template_name, workdir).read_text(encoding="utf-8")
 
 
 
