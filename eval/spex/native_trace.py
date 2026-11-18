@@ -172,6 +172,7 @@ def span_command_fields(span: dict) -> dict | None:
         fields["_debug_logged_at"] = spex["debug_logged_at"]
     words = attributes.get("process.command_args")
     if isinstance(words, list) and words and all(isinstance(word, str) for word in words):
+        fields["argv"] = list(words)
         fields["_argv_fingerprint"] = argv_fingerprint(" ".join(words[1:]))
         subcommand = command_verb(words[1:], fields["command"])
         if subcommand:

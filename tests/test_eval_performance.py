@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 try:
+    import native_trace
     import performance
     import run
     from transport import TransportError
@@ -108,7 +109,7 @@ def test_timeline_tracks_resumed_task_review_rounds_and_incomplete_spans(tmp_pat
     assert old["spex_commands"] == [{
         "turn": None, "command": "prompt", "subcommand": None,
         "started_at": None, "ended_at": None, "logged_at": "2026-11-11T10:00:12+08:00",
-        "duration_ms": 5, "exit_code": 0, "elapsed_ms": None,
+        "duration_ms": 5, "exit_code": 0, "elapsed_ms": None, "argv": None,
     }]
 
 
@@ -201,7 +202,7 @@ def test_summary_renders_ordered_case_timeline(tmp_path, monkeypatch):
     start_ns = performance.stamp_bounds(second)[0] + 10**9 + 1
     command = {"command": "apply-helper", "subcommand": "post-action", "duration_ms": 200,
                "start_ns": start_ns, "end_ns": start_ns + 200 * 10**6, "exit_code": 2,
-               "argv": ["PRIVATE"]}
+               "argv": ["spex", "apply-helper", "post-action"]}
     host = performance.host_metrics(None, 2000, "runner", started_at=second, ended_at=end)
     performance.update(output, turn=2, native={"timing_events": [command]}, host=host)
     legacy = {"command": "list", "duration_ms": 7, "exit_code": 0,
@@ -225,9 +226,10 @@ def test_summary_renders_ordered_case_timeline(tmp_path, monkeypatch):
                "`apply-helper post-action`", "Host turn 2 end", "Case end"]
     indices = [markdown.index(marker) for marker in markers]
     assert indices == sorted(indices)
-    assert "| 0.2 | 11.000000001 | 2 |" in markdown
-    assert "| Host turn 1 end | unknown | unknown | unknown | 2.0 | unknown | unknown |" in markdown
-    assert "PRIVATE" not in json.dumps(metrics) + markdown
+    assert "| 0.2 | 11.000000001 | 2 | spex apply-helper post-action |" in markdown
+    assert (
+        "| Host turn 1 end | unknown | unknown | unknown | 2.0 | unknown | unknown | — |"
+    ) in markdown
 
 
 @pytest.mark.parametrize("new_turn_has_command", [False, True])
@@ -352,3 +354,112 @@ def test_turn_timing_uses_only_its_saved_events_and_legacy_flush_stamp(tmp_path)
     assert turns["2"]["spex_commands"] == later["events"]
     nano, end = performance.stamp_bounds("2026-11-17T09:00:21.100000054+08:00")
     assert nano == end and nano % 1000 == 54
+
+
+def test_timeline_marks_spex_skill_turns_from_metadata():
+    metadata = {
+        "case": {"turns": [{"input": "/spex create a thing"}, {"input": "continue"}]},
+        "turn_results": [{"turn": 1}, {"turn": 2}],
+    }
+    data = {"turns": {"1": {"host": {
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "ended_at": "2026-01-01T00:00:04+00:00",
+        "duration_ms": 4000,
+    }}}}
+    turns = performance.summarize_timeline(data, metadata, False)["host_turns_timeline"]
+    assert [(turn["index"], turn["is_spex_skill"], turn["skill_input"]) for turn in turns] == [
+        (1, True, "/spex create a thing"),
+        (2, False, None),
+    ]
+    legacy = performance.summarize_timeline(data, {}, False)["host_turns_timeline"]
+    assert [turn["is_spex_skill"] for turn in legacy] == [False]
+
+
+def test_format_argv_cell_joins_truncates_and_escapes():
+    assert performance.format_argv_cell(None) == "—"
+    assert performance.format_argv_cell([]) == "—"
+    assert performance.format_argv_cell(["spex", "todo-helper", "edit"]) == (
+        "spex todo-helper edit"
+    )
+    assert performance.format_argv_cell(["a|b", "c\nd"]) == "a\\|b c d"
+    long = performance.format_argv_cell(["x" * 100])
+    assert long.endswith("…") and len(long) == performance.ARGV_LIMIT
+
+
+def test_span_command_fields_keeps_the_process_argv():
+    span = {
+        "name": "todo-helper",
+        "attributes": {
+            "process.exit.code": 0,
+            "process.command_args": ["/usr/bin/spex", "todo-helper", "edit", "--id", "s1"],
+        },
+        "spex": {"duration_ms": 5, "subcommand": "edit"},
+    }
+    fields = native_trace.span_command_fields(span)
+    assert fields["argv"] == ["/usr/bin/spex", "todo-helper", "edit", "--id", "s1"]
+    assert fields["subcommand"] == "edit"
+
+
+def test_timeline_lines_render_skill_boundaries(tmp_path):
+    output = tmp_path / "1"
+    output.mkdir()
+    host = performance.host_metrics(
+        None, 4000, "adapter",
+        started_at="2026-01-01T00:00:00+00:00",
+        ended_at="2026-01-01T00:00:04+00:00",
+    )
+    performance.update(output, turn=1, host=host)
+    metadata = {
+        "case": {"turns": [{"input": "/spex create a thing"}]},
+        "turn_results": [{"turn": 1}],
+    }
+    row = {
+        "suite": "suite", "case_id": "case", "trial": "1",
+        "performance": performance.trial_summary(output, metadata),
+    }
+    text = "\n".join(performance.timeline_lines([row]))
+    assert "skill start: /spex create a thing" in text
+    assert "skill end: /spex create a thing" in text
+    assert text.index("Host turn 1 start") < text.index("skill start:")
+    assert text.index("Host turn 1 end") < text.index("skill end:")
+
+
+def test_report_lines_use_the_five_column_table(tmp_path):
+    output = tmp_path / "1"
+    output.mkdir()
+    performance.update(output, turn=1, host=performance.host_metrics(None, 1000, "adapter"))
+    rows = [{
+        "suite": "suite", "case_id": "case", "trial": "1", "host": "codex",
+        "model": "model", "collection": "automatic", "spex_ref": "abc",
+        "execution": run.execution(None),
+        "performance": performance.trial_summary(output, {"turn_results": [{}]}),
+    }]
+    lines = performance.report_lines(rows)
+    assert "| Case | Host turns | Duration (s) | Source | Detail |" in lines
+    assert not any("Slowest step" in line for line in lines)
+
+
+def test_timeline_orders_unstamped_events_last(tmp_path):
+    output = tmp_path / "1"
+    output.mkdir()
+    host = performance.host_metrics(
+        None, 4000, "adapter",
+        started_at="2026-01-01T00:00:00+00:00",
+        ended_at="2026-01-01T00:00:04+00:00",
+    )
+    performance.update(output, turn=1, native={"events": [
+        {"command": "list", "duration_ms": 5, "exit_code": 0,
+         "at": "2026-01-01T00:00:01+00:00"},
+        {"command": "show", "duration_ms": 5, "exit_code": 0},
+    ]}, host=host)
+    metadata = {
+        "case": {"turns": [{"input": "/spex create a thing"}]},
+        "turn_results": [{"turn": 1}],
+    }
+    row = {
+        "suite": "suite", "case_id": "case", "trial": "1",
+        "performance": performance.trial_summary(output, metadata),
+    }
+    text = "\n".join(performance.timeline_lines([row]))
+    assert text.index("`list`") < text.index("`show`") < text.index("Case end")
+    assert text.index("skill end:") < text.index("`show`")
