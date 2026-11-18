@@ -16,6 +16,8 @@ from common import (
     _resolve_template_roots,
     clear_spex_root_cache,
     format_spec,
+    format_spec_metadata,
+    format_step_status,
     get_archives_dir,
     get_spec_description,
     get_specs_dir,
@@ -1640,3 +1642,314 @@ class TestHasUndoneTasks:
         spec_dir = tmp_path / "specs" / "no-todo"
         spec_dir.mkdir(parents=True)
         assert has_undone_tasks(spec_dir) is False
+
+
+SUMMARY_KEYS = {
+    "spec_name", "spec_path", "description", "task_mode", "created_at",
+    "archived", "workdir", "branch", "spex_branch", "use_git_worktree",
+    "spex_worktree", "completed_steps", "total_steps", "next_step",
+}
+
+DEMO_TODO = [
+    {"id": 1, "name": "Design", "completed_at": "2026-01-01T00:00:00+00:00"},
+    {"id": 2, "name": "Code", "commit_title": "abc1234: add code"},
+    {"id": 3, "name": "Test"},
+]
+
+
+def _demo_spec(tmp_path, **meta_kwargs):
+    meta = SpecMeta(**meta_kwargs)
+    return Spec(name="demo", path=tmp_path / "demo", meta=meta, done=0, total=0)
+
+
+class TestStepSummary:
+    def test_completed_status(self):
+        step = Spec.step_summary(
+            {"id": 1, "name": "One", "completed_at": "2026-01-01T00:00:00+00:00"},
+        )
+        assert step == {
+            "id": 1,
+            "name": "One",
+            "status": "completed",
+            "commit_title": None,
+            "completed_at": "2026-01-01T00:00:00+00:00",
+        }
+
+    def test_review_pending_status(self):
+        step = Spec.step_summary({"id": 2, "name": "Two", "commit_title": "abc1234: done"})
+        assert step["status"] == "review_pending"
+        assert step["commit_title"] == "abc1234: done"
+        assert step["completed_at"] is None
+
+    def test_pending_status(self):
+        step = Spec.step_summary({"id": 3, "name": "Three"})
+        assert step["status"] == "pending"
+        assert step["commit_title"] is None
+        assert step["completed_at"] is None
+
+    def test_missing_fields_defaults(self):
+        step = Spec.step_summary({})
+        assert step["id"] == ""
+        assert step["name"] == ""
+
+    def test_completed_at_wins_over_commit_title(self):
+        step = Spec.step_summary({
+            "id": 4,
+            "name": "Four",
+            "commit_title": "abc1234: done",
+            "completed_at": "2026-01-01T00:00:00+00:00",
+        })
+        assert step["status"] == "completed"
+        assert step["completed_at"] == "2026-01-01T00:00:00+00:00"
+
+    def test_format_step_status(self):
+        completed = Spec.step_summary(DEMO_TODO[0])
+        assert format_step_status(completed) == "Completed | 2026-01-01"
+        review = Spec.step_summary(DEMO_TODO[1])
+        assert format_step_status(review) == "Review pending | abc1234: add code"
+        pending = Spec.step_summary(DEMO_TODO[2])
+        assert format_step_status(pending) == "Pending"
+
+
+class TestSpecSummary:
+    def test_field_whitelist(self, tmp_path):
+        summary = _demo_spec(tmp_path, user_email="dev@example.com").summary([])
+        assert set(summary) == SUMMARY_KEYS
+        assert "user_email" not in summary
+        assert "prompts" not in summary
+        assert "remote_url" not in summary
+
+    def test_next_step_is_first_incomplete(self, tmp_path):
+        summary = _demo_spec(tmp_path).summary(DEMO_TODO)
+        assert summary["next_step"] == {"id": 2, "name": "Code", "status": "review_pending"}
+        assert summary["completed_steps"] == 1
+        assert summary["total_steps"] == 3
+
+    def test_all_completed_has_no_next_step(self, tmp_path):
+        todo = [
+            {"id": 1, "name": "One", "completed_at": "2026-01-01T00:00:00+00:00"},
+            {"id": 2, "name": "Two", "completed_at": "2026-01-02T00:00:00+00:00"},
+        ]
+        summary = _demo_spec(tmp_path).summary(todo)
+        assert summary["next_step"] is None
+        assert summary["completed_steps"] == summary["total_steps"] == 2
+
+    def test_empty_todo(self, tmp_path):
+        summary = _demo_spec(tmp_path).summary([])
+        assert summary["total_steps"] == 0
+        assert summary["completed_steps"] == 0
+        assert summary["next_step"] is None
+
+    def test_non_dict_entries_are_tolerated(self, tmp_path):
+        summary = _demo_spec(tmp_path).summary([{"id": 1, "name": "A"}, "junk"])
+        assert summary["total_steps"] == 2
+        assert summary["completed_steps"] == 0
+        assert summary["next_step"] == {"id": 1, "name": "A", "status": "pending"}
+
+    def test_metadata_values(self, tmp_path):
+        spec = _demo_spec(
+            tmp_path,
+            description="Demo spec",
+            created_at="2026-01-01T00:00:00+00:00",
+            workdir="/projects/app",
+            branch="main",
+            spex_branch="spex/demo",
+            use_git_worktree=True,
+            spex_worktree="/projects/app-demo",
+            task_mode="general",
+        )
+        summary = spec.summary(DEMO_TODO)
+        assert summary["spec_name"] == "demo"
+        assert summary["spec_path"] == str(tmp_path / "demo")
+        assert summary["description"] == "Demo spec"
+        assert summary["task_mode"] == "general"
+        assert summary["archived"] is False
+        assert summary["workdir"] == "/projects/app"
+        assert summary["branch"] == "main"
+        assert summary["spex_branch"] == "spex/demo"
+        assert summary["use_git_worktree"] is True
+        assert summary["spex_worktree"] == "/projects/app-demo"
+
+    def test_empty_optional_fields_become_none(self, tmp_path):
+        summary = _demo_spec(tmp_path).summary([])
+        assert summary["description"] is None
+        assert summary["created_at"] is None
+        assert summary["workdir"] is None
+        assert summary["branch"] is None
+        assert summary["spex_branch"] is None
+        assert summary["spex_worktree"] is None
+
+
+class TestFormatSpecMetadata:
+    def test_default_fields_and_next_step(self, tmp_path):
+        spec = _demo_spec(
+            tmp_path,
+            created_at="2026-01-01T00:00:00+00:00",
+            workdir="/projects/app",
+            branch="main",
+            spex_branch="spex/demo",
+        )
+        lines = format_spec_metadata(spec.summary(DEMO_TODO))
+        assert lines == [
+            "Created: 2026-01-01T00:00:00+00:00",
+            "Project: /projects/app",
+            "Base branch: main",
+            "Spex branch: spex/demo",
+            "Next: step-2/3: Code [Review pending]",
+        ]
+
+    def test_full_adds_lifecycle_fields(self, tmp_path):
+        spec = _demo_spec(
+            tmp_path,
+            description="Demo spec",
+            created_at="2026-01-01T00:00:00+00:00",
+            workdir="/projects/app",
+            branch="main",
+            spex_branch="spex/demo",
+            spex_worktree="/projects/app-demo",
+        )
+        lines = format_spec_metadata(spec.summary(DEMO_TODO), full=True)
+        assert lines[:2] == ["Description: Demo spec", "Spec path: " + str(tmp_path / "demo")]
+        assert "Spex worktree: /projects/app-demo" in lines
+        assert lines[-3:] == [
+            "Lifecycle: Active",
+            "Linked worktree: Disabled",
+            "Next: step-2/3: Code [Review pending]",
+        ]
+
+    def test_full_archived_worktree_enabled(self, tmp_path):
+        spec = _demo_spec(
+            tmp_path,
+            use_git_worktree=True,
+            spex_worktree="/projects/app-demo",
+        )
+        spec.archived = True
+        lines = format_spec_metadata(spec.summary([]), full=True)
+        assert "Lifecycle: Archived" in lines
+        assert "Linked worktree: Enabled" in lines
+        assert lines[-1] == "Next: No tasks"
+
+    def test_empty_fields_are_omitted(self, tmp_path):
+        lines = format_spec_metadata(_demo_spec(tmp_path).summary([]))
+        assert not any(line.startswith("Created:") for line in lines)
+        assert not any(line.startswith("Project:") for line in lines)
+        assert not any(line.startswith("Spex branch:") for line in lines)
+
+    def test_worktree_flag_without_full(self, tmp_path):
+        spec = _demo_spec(tmp_path, spex_worktree="/projects/app-demo")
+        lines = format_spec_metadata(spec.summary([]), worktree=True)
+        assert "Spex worktree: /projects/app-demo" in lines
+        assert not any(line.startswith("Lifecycle:") for line in lines)
+
+    def test_next_step_completed_and_no_tasks(self, tmp_path):
+        all_done = [{"id": 1, "name": "One", "completed_at": "2026-01-01T00:00:00+00:00"}]
+        spec = _demo_spec(tmp_path)
+        assert format_spec_metadata(spec.summary(all_done))[-1] == "Next: Completed"
+        assert format_spec_metadata(spec.summary([]))[-1] == "Next: No tasks"
+
+
+class TestFormatSpecWithMetadata:
+    @staticmethod
+    def _make_spec_dir(tmp_path):
+        spec_dir = tmp_path / "demo"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text(
+            json.dumps({
+                "name": "demo",
+                "description": "Demo spec",
+                "task_mode": "general",
+                "workdir": "/projects/app",
+                "branch": "main",
+            }),
+            encoding="utf-8",
+        )
+        (spec_dir / "todo.json").write_text(json.dumps(DEMO_TODO), encoding="utf-8")
+        return spec_dir
+
+    def test_verbose_1_header_and_metadata(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        out = format_spec(spec, verbose=1, metadata=True)
+        lines = out.splitlines()
+        assert lines[0].endswith("[general]")
+        assert "Demo spec" in lines[1]
+        assert "    Project: /projects/app" in lines
+        assert "    Next: step-2/3: Code [Review pending]" in lines
+        assert "step-1/3" not in out
+
+    def test_verbose_0_header_only(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        lines = format_spec(spec, verbose=0, metadata=True).splitlines()
+        assert len(lines) == 1
+        assert lines[0].endswith("[general]")
+        assert "Demo spec" not in lines[0]
+        assert "Next:" not in lines[0]
+
+    def test_header_progress_matches_summary(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        summary = spec.summary(spec.todo_data)
+        assert (summary["completed_steps"], summary["total_steps"]) == (1, 3)
+        header = format_spec(spec, verbose=1, metadata=True).splitlines()[0]
+        assert "(1/3)" in header
+
+    def test_path_input_with_metadata(self, tmp_path):
+        spec_dir = self._make_spec_dir(tmp_path)
+        out = format_spec(spec_dir, verbose=1, metadata=True)
+        assert out.splitlines()[0].endswith("[general]")
+        assert "    Next: step-2/3: Code [Review pending]" in out
+
+    def test_malformed_todo_entries_do_not_break_listing(self, tmp_path):
+        spec_dir = tmp_path / "demo"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text(
+            json.dumps({"name": "demo", "task_mode": "general"}),
+            encoding="utf-8",
+        )
+        (spec_dir / "todo.json").write_text(
+            json.dumps([{"name": "A"}, "junk"]),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        out = format_spec(spec, verbose=1, metadata=True)
+        assert "Next: step-1/2: A [Pending]" in out
+        assert "step-1/2: A [Pending]" in format_spec(spec, verbose=2, metadata=True)
+
+    def test_verbose_2_step_status_suffixes(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        out = format_spec(spec, verbose=2, metadata=True)
+        assert "step-1/3: Design [Completed | 2026-01-01]" in out
+        assert "step-2/3: Code [Review pending | abc1234: add code]" in out
+        assert "step-3/3: Test [Pending]" in out
+
+    def test_verbose_2_ordering(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        lines = format_spec(spec, verbose=2, metadata=True).splitlines()
+        assert lines[0].endswith("[general]")
+        assert lines[1].strip() == "Demo spec"
+        assert lines[2].startswith("    Project:")
+        next_index = next(i for i, line in enumerate(lines) if line.strip().startswith("Next:"))
+        assert lines[next_index + 1] == ""
+        assert lines[next_index + 2].startswith("    step-1/3:")
+
+    def test_metadata_defaults_off(self, tmp_path):
+        spec = Spec.from_dir(self._make_spec_dir(tmp_path))
+        out = format_spec(spec, verbose=2)
+        assert "[general]" not in out
+        assert "Next:" not in out
+        assert "step-1/3: Design" in out
+        assert "[" not in out.splitlines()[-1]
+
+    def test_metadata_suppresses_spex_worktree_at_verbose_1(self, tmp_path):
+        spec_dir = tmp_path / "demo"
+        spec_dir.mkdir()
+        (spec_dir / "meta.json").write_text(
+            json.dumps({
+                "name": "demo",
+                "spex_worktree": "/projects/app-demo",
+                "use_git_worktree": True,
+            }),
+            encoding="utf-8",
+        )
+        spec = Spec.from_dir(spec_dir)
+        assert "Spex worktree:" not in format_spec(spec, verbose=1, metadata=True)
+        assert "Spex worktree:" in format_spec(spec, verbose=2, metadata=True)
+

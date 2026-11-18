@@ -102,7 +102,9 @@ Public library modules (`common.py`, `cli.py`, `config.py`, `branch.py`,
 | `get_spec_description(spec_dir)` | Return spec description from `meta.json` or `spec.md` front-matter. |
 | `get_template(name, workdir)` | Return template content (front-matter stripped). |
 | `resolve_spec_dir(spec_name, specs_dir)` | Resolve spec name to directory path (exact + fuzzy match). |
-| `format_spec(spec_dir, verbose)` | Format a spec with progress icon, counts, and optional details. |
+| `format_spec(spec_dir, verbose, show_repo, metadata=False)` | Format a spec with progress icon, counts, and optional details; `metadata` adds the `[task_mode]` header suffix, metadata block at `verbose >= 1`, and step statuses at `verbose >= 2`. |
+| `format_step_status(step)` | Render one `Spec.step_summary()` item as a short status line (date-only timestamp). |
+| `format_spec_metadata(summary, full=False, worktree=False)` | Render a `Spec.summary()` payload as metadata lines (`full` implies `worktree`). |
 | `escape_xml_text(text)` | Escape &, <, > unconditionally in text content. |
 | `escape_xml_preserving_entities(text)` | Escape XML chars while preserving existing entities. |
 | `load_and_validate_todo_json(path, allow_empty)` | Load JSON, validate as list, exit on failure. |

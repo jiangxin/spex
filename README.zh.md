@@ -202,22 +202,31 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 
 ```bash
 spex list                    # 当前仓库的 specs
-spex list -v                 # 增加规格描述
-spex list -vv                # 增加各步骤完成状态详情
+spex list -v                 # 增加元信息与下一步
+spex list -vv                # 增加 worktree 信息与各步骤状态
 spex list --archives         # 已归档的 specs
 spex list --all-projects     # 所有项目的 specs
-spex list --json             # stdout 输出 JSON 数组（无匹配 → [] 且 exit 0）
+spex list --json             # stdout 输出 {spec_name, spec_path} 数组（无匹配 → [] 且 exit 0）
+spex list --json --details   # JSON 数组中加入元信息、进度与下一步
 ```
+
+默认表格视图中，每行在进度计数与名称之间显示方括号包裹的任务模式（`[software]` 或 `[general]`）；详细行（`-v`、`-vv` 与 `spex show --list`）则把 `[task_mode]` 追加到标题行末尾。`-v` 会在每个 spec 下增加元信息块：创建时间、项目 workdir、基线分支、spex 分支与下一步；`-vv` 还会显示 linked worktree 以及每个步骤的状态。`--json` 默认保持稳定的 `{spec_name, spec_path}` 形状；`--details` 以 `spex show --json` 使用的字段扩展每一项（不含 `steps` 数组），且必须与 `--json` 一起使用。
 
 ### spex show
 
 显示给定 spec 的详细需求设计和开发步骤规划。
 
 ```bash
-spex show [spec-name]
+spex show [spec-name]         # 详细视图
+spex show [spec-name] --list  # 简洁列表视图（与 -vv 布局一致，但不含规格正文）
+spex show [spec-name] --json  # stdout 输出机器可读的 summary 与 steps
 ```
 
-当 stdout 是 TTY 时，`spex show` 会把 `$PAGER` 作为 argv 启动（默认 `less -R`），而不是通过 `/bin/sh -c`。设置 `PAGER=cat` 可关闭分页。`PAGER` 中的 shell 元字符不会被解释。
+详细视图开头是元信息块：任务模式、描述、spec 路径、创建时间、项目 workdir、基线分支、spex 分支、生命周期（active 或 archived）、是否启用 linked worktree 以及 worktree 路径。每个 TODO 步骤末尾显示其状态：`Pending`、`Review pending`（已提交实现但尚未标记完成）或 `Completed` 连同提交标题与完成日期。`Next:` 行以 `step-N/total` 指出第一个未完成的步骤，否则显示 `Completed` / `No tasks`。
+
+`--json` 输出元信息 summary（含 `next_step`），并附带 `steps` 数组，逐项给出 `id`、`name`、`status`、`commit_title` 与 `completed_at`。`--json` 与 `--list` 互斥；`--json` 与 `--list` 的输出都不会分页。
+
+当 stdout 是 TTY 时，详细视图会把 `$PAGER` 作为 argv 启动（默认 `less -R`），而不是通过 `/bin/sh -c`。设置 `PAGER=cat` 可关闭分页。`PAGER` 中的 shell 元字符不会被解释。
 
 ### spex open
 

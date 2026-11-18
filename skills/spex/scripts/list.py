@@ -23,6 +23,9 @@ from common import (
 PROMPT_LOG = "prompt.log"
 MAX_SPEC_WIDTH = 38
 MAX_LINE_WIDTH = 80
+# Below this width the name column carries no useful text, so drop it
+# entirely and give the remaining columns the space.
+MIN_NAME_WIDTH = 3
 
 
 def parse_prompt_log(log_path: Path) -> tuple:
@@ -61,9 +64,6 @@ def collect_specs(dirs: list, archive_dirs: list | None = None) -> list[Spec]:
     return specs
 
 
-MAX_REPO_WIDTH = 11
-
-
 def format_output(
     specs: list, max_width: int = MAX_LINE_WIDTH, show_repo: bool = False
 ) -> str:
@@ -83,15 +83,22 @@ def format_output(
         repo_col_width = 0
 
     icon_width = 3
-    fixed_width = icon_width + repo_col_width + progress_width + 3 + MAX_SPEC_WIDTH + 2
-    prompt_width = max_width - fixed_width
+    mode_width = max(display_width(f"[{spec.meta.task_mode}]") for spec in specs)
+    prefix_width = icon_width + repo_col_width + progress_width + 4 + mode_width
+    name_width = min(MAX_SPEC_WIDTH, max(0, max_width - prefix_width))
+    # The layout places exactly two spaces between the name and the prompt.
+    prompt_width = max_width - prefix_width - name_width - 2
 
     lines = []
     for spec, prog_str in zip(specs, progress_strs):
         icon = spec.icon
-        name = display_truncate(spec.name, MAX_SPEC_WIDTH)
-        name_col = display_ljust(name, MAX_SPEC_WIDTH)
+        if name_width >= MIN_NAME_WIDTH:
+            name = display_truncate(spec.name, name_width)
+            name_col = display_ljust(name, name_width)
+        else:
+            name_col = ""
         prog_col = f"({prog_str})".rjust(progress_width + 2)
+        mode_col = display_ljust(f"[{spec.meta.task_mode}]", mode_width)
         desc = spec.display_text
         prompt_col = display_truncate(desc, prompt_width) if prompt_width > 3 else ""
 
@@ -100,7 +107,8 @@ def format_output(
             repo_col = display_ljust(f"[{label}]", repo_col_width - 1) + " "
         else:
             repo_col = ""
-        lines.append(f"{icon} {repo_col}{prog_col} {name_col}  {prompt_col}".rstrip())
+        line = f"{icon} {repo_col}{prog_col} {mode_col} {name_col}  {prompt_col}".rstrip()
+        lines.append(display_truncate(line, max_width))
 
     return "\n".join(lines)
 
@@ -133,7 +141,7 @@ def _wrap_text(text: str, width: int = 80, indent: int = 4) -> str:
 
 
 def format_verbose_output(
-    specs: list, verbosity: int = 1, show_repo: bool = False
+    specs: list, verbosity: int = 1, show_repo: bool = False, *, metadata: bool = False
 ) -> str:
     """Format specs with expanded detail based on verbosity level."""
     if not specs:
@@ -145,21 +153,21 @@ def format_verbose_output(
     specs.sort(key=lambda t: t.created_at, reverse=True)
 
     blocks = [
-        format_spec(spec, verbose=verbosity, show_repo=show_repo)
+        format_spec(spec, verbose=verbosity, show_repo=show_repo, metadata=metadata)
         for spec in specs
     ]
 
     return "\n\n".join(blocks)
 
 
-def format_json_output(specs: list) -> str:
+def format_json_output(specs: list, *, details: bool = False) -> str:
     """Format specs as a JSON array."""
     specs.sort(key=lambda t: t.created_at, reverse=True)
-    return json.dumps(
-        [{"spec_name": t.name, "spec_path": str(t.path)} for t in specs],
-        ensure_ascii=False,
-        indent=2,
-    )
+    if details:
+        payload = [t.summary(t.todo_data or []) for t in specs]
+    else:
+        payload = [{"spec_name": t.name, "spec_path": str(t.path)} for t in specs]
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def filter_specs(specs: list, patterns: list) -> list:
@@ -200,6 +208,11 @@ def _build_parser() -> ArgumentParser:
         "--json",
         action="store_true",
         help="Output as JSON array",
+    )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Include spec metadata in --json output",
     )
     parser.add_argument(
         "--read-only",
@@ -243,6 +256,9 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse(argv)
 
+    if args.details and not args.json:
+        parser.error("--details requires --json")
+
     specs, show_repo = gather_specs(
         include_archives=args.archives,
         all_projects=args.all_projects,
@@ -264,7 +280,7 @@ def main(argv=None):
     if args.json:
         # Empty match is a valid result for callers parsing --json
         # (e.g. resolve-spec-list); do not treat as a script error.
-        print(format_json_output(specs))
+        print(format_json_output(specs, details=args.details))
         return
 
     if not specs:
@@ -273,7 +289,7 @@ def main(argv=None):
 
     verbosity = args.verbose
     if verbosity > 0:
-        print(format_verbose_output(specs, verbosity=verbosity, show_repo=show_repo))
+        print(format_verbose_output(specs, verbosity=verbosity, show_repo=show_repo, metadata=True))
     else:
         print(format_output(specs, show_repo=show_repo))
 
