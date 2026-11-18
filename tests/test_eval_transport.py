@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1465,44 +1466,84 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         "turn_results": [{"turn": 1, "checks": []}, {"turn": 2, "checks": []}],
     })
 
-    def save_trace(turn, calls):
-        log = []
-        for args, code in calls:
-            log.extend([
-                "===== BEGIN 2026-11-16T12:13:14+00:00 =====",
-                f"argv: spex {args}",
-                f"===== END exit={code} duration_ms=1 =====",
-            ])
-        events = run.native_trace.parse(log, "specs/demo/debug.log", set())
-        assert len(events) == len(calls)
-        run.write_json(out / f"turn-{turn}.json", {
-            "artifacts": {"spex-trace": {"value": {"events": events}}},
-        })
+    def host(start, end, duration):
+        return {
+            "started_at": start, "ended_at": end, "duration_ms": duration,
+            "trace": "complete", "parent_usage": None, "subagent_starts": None,
+            "gaps": [],
+        }
 
-    save_trace(1, [
-        ("todo-helper --name demo edit --id step-1", 1),
-        ("todo-helper --name demo edit --id step-1", 0),
-        ("todo-helper --name demo append", 2),
-        ("todo-helper --name demo edit --id step-2", 3),
-        ("todo-helper --name demo edit --id step-3", 0),
-        ("todo-helper --name demo show", 0),
-        ("todo-helper --todo-file path/one.json edit --id step-1", 4),
-        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
-        ("todo-helper --todo-file=path/two.json edit --id step-1", 5),
-        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
-    ])
-    save_trace(2, [("todo-helper --name demo append", 0)])
+    def ns(value):
+        return round(datetime.fromisoformat(value).timestamp() * 1_000_000_000)
+
+    def commands(calls):
+        return [
+            {"command": name, "subcommand": subcommand, "exit_code": code,
+             "duration_ms": 1, "spec": spec, "step": step,
+             "todo_file_hash": todo, "start_ns": ns(start), "end_ns": ns(start) + 1}
+            for name, subcommand, code, spec, step, todo, start in calls
+        ]
+
+    run.write_json(out / "performance.json", {
+        "schema_version": 1,
+        "turns": {
+            "1": {
+                "host": host("2026-11-16T12:00:00+00:00",
+                             "2026-11-16T12:10:00+00:00", 600000),
+                "spex_commands": commands([
+                    ("todo-helper", "edit", 1, "demo", "step-1", None,
+                     "2026-11-16T12:01:00+00:00"),
+                    ("todo-helper", "edit", 0, "demo", "step-1", None,
+                     "2026-11-16T12:01:30+00:00"),
+                    ("todo-helper", "append", 2, "demo", None, None,
+                     "2026-11-16T12:02:00+00:00"),
+                    ("todo-helper", "edit", 3, "demo", "step-2", None,
+                     "2026-11-16T12:03:00+00:00"),
+                    ("todo-helper", "edit", 0, "demo", "step-3", None,
+                     "2026-11-16T12:04:00+00:00"),
+                    ("todo-helper", "show", 6, "demo", None, None,
+                     "2026-11-16T12:05:00+00:00"),
+                    ("todo-helper", "edit", 4, None, "step-1", "one",
+                     "2026-11-16T12:06:00+00:00"),
+                    ("todo-helper", "edit", 0, None, "step-1", "two",
+                     "2026-11-16T12:07:00+00:00"),
+                    ("todo-helper", "edit", 5, None, "step-1", "two",
+                     "2026-11-16T12:08:00+00:00"),
+                    ("todo-helper", "edit", 0, None, "step-1", "two",
+                     "2026-11-16T12:08:30+00:00"),
+                    ("todo-helper", "show", 0, "demo", None, None,
+                     "2026-11-16T12:11:00+00:00"),
+                ]),
+            },
+            "2": {
+                "host": host("2026-11-16T12:11:00+00:00",
+                             "2026-11-16T12:15:00+00:00", 240000),
+                "spex_commands": commands([
+                    ("todo-helper", "append", 0, "demo", None, None,
+                     "2026-11-16T12:12:00+00:00"),
+                ]),
+            },
+        },
+    })
     result = run.summarize_sandbox(sandbox)
     row = run.read_json(Path(result["report_json"]))["trials"][0]
     assert [(i["command"], i["recovered"]) for i in row["issues"]] == [
         ("todo-helper edit", True), ("todo-helper append", False),
-        ("todo-helper edit", False), ("todo-helper edit", False), ("todo-helper edit", True),
+        ("todo-helper edit", False), ("todo-helper show", False),
+        ("todo-helper edit", False), ("todo-helper edit", True),
     ]
+    assert {(i["stage"], i["kind"], i["turn"]) for i in row["issues"]} == {
+        ("script", "script_exit", 1),
+    }
+    assert all(
+        i["evidence"] == ["example/retry/performance.json"] for i in row["issues"]
+    )
     markdown = Path(result["report"]).read_text(encoding="utf-8")
     assert "todo-helper edit exited with code 1 (recovered by retry)" in markdown
-    assert "example/retry/turn-1.json" in markdown
+    assert "example/retry/performance.json" in markdown
     assert [item["summary"] for item in result["improvements"]] == [
         "example/retry: Turn 1: todo-helper append exited with code 2",
         "example/retry: Turn 1: todo-helper edit exited with code 3",
+        "example/retry: Turn 1: todo-helper show exited with code 6",
         "example/retry: Turn 1: todo-helper edit exited with code 4",
     ]

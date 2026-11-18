@@ -286,7 +286,7 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 ),
             })
         for issue in row.get("issues") or []:
-            if issue.get("recovered"):
+            if issue.get("recovered") or issue.get("kind") == "run_error":
                 continue
             priority = "P2" if issue["kind"] == "implausible_host_duration" else "P1"
             items.append({
@@ -447,9 +447,14 @@ def render_summary_markdown(report: dict) -> str:
         lines.extend(["", "## Execution diagnostics", ""])
         for row in report["trials"]:
             case = f"{row.get('suite')}/{row.get('case_id')}"
-            for issue in row.get("issues") or []:
-                recovered = " (recovered by retry)" if issue.get("recovered") else ""
-                lines.append(f"- `{case}` {issue['message']}{recovered} — `{issue['evidence']}`")
+            for item in row.get("issues") or []:
+                recovered = " (recovered by retry)" if item.get("recovered") else ""
+                evidence = ", ".join(f"`{path}`" for path in item.get("evidence") or [])
+                evidence = f" — {evidence}" if evidence else " — no saved evidence"
+                lines.append(
+                    f"- `{case}` [{item['stage']}/{item['kind']}] "
+                    f"{item['message']}{recovered}{evidence}"
+                )
     lines.extend([
         "",
         "## Spex skill improvements",
@@ -530,6 +535,7 @@ def summarize_sandbox(
             "score_max": 0,
             "scores": [],
         }
+        perf_data = performance.read_performance(path.parent)
         row = {
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
@@ -543,16 +549,13 @@ def summarize_sandbox(
             "collection": metadata.get("collection"),
             "spex_ref": metadata.get("spex_ref"),
             "execution": metadata.get("execution", execution(None)),
-            "performance": performance.trial_summary(path.parent, metadata),
-            "issues": issues.trial_issues(
-                path.parent, str(path.parent.relative_to(sandbox)), metadata, judge,
-                performance.read_performance(path.parent),
-            ),
+            "performance": performance.trial_summary(path.parent, metadata, perf_data),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             "turn_results": metadata.get("turn_results", []),
             **split,
             **score,
         }
+        row["issues"] = issues.trial_issues(row, metadata, judge, perf_data)
         rows.append(row)
         counts[str(final)] = counts.get(str(final), 0) + 1
         classifications[split["classification"]] = (

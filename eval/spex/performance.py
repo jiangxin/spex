@@ -454,8 +454,8 @@ def update(output: Path, *, turn: int | None = None, repo: Path | None = None,
             if native is not None:
                 metrics["spex_commands"] = [
                     {key: event[key] for key in (
-                        "log", "sequence", "spec", "command", "subcommand", "exit_code",
-                        "duration_ms", "start_ns", "end_ns", "at",
+                        "log", "sequence", "spec", "step", "todo_file_hash", "command",
+                        "subcommand", "exit_code", "duration_ms", "start_ns", "end_ns", "at",
                     ) if key in event}
                     for event in native.get("timing_events", native.get("events", []))
                     if "command" in event
@@ -544,7 +544,7 @@ def command_timeline(turns: dict, workflow: dict) -> list[dict]:
             continue
         verb = command.get("subcommand")
         exit_code = command.get("exit_code")
-        commands.append({
+        entry = {
             "turn": index,
             "command": name,
             "subcommand": verb if isinstance(verb, str) and IDENTIFIER.fullmatch(verb) else None,
@@ -553,7 +553,11 @@ def command_timeline(turns: dict, workflow: dict) -> list[dict]:
             "logged_at": report_stamp(command.get("at") or command.get("logged_at")),
             "duration_ms": nonnegative(command.get("duration_ms")),
             "exit_code": exit_code if type(exit_code) is int else None,
-        })
+        }
+        for key in ("spec", "step", "todo_file_hash"):
+            if isinstance(command.get(key), str):
+                entry[key] = command[key]
+        commands.append(entry)
     return sorted(commands, key=lambda command: timeline_order(
         command["started_at"] or command["logged_at"],
     ))
@@ -596,9 +600,11 @@ def summarize_timeline(data: dict, metadata: dict, pending_turns: bool) -> dict:
     }
 
 
-def trial_summary(output: Path, metadata: dict) -> dict:
+def trial_summary(output: Path, metadata: dict, data: dict | None = None) -> dict:
     try:
-        return summarize_metrics(output, metadata, read_performance(output))
+        return summarize_metrics(
+            output, metadata, data if data is not None else read_performance(output),
+        )
     except (AttributeError, KeyError, TypeError, ValueError):
         return summarize_metrics(output, metadata, {
             "gaps": ["unreadable_performance_file"],
