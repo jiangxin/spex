@@ -272,9 +272,14 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 ### Phase 8: Output
 
+- Enter only after post-action and todo transaction commit succeed.
 - Follow `references/plan-command-common.md` output format (human
   summary + trailing `json spex-result`)
 - Include the persisted task mode in the human summary.
+- For both task modes, show the copyable `/spex review-plan $spec_name`
+  command in the human summary before the trailing JSON block. Use the
+  full `spec_name` from `prepare-spec`, including its date prefix.
+  The user runs this command manually to review the new plan.
 - Distinct from Phase 3's optional `text` name/description preview
 - `spec_name` MUST include the `YYYY-MM-DD-HH-MM-` prefix (Phase 4
   directory name)

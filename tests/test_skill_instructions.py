@@ -461,6 +461,24 @@ class TestCreatePlanOnlySop:
         _index(phase8, "json spex-result")
         assert "```json spex-result" in _read(PLAN_COMMAND_COMMON)
 
+    def test_create_success_offers_manual_plan_review(self):
+        text = _read(CREATE_MD)
+        phase7 = _h3_section(text, "Phase 7: Post-Action")
+        commit = _index(phase7, 'todo-helper transaction commit "$spec_name"')
+        assert commit < _index(phase7, "STOP before output")
+
+        phase8 = _h3_section(text, "Phase 8: Output")
+        gate = _index(phase8, "Enter only after post-action and todo transaction commit succeed")
+        review = _index(phase8, "`/spex review-plan $spec_name`")
+        assert gate < review
+        assert text.count("/spex review-plan") == 1
+        _index(phase8, "For both task modes")
+        _index(phase8, "in the human summary before the trailing JSON block")
+        _index(phase8, "full `spec_name` from `prepare-spec`, including its date prefix")
+        _index(phase8, "The user runs this command manually")
+        shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Output format")
+        _index(shared, "fields `spec_name` and `spec_path` only")
+
     def test_phase5_6_load_shared_references(self):
         text = _read(CREATE_MD)
         phase5 = _h3_section(text, "Phase 5: Design Specification")
