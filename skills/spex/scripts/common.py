@@ -223,6 +223,69 @@ class Spec:
         """Return (done, total) counts."""
         return (self.done, self.total)
 
+    @staticmethod
+    def step_summary(item: dict) -> dict:
+        """Return a whitelisted status view of one todo item.
+
+        Status precedence: ``completed_at`` wins, so a step is ``completed``
+        as soon as completion is recorded; otherwise a stored
+        ``commit_title`` marks it ``review_pending`` (the commit exists but
+        completion is not recorded yet); otherwise it is ``pending``. The
+        full ISO ``completed_at`` is kept here for JSON consumers, while
+        ``format_step_status()`` shortens it for display.
+        """
+        completed_at = item.get("completed_at") or None
+        commit_title = item.get("commit_title") or None
+        status = "pending"
+        if completed_at:
+            status = "completed"
+        elif commit_title:
+            status = "review_pending"
+        return {
+            "id": item.get("id", ""),
+            "name": item.get("name", ""),
+            "status": status,
+            "commit_title": commit_title,
+            "completed_at": completed_at,
+        }
+
+    def summary(self, todo: list, *, description=None) -> dict:
+        """Return the whitelisted metadata payload for this spec.
+
+        Only the keys listed below are exposed; ``user_email``, ``prompts``,
+        and ``remote_url`` are deliberately omitted so machine-readable
+        output carries no identity or authoring data.
+
+        Args:
+            todo: Already-loaded todo list. Non-dict entries are ignored for
+                status derivation but still counted in ``total_steps``,
+                matching ``get_todo_progress()``.
+            description: Pre-resolved description, when the caller already
+                computed it, to avoid reading ``spec.md`` twice.
+        """
+        items = [item for item in todo if isinstance(item, dict)]
+        next_item = next((item for item in items if not item.get("completed_at")), None)
+        next_step = None
+        if next_item is not None:
+            step = self.step_summary(next_item)
+            next_step = {key: step[key] for key in ("id", "name", "status")}
+        return {
+            "spec_name": self.name,
+            "spec_path": str(self.path),
+            "description": (self.description if description is None else description) or None,
+            "task_mode": self.meta.task_mode,
+            "created_at": self.created_at or None,
+            "archived": self.archived,
+            "workdir": self.workdir or None,
+            "branch": self.branch or None,
+            "spex_branch": self.spex_branch or None,
+            "use_git_worktree": self.meta.use_git_worktree,
+            "spex_worktree": self.meta.spex_worktree or None,
+            "completed_steps": sum(bool(item.get("completed_at")) for item in items),
+            "total_steps": len(todo),
+            "next_step": next_step,
+        }
+
     @property
     def is_completed(self) -> bool:
         return self.total > 0 and self.done == self.total
@@ -1011,13 +1074,78 @@ def repo_label(workdir: str) -> str:
     return name
 
 
-def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
+STEP_STATUS_LABELS = {
+    "pending": "Pending",
+    "review_pending": "Review pending",
+    "completed": "Completed",
+}
+
+
+def format_step_status(step: dict) -> str:
+    """Render one step summary as a short bracketed status line.
+
+    The completion timestamp is shortened to its date part so a per-step
+    line stays near the 80-column target; ``Spec.step_summary()`` keeps the
+    full ISO timestamp for machine-readable output.
+    """
+    completed_at = step["completed_at"]
+    completed_date = completed_at.split("T", 1)[0] if completed_at else None
+    return " | ".join(
+        value for value in (
+            STEP_STATUS_LABELS[step["status"]], step["commit_title"], completed_date,
+        ) if value
+    )
+
+
+def format_spec_metadata(summary: dict, *, full: bool = False, worktree: bool = False) -> list:
+    """Render a ``Spec.summary()`` payload as unindented metadata lines.
+
+    Args:
+        summary: Payload returned by ``Spec.summary()``.
+        full: Include description, spec path, lifecycle, and linked-worktree
+            state. ``full`` implies ``worktree``.
+        worktree: Include the spex worktree path only.
+    """
+    fields = []
+    if full:
+        fields += [("description", "Description"), ("spec_path", "Spec path")]
+    fields += [
+        ("created_at", "Created"),
+        ("workdir", "Project"),
+        ("branch", "Base branch"),
+        ("spex_branch", "Spex branch"),
+    ]
+    if full or worktree:
+        fields.append(("spex_worktree", "Spex worktree"))
+    # Fields absent from the summary are None; skip them so display stays terse.
+    lines = [f"{label}: {summary[key]}" for key, label in fields if summary[key]]
+    if full:
+        lifecycle = "Archived" if summary["archived"] else "Active"
+        enabled = "Enabled" if summary["use_git_worktree"] else "Disabled"
+        lines.extend([f"Lifecycle: {lifecycle}", f"Linked worktree: {enabled}"])
+    step = summary["next_step"]
+    if step:
+        label = todo_step_label(step["id"], summary["total_steps"])
+        next_text = f'{label}: {step["name"]} [{STEP_STATUS_LABELS[step["status"]]}]'
+    else:
+        next_text = "Completed" if summary["total_steps"] else "No tasks"
+    lines.append(f"Next: {next_text}")
+    return lines
+
+
+def format_spec(
+    spec, verbose: int = 0, show_repo: bool = False, *, metadata: bool = False,
+) -> str:
     """Format a single spec with progress, description, and optional todo steps.
 
     Args:
         spec: A Spec instance or a Path to a spec directory.
         verbose: 0 = icon+progress+name, 1 = +description, 2 = +todo steps.
         show_repo: If True, prepend a ``[repo]`` label from the spec's workdir.
+        metadata: If True, append the ``[task_mode]`` suffix to the header at
+            every verbosity, add the metadata block (including ``Next:``) only
+            at ``verbose >= 1``, and render per-step status only at
+            ``verbose >= 2``.
     """
     if isinstance(spec, Path):
         t = Spec.from_dir(spec)
@@ -1026,7 +1154,16 @@ def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
     else:
         t = spec
 
-    progress = f"({t.done}/{t.total})"
+    # Load todo.json once so header counts, metadata, and step statuses agree.
+    todo = (t.todo_data or []) if verbose >= 2 or (metadata and verbose >= 1) else None
+    description = t.description if verbose >= 1 else ""
+    summary = t.summary(todo, description=description) if metadata and verbose >= 1 else None
+
+    if summary is not None:
+        done, total = summary["completed_steps"], summary["total_steps"]
+    else:
+        done, total = t.todo_progress
+    progress = f"({done}/{total})"
     if show_repo:
         label = repo_label(t.workdir)
         repo_col = display_ljust(f"[{label}]", MAX_REPO_WIDTH + 3)
@@ -1035,20 +1172,26 @@ def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
         header = f"{t.icon} {progress} {t.name}"
 
     lines = [header]
+    if metadata:
+        lines[0] += f" [{t.meta.task_mode}]"
 
     if verbose >= 1:
-        description = t.display_text
-        if description:
-            lines.append(f"    {description}")
+        display_text = description or t.prompt
+        if display_text:
+            lines.append(f"    {display_text}")
 
-    if verbose >= 2:
-        todo = t.todo_data
-        if todo:
-            lines.append("")
-            for item in todo:
-                step_label = todo_step_label(item["id"], len(todo))
-                step_name = item.get("name", "")
-                lines.append(f"    {step_label}: {step_name}")
+    if summary is not None:
+        lines.extend(f"    {line}" for line in format_spec_metadata(summary, worktree=verbose >= 2))
+
+    if verbose >= 2 and todo:
+        lines.append("")
+        for item in todo:
+            if not isinstance(item, dict):
+                continue
+            step_label = todo_step_label(item["id"], len(todo))
+            step_name = item.get("name", "")
+            suffix = f" [{format_step_status(t.step_summary(item))}]" if metadata else ""
+            lines.append(f"    {step_label}: {step_name}{suffix}")
 
     return "\n".join(lines)
 
