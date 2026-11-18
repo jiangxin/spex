@@ -105,6 +105,55 @@ def test_native_todo_selector(argv, spec, action):
 
 
 @pytest.mark.parametrize(
+    ("path", "argv", "structured", "verdict"),
+    [
+        ("rebuild", ["append", "eval-spec", "--step-name", "Add --repeat option"], True, "pass"),
+        ("targeted", ["insert", "--before", "2", "--step-name", "Add punctuation's flag",
+                      "eval-spec"], True, "pass"),
+        ("rebuild", ["append", "eval-spec", "--step-name", "Add --repeat option"], False,
+         "insufficient_evidence"),
+    ],
+)
+def test_collected_modify_path_preserves_argv(tmp_path, path, argv, structured, verdict):
+    baseline = native_trace.snapshot(tmp_path)
+    (tmp_path / ".spex/specs/eval-spec").mkdir(parents=True)
+    log = tmp_path / ".spex" / native_trace.CENTRAL_DEBUG_LOG
+    log.parent.mkdir()
+    extra_edits = (["todo-helper remove-undone eval-spec"] if path == "rebuild" else [])
+    if path == "targeted":
+        extra_edits.extend(["todo-helper move eval-spec --from 2 --to 3",
+                            "todo-helper remove eval-spec --id 4"])
+    words = ["todo-helper", *argv]
+    log.write_text("".join(map(cli_log, [
+        "todo-helper transaction start eval-spec",
+        *extra_edits,
+        " ".join(words),
+        "create-helper post-action --name eval-spec --event-type modify",
+        "todo-helper transaction commit eval-spec",
+    ])))
+    if structured:
+        logged_at = "2026-11-11T10:00:00+08:00"
+        stamp = native_trace.stamp_bounds(logged_at)[0]
+        span = {
+            "schema_version": 1,
+            "name": "todo_helper",
+            "start_time_unix_nano": stamp - 10_000_000,
+            "end_time_unix_nano": stamp,
+            "attributes": {"process.command_args": ["spex", *words], "process.exit.code": 0},
+            "spex": {"duration_ms": 10, "debug_logged_at": logged_at},
+        }
+        log.with_name("trace.jsonl").write_text(json.dumps(span) + "\n")
+    _, trace = native_trace.window(tmp_path, baseline)
+    event = next(item for item in trace["events"] if item.get("subcommand") == argv[0])
+    assert event["spec"] == ("eval-spec" if structured else None)
+    assert "_todo_locator" not in json.dumps(trace)
+    assert "process.command_args" not in json.dumps(trace)
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(tmp_path, 1, state(task(2)), native=trace)
+    assert evidence.check_gate(f"modify-{path}-path", before, after)["verdict"] == verdict
+
+
+@pytest.mark.parametrize(
     ("missing", "verdict"),
     [
         ("artifact", "insufficient_evidence"),

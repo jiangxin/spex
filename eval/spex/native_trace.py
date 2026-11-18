@@ -74,15 +74,21 @@ def window(repo: Path, baseline: dict | None) -> tuple[dict, dict]:
         # A new path could contain older records moved from a missing log.
         events = [event for event in events if event["log"] in baseline]
         timed = [event for event in timed if event["log"] in baseline]
+    if timed:
+        enrich_todo_events(events, timed)
+    if any(event.get("_argv_unparsed") for event in events):
+        gaps.add("unrecognized_cli_log")
     events = correlate_central_log(repo, events, gaps)
     if not any("exit_code" in event and "command" in event for event in events):
         gaps.add("missing_spex_commands")
     result = {"events": events, "gaps": sorted(gaps)}
     if timed:
         result["timing_events"] = merge_timing_events(events, timed)
-    for event in chain(events, timed):
+    for event in chain(events, result.get("timing_events", ())):
         event.pop("_argv_fingerprint", None)
         event.pop("_debug_logged_at", None)
+        event.pop("_todo_locator", None)
+        event.pop("_argv_unparsed", None)
     return checkpoint, result
 
 
@@ -170,6 +176,12 @@ def span_command_fields(span: dict) -> dict | None:
         subcommand = command_verb(words[1:], fields["command"])
         if subcommand:
             fields["subcommand"] = subcommand
+            if fields["command"] == "todo-helper":
+                index = next(i for i, word in enumerate(words[1:], 1)
+                             if word.replace("_", "-") == "todo-helper")
+                fields["_todo_locator"] = todo_selector(
+                    ["todo-helper", *words[index + 1:]], subcommand,
+                )
     return fields
 
 
@@ -192,8 +204,8 @@ def timing_key(record: dict) -> tuple:
             record["duration_ms"], record["exit_code"])
 
 
-def merge_timing_events(events: list[dict], spans: list[dict]) -> list[dict]:
-    """Replace each matching legacy command once, keeping its workflow metadata."""
+def match_timing_events(events: list[dict], spans: list[dict]):
+    """Pair commands with spans using their existing debug timing metadata."""
     groups = defaultdict(list)
     for index, span in enumerate(spans):
         if "_argv_fingerprint" in span:
@@ -203,7 +215,6 @@ def merge_timing_events(events: list[dict], spans: list[dict]) -> list[dict]:
     for candidates in groups.values():
         candidates.sort()
     next_index = defaultdict(int)
-    matched = set()
     legacy = sorted(
         (stamp, index) for index, event in enumerate(events)
         if "_argv_fingerprint" in event and (stamp := stamp_bounds(event.get("at")))
@@ -215,10 +226,39 @@ def merge_timing_events(events: list[dict], spans: list[dict]) -> list[dict]:
         index = bisect_left(candidates, (stamp[0], -1), lo=next_index[key])
         if index < len(candidates) and candidates[index][0] <= stamp[1]:
             span_index = candidates[index][1]
-            spans[span_index] = {**event, **spans[span_index]}
+            yield event_index, span_index, candidates, stamp
             next_index[key] = index + 1
-            matched.add(event_index)
+
+
+def merge_timing_events(events: list[dict], spans: list[dict]) -> list[dict]:
+    """Replace each matching legacy command once, keeping its workflow metadata."""
+    matched = set()
+    for event_index, span_index, _, _ in match_timing_events(events, spans):
+        spans[span_index] = {**events[event_index], **spans[span_index]}
+        matched.add(event_index)
     return spans + [event for index, event in enumerate(events) if index not in matched]
+
+
+def enrich_todo_events(events: list[dict], spans: list[dict]) -> None:
+    """Use structured argv when the matching spans agree on todo attribution."""
+    for event_index, span_index, candidates, stamp in match_timing_events(events, spans):
+        span = spans[span_index]
+        if "_todo_locator" not in span or "_debug_logged_at" not in span:
+            continue
+        start = bisect_left(candidates, (stamp[0], -1))
+        end = bisect_left(candidates, (stamp[1] + 1, -1))
+        locators = {spans[i].get("_todo_locator") for _, i in candidates[start:end]}
+        event = events[event_index]
+        if len(locators) != 1:
+            if event["log"] == CENTRAL_DEBUG_LOG:
+                event["spec"] = None
+            continue
+        action, selector = span["_todo_locator"]
+        event.pop("_argv_unparsed", None)
+        if action:
+            event["transaction_action"] = action
+        if event["log"] == CENTRAL_DEBUG_LOG:
+            event["spec"] = selector if selector and IDENTIFIER.fullmatch(selector) else None
 
 
 def argv_fingerprint(value: str) -> str:
@@ -300,8 +340,12 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                 try:
                     words = shlex.split(line)[2:]
                 except ValueError:
-                    gaps.add("unrecognized_cli_log")
-                    words = []
+                    words = line.split()[2:]
+                    if not any(word in {"todo-helper", "todo_helper"} for word in words):
+                        gaps.add("unrecognized_cli_log")
+                        words = []
+                    else:
+                        command["_argv_unparsed"] = True
                 words = [word.replace("_", "-") if word in {
                     "apply_helper", "create_helper", "review_helper", "todo_helper",
                 } else word for word in words]
