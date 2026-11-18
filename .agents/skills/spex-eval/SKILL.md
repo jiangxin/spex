@@ -226,6 +226,23 @@ show, such as host capacity refusals or session startup failures, with
 `I001…` id shared by `report.md`, `report.json`, and the improvements
 backlog; cite those ids in the batch summary.
 
+Classify `requests-clarification` gaps before reporting them. The
+continuation check is added only when a turn has a following turn and that
+turn's input does not start with `/spex` (the literal prefix `/spex ` with a
+trailing space), so the last turn of a trial, and every turn of a single-turn
+trial, never carries it; a missing check there is expected, not a detector
+failure. The check never produces `fail`: a reply that matches one of six
+ordered signals, first match wins, is recorded as `pass` with the matched
+`signal` id — `question-mark` (`?` or `？`), `blocked-on-answer` (e.g.
+`need you to`, `once you answer`, `before I can write`), `explicit-request`
+(e.g. `please`, `choose`, `tell me`), `question-heading` (line-leading
+`Question`/`Questions` heading), `explicit-request-zh` (e.g. `请选择`), and
+`blocked-on-answer-zh` (e.g. `必须先确认…才能继续`); the fragments are
+examples, not the full pattern set. Any other reply stays
+`insufficient_evidence`. When `insufficient_evidence` appears on this check,
+verify whether the reply used wording the signals do not cover before
+treating it as a workflow problem.
+
 - Report scope, pinned Spex ref, sample counts, scores, and each trial's
   Agent and model alongside the judge Agent and model. Use `unknown`
   for unavailable identities and `ungraded` when no grading ran.

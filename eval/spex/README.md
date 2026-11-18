@@ -194,7 +194,21 @@ unresolved.
 
 Each collect reads the Spex command log since the previous turn's checkpoint
 and saves workspace snapshots. Required checks report insufficient evidence if
-the available observations cannot establish the required behavior.
+the available observations cannot establish the required behavior. When a turn
+has a following turn and that turn's input does not start with `/spex` (the
+literal prefix `/spex ` with a trailing space), collect also adds the
+`requests-clarification` continuation check; the last turn of a trial, and
+every turn of a single-turn trial, never carries it. The check recognizes
+clarification requests through six ordered signals, first match wins:
+`question-mark` (`?` or `？`), `blocked-on-answer` (e.g. `need you to`,
+`once you answer`, `before I can write`), `explicit-request` (e.g. `please`,
+`choose`, `tell me`), `question-heading` (a line-leading `Question`/`Questions`
+heading), `explicit-request-zh` (e.g. `请选择`), and `blocked-on-answer-zh`
+(e.g. `必须先确认…才能继续`). The fragments are examples, not the full pattern
+set. A match marks the check `pass` and records the matched `signal` id on it;
+a reply that matches none of the signals stays `insufficient_evidence`. A
+missing `requests-clarification` check on a final or single turn is expected,
+not a detector failure.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
