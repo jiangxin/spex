@@ -243,6 +243,209 @@ def test_read_recorded_rejects_symlinked_directory(tmp_path):
     assert issues.read_recorded(tmp_path) == []
 
 
+def test_recommendation_priorities_and_owners():
+    expected = {
+        "script_exit": ("P1", "Spex scripts"),
+        "implausible_host_duration": ("P2", "Host adapter"),
+        "judge_error": ("P1", "Judge workflow"),
+        "judge_attempt": ("P2", "Judge workflow"),
+        "run_error": ("P0", "Eval runner"),
+        "host_error": ("P0", "Eval runner"),
+        "command_failures": ("P1", "Eval runner"),
+        "subagent_spawn_failures": ("P1", "Eval runner"),
+        "subagent_failures": ("P1", "Eval runner"),
+        "unknown_kind": ("P2", "Eval runner"),
+    }
+    for kind, pair in expected.items():
+        priority, target, action = issues.recommendation({"kind": kind})
+        assert (priority, target) == pair
+        assert action
+
+
+def test_propose_improvements_skips_recovered_script_exits():
+    observed = [
+        {"kind": "script_exit", "recovered": True, "case": "example/a",
+         "message": "Turn 1: x exited with code 1"},
+        {"kind": "script_exit", "recovered": False, "case": "example/a",
+         "message": "Turn 1: x exited with code 2"},
+        {"kind": "implausible_host_duration", "recovered": None,
+         "case": "example/a", "message": "short"},
+    ]
+    result = issues.propose_improvements(observed)
+    assert [(item["summary"], item["priority"], item["target"], item["issue_index"])
+            for item in result] == [
+        ("example/a: Turn 1: x exited with code 2", "P1", "Spex scripts", 1),
+        ("example/a: short", "P2", "Host adapter", 2),
+    ]
+    assert [item["category"] for item in result] == ["execution", "efficiency"]
+
+
+def test_merge_recorded_folds_a_single_match_and_appends_the_rest():
+    observed = [{
+        "case": "example/a", "trial": "example/a", "stage": "script",
+        "kind": "script_exit", "turn": 1, "recovered": None,
+        "message": "Turn 1: x exited with code 1",
+        "evidence": ["example/a/performance.json"],
+    }]
+    recorded = [
+        {"case": "example/a", "trial": "example/a", "stage": "script",
+         "kind": "script_exit", "turn": 1, "recovered": True,
+         "message": "adapter saw a retry",
+         "evidence": ["_issues/one.json"]},
+        {"case": "example/a", "trial": "example/a", "stage": "script",
+         "kind": "script_exit", "turn": 2, "recovered": False,
+         "message": "second turn", "evidence": ["_issues/two.json"]},
+    ]
+    result = issues.merge_recorded(observed, recorded)
+    assert len(result) == 2
+    assert result[0]["recovered"] is True
+    assert result[0]["message"] == "Turn 1: x exited with code 1; adapter saw a retry"
+    assert result[0]["evidence"] == [
+        "example/a/performance.json", "_issues/one.json",
+    ]
+    assert result[1]["message"] == "second turn"
+    assert observed[0]["recovered"] is None
+
+
+def test_propose_improvements_carries_the_issue_id_when_present():
+    observed = [
+        {"id": "I007", "kind": "run_error", "case": "example/a", "message": "boom"},
+        {"kind": "judge_error", "case": "example/b", "message": "bad json"},
+    ]
+    result = issues.propose_improvements(observed)
+    assert [item["issue_id"] for item in result] == ["I007", ""]
+
+
+def test_merge_recorded_appends_when_the_match_is_ambiguous():
+    observed = [
+        {"case": "example/a", "trial": "example/a", "stage": "script",
+         "kind": "script_exit", "turn": 1, "message": "first",
+         "evidence": ["example/a/performance.json"]},
+        {"case": "example/a", "trial": "example/a", "stage": "script",
+         "kind": "script_exit", "turn": 1, "message": "second",
+         "evidence": ["example/a/performance.json"]},
+    ]
+    recorded = [{
+        "case": "example/a", "trial": "example/a", "stage": "script",
+        "kind": "script_exit", "turn": 1, "message": "adapter",
+        "evidence": ["_issues/one.json"],
+    }]
+    result = issues.merge_recorded(observed, recorded)
+    assert len(result) == 3
+    assert result[2]["trial"] == "example/a"
+    assert result[2]["message"] == "adapter"
+    assert observed[0]["message"] == "first"
+
+
+def test_merge_recorded_does_not_repeat_a_substring_message():
+    observed = [{
+        "case": "example/a", "trial": "example/a", "stage": "host",
+        "kind": "host_error", "turn": None, "message": "host timed out",
+        "evidence": [],
+    }]
+    recorded = [{
+        "case": "example/a", "trial": "example/a", "stage": "host",
+        "kind": "host_error", "turn": None, "message": "timed out",
+        "evidence": [],
+    }]
+    result = issues.merge_recorded(observed, recorded)
+    assert len(result) == 1
+    assert result[0]["message"] == "host timed out"
+
+
+def test_merge_recorded_copies_evidence_for_appended_records():
+    recorded = [{
+        "case": "example/a", "trial": "example/a", "stage": "host",
+        "kind": "capacity", "turn": None, "message": "refused",
+        "evidence": ["_issues/one.json"],
+    }]
+    result = issues.merge_recorded([], recorded)
+    assert result[0]["evidence"] == ["_issues/one.json"]
+    result[0]["evidence"].append("_issues/two.json")
+    assert recorded[0]["evidence"] == ["_issues/one.json"]
+
+
+def test_markdown_text_escapes_specials_and_collapses_lines():
+    assert issues.markdown_text("a|b\n`c` *d*") == "a\\|b \\`c\\` \\*d\\*"
+    assert issues.markdown_text(r"a[b](c)<d>!e_f{g}\h") == (
+        "a\\[b\\]\\(c\\)\\<d\\>\\!e\\_f\\{g\\}\\\\h"
+    )
+
+
+def test_evidence_link_without_a_root_backticks_the_escaped_path():
+    assert issues.evidence_link("example/a/braces{0}.json", None) == (
+        "`example/a/braces\\{0\\}.json`"
+    )
+
+
+def test_report_lines_skip_empty_fields_and_sort_improvements():
+    report = {
+        "issues": [
+            {"case": "example/a", "kind": "script_exit", "message": "x",
+             "turn": None},
+            {"case": "example/b", "stage": "host", "kind": "host_error",
+             "message": "y", "turn": None, "recovered": False},
+        ],
+        "improvements": [
+            {"priority": "P2", "summary": "later", "target": "Host adapter"},
+            {"priority": "P0", "summary": "sooner", "target": "Eval runner",
+             "issue_id": "I002"},
+            {"priority": "P0", "summary": "last time", "target": "Eval runner",
+             "issue_id": "I001"},
+        ],
+    }
+    lines = issues.report_lines(report, heading="x")
+    issue_lines = [line for line in lines if line.startswith("- **")]
+    assert issue_lines[0] == (
+        "- **—** `example/a` — script\\_exit — recovered: unknown — x"
+        " — no saved evidence"
+    )
+    assert all(" —  — " not in line and not line.endswith(" — ") for line in lines)
+    improvement_lines = [
+        line for line in lines if line.startswith("- **P")
+    ]
+    assert improvement_lines == [
+        "- **P0** Eval runner — I001 — last time",
+        "- **P0** Eval runner — I002 — sooner",
+        "- **P2** Host adapter — later",
+    ]
+
+
+def test_report_lines_render_issues_and_improvements(tmp_path):
+    report = {
+        "issues": [{
+            "id": "I001", "case": "example/a", "trial": "example/a",
+            "stage": "script", "kind": "script_exit", "turn": 1,
+            "recovered": True, "message": "Turn 1: x exited with code 1",
+            "evidence": ["example/a/performance.json"],
+        }],
+        "improvements": [{
+            "priority": "P1", "category": "execution", "case": "example/a",
+            "summary": "example/a: Turn 1: x exited with code 1",
+            "target": "Spex scripts", "recommendation": "Fix it.",
+            "issue_id": "I001",
+        }],
+    }
+    lines = issues.report_lines(report, heading="Execution diagnostics")
+    text = "\n".join(lines)
+    assert "## Execution diagnostics" in text
+    assert "### Observed issues" in text
+    assert "**I001**" in text
+    assert "recovered: yes" in text
+    assert "### Proposed improvements" in text
+    assert "**P1** Spex scripts — I001" in text
+    linked = "\n".join(
+        issues.report_lines(report, heading="x", evidence_root=tmp_path)
+    )
+    assert f"[performance.json](<{tmp_path / 'example/a/performance.json'}>)" in linked
+
+
+def test_report_lines_state_when_nothing_is_recorded():
+    lines = issues.report_lines({"issues": [], "improvements": []}, heading="x")
+    assert "- None observed." in lines
+    assert "- None proposed." in lines
+
+
 def test_read_recorded_defaults_an_unknown_stage(tmp_path):
     root = tmp_path / "_issues"
     root.mkdir()
