@@ -26,7 +26,15 @@ python3 eval/spex/run.py prepare --suite docs --case analyze-incident \
   --host qoder
 ```
 
-The first `prepare` or `run` creates a sandbox at
+For a whole batch in one sandbox with a ready dispatch queue:
+
+```sh
+python3 eval/spex/run.py prepare --all --host qoder \
+  --spex-ref HEAD --jobs 4 --init
+```
+
+`--init` requires `--all` and initializes the queue once every case is
+prepared. The first `prepare` or `run` creates a sandbox at
 `eval/spex/runs/YYYY-MM-DD-HH-MM-SS` (with `-2`, `-3`, … on name clash). That
 directory is git-ignored via `/eval/spex/runs/` and is itself `git init`'d so
 git commands inside the sandbox do not resolve to the Spex monorepo. Case
@@ -67,8 +75,22 @@ Filters match by intersection.
 
 For current-host runs, add `--all` to prepare every listed case into one
 sandbox in parallel against the same pinned commit. The JSON reports a
-`prepared` handoff and an `env_script` path per case plus per-case `errors`.
-Retry individual failures with `prepare --case CASE --sandbox PATH`.
+`prepared` handoff per case and per-case `errors`; with `--init`, the payload
+also reports `queue_init`. Each
+`prepared` and `errors` entry carries the case ID as both `id` and `case`;
+`list` reports `id`. Retry individual failures with
+`prepare --case CASE --sandbox PATH`.
+
+`queue_init.status` is `initialized` for a new queue, `existing` when
+`queue.json` is already present, and `skipped` with `reason`
+`prepare_errors` (a case failed) or `batch_mismatch` (the selected IDs differ
+from `batch-index.json`) when the batch must be retried first. A retry with
+`prepare --case` does not initialize the queue, so run `manual.py init` with
+every selected ID afterward.
+
+`prepare` already writes `_handoff/env-<suite>-<case>.sh` for every case and
+returns it as `env_script`. Source that file in the trial session; never
+rebuild the exports or write an env script by hand.
 
 ## Current-host trials
 
@@ -77,7 +99,7 @@ trial through grading, with ordered turns and one session per trial. For
 current-host trials, dispatch in parallel when the host can open
 independent sessions and resume them across turns. Otherwise prepare a
 new batch with `--jobs 1` and use serial manual handoffs when needed.
-An existing sandbox retains the saved ceiling. Its coordinator can claim
+An existing sandbox retains the saved ceiling. Its coordinator can dispatch
 fewer trials when the host supports less concurrency.
 
 Pass `--jobs N` (1–4) to configure the limit for a new `prepare` batch
@@ -113,9 +135,9 @@ The runner does not open host sessions. The portable interface is:
 | Step | Any host |
 | --- | --- |
 | Isolate | One session (or equivalent) per trial; separate session for judge |
-| Env | Verify the prepared cwd, environment, and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
+| Env | Source the `env_script` written by `prepare` (`_handoff/env-<suite>-<case>.sh`) or returned by `dispatch`; never rebuild the exports by hand. Verify the prepared cwd and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
 | Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
-| Input | Send `next_input` exactly; keep the same session for later turns |
+| Input | Dispatch each turn with `manual.py dispatch`, send its `next_input` exactly, and keep the same session for later turns |
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
 | Collect | `collect --session ID --reply <handoff-file> [--events …]` |
 
@@ -125,17 +147,45 @@ these commands.
 
 | Command | Result |
 | --- | --- |
-| `init SUITE/CASE ...` | Initialize the queue from all selected and published cases |
-| `claim SUITE/CASE` | Reserve a trial slot through grading |
+| `init SUITE/CASE ...` | Initialize the queue from all selected and published cases; `prepare --all --init` does this in the same call |
+| `dispatch SUITE/CASE --session ID` | Claim a pending slot and start the next turn in one call; the authoritative dispatch entry |
+| `claim SUITE/CASE` | Low-level slot claim behind `dispatch`; it does not start a turn |
 | `exec SUITE/CASE -- COMMAND ...` | Run a shell command with the prepared cwd and environment |
-| `start SUITE/CASE TURN --session ID` | Bind the session and timer, then return the exact input and reply path |
+| `start SUITE/CASE TURN --session ID` | Low-level turn start behind `dispatch`: bind the session and timer, then return the exact input and reply path |
 | `wait --any --timeout SECONDS` | Block until a running turn has a readable, nonblank UTF-8 reply; exit 1 on timeout |
 | `advance` | Stop, collect, and export running turns with published replies |
 | `stop SUITE/CASE TURN [--reply-file PATH]` | Finish the current timer and atomically publish a staged reply first when supplied |
 | `collect SUITE/CASE TURN` | Collect the saved reply and timing sidecars, then return the next input |
-| `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot |
+| `complete SUITE/CASE` | Read the saved outcome after grade import and close the trial; `complete --all` closes out a batch |
 | `fail SUITE/CASE --reason launch_failed\|exited\|timeout` | Record a host failure on a claimed, pending trial and release its slot while preserving collected evidence |
 | `status --require-terminal` | Exit 1 until every queued case has a terminal verdict |
+
+`dispatch` returns `case`, `turn`, `session`, `trial`, `workspace`, `skill`,
+`env_script`, `reply`, and `next_input`. Dispatch a running case again to
+start its next turn. Add `--turn N` to assert the expected next turn; a
+mismatch fails without touching the queue. A failed dispatch also leaves the
+queue unchanged: an invalid or conflicting session, an already-started turn,
+a missing env script, or a full slot set (the error lists the occupying
+`SUITE/CASE` IDs with `jobs=N`) all exit nonzero. `claim` and `start` remain
+the low-level pair behind `dispatch`.
+
+### Coordinator rules
+
+The [spex-eval skill](../../.agents/skills/spex-eval/SKILL.md) holds the full
+SOP. These rules prevent the recurring coordinator failures:
+
+- Every command must be cwd-independent: prefix it with `cd <repo-root> && …`
+  or use absolute paths. Never rely on the shell working directory inherited
+  from an earlier call.
+- Dispatch only through `manual.py dispatch`, one call per turn; never copy
+  `_dispatch.py` or any other helper from a previous sandbox.
+- Slot order is `advance → export-packet → judge → import-grades → complete
+  → claim`. An execution slot is released once the final turn is collected
+  and exported, so a trial awaiting grades no longer blocks a new claim.
+  `complete` still closes the trial, as does `fail` for a recorded host
+  failure.
+- Read the schema of an unfamiliar host MCP tool before calling it; do not
+  guess argument names.
 
 The guarded path collects each turn before dispatching the next one. Direct
 `collect` and `collect_handoff.py` remain available for existing handoffs and
@@ -144,7 +194,21 @@ unresolved.
 
 Each collect reads the Spex command log since the previous turn's checkpoint
 and saves workspace snapshots. Required checks report insufficient evidence if
-the available observations cannot establish the required behavior.
+the available observations cannot establish the required behavior. When a turn
+has a following turn and that turn's input does not start with `/spex` (the
+literal prefix `/spex ` with a trailing space), collect also adds the
+`requests-clarification` continuation check; the last turn of a trial, and
+every turn of a single-turn trial, never carries it. The check recognizes
+clarification requests through six ordered signals, first match wins:
+`question-mark` (`?` or `？`), `blocked-on-answer` (e.g. `need you to`,
+`once you answer`, `before I can write`), `explicit-request` (e.g. `please`,
+`choose`, `tell me`), `question-heading` (a line-leading `Question`/`Questions`
+heading), `explicit-request-zh` (e.g. `请选择`), and `blocked-on-answer-zh`
+(e.g. `必须先确认…才能继续`). The fragments are examples, not the full pattern
+set. A match marks the check `pass` and records the matched `signal` id on it;
+a reply that matches none of the signals stays `insufficient_evidence`. A
+missing `requests-clarification` check on a final or single turn is expected,
+not a detector failure.
 
 Open an independent session in the returned `workspace` with the returned
 environment and paste the exact `next_input`. Keep that same session for every
@@ -203,19 +267,92 @@ timestamp directory manually when finished. Both reports list the trial and
 judge Agent hosts and model IDs for each case. Use `import-grades --host`
 and `--model` for the judge's identity. Missing identities appear as
 `unknown`, and trials without a judge record show `ungraded`.
-The **Score summary** shows one verdict per trial, with the hard verdict
-in parentheses when it differs. Scores show how many rubric criteria
-were graded. An asterisk beside full marks on a non-passing trial links
-the score coverage to the verdict reason. Hard failures take precedence.
+The **Score summary** has one row per trial with four columns:
+`Case | Verdict | Score | Criteria`. The verdict cell shows the hard
+verdict in parentheses when it differs from the final verdict. The score
+cell states how many rubric criteria were graded, and the criteria cell
+lists each criterion's score (`ungraded` when none was judged). An
+asterisk beside full marks on a non-passing trial links the score
+coverage to the verdict reason below the table. Hard failures take
+precedence.
 
-**Execution diagnostics** links observed Spex helper exits, implausible
-host timing, and judge failures to their saved evidence. A successful
-retry of the same helper operation in the same collected turn keeps the
-failed exit visible but excludes it from **Spex skill improvements**.
-The JSON report keeps the verdicts and scores as separate fields and
-includes the diagnostics under each trial. Pass `--write-improvements` (optional path;
-default `eval/spex/IMPROVEMENTS.md`) to also write a backlog markdown
-file from the same items.
+### Batch close-out
+
+`prepare` records the whole batch in `batch-index.json`, so saved judge
+grades can be imported and the trials closed in two calls instead of one per
+case; the execution slots were already released when the final turns were
+collected and exported. Judges write each verdict to
+`_handoff/grades-<suite>-<case>.json`.
+`--grades-dir` defaults to `<sandbox>/_handoff` and resolves a relative path
+against the sandbox.
+
+```sh
+python3 eval/spex/run.py import-grades --all --sandbox "$sandbox" \
+  --grades-dir _handoff --host qoder --model gpt-6.1-sol
+python3 eval/spex/manual.py --sandbox "$sandbox" complete --all
+```
+
+`import-grades --all` visits every key in `batch-index.json` order, imports
+each saved grade, skips `already_graded` (judge output exists), `no_packet`
+(no judge prompt), and `no_grades` (no grades file), and exits 1 when any case
+fails. A `--judge-duration-ms` value applies to every import in batch mode.
+`complete --all` completes each running case that holds a terminal verdict,
+skips `not_graded` and `not_running`, closes the trials, and exits 1 on
+per-case errors. Keep `import-grades TRIAL --grades FILE` and
+`complete SUITE/CASE` as single-case fallbacks. The terminal gate remains
+`manual.py --sandbox PATH status --require-terminal`.
+
+**Execution diagnostics** reports observed issues under two headings.
+**Observed issues** assigns each one a stable `I001…` id and lists its
+case and trial scope, stage and kind, whether a retry recovered it, its
+message, and links to the saved evidence. **Proposed improvements**
+reuse the same ids, so `report.md`, `report.json`, and the
+`--write-improvements` backlog (optional path; default
+`eval/spex/IMPROVEMENTS.md`) all point at the same item. Issues are
+derived from trial evidence and merged with adapter records kept under
+`<sandbox>/_issues/`. Most ids in a normal batch are derived: a hard
+`run_error` trial, every failed acceptance check (`check_failure`, P0),
+non-trace evidence gaps (`evidence_gap`, P1), trace gaps (`trace_gap`,
+P2), and unrecovered host, script, or judge issues (`script_exit`,
+`host_error`, `judge_error`, `judge_attempt`,
+`implausible_host_duration`, `command_failures`, `subagent_*`). Ids are
+assigned after the merge, so they are positional within one summary run
+and can shift when a rerun derives a different set. A successful retry
+of the same helper operation in the same collected turn keeps the failed
+exit visible but marks it recovered and excludes it from the proposed
+improvements. The JSON report keeps verdicts and scores as separate
+fields and includes the diagnostics under each trial.
+
+Adapters record observations that are not visible in trial evidence,
+such as host capacity refusals or session startup failures, with
+`record-issue` before summarizing:
+
+```sh
+python3 eval/spex/run.py record-issue "$sandbox" --suite docs \
+  --case analyze-incident --stage host --kind capacity \
+  --message "host refused a new session" --trial docs/analyze-incident \
+  --turn 2 --unrecovered
+```
+
+Each record is a JSON file under `<sandbox>/_issues/` named
+`<time_ns>-<uuid>.json` with `suite`, `case_id`, `case`, `trial`,
+`stage` (one of `prepare`, `host`, `collect`, `judge`, `script`,
+`unknown`), `kind`, `message`, `turn`, and `recovered` (`true`, `false`,
+or `null`). Records larger than 64 KiB are ignored when the summary
+reads `_issues/`, and a symlinked `_issues/` directory is ignored too.
+The summary reads every accepted record and merges it with observed
+issues; use `--recovered` or `--unrecovered` only when you know whether
+a retry fixed the condition.
+
+`record-issue` enforces these constraints, so a rejected record fails the
+command instead of being saved:
+
+- `--suite`, `--case`, and `--kind` must match `[a-z0-9][a-z0-9_-]{0,63}`
+  (lowercase letters, digits, `_`, and `-`, never leading with a separator).
+- `--message` is stripped and must be 1-500 characters.
+- `--turn`, when given, must be at least 1.
+- `--trial` is optional (default `null`), must stay sandbox-relative with
+  no `..`, and must not contain a `workspace` path part.
 
 Host adapter notes for Cursor / Codex / pure manual live under
 [`adapters/README.md`](adapters/README.md).
@@ -223,19 +360,31 @@ Host adapter notes for Cursor / Codex / pure manual live under
 ## Performance diagnostics
 
 Each trial records timing and activity in `performance.json`. The batch
-report links to the details and summarizes case duration, the slowest Spex
-step, full and delta reviews, observed subagent starts, and parent-session
-token usage. Case duration sums measured host turns when all are available.
-Otherwise it uses the full automatic trial duration when available or shows
-`unknown`. JSON reports include the selected duration in milliseconds and
-seconds and its source. Repeated comparable samples show coverage, median,
-and max by duration source and configured execution.
+report's **Performance** table has five columns:
+`Case | Host turns | Duration (s) | Source | Detail`. Duration sums
+measured host turns when all are available; otherwise it uses the full
+automatic trial duration when available or shows `unknown`, and the
+source column records which one was used. Durations are shown in seconds with
+one decimal place. The detail column links
+`performance.json` and names any interrupted Spex steps. Repeated
+comparable samples show coverage, median, and max by duration source and
+configured execution.
 
-The execution timeline shows the case boundaries, host turns and recorded
-Spex CLI commands with their available timestamps, durations and exit codes.
-Elapsed time starts at the first host dispatch and can include waits between
-turns. A legacy debug log can supply a command's log timestamp without
-establishing its wall-clock start or end.
+The **Execution timeline** section shows the case boundaries, host turns,
+Spex skill start and end markers, and recorded Spex CLI commands. It emits
+one eight-column table per case under its own `### <suite>/<case>
+(<trial>)` heading, after a single section header and intro paragraph:
+`Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit | Argv`.
+The Argv column joins the command's process arguments and truncates them
+at 80 characters. Elapsed time starts at the first host dispatch and can
+include waits between turns. The Started, Ended, and Logged cells show local
+times as `HH:MM:SS` without a date or zone; the report header carries the
+timeline date range (and mentions that the times are local) when any
+timestamps exist. A legacy debug log can supply a command's
+log timestamp without establishing its wall-clock start or end. JSON
+timeline entries also carry `is_spex_skill` and, for skill turns,
+`skill_input`; token usage, subagent starts, and review rounds stay in
+`performance.json`.
 
 - For manual collection, pass `collect --host-duration-ms N` if the host
   measured elapsed time from sending input through receiving the final

@@ -56,15 +56,12 @@ def outcome(queue: dict) -> dict:
 
 def initialize(sandbox: Path, queue_file: Path, entries: dict, cases: list[str]) -> dict:
     validate_keys(sandbox, cases)
-    if len(set(cases)) != len(cases) or set(cases) != set(entries):
-        raise ValueError("Pass the exact selected suite/case IDs after all prepares succeed")
-    if queue_file.exists():
-        return outcome(manual_batch.read(queue_file))
-    for key in cases:
-        load_trial(sandbox, key, entries)
-    queue = {key: {"status": "pending"} for key in cases}
-    manual_batch.write(queue_file, queue)
-    return outcome(queue)
+    # The shared bootstrap validates the keys, keeps an existing queue as-is, and
+    # only loads each prepared trial when it creates the queue.
+    manual_batch.initialize(
+        sandbox, cases, loader=lambda key: load_trial(sandbox, key, entries),
+    )
+    return outcome(manual_batch.read(queue_file))
 
 
 def read_complete_reply(path: Path) -> bytes:
@@ -92,6 +89,27 @@ def publish_reply(source: Path, reply: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def turn_paths(sandbox: Path, suite: str, case: str, turn: int) -> tuple[Path, Path, Path]:
+    """Return the reply, pending-timer, and wall-clock paths for one turn."""
+    reply = collect_handoff.handoff_reply(sandbox, suite, case, turn)
+    if reply.parent.is_symlink():
+        raise ValueError("Refusing to use a symlink handoff directory")
+    timer = host_turn_timer.pending_path(reply)
+    return reply, timer, collect_handoff.host_wall_clock_sidecar(reply)
+
+
+def ensure_unstarted(reply: Path, timer: Path, wall: Path) -> None:
+    if any(path.exists() or path.is_symlink() for path in (reply, timer, wall)):
+        raise ValueError("Turn already started; stop and collect it before dispatching again")
+
+
+def check_session(args, row: dict, metadata: dict) -> None:
+    """Require one valid session ID for every turn of a trial."""
+    session = (row.get("dispatch") or {}).get("session") or metadata["session"]
+    if not runner.SESSION_ID.fullmatch(args.session) or session not in ("", args.session):
+        raise ValueError("Use the same valid session ID for all turns of this trial")
+
+
 def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict, row: dict,
                 environment: dict, save_dispatch):
     suite, case = metadata["suite"], metadata["case_id"]
@@ -102,20 +120,15 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
     if args.command == "collect" and args.turn == current - 1 and current > 1:
         if dispatch.get("turn") == args.turn:
             row.pop("dispatch")
+        if not handoff["next_input"]:
+            row["slot_released"] = True  # The final turn is already collected.
         return handoff  # Collection is committed by trial.json, even on a retry.
     if args.turn != current or not handoff["next_input"]:
         raise ValueError(f"No next input for turn {args.turn}; pending turn is {current}")
-    reply = collect_handoff.handoff_reply(sandbox, suite, case, current)
-    if reply.parent.is_symlink():
-        raise ValueError("Refusing to use a symlink handoff directory")
-    timer = host_turn_timer.pending_path(reply)
-    wall = collect_handoff.host_wall_clock_sidecar(reply)
+    reply, timer, wall = turn_paths(sandbox, suite, case, current)
     if args.command == "start":
-        if any(path.exists() or path.is_symlink() for path in (reply, timer, wall)):
-            raise ValueError("Turn already started; stop and collect it before dispatching again")
-        session = dispatch.get("session") or metadata["session"]
-        if not runner.SESSION_ID.fullmatch(args.session) or session not in ("", args.session):
-            raise ValueError("Use the same valid session ID for all turns of this trial")
+        ensure_unstarted(reply, timer, wall)
+        check_session(args, row, metadata)
         row["dispatch"] = {"turn": current, "session": args.session}
         save_dispatch()  # Bind the session before creating the pending timer.
         host_turn_timer.start_timer(sandbox, suite, case, current)
@@ -147,28 +160,174 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
         **timing,
     ))
     row.pop("dispatch")
+    if not result.get("next_input"):
+        row["slot_released"] = True  # Only grades keep this trial on the books.
     result["environment"] = environment
     return result
 
 
-def complete_trial(args, output: Path, metadata: dict, row: dict) -> dict:
+def record_host_failure(reason: str, output: Path, metadata: dict, row: dict) -> None:
+    """Turn a pending trial into a stored host failure; a retry is a no-op."""
+    error = f"manual_host_{reason}"
     verdict = metadata["verdict"]
-    if args.command == "fail":
-        error = f"manual_host_{args.reason}"
-        if verdict == "pending":
-            metadata.update(verdict="run_error", error=error)
-            metadata["session"] = row.get("dispatch", {}).get("session", metadata["session"])
-            manual_batch.write(output / "trial.json", metadata)
-            verdict = "run_error"
-        elif verdict != "run_error" or metadata.get("error") != error:
-            raise ValueError("Only a pending trial can record a host failure")
+    if verdict == "pending":
+        metadata.update(verdict="run_error", error=error)
+        metadata["session"] = row.get("dispatch", {}).get("session", metadata["session"])
+        manual_batch.write(output / "trial.json", metadata)
+    elif verdict != "run_error" or metadata.get("error") != error:
+        raise ValueError("Only a pending trial can record a host failure")
+
+
+def awaiting_grades(metadata: dict) -> bool:
+    """True while the trial's final verdict has no imported grade behind it.
+
+    A collected trial stores a terminal ``verdict`` as soon as its last turn is
+    collected, but only ``import_judge`` writes ``hard_verdict``. So the ordinary
+    pre-grade state is a terminal verdict without grades, not ``pending``.
+    This is the metadata view; the queue row key ``slot_released`` records that
+    the final turn was collected and does not imply grades are missing.
+    """
+    return metadata["verdict"] != "run_error" and "hard_verdict" not in metadata
+
+
+def complete_row(key: str, metadata: dict, row: dict) -> dict:
+    """Release one trial slot once its verdict is terminal and graded."""
+    verdict = metadata["verdict"]
     if verdict not in TERMINAL_VERDICTS:
         raise ValueError("Trial is still pending")
     if verdict != "run_error" and "hard_verdict" not in metadata:
         raise ValueError("Import semantic grades before completing the trial")
     row.update(status="completed", verdict=verdict)
     row.pop("dispatch", None)
-    return {"case": args.case, **row}
+    row.pop("slot_released", None)
+    return {"case": key, **row}
+
+
+def complete_trial(args, output: Path, metadata: dict, row: dict) -> dict:
+    if args.command == "fail":
+        record_host_failure(args.reason, output, metadata, row)
+    return complete_row(args.case, metadata, row)
+
+
+def complete_all(sandbox: Path, queue_file: Path, queue: dict, entries: dict) -> dict:
+    """Complete every running trial that already holds a terminal verdict.
+
+    Rows are visited in queue insertion order. A running trial that is not
+    graded yet keeps its slot, a row in any other state is skipped, and an
+    unexpected per-case failure is reported without aborting the batch.
+    Callers already hold ``manual_batch.locked(sandbox)`` and pass the state
+    they loaded under it.
+    """
+    completed, skipped, errors = [], [], []
+    for key, row in queue.items():
+        try:
+            if row["status"] != "running":
+                skipped.append({"case": key, "reason": "not_running"})
+                continue
+            _, _, metadata = load_trial(sandbox, key, entries)
+            if awaiting_grades(metadata):
+                skipped.append({"case": key, "reason": "not_graded"})
+                continue
+            result = complete_row(key, metadata, row)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            errors.append({"case": key, "error": str(error)})
+            continue
+        completed.append({"case": result["case"], "verdict": result["verdict"]})
+    manual_batch.write(queue_file, queue)  # One write for the whole close-out.
+    return {"completed": completed, "skipped": skipped, "errors": errors}
+
+
+def running_keys(queue: dict) -> list[str]:
+    """Return claimed case keys in queue insertion order."""
+    return [key for key, row in queue.items() if row["status"] == "running"]
+
+
+def active_keys(queue: dict) -> list[str]:
+    """Return running keys that still execute, i.e. whose slot is not released.
+
+    A trial whose final turn is collected and exported no longer runs, so it
+    must not hold an execution slot while the judge catches up. The row key
+    ``slot_released`` tracks that collection; it is distinct from the
+    ``awaiting_grades(metadata)`` predicate used by ``complete_all``. Rows
+    written before ``slot_released`` existed keep occupying a slot.
+    """
+    return [
+        key for key, row in queue.items()
+        if row["status"] == "running" and not row.get("slot_released")
+    ]
+
+
+def claim_row(queue: dict, key: str, jobs: int) -> None:
+    """Refuse a claim that conflicts with the row state or the slot limit."""
+    row = queue[key]
+    if row["status"] != "pending":
+        raise ValueError(f"Case is already {row['status']}: {key}")
+    active = active_keys(queue)
+    if len(active) >= jobs:
+        raise ValueError(
+            f"All configured trial slots are occupied (jobs={jobs}): {', '.join(active)}"
+        )
+
+
+def queue_row(queue: dict, key: str) -> dict:
+    if key not in queue:
+        raise ValueError(f"Case was not selected for this batch: {key}")
+    return queue[key]
+
+
+def dispatch_target(args, sandbox: Path, queue: dict, entries: dict) -> dict:
+    """Validate one dispatch without touching the queue; return what it will publish."""
+    key = args.case
+    row = queue_row(queue, key)
+    output, trial, metadata = load_trial(sandbox, key, entries)
+    suite, case = metadata["suite"], metadata["case_id"]
+    current = len(metadata["turn_results"]) + 1
+    if args.turn is not None and args.turn != current:
+        raise ValueError(f"No next input for turn {args.turn}; pending turn is {current}")
+    if row["status"] == "pending":
+        claim_row(queue, key, metadata["execution"]["jobs"])
+    elif row["status"] != "running":
+        raise ValueError(f"Case is already {row['status']}: {key}")
+    check_session(args, row, metadata)
+    handoff = runner.instructions(output, trial, metadata)
+    if not handoff["next_input"]:
+        raise ValueError(f"No next input for turn {current}")
+    reply, timer, wall = turn_paths(sandbox, suite, case, current)
+    ensure_unstarted(reply, timer, wall)
+    script = runner.env_script_path(sandbox, suite, case)
+    if script.is_symlink() or not script.is_file():
+        raise ValueError(
+            f"Missing prepared environment script: {script}; re-run prepare for {key}"
+        )
+    return {
+        "row": row, "suite": suite, "case_id": case, "turn": current,
+        "handoff": handoff, "reply": reply, "script": script,
+    }
+
+
+def dispatch_case(args, sandbox: Path, queue_file: Path, queue: dict, entries: dict) -> dict:
+    """Claim a pending case and start its next turn in one call, returning the bundle."""
+    target = dispatch_target(args, sandbox, queue, entries)
+    row, handoff, current = target["row"], target["handoff"], target["turn"]
+    snapshot = dict(row)
+    row["status"] = "running"
+    row["dispatch"] = {"turn": current, "session": args.session}
+    try:
+        host_turn_timer.start_timer(sandbox, target["suite"], target["case_id"], current)
+        manual_batch.write(queue_file, queue)
+    except BaseException:
+        timer = host_turn_timer.pending_path(target["reply"])
+        if timer.is_file() and not timer.is_symlink():
+            timer.unlink(missing_ok=True)  # Keep the case dispatchable after a failed write.
+        row.clear()
+        row.update(snapshot)
+        raise
+    return {
+        "case": args.case, "turn": current, "session": args.session,
+        "trial": handoff["trial"], "workspace": handoff["workspace"],
+        "skill": handoff["skill"], "env_script": str(target["script"]),
+        "reply": str(target["reply"]), "next_input": handoff["next_input"],
+    }
 
 
 def dispatch(args, sandbox: Path) -> tuple[dict, int]:
@@ -181,17 +340,16 @@ def dispatch(args, sandbox: Path) -> tuple[dict, int]:
         if args.command == "status":
             result = outcome(queue)
             return result, int(args.require_terminal and not result["terminal"])
+        if args.command == "dispatch":
+            return dispatch_case(args, sandbox, queue_file, queue, entries), 0
+        if args.command == "complete" and args.all_cases:
+            result = complete_all(sandbox, queue_file, queue, entries)
+            return result, int(bool(result["errors"]))
         key = args.case
-        if key not in queue:
-            raise ValueError(f"Case was not selected for this batch: {key}")
+        row = queue_row(queue, key)
         output, trial, metadata = load_trial(sandbox, key, entries)
-        row = queue[key]
         if args.command == "claim":
-            if row["status"] != "pending":
-                raise ValueError(f"Case is already {row['status']}: {key}")
-            active = sum(row["status"] == "running" for row in queue.values())
-            if active >= metadata["execution"]["jobs"]:
-                raise ValueError("All configured trial slots are occupied")
+            claim_row(queue, key, metadata["execution"]["jobs"])
             row["status"] = "running"
             result = {"case": key, "trial": str(output)}
         elif row["status"] != "running":
@@ -260,7 +418,7 @@ def queue_progress(sandbox: Path, queue: dict) -> dict:
             ready.append(item)
     return {
         "ready": ready,
-        "running": sum(row["status"] == "running" for row in queue.values()),
+        "running": len(running_keys(queue)),
         "pending": sum(row["status"] == "pending" for row in queue.values()),
     }
 
@@ -346,13 +504,29 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "advance", help="Stop, collect, and export every finished running turn",
     )
-    for command in ("claim", "start", "stop", "collect", "complete", "fail", "exec"):
+    commands = ("claim", "start", "dispatch", "stop", "collect", "complete", "fail", "exec")
+    for command in commands:
         action = sub.add_parser(command)
-        action.add_argument("case", metavar="SUITE/CASE")
+        if command == "complete":
+            action.add_argument(
+                "case", metavar="SUITE/CASE", nargs="?",
+                help="One suite/case ID; pass --all instead for a whole batch",
+            )
+            action.add_argument(
+                "--all", dest="all_cases", action="store_true",
+                help=(
+                    "Complete every running case that holds a terminal verdict "
+                    "and exit 1 when any case fails"
+                ),
+            )
+        else:
+            action.add_argument("case", metavar="SUITE/CASE")
         if command in ("start", "stop", "collect"):
             action.add_argument("turn", type=int)
-        if command == "start":
+        if command in ("start", "dispatch"):
             action.add_argument("--session", required=True)
+        if command == "dispatch":
+            action.add_argument("--turn", type=int, help="Assert the next turn number")
         if command == "stop":
             action.add_argument("--reply-file", type=Path, help="Publish a completed reply file")
         if command == "fail":
@@ -364,8 +538,20 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the manual command line and enforce the complete-mode contract."""
+    command = parser()
+    args = command.parse_args(argv)
+    if args.command == "complete":
+        if args.all_cases and args.case is not None:
+            command.error("--all cannot be combined with a single case")
+        if not args.all_cases and args.case is None:
+            command.error("Pass one suite/case ID or --all")
+    return args
+
+
 def main() -> int:
-    args = parser().parse_args()
+    args = parse_arguments()
     try:
         sandbox = runner.resolve_sandbox(args.sandbox)
         if args.command == "exec":

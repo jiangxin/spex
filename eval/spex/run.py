@@ -31,7 +31,9 @@ from judge import (
     final_verdict,
     grade,
     packet_for,
+    partition_criteria,
     rubric_for,
+    validate,
 )
 from scheduling import (
     DEFAULT_JOBS,
@@ -113,6 +115,9 @@ TRACE_CHECK_IDS = frozenset({
     "post-action", "no-post-action", "resumed-review", "review-failure-stop",
 })
 
+ISSUE_IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+ISSUE_MESSAGE_LIMIT = 500
+
 
 def earliest_non_pass(turn_results: list) -> str | None:
     for turn in turn_results or []:
@@ -168,7 +173,7 @@ def aggregate_scores(trials: list[dict]) -> dict:
 
 
 def render_improvements_markdown(report: dict) -> str:
-    """Render a backlog snippet from summary improvements + score totals."""
+    """Render a backlog snippet from the shared issue and improvement lists."""
     scores = report.get("scores") or {}
     ratio = scores.get("score_ratio")
     ratio_text = "n/a" if ratio is None else f"{ratio:.0%}"
@@ -184,28 +189,10 @@ def render_improvements_markdown(report: dict) -> str:
             f"{json.dumps(report.get('classifications') or {}, sort_keys=True)}."
         ),
         "",
-        "## Prioritized items",
-        "",
     ]
-    improvements = report.get("improvements") or []
-    if not improvements:
-        lines.append(
-            "No improvement items derived from available trial evidence."
-        )
-        lines.append("")
-        return "\n".join(lines)
-    current = None
-    for item in improvements:
-        priority = item.get("priority") or "P2"
-        if priority != current:
-            current = priority
-            lines.append(f"### {priority}")
-            lines.append("")
-        lines.append(
-            f"- **{item.get('category')}** (`{item.get('case')}`) — "
-            f"{item.get('summary')}"
-        )
-    lines.append("")
+    lines.extend(issues.report_lines(
+        report, heading="Prioritized items", evidence_root=Path(report["sandbox"]),
+    ))
     lines.append(
         "See the sandbox `report.md` for per-trial scores and evidence gaps."
     )
@@ -222,6 +209,45 @@ def write_improvements_backlog(report: dict, path: Path) -> Path:
     target.write_text(render_improvements_markdown(report), encoding="utf-8")
     return target
 
+
+def record_issue(args: argparse.Namespace) -> dict:
+    """Persist one adapter observation beside the sandbox it belongs to."""
+    sandbox = resolve_sandbox(args.sandbox)
+    for field in ("suite", "case", "kind"):
+        if not ISSUE_IDENTIFIER.fullmatch(getattr(args, field) or ""):
+            raise ValueError(f"--{field} must be a lowercase identifier")
+    if args.stage not in issues.STAGES:
+        raise ValueError(f"--stage must be one of: {', '.join(issues.STAGES)}")
+    message = (args.message or "").strip()
+    if not 1 <= len(message) <= ISSUE_MESSAGE_LIMIT:
+        raise ValueError(
+            f"--message must be 1-{ISSUE_MESSAGE_LIMIT} non-blank characters"
+        )
+    if args.turn is not None and args.turn < 1:
+        raise ValueError("--turn must be a positive integer")
+    trial = None
+    if args.trial is not None:
+        relative = Path(args.trial)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("--trial must be a sandbox-relative path")
+        if WORKSPACE_NAME in relative.parts:
+            raise ValueError("--trial must not point inside a trial workspace")
+        trial = str(relative)
+    root = sandbox / "_issues"
+    if root.is_symlink():
+        raise ValueError("Refusing to write issues through a symlinked directory")
+    root.mkdir(exist_ok=True)
+    record = {
+        "suite": args.suite, "case_id": args.case, "case": f"{args.suite}/{args.case}",
+        "trial": trial, "stage": args.stage, "kind": args.kind,
+        "message": message, "turn": args.turn, "recovered": args.recovered,
+    }
+    name = f"{time.time_ns()}-{uuid.uuid4().hex}.json"
+    write_json(root / name, record)
+    return {
+        "sandbox": str(sandbox),
+        "issue": {**record, "evidence": [f"_issues/{name}"]},
+    }
 
 
 def derive_skill_improvements(trials: list[dict]) -> list[dict]:
@@ -240,6 +266,8 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "priority": "P0",
                 "category": "execution",
                 "case": case,
+                "stage": row.get("error_stage") or "unknown",
+                "kind": "run_error",
                 "summary": (
                     f"{case} ended in run_error"
                     + (
@@ -253,6 +281,8 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "priority": "P0",
                 "category": "functionality",
                 "case": case,
+                "stage": "collect",
+                "kind": "check_failure",
                 "summary": f"{case} failed check {label}",
             })
         gaps = row.get("evidence_gaps") or []
@@ -269,6 +299,8 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "priority": "P1",
                 "category": "execution",
                 "case": case,
+                "stage": "collect",
+                "kind": "evidence_gap",
                 "summary": (
                     f"{case} missing evidence for {label} "
                     "(not a pure tool-trace gap)"
@@ -279,18 +311,22 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "priority": "P2",
                 "category": "efficiency",
                 "case": case,
+                "stage": "collect",
+                "kind": "trace_gap",
                 "summary": (
                     f"{case} has incomplete workflow evidence for {', '.join(trace_gaps)}"
                 ),
             })
         for issue in row.get("issues") or []:
-            if issue.get("recovered"):
+            if issue.get("recovered") or issue.get("kind") == "run_error":
                 continue
             priority = "P2" if issue["kind"] == "implausible_host_duration" else "P1"
             items.append({
                 "priority": priority,
                 "category": "execution",
                 "case": case,
+                "stage": issue.get("stage"),
+                "kind": issue.get("kind"),
                 "summary": f"{case}: {issue['message']}",
                 "evidence": issue["evidence"],
             })
@@ -305,6 +341,8 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "priority": "P1",
                 "category": "functionality",
                 "case": case,
+                "stage": "judge",
+                "kind": "score",
                 "summary": (
                     f"{case} semantic criterion {entry.get('criterion_id')} "
                     f"scored {entry.get('score')}/2 ({entry.get('verdict')})"
@@ -369,6 +407,10 @@ def render_summary_markdown(report: dict) -> str:
         f"- Configured execution: {execution_label(report.get('execution', execution(None)))}",
         f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
         f"- Classifications: {json.dumps(report.get('classifications') or {}, sort_keys=True)}",
+        *(
+            [f"- Timeline dates: {dates} (local)"]
+            if (dates := performance.timeline_date_range(report["trials"])) else []
+        ),
         (
             f"- Semantic score total: {scores.get('score_sum', 0)}/"
             f"{scores.get('score_max', 0)} "
@@ -441,42 +483,10 @@ def render_summary_markdown(report: dict) -> str:
     performance_rows = [row for row in report["trials"] if "performance" in row]
     if performance_rows:
         lines.extend(performance.report_lines(performance_rows))
-    if any(row.get("issues") for row in report["trials"]):
-        lines.extend(["", "## Execution diagnostics", ""])
-        for row in report["trials"]:
-            case = f"{row.get('suite')}/{row.get('case_id')}"
-            for issue in row.get("issues") or []:
-                recovered = " (recovered by retry)" if issue.get("recovered") else ""
-                lines.append(f"- `{case}` {issue['message']}{recovered} — `{issue['evidence']}`")
-    lines.extend([
-        "",
-        "## Spex skill improvements",
-        "",
-        "Auto-derived from hard checks and semantic scores in this sandbox. "
-        "Categories: **functionality** (acceptance/workflow), **execution** "
-        "(runtime / non-trace evidence gaps), **efficiency** (trace/host "
-        "friction that slows re-runs). Execution diagnostics with a successful retry "
-        "are excluded from the improvement list.",
-        "",
-    ])
-    improvements = report.get("improvements") or []
-    if not improvements:
-        lines.append(
-            "No improvement items derived from available trial evidence."
-        )
-        lines.append("")
-    else:
-        current = None
-        for item in improvements:
-            priority = item.get("priority") or "P2"
-            if priority != current:
-                current = priority
-                lines.append(f"### {priority}")
-                lines.append("")
-            lines.append(
-                f"- **{item.get('category')}** — {item.get('summary')}"
-            )
-        lines.append("")
+    lines.extend(issues.report_lines(
+        report, heading="Execution diagnostics",
+        evidence_root=Path(report["sandbox"]),
+    ))
     lines.extend([
         "## How to read results",
         "",
@@ -490,6 +500,70 @@ def render_summary_markdown(report: dict) -> str:
         "",
     ])
     return "\n".join(lines)
+
+
+def derived_issue(item: dict, trial: str | None) -> dict:
+    """Express one derived improvement as an addressable issue record."""
+    evidence = list(item.get("evidence") or [])
+    if not evidence and trial:
+        evidence = [f"{trial}/performance.json"]
+    return {
+        "case": item.get("case") or "unknown",
+        "trial": trial,
+        "stage": item.get("stage") if item.get("stage") in issues.STAGES else "unknown",
+        "kind": item.get("kind") or "recommendation",
+        "message": item.get("summary") or item.get("kind") or "derived improvement",
+        "turn": None,
+        "recovered": None,
+        "evidence": evidence,
+        "command": None,
+        "exit_code": None,
+    }
+
+
+def fold_derived_items(observed: list[dict], pairs: list[dict],
+                       items: list[dict], rows: list[dict]) -> None:
+    """Append derived improvements to the shared issue and improvement lists."""
+    trials = {
+        f"{row.get('suite')}/{row.get('case_id')}": row.get("trial") for row in rows
+    }
+    for item in items:
+        record = derived_issue(item, trials.get(item.get("case")))
+        index = len(observed)
+        observed.append(record)
+        _, target, action = issues.recommendation(record)
+        pairs.append({
+            "priority": item.get("priority") or "P2",
+            "category": item.get("category") or "execution",
+            "case": record["case"],
+            "summary": record["message"],
+            "target": target,
+            "recommendation": action,
+            "issue_id": "",
+            "issue_index": index,
+        })
+
+
+def finalize_diagnostics(observed: list[dict], pairs: list[dict]) -> list[dict]:
+    """Assign stable issue ids, drop duplicate improvements, and sort them."""
+    unique = []
+    seen: set[str] = set()
+    for pair in pairs:
+        summary = pair.get("summary") or ""
+        if summary in seen:
+            continue
+        seen.add(summary)
+        unique.append(pair)
+    for index, item in enumerate(observed, start=1):
+        item["id"] = f"I{index:03d}"
+    for pair in unique:
+        pair["issue_id"] = observed[pair["issue_index"]]["id"]
+    order = {"P0": 0, "P1": 1, "P2": 2}
+    unique.sort(key=lambda item: (
+        order.get(item.get("priority"), 9), item.get("case") or "",
+        item.get("issue_id") or "",
+    ))
+    return unique
 
 
 def summarize_sandbox(
@@ -528,6 +602,7 @@ def summarize_sandbox(
             "score_max": 0,
             "scores": [],
         }
+        perf_data = performance.read_performance(path.parent)
         row = {
             "suite": metadata.get("suite"),
             "case_id": metadata.get("case_id"),
@@ -541,22 +616,25 @@ def summarize_sandbox(
             "collection": metadata.get("collection"),
             "spex_ref": metadata.get("spex_ref"),
             "execution": metadata.get("execution", execution(None)),
-            "performance": performance.trial_summary(path.parent, metadata),
-            "issues": issues.trial_issues(
-                path.parent, str(path.parent.relative_to(sandbox)), metadata, judge,
-                performance.read_performance(path.parent),
-            ),
+            "performance": performance.trial_summary(path.parent, metadata, perf_data),
             "earliest_non_pass": earliest_non_pass(metadata.get("turn_results") or []),
             "turn_results": metadata.get("turn_results", []),
             **split,
             **score,
         }
+        row["issues"] = issues.trial_issues(row, metadata, judge, perf_data)
         rows.append(row)
         counts[str(final)] = counts.get(str(final), 0) + 1
         classifications[split["classification"]] = (
             classifications.get(split["classification"], 0) + 1
         )
-    improvements = derive_skill_improvements(rows)
+    observed: list[dict] = []
+    for row in rows:
+        observed.extend(row["issues"])
+    observed = issues.merge_recorded(observed, issues.read_recorded(sandbox))
+    pairs = issues.propose_improvements(observed)
+    fold_derived_items(observed, pairs, derive_skill_improvements(rows), rows)
+    improvements = finalize_diagnostics(observed, pairs)
     report = {
         "schema_version": 1,
         "sandbox": str(sandbox),
@@ -567,6 +645,7 @@ def summarize_sandbox(
         "counts": counts,
         "classifications": classifications,
         "scores": aggregate_scores(rows),
+        "issues": observed,
         "improvements": improvements,
         "cleanup_hint": cleanup_hint(sandbox),
     }
@@ -800,6 +879,35 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     return data
 
 
+# Tuple order IS precedence: the first matching signal id wins (spec 17).
+# Ordering also breaks ties between the English and Chinese patterns, so do not
+# regroup or reorder these entries without changing the spec.
+CLARIFICATION_SIGNALS = (
+    ("question-mark", re.compile(r"[?？]")),
+    ("blocked-on-answer", re.compile(
+        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me)"
+        r"|before I (?:can )?(?:write|continue|proceed|design|finali[sz]e))\b", re.I,
+    )),
+    ("explicit-request", re.compile(
+        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one)\b", re.I,
+    )),
+    ("question-heading", re.compile(r"(?m)^\s*(?:\*\*|#{1,6}\s*)?questions?\b", re.I)),
+    ("explicit-request-zh", re.compile(r"请(?:选择|确认|指定|回复|提供|补充)")),
+    ("blocked-on-answer-zh", re.compile(
+        r"(?:必须|需要)先(?:确定|确认)[^。！？\n]{1,60}才能继续"
+        r"|(?:补充|提供)[^。！？\n]{1,60}后可(?:重新执行|继续)",
+    )),
+)
+
+
+def clarification_signal(reply: str) -> str | None:
+    """Return the first ordered clarification signal found in a host reply."""
+    for signal_id, pattern in CLARIFICATION_SIGNALS:
+        if pattern.search(reply):
+            return signal_id
+    return None
+
+
 def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
                host_duration_ms: int | None = None, host_source: str = "runner",
                host_started_at: str | None = None, host_ended_at: str | None = None,
@@ -883,16 +991,15 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
         })
     turns = metadata["case"]["turns"]
     if index + 1 < len(turns) and not turns[index + 1]["input"].startswith("/spex "):
-        checks.append({
+        signal = clarification_signal(host.reply)
+        check = {
             "check_id": "requests-clarification", "phase": "continuation",
-            "verdict": "pass" if re.search(
-                r"[?？]|\b(?:please|choose|select)\b|请(?:选择|确认|指定|回复|提供|补充)"
-                r"|(?:必须|需要)先(?:确定|确认)[^。！？\n]{1,60}才能继续"
-                r"|(?:补充|提供)[^。！？\n]{1,60}后可(?:重新执行|继续)",
-                host.reply, re.I,
-            ) else "insufficient_evidence",
+            "verdict": "pass" if signal else "insufficient_evidence",
             "evidence_refs": [current["artifacts"]["reply"]["id"]],
-        })
+        }
+        if signal:
+            check["signal"] = signal
+        checks.append(check)
     metadata["session"] = host.session
     metadata["turn_results"].append({"turn": index + 1, "checks": checks})
     metadata["verdict"] = trial_verdict(metadata["turn_results"], index + 1 == len(turns))
@@ -1061,6 +1168,78 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
         "error": record.get("error"),
         "judge": str(output / "judge.json"),
     }
+
+
+def grades_path(directory: Path, suite: str, case_id: str) -> Path:
+    """Return the fixed grades filename for one batch case."""
+    return directory / f"grades-{suite}-{case_id}.json"
+
+
+def check_batch_grades(trial: Path, path: Path) -> None:
+    """Reject a malformed batch grade file before it becomes a stored judgment.
+
+    A single-trial import records malformed grades as a ``judge_error`` result.
+    In a batch close-out that would make the case skip as ``already_graded`` on
+    the next run, so fail it instead and keep the case retryable. The payload is
+    checked against the trial's ready criteria with the same contract
+    ``apply_grades`` uses; when no criterion is ready, parsing is all there is.
+    """
+    raw = path.read_text(encoding="utf-8")
+    metadata = read_json(trial / "trial.json")
+    packet, _, _ = trial_packet(trial, metadata)
+    ready, _ = partition_criteria(packet)
+    if not ready:
+        json.loads(raw)
+        return
+    validate(raw, ready, packet["evidence"])
+
+
+def import_grades_all(sandbox: Path, grades_dir: Path | None, host: str, model: str,
+                      duration_ms: int | None) -> dict:
+    """Import the saved grades of every case in a prepared batch.
+
+    Cases are visited in batch-index insertion order so close-out order matches
+    prepare order. A case that cannot be graded yet is skipped instead of
+    failing the batch; unexpected per-case errors are collected and reported.
+    A missing or malformed batch input fails the whole command so a mistyped
+    ``--sandbox`` or ``--grades-dir`` cannot pass as an empty batch.
+    """
+    sandbox = resolve_sandbox(sandbox)
+    index = sandbox / "batch-index.json"
+    if not index.is_file():
+        raise ValueError(f"Batch index is missing: {index}")
+    entries = manual_batch.read(index)
+    if not isinstance(entries, dict):
+        raise ValueError(f"Batch index must be a JSON object: {index}")
+    directory = Path(grades_dir) if grades_dir is not None else sandbox / "_handoff"
+    if not directory.is_absolute():
+        # Relative paths follow the sandbox, never the coordinator's cwd.
+        directory = sandbox / directory
+    if grades_dir is not None and not directory.is_dir():
+        raise ValueError(f"Grades directory does not exist: {directory}")
+    imported, skipped, errors = [], [], []
+    for key in entries:
+        try:
+            suite, case = key.split("/")
+            trial = resolve_trial(case_dir(sandbox, suite, case))
+            if (trial / "judge.json").is_file():
+                skipped.append({"case": key, "reason": "already_graded"})
+                continue
+            if not (trial / "judge-prompt.txt").is_file():
+                skipped.append({"case": key, "reason": "no_packet"})
+                continue
+            grades = grades_path(directory, suite, case)
+            if not grades.is_file():
+                skipped.append({"case": key, "reason": "no_grades"})
+                continue
+            check_batch_grades(trial, grades)
+            result = import_judge(trial, grades, model, host=host, duration_ms=duration_ms)
+            imported.append({
+                "case": key, "verdict": result["verdict"], "results": result["results"],
+            })
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            errors.append({"case": key, "error": str(error)})
+    return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
 def replay(run_id: str, model: str, timeout: int, *, jobs: int = DEFAULT_JOBS,
@@ -1404,6 +1583,10 @@ def parser() -> argparse.ArgumentParser:
                 "--all", dest="all_cases", action="store_true",
                 help="Prepare every matching case into one shared sandbox",
             )
+            command.add_argument(
+                "--init", action="store_true",
+                help="Also initialize the dispatch queue once every case is prepared",
+            )
     collect = sub.add_parser("collect")
     collect.add_argument("trial", type=Path)
     collect.add_argument("--session", required=True)
@@ -1418,13 +1601,38 @@ def parser() -> argparse.ArgumentParser:
     export = sub.add_parser("export-packet")
     export.add_argument("trial", type=Path)
     imported = sub.add_parser("import-grades")
-    imported.add_argument("trial", type=Path)
     imported.add_argument(
-        "--grades", type=Path, required=True, help="Grades JSON file or - for stdin",
+        "trial", type=Path, nargs="?",
+        help="One prepared trial directory; pass --all instead for a whole batch",
+    )
+    imported.add_argument(
+        "--grades", type=Path, default=None,
+        help="Grades JSON file or - for stdin; required unless --all is used",
+    )
+    imported.add_argument(
+        "--all", dest="all_cases", action="store_true",
+        help=(
+            "Import every saved batch grade and exit 1 when any case fails "
+            "(all-skipped still exits 0)"
+        ),
+    )
+    imported.add_argument(
+        "--sandbox", type=Path, default=None,
+        help="Batch sandbox to close out; required with --all",
+    )
+    imported.add_argument(
+        "--grades-dir", type=Path, default=None,
+        help=(
+            "Directory holding grades-<suite>-<case>.json files; a relative path "
+            "resolves against the sandbox (default: <sandbox>/_handoff)"
+        ),
     )
     imported.add_argument("--host", type=host_name, default="unknown", help="Judge agent host")
     imported.add_argument("--model", type=unknownable, default="unknown", help="Judge model ID")
-    imported.add_argument("--judge-duration-ms", type=duration_argument)
+    imported.add_argument(
+        "--judge-duration-ms", type=duration_argument,
+        help="Measured judge duration; in --all mode every import gets this value",
+    )
     summary = sub.add_parser("summary")
     summary.add_argument(
         "sandbox", type=Path,
@@ -1441,6 +1649,21 @@ def parser() -> argparse.ArgumentParser:
             "(default path: eval/spex/IMPROVEMENTS.md)"
         ),
     )
+    recorded = sub.add_parser(
+        "record-issue", help="Save one adapter observation under <sandbox>/_issues",
+    )
+    recorded.add_argument("sandbox", type=Path)
+    recorded.add_argument("--suite", required=True)
+    recorded.add_argument("--case", required=True)
+    recorded.add_argument("--stage", choices=issues.STAGES, required=True)
+    recorded.add_argument("--kind", required=True)
+    recorded.add_argument("--message", required=True)
+    recorded.add_argument("--trial", default=None)
+    recorded.add_argument("--turn", type=int, default=None)
+    recovered = recorded.add_mutually_exclusive_group()
+    recovered.add_argument("--recovered", dest="recovered", action="store_true",
+                           default=None)
+    recovered.add_argument("--unrecovered", dest="recovered", action="store_false")
     rejudge = sub.add_parser("judge")
     rejudge.add_argument("run_id")
     calibration = sub.add_parser("calibrate")
@@ -1491,6 +1714,24 @@ def prepare_case(
     return handoff
 
 
+def initialize_queue(sandbox: Path, prepared: list[dict], errors: list[dict]) -> dict:
+    """Bootstrap the dispatch queue for one full-batch prepare and report it.
+
+    Queue wiring is best-effort: a batch index that legitimately holds keys
+    outside this selection must not turn a fully prepared batch into a hard
+    failure, so the strict key-set error is reported instead of raised.
+    """
+    if errors:
+        return {"status": "skipped", "reason": "prepare_errors"}
+    with manual_batch.locked(sandbox):
+        try:
+            return manual_batch.initialize(
+                sandbox, [f"{item['suite']}/{item['case']}" for item in prepared],
+            )
+        except ValueError as error:
+            return {"status": "skipped", "reason": "batch_mismatch", "detail": str(error)}
+
+
 def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
     """Prepare every selected case into one sandbox and report per-case errors."""
     if not cases:
@@ -1514,11 +1755,11 @@ def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
         prepare_one, cases, args.execution["jobs"] or DEFAULT_JOBS,
     )
     prepared = [
-        {"suite": case.suite, "case": case.id, **handoff}
+        {"suite": case.suite, "id": case.id, "case": case.id, **handoff}
         for case, handoff, _ in results if handoff is not None
     ]
     errors = [
-        {"suite": case.suite, "case": case.id, "error": error}
+        {"suite": case.suite, "id": case.id, "case": case.id, "error": error}
         for case, _, error in results if error is not None
     ]
     if not prepared:
@@ -1528,13 +1769,16 @@ def prepare_all(cases: list[Case], args: argparse.Namespace) -> dict:
             f"{item['suite']}/{item['case']}: {item['error']}" for item in errors
         )
         raise ValueError(f"No cases could be prepared: {details}")
-    return {
+    payload = {
         "sandbox": str(sandbox),
         "execution": args.execution,
         "prepared": prepared,
         "errors": errors,
         "cleanup_hint": cleanup_hint(sandbox),
     }
+    if args.init:
+        payload["queue_init"] = initialize_queue(sandbox, prepared, errors)
+    return payload
 
 
 def existing_prepare(case: Case, output: Path, sandbox: Path, args: argparse.Namespace):
@@ -1572,6 +1816,10 @@ def execute(args: argparse.Namespace) -> dict:
         return calibrate(args, runtime=runtime)
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
+    if args.command == "import-grades" and args.all_cases:
+        return import_grades_all(
+            args.sandbox, args.grades_dir, args.host, args.model, args.judge_duration_ms,
+        )
     if args.command == "import-grades":
         return import_judge(resolve_trial(args.trial), args.grades, args.model, host=args.host,
                             duration_ms=args.judge_duration_ms)
@@ -1580,6 +1828,8 @@ def execute(args: argparse.Namespace) -> dict:
             args.sandbox,
             write_improvements=args.write_improvements,
         )
+    if args.command == "record-issue":
+        return record_issue(args)
     if args.command == "collect":
         return manual_result(resolve_trial(args.trial), args)
     cases = select_cases(SUITES, suite=args.suite, case_id=args.case, tag=args.tag)
@@ -1626,8 +1876,45 @@ def execute(args: argparse.Namespace) -> dict:
     }
 
 
+def validate_import_args(command: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Enforce the single-trial versus batch grade-import contracts."""
+    if args.all_cases:
+        if args.sandbox is None:
+            command.error("--all requires --sandbox")
+        if args.trial is not None:
+            command.error("--all cannot be combined with a trial path")
+        if args.grades is not None:
+            command.error("--all cannot be combined with --grades")
+    else:
+        if args.sandbox is not None:
+            command.error("--sandbox requires --all")
+        if args.grades_dir is not None:
+            command.error("--grades-dir requires --all")
+        if args.trial is None:
+            command.error("Pass a trial path or --all with --sandbox")
+        elif args.grades is None:
+            command.error("--grades is required unless --all is used")
+
+
+def exit_status(args: argparse.Namespace, result: dict) -> int:
+    """Map a completed command to its process status.
+
+    Batch grade import reports per-case failures inside its payload so callers
+    keep every verdict, and exits 1 to flag that some case needs a retry.
+    Every other successful command exits 0.
+    """
+    if args.command == "import-grades" and getattr(args, "all_cases", False):
+        return 1 if result["errors"] else 0
+    return 0
+
+
 def main() -> int:
-    args = parser().parse_args()
+    command = parser()
+    args = command.parse_args()
+    if args.command == "prepare" and args.init and not args.all_cases:
+        command.error("--init requires --all")
+    if args.command == "import-grades":
+        validate_import_args(command, args)
     try:
         result = execute(args)
     except (ValueError, OSError, TransportError, subprocess.SubprocessError) as error:
@@ -1645,7 +1932,7 @@ def main() -> int:
         print(json.dumps(payload, ensure_ascii=True, indent=2))
         return 2
     print(json.dumps(result, ensure_ascii=True, indent=2))
-    return 0
+    return exit_status(args, result)
 
 
 if __name__ == "__main__":

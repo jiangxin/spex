@@ -172,6 +172,7 @@ def span_command_fields(span: dict) -> dict | None:
         fields["_debug_logged_at"] = spex["debug_logged_at"]
     words = attributes.get("process.command_args")
     if isinstance(words, list) and words and all(isinstance(word, str) for word in words):
+        fields["argv"] = list(words)
         fields["_argv_fingerprint"] = argv_fingerprint(" ".join(words[1:]))
         subcommand = command_verb(words[1:], fields["command"])
         if subcommand:
@@ -276,6 +277,41 @@ def option(words: list[str], flag: str) -> str | None:
     return None
 
 
+# Boolean flags accepted by ``prompt`` / ``review-helper``: they consume no value.
+POSITIONAL_SWITCHES = {
+    "--json", "--quiet", "--verbose", "--debug", "--force", "--all",
+    "--dry-run", "--must-undone", "--must-done", "--help", "-h", "-v", "-d",
+    "--stdin", "--details-from-stdin", "--evidence-from-stdin",
+}
+# Short options that take a value and therefore support the attached form ``-oreport``.
+SHORT_VALUE_OPTIONS = {"-o"}
+
+
+def takes_value(word: str) -> bool:
+    """Return True when ``word`` is an option consuming the following token as its value."""
+    if "=" in word:
+        return False
+    if word in POSITIONAL_SWITCHES:
+        return False
+    # ``-oreport`` carries its value inline, so nothing is consumed.
+    return not (len(word) > 2 and word[:2] in SHORT_VALUE_OPTIONS)
+
+
+def positional_selector(words: list[str], verb: str) -> str | None:
+    """Return the first positional token after the verb, skipping option values."""
+    if verb not in words:
+        return None
+    arguments = iter(words[words.index(verb) + 1:])
+    for word in arguments:
+        if word.startswith("-"):
+            if takes_value(word):
+                next(arguments, None)
+            continue
+        if IDENTIFIER.fullmatch(word):
+            return word
+    return None
+
+
 TODO_VALUE_OPTIONS = {
     "--name", "--todo-file", "--todo-json", "--id", "--from", "--to",
     "--before", "--after", "--step-name", "--details", "--completed-at",
@@ -369,8 +405,7 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                         and name in {"apply-helper", "review-helper", "prompt"}
                         and command.get("subcommand")):
                     # Some pinned refs use a positional spec selector after the verb.
-                    start = words.index(verb) + 1
-                    selector = words[start] if start < len(words) else None
+                    selector = positional_selector(words, verb)
                 if selector and IDENTIFIER.fullmatch(selector):
                     if spec is None:
                         command["spec"] = selector

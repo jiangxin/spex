@@ -6,21 +6,30 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import collect_handoff
+import manual
 import pytest
+import run
+import transport
+import workspace
+
+from tests.conftest import manual_action
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "eval" / "spex"))
-try:
-    import collect_handoff
-    import manual
-    import run
-    import transport
-    import workspace
-finally:
-    sys.path.pop(0)
+
+CLARIFY_INPUTS = ("/spex create Add a setting", "Use a boolean setting")
+
+
+def clarify_case(checks: list[str]) -> dict:
+    """Return the two-turn clarify manifest shared by the fixture and unit tests."""
+    return {
+        "id": "clarify", "fixture": "example", "tags": ["smoke"],
+        "turns": [{"input": text, "checks": list(checks)} for text in CLARIFY_INPUTS],
+    }
 
 
 @pytest.fixture
@@ -29,12 +38,9 @@ def runner(tmp_path, monkeypatch):
     fixture = suite / "fixtures" / "example"
     fixture.mkdir(parents=True)
     (fixture / "app.py").write_text("pass\n", encoding="utf-8")
-    (suite / "cases.json").write_text(json.dumps([{
-        "id": "clarify", "fixture": "example", "tags": ["smoke"], "turns": [
-            {"input": "/spex create Add a setting", "checks": ["no-code-change"]},
-            {"input": "Use a boolean setting", "checks": ["no-code-change"]},
-        ],
-    }]), encoding="utf-8")
+    (suite / "cases.json").write_text(
+        json.dumps([clarify_case(["no-code-change"])]), encoding="utf-8",
+    )
     monkeypatch.setattr(run, "SUITES", suite.parent)
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     return run.parser()
@@ -531,14 +537,14 @@ def test_summary_writes_manifest_and_reports(runner, tmp_path, monkeypatch):
     assert backlog.is_file()
     backlog_text = backlog.read_text(encoding="utf-8")
     assert "# Spex-eval improvement backlog" in backlog_text
-    assert "### P2" in backlog_text
+    assert "**P2**" in backlog_text
     report = Path(result["report"]).read_text(encoding="utf-8")
     assert "example/clarify" in report
     assert "evidence_gap" in report
     assert "## Score summary" in report
     assert "Semantic score total: 1/2" in report
-    assert "## Spex skill improvements" in report
-    assert "### P2" in report
+    assert "### Proposed improvements" in report
+    assert "**P2**" in report
     assert "Please delete the sandbox manually" in result["cleanup_hint"]
 
 
@@ -618,7 +624,7 @@ def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch)
     assert result["trials"][0]["judge_host"] == "ungraded"
     assert result["trials"][0]["judge_model"] == "ungraded"
     report = Path(result["report"]).read_text(encoding="utf-8")
-    assert "### P0" in report
+    assert "**P0**" in report
     assert "functionality" in report
 
 
@@ -656,12 +662,6 @@ def test_prepare_reuses_sandbox_across_cases(runner):
     ]))
     assert first["sandbox"] == second["sandbox"]
     assert Path(second["trial"]) == Path(first["sandbox"]) / "example" / "follow-up"
-
-
-def manual_action(sandbox, *arguments):
-    return manual.dispatch(manual.parser().parse_args([
-        "--sandbox", str(sandbox), *arguments,
-    ]), sandbox)
 
 
 @pytest.mark.slow
@@ -1260,6 +1260,92 @@ def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
     assert run.acceptance(trial, "example", "canary") == {"passed": True}
 
 
+def _start_rewritten_timer(tmp_path, *, started_at, monotonic):
+    """Start a timer then rewrite its pending payload like a second process would."""
+    timer = manual.host_turn_timer
+    timer.start_timer(tmp_path, "docs", "guide", 1)
+    reply = collect_handoff.handoff_reply(tmp_path, "docs", "guide", 1)
+    pending = timer.pending_path(reply)
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    payload.update(started_at=started_at, monotonic=monotonic)
+    pending.write_text(json.dumps(payload), encoding="utf-8")
+    return timer, reply, pending, payload
+
+
+def test_wall_clock_duration_ms_parses_stamps():
+    timer = manual.host_turn_timer
+    ended_at = "2026-11-18T10:01:30+00:00"
+    assert timer.wall_clock_duration_ms("2026-11-18T10:00:00Z", ended_at) == 90000
+    assert timer.wall_clock_duration_ms("not-a-timestamp", ended_at) is None
+    assert (
+        timer.wall_clock_duration_ms("2026-11-18T10:02:00+00:00", ended_at) is None
+    )
+
+
+def test_host_turn_timer_prefers_wall_clock_over_fresh_monotonic(tmp_path, monkeypatch):
+    timer, reply, pending, payload = _start_rewritten_timer(
+        tmp_path,
+        started_at="2026-11-18T10:00:00+00:00", monotonic=1e30,
+    )
+    ended_at = "2026-11-18T10:01:30+00:00"
+    monkeypatch.setattr(timer.performance, "wall_clock_iso", lambda: ended_at)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 90000
+    assert result["started_at"] == payload["started_at"]
+    assert result["ended_at"] == ended_at
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "90000"
+    assert not pending.exists()
+
+
+def test_host_turn_timer_falls_back_when_wall_clock_steps_back(tmp_path, monkeypatch):
+    timer, reply, _pending, _payload = _start_rewritten_timer(
+        tmp_path, started_at="2026-11-18T10:02:00+00:00", monotonic=1000.0,
+    )
+    monkeypatch.setattr(
+        timer.performance, "wall_clock_iso", lambda: "2026-11-18T10:01:00+00:00",
+    )
+    monkeypatch.setattr(timer.time, "monotonic", lambda: 1004.0)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 4000
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "4000"
+
+
+def test_host_turn_timer_falls_back_to_monotonic_delta(tmp_path, monkeypatch):
+    timer, reply, _pending, _payload = _start_rewritten_timer(
+        tmp_path, started_at="not-a-timestamp", monotonic=1000.0,
+    )
+    monkeypatch.setattr(timer.time, "monotonic", lambda: 1005.0)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 5000
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "5000"
+
+
+@pytest.mark.parametrize(
+    "sidecar_of, other_of",
+    [
+        (collect_handoff.host_duration_sidecar, collect_handoff.host_wall_clock_sidecar),
+        (collect_handoff.host_wall_clock_sidecar, collect_handoff.host_duration_sidecar),
+    ],
+    ids=["duration", "wall-clock"],
+)
+def test_host_turn_timer_refuses_symlinked_sidecars(tmp_path, sidecar_of, other_of):
+    timer = manual.host_turn_timer
+    timer.start_timer(tmp_path, "docs", "guide", 1)
+    reply = collect_handoff.handoff_reply(tmp_path, "docs", "guide", 1)
+    pending = timer.pending_path(reply)
+    target = tmp_path / "outside-sidecar"
+    target.write_text("untouched\n", encoding="utf-8")
+    sidecar_of(reply).symlink_to(target)
+    with pytest.raises(SystemExit, match="unsafe timing sidecar"):
+        timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert target.read_text(encoding="utf-8") == "untouched\n"
+    assert not other_of(reply).exists()
+    assert pending.is_file()
+
+
 @pytest.mark.slow
 def test_host_turn_timer_uses_wall_clock_across_processes(tmp_path):
     timer = REPO / "eval" / "spex" / "host_turn_timer.py"
@@ -1387,44 +1473,279 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         "turn_results": [{"turn": 1, "checks": []}, {"turn": 2, "checks": []}],
     })
 
-    def save_trace(turn, calls):
-        log = []
-        for args, code in calls:
-            log.extend([
-                "===== BEGIN 2026-11-16T12:13:14+00:00 =====",
-                f"argv: spex {args}",
-                f"===== END exit={code} duration_ms=1 =====",
-            ])
-        events = run.native_trace.parse(log, "specs/demo/debug.log", set())
-        assert len(events) == len(calls)
-        run.write_json(out / f"turn-{turn}.json", {
-            "artifacts": {"spex-trace": {"value": {"events": events}}},
-        })
+    def host(start, end, duration):
+        return {
+            "started_at": start, "ended_at": end, "duration_ms": duration,
+            "trace": "complete", "parent_usage": None, "subagent_starts": None,
+            "gaps": [],
+        }
 
-    save_trace(1, [
-        ("todo-helper --name demo edit --id step-1", 1),
-        ("todo-helper --name demo edit --id step-1", 0),
-        ("todo-helper --name demo append", 2),
-        ("todo-helper --name demo edit --id step-2", 3),
-        ("todo-helper --name demo edit --id step-3", 0),
-        ("todo-helper --name demo show", 0),
-        ("todo-helper --todo-file path/one.json edit --id step-1", 4),
-        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
-        ("todo-helper --todo-file=path/two.json edit --id step-1", 5),
-        ("todo-helper --todo-file path/two.json edit --id step-1", 0),
-    ])
-    save_trace(2, [("todo-helper --name demo append", 0)])
+    def ns(value):
+        return round(datetime.fromisoformat(value).timestamp() * 1_000_000_000)
+
+    def commands(calls):
+        return [
+            {"command": name, "subcommand": subcommand, "exit_code": code,
+             "duration_ms": 1, "spec": spec, "step": step,
+             "todo_file_hash": todo, "start_ns": ns(start), "end_ns": ns(start) + 1}
+            for name, subcommand, code, spec, step, todo, start in calls
+        ]
+
+    run.write_json(out / "performance.json", {
+        "schema_version": 1,
+        "turns": {
+            "1": {
+                "host": host("2026-11-16T12:00:00+00:00",
+                             "2026-11-16T12:10:00+00:00", 600000),
+                "spex_commands": commands([
+                    ("todo-helper", "edit", 1, "demo", "step-1", None,
+                     "2026-11-16T12:01:00+00:00"),
+                    ("todo-helper", "edit", 0, "demo", "step-1", None,
+                     "2026-11-16T12:01:30+00:00"),
+                    ("todo-helper", "append", 2, "demo", None, None,
+                     "2026-11-16T12:02:00+00:00"),
+                    ("todo-helper", "edit", 3, "demo", "step-2", None,
+                     "2026-11-16T12:03:00+00:00"),
+                    ("todo-helper", "edit", 0, "demo", "step-3", None,
+                     "2026-11-16T12:04:00+00:00"),
+                    ("todo-helper", "show", 6, "demo", None, None,
+                     "2026-11-16T12:05:00+00:00"),
+                    ("todo-helper", "edit", 4, None, "step-1", "one",
+                     "2026-11-16T12:06:00+00:00"),
+                    ("todo-helper", "edit", 0, None, "step-1", "two",
+                     "2026-11-16T12:07:00+00:00"),
+                    ("todo-helper", "edit", 5, None, "step-1", "two",
+                     "2026-11-16T12:08:00+00:00"),
+                    ("todo-helper", "edit", 0, None, "step-1", "two",
+                     "2026-11-16T12:08:30+00:00"),
+                    ("todo-helper", "show", 0, "demo", None, None,
+                     "2026-11-16T12:11:00+00:00"),
+                ]),
+            },
+            "2": {
+                "host": host("2026-11-16T12:11:00+00:00",
+                             "2026-11-16T12:15:00+00:00", 240000),
+                "spex_commands": commands([
+                    ("todo-helper", "append", 0, "demo", None, None,
+                     "2026-11-16T12:12:00+00:00"),
+                ]),
+            },
+        },
+    })
     result = run.summarize_sandbox(sandbox)
     row = run.read_json(Path(result["report_json"]))["trials"][0]
     assert [(i["command"], i["recovered"]) for i in row["issues"]] == [
         ("todo-helper edit", True), ("todo-helper append", False),
-        ("todo-helper edit", False), ("todo-helper edit", False), ("todo-helper edit", True),
+        ("todo-helper edit", False), ("todo-helper show", False),
+        ("todo-helper edit", False), ("todo-helper edit", True),
     ]
+    assert {(i["stage"], i["kind"], i["turn"]) for i in row["issues"]} == {
+        ("script", "script_exit", 1),
+    }
+    assert all(
+        i["evidence"] == ["example/retry/performance.json"] for i in row["issues"]
+    )
     markdown = Path(result["report"]).read_text(encoding="utf-8")
-    assert "todo-helper edit exited with code 1 (recovered by retry)" in markdown
-    assert "example/retry/turn-1.json" in markdown
+    assert "todo-helper edit exited with code 1" in markdown
+    assert "recovered: yes" in markdown
+    assert "example/retry/performance.json" in markdown
     assert [item["summary"] for item in result["improvements"]] == [
         "example/retry: Turn 1: todo-helper append exited with code 2",
         "example/retry: Turn 1: todo-helper edit exited with code 3",
+        "example/retry: Turn 1: todo-helper show exited with code 6",
         "example/retry: Turn 1: todo-helper edit exited with code 4",
     ]
+
+
+def test_record_issue_writes_a_file_and_summary_merges_it(
+    runner, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    out = workspace.case_dir(sandbox, "example", "merge")
+    out.mkdir(parents=True)
+    run.write_json(out / "trial.json", {
+        "suite": "example", "case_id": "merge", "verdict": "pass",
+        "turn_results": [{"turn": 1, "checks": []}],
+    })
+    run.write_json(out / "performance.json", {
+        "schema_version": 1,
+        "turns": {"1": {"host": {
+            "started_at": "2026-11-16T12:00:00+00:00",
+            "ended_at": "2026-11-16T12:10:00+00:00",
+            "duration_ms": 600000, "trace": "complete", "gaps": [],
+            "parent_usage": None, "subagent_starts": None,
+        }, "spex_commands": [{
+            "command": "todo-helper", "subcommand": "edit", "exit_code": 1,
+            "duration_ms": 1, "spec": "demo", "step": "step-1",
+            "todo_file_hash": None,
+            "start_ns": 1_700_000_000_000_000_000,
+            "end_ns": 1_700_000_000_000_000_001,
+        }]}},
+    })
+    recorded = run.record_issue(run.parser().parse_args([
+        "record-issue", str(sandbox), "--suite", "example", "--case", "merge",
+        "--stage", "script", "--kind", "script_exit", "--turn", "1",
+        "--trial", "example/merge", "--unrecovered",
+        "--message", "adapter saw the retry fail",
+    ]))
+    assert recorded["sandbox"] == str(sandbox)
+    assert recorded["issue"]["case"] == "example/merge"
+    files = list((sandbox / "_issues").glob("*.json"))
+    assert len(files) == 1
+
+    backlog = tmp_path / "IMPROVEMENTS.md"
+    result = run.summarize_sandbox(sandbox, write_improvements=backlog)
+    report = run.read_json(Path(result["report_json"]))
+    issue = next(item for item in report["issues"] if item["kind"] == "script_exit")
+    assert issue["turn"] == 1
+    assert issue["message"].endswith("adapter saw the retry fail")
+    assert issue["evidence"] == [
+        "example/merge/performance.json", "_issues/" + files[0].name,
+    ]
+    assert issue["id"].startswith("I")
+    improvement = next(item for item in report["improvements"] if item["issue_id"] == issue["id"])
+    assert improvement["case"] == "example/merge"
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert f"**{issue['id']}**" in markdown
+    assert f"— {issue['id']}" in markdown
+    assert f"— {issue['id']}" in backlog.read_text(encoding="utf-8")
+
+
+def test_record_issue_rejects_unsafe_requests(runner, tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    command = run.parser()
+
+    def attempt(*extra):
+        args = command.parse_args([
+            "record-issue", str(sandbox), "--suite", "example", "--case", "merge",
+            "--stage", "host", "--kind", "capacity", *extra,
+        ])
+        return run.record_issue(args)
+
+    with pytest.raises(ValueError, match="message"):
+        attempt("--message", "   ")
+    with pytest.raises(ValueError, match="workspace"):
+        attempt("--message", "refused", "--trial", "example/merge/workspace/repo")
+    with pytest.raises(ValueError, match="sandbox-relative"):
+        attempt("--message", "refused", "--trial", "../escape")
+    (sandbox / "_issues").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        attempt("--message", "refused")
+
+
+def test_record_issue_cli_round_trips_the_recovered_flag(
+    runner, tmp_path, monkeypatch, capsys,
+):
+    monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
+    sandbox = run.resolve_sandbox(None)
+    monkeypatch.setattr(sys, "argv", [
+        "run.py", "record-issue", str(sandbox), "--suite", "example",
+        "--case", "merge", "--stage", "host", "--kind", "capacity",
+        "--message", "host refused a session", "--recovered",
+    ])
+    assert run.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["sandbox"] == str(sandbox)
+    assert payload["issue"]["recovered"] is True
+
+    result = run.summarize_sandbox(sandbox)
+    issue = next(item for item in result["issues"] if item["kind"] == "capacity")
+    assert issue["recovered"] is True
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "recovered: yes" in markdown
+
+
+SOURCE_HANDOFF_TURN_TWO = """\
+The case asks for a numeric limit while the source spec fixes it at ten, so the
+two conflict on the allowed range.
+
+I need you to resolve it before I write the spec.
+
+**Question 1 — allowed range for --limit**
+- 1 to 10 (matches the current source)
+- 1 to 100 (matches the sibling command)
+
+tell me the exact rule you want and I will continue."""
+
+SPEC_SUMMARY_TURN_THREE = """\
+Implemented the `--limit` option on the example command.
+
+Files changed:
+- `app.py` records the parsed limit on the settings object.
+- `tests/test_app.py` covers the default and the explicit value.
+
+Verification:
+- `pytest tests/test_app.py` passes.
+- The default stays at ten, so existing callers are unaffected."""
+
+
+def test_clarification_signal_reads_the_source_handoff_conflict_reply():
+    assert run.clarification_signal(SOURCE_HANDOFF_TURN_TWO) == "blocked-on-answer"
+
+
+@pytest.mark.parametrize("reply, expected", [
+    ("**Question 1 — default value**\nOptions: 10 or 100.", "question-heading"),
+    ("Which default should I use?\n**Question 1 — default value**", "question-mark"),
+    ("Which default？", "question-mark"),
+    ("Please do one of the following:\n1. Keep the default at 10\n2. Raise it to 100",
+     "explicit-request"),
+    ("Once you confirm the default I will continue.", "blocked-on-answer"),
+    ("I cannot proceed before I can design the schema.", "blocked-on-answer"),
+    ("## questions\n- 10\n- 100", "question-heading"),
+    ("请确认默认范围后再继续。", "explicit-request-zh"),
+    ("请选择其中一种方案：10 或 100。", "explicit-request-zh"),
+    ("你必须先确认默认范围才能继续。", "blocked-on-answer-zh"),
+    ("补充失败用例的期望输出后可重新执行。", "blocked-on-answer-zh"),
+    (SPEC_SUMMARY_TURN_THREE, None),
+])
+def test_clarification_signal_returns_the_first_matching_signal(reply, expected):
+    assert run.clarification_signal(reply) == expected
+
+
+def seed_continuation_trial(tmp_path, reply):
+    """Pre-seed a started continuation turn so `store_turn` reuses its evidence."""
+    output = tmp_path / "example" / "clarify"
+    output.mkdir(parents=True)
+    first_input = CLARIFY_INPUTS[0]
+    run.write_json(output / "turn-0.json", {"turn": 0, "artifacts": {}})
+    run.write_json(output / "turn-1.json", {"turn": 1, "artifacts": {
+        "input": {"id": "turn-1:input", "value": first_input},
+        "reply": {"id": "turn-1:reply", "value": reply},
+    }})
+    metadata = {
+        "suite": "example", "case_id": "clarify", "turn_results": [],
+        "case": clarify_case([]),
+    }
+    trial = workspace.Trial(tmp_path / "workspace", "ref")
+    return output, metadata, trial
+
+
+def record_final_turn(output, trial, metadata):
+    """Store the final turn from its pre-seeded evidence to settle the verdict."""
+    reply = "Done."
+    run.write_json(output / "turn-2.json", {"turn": 2, "artifacts": {
+        "input": {"id": "turn-2:input", "value": CLARIFY_INPUTS[1]},
+        "reply": {"id": "turn-2:reply", "value": reply},
+    }})
+    run.store_turn(output, trial, metadata, transport.HostTurn("same-session", reply, None, ""))
+
+
+@pytest.mark.parametrize("reply, expected, final_verdict", [
+    ("**Question 1 — default value**\n- keep 10\n- raise to 100", "question-heading", "pass"),
+    (SPEC_SUMMARY_TURN_THREE, None, "insufficient_evidence"),
+])
+def test_store_turn_records_the_clarification_signal(tmp_path, reply, expected, final_verdict):
+    output, metadata, trial = seed_continuation_trial(tmp_path, reply)
+    host = transport.HostTurn("same-session", reply, None, "")
+    run.store_turn(output, trial, metadata, host)
+    checks = run.read_json(output / "trial.json")["turn_results"][0]["checks"]
+    assert checks[0]["check_id"] == "requests-clarification"
+    assert checks[0]["phase"] == "continuation"
+    assert checks[0]["evidence_refs"] == ["turn-1:reply"]
+    assert checks[0]["verdict"] == ("pass" if expected else "insufficient_evidence")
+    assert checks[0].get("signal") == expected
+    assert ("signal" in checks[0]) is bool(expected)
+    record_final_turn(output, trial, metadata)
+    assert run.read_json(output / "trial.json")["verdict"] == final_verdict

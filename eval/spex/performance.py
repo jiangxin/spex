@@ -454,8 +454,9 @@ def update(output: Path, *, turn: int | None = None, repo: Path | None = None,
             if native is not None:
                 metrics["spex_commands"] = [
                     {key: event[key] for key in (
-                        "log", "sequence", "spec", "command", "subcommand", "exit_code",
-                        "duration_ms", "start_ns", "end_ns", "at",
+                        "log", "sequence", "spec", "step", "todo_file_hash", "command",
+                        "subcommand", "exit_code", "duration_ms", "start_ns", "end_ns",
+                        "argv", "at",
                     ) if key in event}
                     for event in native.get("timing_events", native.get("events", []))
                     if "command" in event
@@ -482,7 +483,44 @@ def complete_sum(values):
 
 
 def format_seconds(duration_ms: int | float | None) -> str:
-    return "unknown" if duration_ms is None else str(duration_ms / 1000)
+    return "unknown" if duration_ms is None else f"{duration_ms / 1000:.1f}"
+
+
+def _local_dt(value, tz=None):
+    """Parse an ISO timestamp and convert it to `tz` or the local zone at that instant."""
+    parsed = timestamp(value)
+    if parsed is None:
+        return None
+    # No-argument astimezone() resolves the local zone per instant, so DST applies.
+    return parsed.astimezone() if tz is None else parsed.astimezone(tz)
+
+
+def local_time_text(value, tz=None) -> str | None:
+    """Render an ISO timestamp as a local wall-clock time of day."""
+    local = _local_dt(value, tz)
+    return None if local is None else local.strftime("%H:%M:%S")
+
+
+def argv_list(value) -> list[str] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    if any(not isinstance(word, str) for word in value):
+        return None
+    return list(value)
+
+
+ARGV_LIMIT = 80
+
+
+def format_argv_cell(argv) -> str:
+    """Join a recorded argv for a table cell, truncating and escaping."""
+    words = argv_list(argv)
+    if words is None:
+        return "—"
+    text = re.sub(r"[\r\n]+", " ", " ".join(words)).strip()
+    if len(text) > ARGV_LIMIT:
+        text = text[:ARGV_LIMIT - 1] + "…"
+    return text.replace("|", "\\|")
 
 
 def iso_from_ns(value: int | None) -> str | None:
@@ -544,7 +582,7 @@ def command_timeline(turns: dict, workflow: dict) -> list[dict]:
             continue
         verb = command.get("subcommand")
         exit_code = command.get("exit_code")
-        commands.append({
+        entry = {
             "turn": index,
             "command": name,
             "subcommand": verb if isinstance(verb, str) and IDENTIFIER.fullmatch(verb) else None,
@@ -553,7 +591,12 @@ def command_timeline(turns: dict, workflow: dict) -> list[dict]:
             "logged_at": report_stamp(command.get("at") or command.get("logged_at")),
             "duration_ms": nonnegative(command.get("duration_ms")),
             "exit_code": exit_code if type(exit_code) is int else None,
-        })
+            "argv": argv_list(command.get("argv")),
+        }
+        for key in ("spec", "step", "todo_file_hash"):
+            if isinstance(command.get(key), str):
+                entry[key] = command[key]
+        commands.append(entry)
     return sorted(commands, key=lambda command: timeline_order(
         command["started_at"] or command["logged_at"],
     ))
@@ -574,13 +617,23 @@ def summarize_timeline(data: dict, metadata: dict, pending_turns: bool) -> dict:
         index = result.get("turn") if isinstance(result, dict) else None
         indices.add(index if type(index) is int and index > 0 else default)
     timeline = []
+    case = metadata.get("case")
+    planned = case.get("turns") if isinstance(case, dict) else None
     for index in sorted(indices):
         host = recorded.get(index, {}).get("host", {})
+        turn_input = None
+        if isinstance(planned, list) and len(planned) >= index:
+            item = planned[index - 1]
+            if isinstance(item, dict) and isinstance(item.get("input"), str):
+                turn_input = item["input"]
+        is_spex_skill = bool(turn_input and turn_input.startswith("/spex "))
         timeline.append({
             "index": index,
             "started_at": report_stamp(host.get("started_at")),
             "ended_at": report_stamp(host.get("ended_at")),
             "duration_ms": nonnegative(host.get("duration_ms")),
+            "is_spex_skill": is_spex_skill,
+            "skill_input": turn_input if is_spex_skill else None,
         })
     case_start = timeline[0]["started_at"] if timeline and timeline[0]["index"] == 1 else None
     case_end = timeline[-1]["ended_at"] if timeline and not pending_turns else None
@@ -596,9 +649,11 @@ def summarize_timeline(data: dict, metadata: dict, pending_turns: bool) -> dict:
     }
 
 
-def trial_summary(output: Path, metadata: dict) -> dict:
+def trial_summary(output: Path, metadata: dict, data: dict | None = None) -> dict:
     try:
-        return summarize_metrics(output, metadata, read_performance(output))
+        return summarize_metrics(
+            output, metadata, data if data is not None else read_performance(output),
+        )
     except (AttributeError, KeyError, TypeError, ValueError):
         return summarize_metrics(output, metadata, {
             "gaps": ["unreadable_performance_file"],
@@ -683,30 +738,23 @@ def summarize_metrics(output: Path, metadata: dict, data: dict) -> dict:
 def report_lines(rows: list[dict]) -> list[str]:
     lines = [
         "", "## Performance", "",
-        "| Case | Host turns | Duration (s) | Source | Slowest step | "
-        "Rounds; full / delta passes | Subagents | "
-        "Input / cached / output / reasoning tokens | Detail |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Case | Host turns | Duration (s) | Source | Detail |",
+        "| --- | --- | --- | --- | --- |",
     ]
     samples = {}
     for row in rows:
         perf = row["performance"]
         case = f"{row['suite']}/{row['case_id']}"
-        step = perf["slowest_step"]
-        slowest = f"{step['step']} ({step['duration_ms']} ms)" if step else None
+        detail = f"[metrics]({row['trial']}/{perf['detail']})" if perf["detail"] else None
         if perf["interrupted_steps"]:
             stopped = ", ".join(
                 f"{task['step']} ({task.get('last_phase') or task['resume_phase'] or 'unknown'})"
                 for task in perf["interrupted_steps"]
             )
-            slowest = f"{slowest or 'unknown'} / interrupted {stopped}"
-        detail = f"[metrics]({row['trial']}/{perf['detail']})" if perf["detail"] else "—"
+            detail = f"{detail or 'metrics'} — interrupted {stopped}"
         duration_ms, source = perf["duration_ms"], perf["duration_source"]
-        fields = [case, perf["host_turns"], format_seconds(duration_ms), source, slowest,
-                  f"{display([perf['review_rounds']])}; "
-                  f"{display((perf['full_reviews'], perf['delta_reviews']))}",
-                  perf["subagent_starts"],
-                  display(perf["parent_usage"].values()), detail]
+        fields = [case, perf["host_turns"], format_seconds(duration_ms), source,
+                  detail or "—"]
         cells = ["unknown" if value is None else str(value) for value in fields]
         lines.append("| " + " | ".join(cells) + " |")
         setting = execution_label(row.get("execution", execution(None)))
@@ -759,8 +807,8 @@ def timeline_lines(rows: list[dict]) -> list[str]:
         case = f"{row['suite']}/{row['case_id']}"
         lines.extend([
             f"### {case} ({row['trial']})", "",
-            "| Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit | Argv |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ])
         lines.append(timeline_row("Case start", started=perf["case_started_at"],
                                   elapsed=0 if perf["case_started_at"] else None))
@@ -773,13 +821,23 @@ def timeline_lines(rows: list[dict]) -> list[str]:
                 (end, timeline_row(f"{label} end", ended=end, duration=turn["duration_ms"],
                                    elapsed=timeline_elapsed(end, perf["case_started_at"]))),
             ])
+            if turn.get("is_spex_skill"):
+                prompt = skill_label(turn.get("skill_input"))
+                entries.extend([
+                    (start, timeline_row(f"skill start: {prompt}", started=start,
+                                         elapsed=turn["elapsed_ms"])),
+                    (end, timeline_row(f"skill end: {prompt}", ended=end,
+                                       duration=turn["duration_ms"],
+                                       elapsed=timeline_elapsed(
+                                           end, perf["case_started_at"]))),
+                ])
         for command in commands:
             label = " ".join(filter(None, (command["command"], command["subcommand"])))
             start, logged = command["started_at"], command["logged_at"]
             entries.append((start or logged, timeline_row(
                 f"`{label}`", started=start, ended=command["ended_at"], logged=logged,
                 duration=command["duration_ms"], elapsed=command["elapsed_ms"],
-                exit_code=command["exit_code"],
+                exit_code=command["exit_code"], argv=command.get("argv"),
             )))
         entries.sort(key=lambda entry: timeline_order(entry[0]))
         lines.extend(line for _, line in entries)
@@ -789,12 +847,40 @@ def timeline_lines(rows: list[dict]) -> list[str]:
     return lines
 
 
+def local_date(value, tz=None):
+    """Return the local calendar date of an ISO timestamp."""
+    local = _local_dt(value, tz)
+    return None if local is None else local.date()
+
+
+def timeline_date_range(rows, tz=None) -> str | None:
+    """Return the local date range covered by the reported trials."""
+    dates = []
+    for row in rows:
+        perf = row.get("performance") or {}
+        start, end = perf.get("case_started_at"), perf.get("case_ended_at")
+        turns = perf.get("host_turns_timeline") or []
+        if not start and turns:
+            start = turns[0].get("started_at")
+        if not end and turns:
+            end = turns[-1].get("ended_at")
+        dates.extend(day for day in (local_date(start, tz), local_date(end, tz)) if day)
+    if not dates:
+        return None
+    first, last = min(dates), max(dates)
+    return first.isoformat() if first == last else f"{first.isoformat()} – {last.isoformat()}"
+
+
+def skill_label(value) -> str:
+    text = value if isinstance(value, str) else "unknown"
+    return re.sub(r"\s+", " ", text).replace("|", "\\|").strip()
+
+
 def timeline_row(label, *, started=None, ended=None, logged=None, duration=None, elapsed=None,
-                 exit_code=None) -> str:
-    fields = (label, started, ended, logged, format_seconds(duration), format_seconds(elapsed),
+                 exit_code=None, argv=None) -> str:
+    fields = (label, local_time_text(started), local_time_text(ended),
+              local_time_text(logged), format_seconds(duration), format_seconds(elapsed),
               exit_code)
-    return "| " + " | ".join("unknown" if value is None else str(value) for value in fields) + " |"
-
-
-def display(values) -> str:
-    return " / ".join("unknown" if value is None else str(value) for value in values)
+    cells = ["unknown" if value is None else str(value) for value in fields]
+    cells.append(format_argv_cell(argv))
+    return "| " + " | ".join(cells) + " |"
