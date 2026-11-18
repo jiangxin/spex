@@ -682,9 +682,9 @@ def cli_dirty(argv=None):
 
 
 def _do_verify_handoff(args):
-    """Validate evidence and the unchanged checkout for a general task."""
+    """Validate evidence and the expected checkout for a general task."""
     from branch import get_current_branch
-    from common import load_meta, resolve_spec_dir
+    from common import load_meta, resolve_spec_dir, sha_from_commit_title
     from config import get_project_context
     from todo_helper import normalize_skip_commit, validate_todo
 
@@ -697,9 +697,7 @@ def _do_verify_handoff(args):
         task = next((item for item in todo if not item["completed_at"]), None)
         if task is None or task["id"] != args.id:
             raise ValueError("handoff task is not the first unfinished step")
-        if task["commit_title"] or normalize_skip_commit(task.get("skip_commit")) == "false":
-            raise ValueError("general tasks requiring a commit are not supported yet")
-        evidence = validate_acceptance_evidence(json.load(sys.stdin))
+        skip_commit = normalize_skip_commit(task.get("skip_commit"))
         ctx = get_project_context()
         cwd = resolve_apply_git_cwd(meta, ctx.top_workdir or ctx.cwd)
         if not ctx.spex_root:
@@ -707,11 +705,20 @@ def _do_verify_handoff(args):
         if meta.spex_branch and get_current_branch(cwd) != meta.spex_branch:
             raise ValueError("checkout is no longer on the spec branch")
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd, text=True).strip()
+        if task["commit_title"]:
+            if ctx.config.get("step_review") is not False or skip_commit == "true":
+                raise ValueError("this general task cannot complete through the committed path")
+            recorded = sha_from_commit_title(task["commit_title"])
+            if not recorded or not head.startswith(recorded):
+                raise ValueError("HEAD does not match the step's recorded commit")
+        elif skip_commit == "false":
+            raise ValueError("the general task requires a recorded commit")
         if head != args.head:
             raise ValueError("HEAD changed during general task execution")
         dirty, paths, _ = collect_dirty(ctx.spex_root, cwd=cwd)
         if dirty:
             raise ValueError(f"working tree changed outside spex_root: {', '.join(paths)}")
+        evidence = validate_acceptance_evidence(json.load(sys.stdin))
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         logger.error("Error: invalid general task handoff: %s", exc)
         sys.exit(1)
@@ -788,7 +795,7 @@ def _build_parser():
     p_handoff = subs.add_parser("verify-handoff", help="Validate general task evidence from stdin")
     p_handoff.add_argument("--name", required=True, help="Spec name")
     p_handoff.add_argument("--id", required=True, type=int, help="Current task ID")
-    p_handoff.add_argument("--head", required=True, help="Full HEAD SHA before execution")
+    p_handoff.add_argument("--head", required=True, help="Full SHA of the accepted checkout")
 
     return parser
 

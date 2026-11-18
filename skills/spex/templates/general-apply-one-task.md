@@ -20,7 +20,8 @@ sources for the work.
 {{ completed_tasks_concise }}
 </completed-steps>
 
-- Read the specified sources and use the agreed external output paths.
+- Read the specified sources and use the agreed output paths, with
+  repository-relative paths resolved from the bound worktree.
 - Check existing outputs against the acceptance criteria. Reuse verified
   results, complete missing work, and preserve references for later steps.
 - Verify each criterion on the actual deliverables. Record successful

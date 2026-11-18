@@ -1124,7 +1124,10 @@ def _do_apply_one_task(args):
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
             "skip_commit": metadata.get("skip_commit", "false"),
-            **({"task_mode": GENERAL} if metadata.get("task_mode") == GENERAL else {}),
+            **({
+                "task_mode": GENERAL,
+                "general_commit_allowed": _general_commit_allowed(),
+            } if metadata.get("task_mode") == GENERAL else {}),
         }), args.output)
     else:
         _output_rendered(rendered, args.output)
@@ -1157,6 +1160,10 @@ def _read_stdin_extra_vars(stdin_flag):
     return extra_vars
 
 
+def _general_commit_allowed():
+    return get_project_context().config.get("step_review") is False
+
+
 def _do_apply_commit(args):
     """Handle apply-commit subcommand."""
 
@@ -1174,8 +1181,8 @@ def _do_apply_commit(args):
                 _output_rendered(json.dumps({"prompt": "", "all_done": True}), args.output)
             sys.exit(0)
 
-        if metadata.get("task_mode") == GENERAL:
-            raise TemplateError("General tasks requiring a commit are not supported yet.")
+        if metadata.get("task_mode") == GENERAL and not _general_commit_allowed():
+            raise TemplateError("General tasks requiring a commit need step_review=false.")
         rendered = render_prompt("apply-commit", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)

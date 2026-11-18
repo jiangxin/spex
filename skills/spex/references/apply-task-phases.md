@@ -72,10 +72,11 @@ route as below.
     missing → `false`)
   - `$task_mode` ← `"task_mode"` (missing → `software`). Reset
     the mode and clear prior acceptance evidence on every task prompt.
-    For `general`, stop if the task already has a pending commit or
-    requires one (`skip_commit=false`). Otherwise record the full
-    `$base_head` with `git rev-parse HEAD` in the bound worktree
-    before implementation or sub-agent launch.
+    For `general`, bind `$general_commit_allowed` from
+    `"general_commit_allowed"`. If false, stop before implementation
+    when the step has a pending commit or `skip_commit=false`.
+    Record the full `$base_head` with `git rev-parse HEAD` in the bound
+    worktree before implementation or sub-agent launch.
 
 - **Single render:** Call `prompt apply-one-task` **once** per task
   iteration. Reuse `$task_prompt` for Phase 4 and sub-agent
@@ -114,8 +115,9 @@ route as below.
 - Deliver production code + tests together when the step changes
   code; docs-only / no-op steps may leave the tree clean
 - For `general`, read the agreed sources and write local outputs only
-  to the agreed paths outside the repository. Resolve repository-relative source
-  paths in the bound worktree. Reuse existing outputs that pass the task
+  to agreed paths. Resolve repository-relative paths in the bound
+  worktree. Write versioned outputs only if `$general_commit_allowed`
+  is true and the step can commit. Reuse existing outputs that pass the task
   criteria. Stop with the task unfinished if an input or verification
   fails. Keep the output paths and a successful record for each criterion:
   `kind: command`, `criterion`, `command`, integer `exit_code: 0`; or
@@ -164,9 +166,9 @@ CLI; do **not** re-implement by hand in normal apply):
 
 Branch on `$skip_commit` + `$dirty`:
 
-For `general` tasks, a dirty tree stops before Phase 5 even with
-`skip_commit=auto`. Report the paths and leave the task unfinished.
-Use the clean skip arms for verified general deliverables.
+For `general` tasks, a dirty tree stops before Phase 5 when
+`$general_commit_allowed` is false, including `skip_commit=auto`.
+Report the paths and leave the task unfinished.
 
 | `$skip_commit` | `$dirty` | Action |
 |----------------|----------|--------|
@@ -295,13 +297,20 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   **`completed_at`** using a new short transaction. The step is
   complete after that transaction commits.
 
-- For a clean `general` task, first validate the handoff with the
-  pre-execution SHA and the task's successful evidence, in either apply
-  entrypoint:
+- For `general` in either apply entrypoint, use the pre-execution SHA
+  as `$acceptance_head` after a clean skip. For a committed task, read
+  the recorded commit title of the current step and compare its SHA
+  with the full current HEAD in the bound worktree. Stop if they do not
+  match. Otherwise use that full HEAD as `$acceptance_head` and verify
+  the actual committed deliverables against every acceptance criterion.
+  Repeat this verification on resume without rerunning implementation
+  or creating another commit. Leave the step unfinished if evidence is
+  unavailable or any check fails.
+- Validate the handoff using the selected SHA and successful evidence:
 
   ```bash
   $spex_skill_dir/scripts/spex apply-helper verify-handoff \
-    --name "$spec_name" --id "$current_task_id" --head "$base_head" <<'EOF'
+    --name "$spec_name" --id "$current_task_id" --head "$acceptance_head" <<'EOF'
   <JSON array of acceptance evidence>
   EOF
   ```

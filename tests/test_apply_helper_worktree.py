@@ -93,7 +93,7 @@ def test_general_external_handoff_completes_without_commit(tmp_path, monkeypatch
     _git_init_with_commit(repo)
     root = tmp_path / "spex"
     config = tmp_path / "spex.toml"
-    config.write_text(f'[spex]\nspex_root = "{root}"\n', encoding="utf-8")
+    config.write_text(f'[spex]\nspex_root = "{root}"\nstep_review = true\n', encoding="utf-8")
     monkeypatch.setenv("SPEX_CONFIG_FILE", str(config))
     spec = root / "specs" / "external-report"
     spec.mkdir(parents=True)
@@ -156,6 +156,93 @@ def test_general_external_handoff_completes_without_commit(tmp_path, monkeypatch
     assert done["commit_title"] == ""
     assert done["acceptance_evidence"] == evidence
     assert head() == base
+
+
+@pytest.mark.slow
+def test_general_committed_handoff_resumes_only_the_recorded_head(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _git_init_with_commit(repo)
+    root = tmp_path / "spex"
+    config = tmp_path / "spex.toml"
+    monkeypatch.setenv("SPEX_CONFIG_FILE", str(config))
+    spec = root / "specs" / "versioned-guide"
+    spec.mkdir(parents=True)
+    meta = spec / "meta.json"
+    metadata = {"workdir": str(repo), "task_mode": "general", "spex_branch": "main"}
+    meta.write_text(json.dumps(metadata))
+    (spec / "spec.md").write_text("# Guide\n")
+    todo = spec / "todo.json"
+    step = {
+        "id": 1, "name": "Write guide", "details": "Document the repository workflow",
+        "completed_at": "", "commit_title": "",
+    }
+    todo.write_text(json.dumps([step]))
+    script = Path(__file__).resolve().parents[1] / "skills" / "spex" / "scripts" / "spex"
+
+    def cli(*args, stdin=""):
+        return subprocess.run([sys.executable, str(script), *args], cwd=repo,
+                              input=stdin, text=True, capture_output=True)
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
+
+    config.write_text(f'[spex]\nspex_root = "{root}"\nstep_review = true\n')
+    base = git("rev-parse", "HEAD")
+    before = todo.read_bytes()
+    assert not json.loads(cli("prompt", "apply-one-task", spec.name, "--json").stdout)[
+        "general_commit_allowed"]
+    assert cli("prompt", "apply-commit", spec.name).returncode != 0
+    assert git("rev-parse", "HEAD") == base
+    assert todo.read_bytes() == before
+
+    config.write_text(f'[spex]\nspex_root = "{root}"\nstep_review = false\n')
+    assert json.loads(cli("prompt", "apply-one-task", spec.name, "--json").stdout)[
+        "general_commit_allowed"]
+    rendered = cli("prompt", "apply-commit", spec.name)
+    assert rendered.returncode == 0, rendered.stderr
+    assert "current task's versioned" in rendered.stdout
+    (repo / "GUIDE.md").write_text("Workflow guide\n")
+    git("add", "GUIDE.md")
+    git("commit", "-m", "docs: add user guide")
+    head = git("rev-parse", "HEAD")
+    step["commit_title"] = git("log", "-1", "--pretty=%h: %s")
+    todo.write_text(json.dumps([step]))
+    before = todo.read_bytes()
+    assert json.loads(cli("prompt", "apply-one-task", spec.name, "--json").stdout)[
+        "resume_phase"] == "review"
+
+    evidence = [{
+        "kind": "inspection", "criterion": "Guide added",
+        "location": "GUIDE.md", "observation": "Workflow guide is present",
+    }]
+    handoff = ("apply-helper", "verify-handoff", "--name", spec.name, "--id", "1", "--head")
+    assert cli(*handoff, head, stdin="[]").returncode != 0
+    git("commit", "--allow-empty", "-m", "unrelated")
+    blocked = cli(*handoff, git("rev-parse", "HEAD"), stdin=json.dumps(evidence))
+    assert blocked.returncode != 0
+    assert "recorded commit" in blocked.stderr
+    assert todo.read_bytes() == before
+
+    git("reset", "--hard", head)
+    count = git("rev-list", "--count", "HEAD")
+    verified = cli(*handoff, head, stdin=json.dumps(evidence))
+    assert verified.returncode == 0, verified.stderr
+    completed = cli("todo-helper", "complete", spec.name, "--id", "1",
+                    "--acceptance-evidence-stdin", stdin=json.dumps(evidence))
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(todo.read_text())[0]
+    assert result["completed_at"]
+    assert result["commit_title"] == step["commit_title"]
+    assert result["acceptance_evidence"] == evidence
+    assert git("rev-list", "--count", "HEAD") == count
+
+    metadata["task_mode"] = "software"
+    meta.write_text(json.dumps(metadata))
+    step["commit_title"] = ""
+    todo.write_text(json.dumps([step]))
+    software = cli("prompt", "apply-commit", spec.name)
+    assert software.returncode == 0, software.stderr
+    assert "current task's versioned" not in software.stdout
 
 
 @pytest.mark.slow
