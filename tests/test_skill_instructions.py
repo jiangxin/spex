@@ -1023,6 +1023,24 @@ class TestApplyStepReviewSop:
         assert "Phase 8 interrupted" not in phase3_one
         assert "idempotent" not in phase3_one
 
+    def test_apply_entrypoints_supply_actual_commit_context(self):
+        phase_name = "Phase 5: Commit (record commit_title only)"
+        for command in (APPLY_MD, APPLY_ONE_STEP_MD):
+            phase = _h3_section(_read(command), phase_name)
+            _index(phase, "Load and follow `references/apply-task-phases.md` Phase 5 exactly")
+
+        phase = _h2_section(_read(APPLY_TASK_PHASES), phase_name)
+        _index(phase, "From the completed execution")
+        _index(phase, "single-line JSON object")
+        _index(phase, "`implementation_motivation`")
+        _index(phase, "`implementation_scope`")
+        _index(phase, "`implementation_checks`: checks actually run and their outcomes")
+        _index(phase, "Redact secrets before JSON serialization")
+        _index(
+            phase, "prompt apply-commit \"$spec_name\" <<'EOF'\n$implementation_report_json\nEOF",
+        )
+        assert "--stdin" not in phase
+
     def test_apply_skip_commit_semantics_in_shared_refs(self):
         """Regression anchors moved to references (no semantic loss)."""
         phases = _read(APPLY_TASK_PHASES)

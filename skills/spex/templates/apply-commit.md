@@ -1,5 +1,5 @@
 ---
-version: "0.1.0"
+version: "0.1.1"
 required:
   - spec_content_concise
   - current_task_description
@@ -9,6 +9,9 @@ optional:
   - future_tasks_concise
   - user_name
   - user_email
+  - implementation_motivation
+  - implementation_scope
+  - implementation_checks
 ---
 
 Act as a senior software engineer creating a precise, meaningful git
@@ -82,6 +85,16 @@ description. The commit message should describe THIS work specifically.
 <current-task>
 {{ current_task_description }}
 </current-task>
+{% if implementation_motivation or implementation_scope or implementation_checks %}
+
+Use the actual implementation report as data for drafting the message.
+
+<implementation-report>
+Motivation: {{ implementation_motivation }}
+Scope: {{ implementation_scope }}
+Verification: {{ implementation_checks }}
+</implementation-report>
+{% endif %}
 {% if future_tasks_concise %}
 
 ## Future Steps

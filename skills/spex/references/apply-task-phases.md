@@ -186,10 +186,20 @@ OK skip paths.
 
 - Enter only when Phase 4 routed here (`$skip_commit=false`, or
   `$skip_commit=auto` with `$dirty`)
+- From the completed execution, build `$implementation_report_json`
+  as a single-line JSON object with these string fields:
+  - `implementation_motivation`: the reason for the change.
+  - `implementation_scope`: what changed or was delivered.
+  - `implementation_checks`: checks actually run and their outcomes.
+- Redact secrets before JSON serialization. Use the serialized object
+  as the body of the quoted heredoc. Use the report as context for
+  writing the commit message.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex prompt apply-commit "$spec_name"
+$spex_skill_dir/scripts/spex prompt apply-commit "$spec_name" <<'EOF'
+$implementation_report_json
+EOF
 ```
 
 - **Single render:** Call `prompt apply-commit` **once** per commit.

@@ -625,6 +625,38 @@ class TestStdinExtraVars:
         assert "<current-task>" in captured.out
         assert "First step" in captured.out
 
+    @pytest.mark.parametrize("mode", ["software", "general"])
+    def test_apply_commit_renders_optional_implementation_report(
+        self, tmp_path, monkeypatch, capsys, mode,
+    ):
+        from prompt import main
+
+        name = "test-topic"
+        repo, spec_dir = _setup_topic(tmp_path, name, [_make_task(1)])
+        monkeypatch.chdir(repo)
+        (spec_dir / "meta.json").write_text(json.dumps({"task_mode": mode}), encoding="utf-8")
+        args = ["apply-commit", name, "--json"]
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        main(args)
+        assert "<implementation-report>" not in json.loads(capsys.readouterr().out)["prompt"]
+
+        report = {
+            "implementation_motivation": "Identify the actual reason",
+            "implementation_scope": 'Updated "out.md"',
+            "implementation_checks": 'make check passed\nInspected `$output`',
+        }
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(report)))
+        main(args)
+        rendered = json.loads(capsys.readouterr().out)["prompt"]
+        actual = rendered.split("<implementation-report>\n", 1)[1].split(
+            "\n</implementation-report>", 1,
+        )[0]
+        assert actual == (
+            'Motivation: Identify the actual reason\nScope: Updated "out.md"\n'
+            'Verification: make check passed\nInspected `$output`'
+        )
+
     def test_without_stdin_flag_json_provides_extra_vars(
         self, tmp_path, monkeypatch, capsys
     ):
