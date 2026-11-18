@@ -160,6 +160,70 @@ def test_running_keys_preserves_queue_insertion_order():
     assert manual.running_keys(queue) == ["docs/beta", "docs/gamma"]
 
 
+def test_active_keys_skips_rows_with_a_released_slot_in_queue_order():
+    queue = {
+        "docs/beta": {"status": "running"},
+        "docs/alpha": {"status": "running", "slot_released": True},
+        "docs/gamma": {"status": "running", "slot_released": False},
+        "docs/delta": {"status": "completed"},
+    }
+    assert manual.active_keys(queue) == ["docs/beta", "docs/gamma"]
+
+
+def test_claim_row_counts_only_trials_that_are_still_executing():
+    queue = {
+        "docs/a": {"status": "running"},
+        "docs/b": {"status": "running", "slot_released": True},
+        "docs/c": {"status": "running"},
+        "docs/d": {"status": "running"},
+        "docs/e": {"status": "pending"},
+    }
+    manual.claim_row(queue, "docs/e", 4)  # The graded trial no longer holds a slot.
+
+    with pytest.raises(ValueError) as error:
+        manual.claim_row(queue, "docs/e", 3)
+    assert str(error.value) == (
+        "All configured trial slots are occupied (jobs=3): docs/a, docs/c, docs/d"
+    )
+    assert queue["docs/e"]["status"] == "pending"
+
+
+def test_legacy_queue_rows_without_the_key_still_occupy_a_slot():
+    queue = {
+        "docs/a": {"status": "running"},
+        "docs/b": {"status": "running"},
+        "docs/c": {"status": "pending"},
+    }
+    assert not any("slot_released" in row for row in queue.values())
+
+    with pytest.raises(ValueError, match=r"occupied \(jobs=2\): docs/a, docs/b"):
+        manual.claim_row(queue, "docs/c", 2)
+
+
+def test_status_stays_non_terminal_while_a_released_slot_awaits_grades(
+    tmp_path, monkeypatch,
+):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "claim", "example/alpha")
+    set_verdict(sandbox, "example/alpha", "pass")  # Collected and exported, not graded.
+    queue = manual_batch.read(sandbox / "queue.json")
+    queue["example/alpha"]["slot_released"] = True
+    manual_batch.write(sandbox / "queue.json", queue)
+
+    payload, code = manual_action(sandbox, "status", "--require-terminal")
+    assert code == 1
+    assert payload["terminal"] is False
+    assert payload["cases"]["example/alpha"]["slot_released"] is True
+
+    set_verdict(sandbox, "example/alpha", "pass", hard=True)
+    _, code = manual_action(sandbox, "complete", "example/alpha")
+    assert code == 0
+
+    payload, code = manual_action(sandbox, "status", "--require-terminal")
+    assert code == 0
+    assert payload["terminal"] is True
+
+
 def test_claim_row_reports_completed_status_and_full_queue():
     with pytest.raises(ValueError, match="Case is already completed: docs/alpha"):
         manual.claim_row({"docs/alpha": {"status": "completed"}}, "docs/alpha", 4)
@@ -306,7 +370,83 @@ def test_dispatch_requires_the_prepared_env_script(tmp_path, monkeypatch):
     assert (sandbox / "queue.json").read_bytes() == before
 
 
+def test_dispatch_reuses_slots_released_by_trials_awaiting_grades(tmp_path, monkeypatch):
+    keys = [
+        "example/alpha", "example/bravo", "example/charlie",
+        "example/delta", "example/echo", "example/foxtrot",
+    ]
+    sandbox = build_sandbox(tmp_path, keys, 4, monkeypatch)
+    for key in keys[:4]:
+        manual_action(sandbox, "claim", key)
+    queue = manual_batch.read(sandbox / "queue.json")
+    queue["example/alpha"]["slot_released"] = True  # Collected and exported.
+    manual_batch.write(sandbox / "queue.json", queue)
+
+    bundle, code = manual_action(sandbox, "dispatch", "example/echo", "--session", "sess-1")
+    assert code == 0
+    assert bundle["turn"] == 1
+    assert manual_batch.read(sandbox / "queue.json")["example/echo"]["status"] == "running"
+
+    with pytest.raises(ValueError) as error:
+        manual_action(sandbox, "dispatch", "example/foxtrot", "--session", "sess-1")
+    message = str(error.value)
+    assert message == (
+        "All configured trial slots are occupied (jobs=4): "
+        "example/bravo, example/charlie, example/delta, example/echo"
+    )
+    assert "example/alpha" not in message
+
+
+def test_advance_marks_a_collected_final_turn_as_slot_released(
+    tmp_path, monkeypatch,
+):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    bundle, _ = manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
+    Path(bundle["reply"]).write_text("done", encoding="utf-8")
+    monkeypatch.setattr(run, "manual_result", lambda *_arguments: {"next_input": None})
+    monkeypatch.setattr(run, "export_judge", lambda _output: {
+        "hard_verdict": "pass", "prompt": "judge-prompt", "trial": "trial",
+    })
+
+    payload, code = manual.advance_action(sandbox)
+
+    assert code == 0
+    assert [item["case"] for item in payload["exported"]] == ["example/alpha"]
+    row = manual_batch.read(sandbox / "queue.json")["example/alpha"]
+    assert row == {"status": "running", "slot_released": True}
+
+    set_verdict(sandbox, "example/alpha", "pass", hard=True)
+    result, code = manual_action(sandbox, "complete", "example/alpha")
+
+    assert code == 0
+    assert result == {"case": "example/alpha", "status": "completed", "verdict": "pass"}
+    assert manual_batch.read(sandbox / "queue.json")["example/alpha"] == {
+        "status": "completed", "verdict": "pass",
+    }
+
+
+def test_collect_retry_still_marks_the_collected_final_turn(tmp_path, monkeypatch):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
+    finish_turn(sandbox, "example/alpha", 1)
+    set_verdict(sandbox, "example/alpha", "pass")  # Collection committed; retry is safe.
+    entries = manual_batch.read(sandbox / "batch-index.json")
+    output, trial, metadata = manual.load_trial(sandbox, "example/alpha", entries)
+    queue = manual_batch.read(sandbox / "queue.json")
+
+    with manual_batch.locked(sandbox):
+        manual.turn_action(
+            manual.parse_arguments([
+                "--sandbox", str(sandbox), "collect", "example/alpha", "1",
+            ]), sandbox, output, trial, metadata, queue["example/alpha"], {},
+            lambda: None,
+        )
+
+    assert queue["example/alpha"]["slot_released"] is True
+
+
 def test_complete_all_releases_graded_slots_and_keeps_the_rest(tmp_path, monkeypatch):
+    """Complete graded running rows only and free their slots for new claims."""
     keys = ["example/alpha", "example/bravo", "example/charlie"]
     sandbox = build_sandbox(tmp_path, keys, 2, monkeypatch)
     manual_action(sandbox, "claim", "example/alpha")

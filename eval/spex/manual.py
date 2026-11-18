@@ -120,6 +120,8 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
     if args.command == "collect" and args.turn == current - 1 and current > 1:
         if dispatch.get("turn") == args.turn:
             row.pop("dispatch")
+        if not handoff["next_input"]:
+            row["slot_released"] = True  # The final turn is already collected.
         return handoff  # Collection is committed by trial.json, even on a retry.
     if args.turn != current or not handoff["next_input"]:
         raise ValueError(f"No next input for turn {args.turn}; pending turn is {current}")
@@ -158,6 +160,8 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
         **timing,
     ))
     row.pop("dispatch")
+    if not result.get("next_input"):
+        row["slot_released"] = True  # Only grades keep this trial on the books.
     result["environment"] = environment
     return result
 
@@ -180,6 +184,8 @@ def awaiting_grades(metadata: dict) -> bool:
     A collected trial stores a terminal ``verdict`` as soon as its last turn is
     collected, but only ``import_judge`` writes ``hard_verdict``. So the ordinary
     pre-grade state is a terminal verdict without grades, not ``pending``.
+    This is the metadata view; the queue row key ``slot_released`` records that
+    the final turn was collected and does not imply grades are missing.
     """
     return metadata["verdict"] != "run_error" and "hard_verdict" not in metadata
 
@@ -193,6 +199,7 @@ def complete_row(key: str, metadata: dict, row: dict) -> dict:
         raise ValueError("Import semantic grades before completing the trial")
     row.update(status="completed", verdict=verdict)
     row.pop("dispatch", None)
+    row.pop("slot_released", None)
     return {"case": key, **row}
 
 
@@ -235,12 +242,27 @@ def running_keys(queue: dict) -> list[str]:
     return [key for key, row in queue.items() if row["status"] == "running"]
 
 
+def active_keys(queue: dict) -> list[str]:
+    """Return running keys that still execute, i.e. whose slot is not released.
+
+    A trial whose final turn is collected and exported no longer runs, so it
+    must not hold an execution slot while the judge catches up. The row key
+    ``slot_released`` tracks that collection; it is distinct from the
+    ``awaiting_grades(metadata)`` predicate used by ``complete_all``. Rows
+    written before ``slot_released`` existed keep occupying a slot.
+    """
+    return [
+        key for key, row in queue.items()
+        if row["status"] == "running" and not row.get("slot_released")
+    ]
+
+
 def claim_row(queue: dict, key: str, jobs: int) -> None:
     """Refuse a claim that conflicts with the row state or the slot limit."""
     row = queue[key]
     if row["status"] != "pending":
         raise ValueError(f"Case is already {row['status']}: {key}")
-    active = running_keys(queue)
+    active = active_keys(queue)
     if len(active) >= jobs:
         raise ValueError(
             f"All configured trial slots are occupied (jobs={jobs}): {', '.join(active)}"
