@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 try:
+    import evidence
     import native_trace
     import performance
     import run
@@ -463,3 +464,52 @@ def test_timeline_orders_unstamped_events_last(tmp_path):
     text = "\n".join(performance.timeline_lines([row]))
     assert text.index("`list`") < text.index("`show`") < text.index("Case end")
     assert text.index("skill end:") < text.index("`show`")
+
+
+REVIEW_ARGV = [
+    "prompt", "apply-review", "--json", "spec-x", "--commit", "3240d1a",
+    "--mode", "full",
+]
+
+
+def test_positional_selector_skips_options_and_their_values():
+    verb = "apply-review"
+    assert native_trace.positional_selector(REVIEW_ARGV, verb) == "spec-x"
+    assert native_trace.positional_selector(
+        ["prompt", verb, "--json", "--commit=3240d1a", "--mode", "full", "spec-x"], verb,
+    ) == "spec-x"
+    # A boolean flag directly before the selector must not swallow it.
+    assert native_trace.positional_selector(
+        ["prompt", verb, "--json", "spec-x"], verb,
+    ) == "spec-x"
+    # Attached short values carry their value inline.
+    assert native_trace.positional_selector(
+        ["prompt", verb, "--json", "-oreport", "spec-x"], verb,
+    ) == "spec-x"
+    # Non-identifier positionals are skipped, not reported as a selector.
+    assert native_trace.positional_selector(
+        ["prompt", verb, "bad:token", "spec-x"], verb,
+    ) == "spec-x"
+    assert native_trace.positional_selector(
+        ["prompt", verb, "--commit", "3240d1a", "--mode", "full"], verb,
+    ) is None
+    assert native_trace.positional_selector(["prompt", verb], verb) is None
+
+
+def test_central_debug_log_attributes_option_first_spec_selector():
+    log = (
+        "===== BEGIN 2026-11-18T10:00:00+08:00 =====\n"
+        f"argv: spex {' '.join(REVIEW_ARGV)}\n"
+        "===== END exit=0 duration_ms=10 =====\n"
+    )
+    gaps = set()
+    events = native_trace.parse(log.splitlines(), native_trace.CENTRAL_DEBUG_LOG, gaps)
+    event, = events
+    assert event["action"] == "apply.review-command"
+    assert event["spec"] == "spec-x"
+    assert gaps == set()
+    # Restored attribution lets the no-post-action gate pass instead of abstaining.
+    trace = {"events": events, "gaps": gaps}
+    assert evidence.native_check(
+        "no-post-action", {}, {}, {"artifacts": {}}, trace, [],
+    ) is True
