@@ -1,7 +1,9 @@
 """Offline regression tests for the eval diagnostics pipeline."""
 
 import json
+import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -227,7 +229,7 @@ def test_summary_renders_ordered_case_timeline(tmp_path, monkeypatch):
                "`apply-helper post-action`", "Host turn 2 end", "Case end"]
     indices = [markdown.index(marker) for marker in markers]
     assert indices == sorted(indices)
-    assert "| 0.2 | 11.000000001 | 2 | spex apply-helper post-action |" in markdown
+    assert "| 0.2 | 11.0 | 2 | spex apply-helper post-action |" in markdown
     assert (
         "| Host turn 1 end | unknown | unknown | unknown | 2.0 | unknown | unknown | — |"
     ) in markdown
@@ -287,7 +289,7 @@ def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
 def test_report_aggregates_only_available_matching_samples(tmp_path):
     rows = []
     samples = [
-        (10, None, 1), (30, None, 1), (None, None, 1),
+        (100, None, 1), (300, None, 1), (None, None, 1),
         (None, 500, 1), (None, 700, 1), (900, None, 2),
     ]
     for index, (duration, automatic_total_ms, jobs) in enumerate(samples, 1):
@@ -304,7 +306,7 @@ def test_report_aggregates_only_available_matching_samples(tmp_path):
         })
     report = "\n".join(performance.report_lines(rows))
     assert "[metrics](1/performance.json)" in report
-    assert "host duration for 2/5 samples, median 0.02 s, max 0.03 s" in report
+    assert "host duration for 2/5 samples, median 0.2 s, max 0.3 s" in report
     assert "automatic duration for 2/5 samples, median 0.6 s, max 0.7 s" in report
     assert "max 0.9 s" not in report
 
@@ -513,3 +515,137 @@ def test_central_debug_log_attributes_option_first_spec_selector():
     assert evidence.native_check(
         "no-post-action", {}, {}, {"artifacts": {}}, trace, [],
     ) is True
+
+
+def test_format_seconds_rounds_to_one_decimal():
+    assert performance.format_seconds(39167.19) == "39.2"
+    assert performance.format_seconds(1200.0) == "1.2"
+    assert performance.format_seconds(0) == "0.0"
+    assert performance.format_seconds(None) == "unknown"
+
+
+def test_local_time_text_renders_local_hh_mm_ss():
+    assert performance.local_time_text("2026-01-01T01:02:03+00:00", timezone.utc) == "01:02:03"
+    cst = timezone(timedelta(hours=8))
+    assert performance.local_time_text("2026-01-01T01:02:03+00:00", cst) == "09:02:03"
+    assert performance.local_time_text("2026-01-01T01:02:03") is None
+    assert performance.local_time_text("not-a-timestamp") is None
+    assert performance.local_time_text(None) is None
+
+
+def test_local_time_text_defaults_to_local_zone():
+    stamp = "2026-07-15T12:00:00+00:00"
+    expected = datetime.fromisoformat(stamp).astimezone().strftime("%H:%M:%S")
+    # tz=None must use the local zone at that instant (DST-aware), not a
+    # fixed offset captured from the current time.
+    assert performance.local_time_text(stamp) == expected
+    assert performance.local_time_text(stamp).count(":") == 2
+
+
+def test_timeline_cells_show_time_of_day_without_date_or_zone(tmp_path):
+    output = tmp_path / "1"
+    output.mkdir()
+    host = performance.host_metrics(
+        None, 4000, "adapter",
+        started_at="2026-01-01T00:00:00+00:00",
+        ended_at="2026-01-01T00:00:04+00:00",
+    )
+    performance.update(output, turn=1, host=host)
+    row = {
+        "suite": "suite", "case_id": "case", "trial": "1",
+        "performance": performance.trial_summary(output, {"turn_results": [{"turn": 1}]}),
+    }
+    lines = performance.timeline_lines([row])
+    start = next(line for line in lines if "Host turn 1 start" in line)
+    end = next(line for line in lines if "Host turn 1 end" in line)
+    for line in (start, end):
+        assert re.search(r"\d{2}:\d{2}:\d{2}", line)
+        assert "2026-" not in line and "+00:00" not in line
+    assert "| 4.0 |" in end
+
+
+def perf_row(start, end, turns=None):
+    return {"performance": {
+        "case_started_at": start,
+        "case_ended_at": end,
+        "host_turns_timeline": turns or [],
+    }}
+
+
+def test_timeline_date_range_reports_local_days():
+    same = [perf_row("2026-01-01T08:00:00+00:00", "2026-01-01T09:00:00+00:00")]
+    assert performance.timeline_date_range(same, timezone.utc) == "2026-01-01"
+    cross = [perf_row("2026-01-01T23:00:00+00:00", "2026-01-02T01:00:00+00:00")]
+    assert performance.timeline_date_range(cross, timezone.utc) == "2026-01-01 – 2026-01-02"
+    assert performance.timeline_date_range([], timezone.utc) is None
+    fallback = [perf_row(None, None, [
+        {"started_at": "2026-02-01T00:00:00+00:00"},
+        {"ended_at": "2026-02-02T00:00:00+00:00"},
+    ])]
+    assert performance.timeline_date_range(fallback, timezone.utc) == (
+        "2026-02-01 – 2026-02-02"
+    )
+
+
+def test_local_date_returns_local_calendar_date():
+    assert performance.local_date("2026-01-01T01:02:03+00:00", timezone.utc).isoformat() == (
+        "2026-01-01"
+    )
+    cst = timezone(timedelta(hours=8))
+    assert performance.local_date("2026-01-01T20:00:00+00:00", cst).isoformat() == "2026-01-02"
+    assert performance.local_date("2026-01-01T01:02:03") is None
+    assert performance.local_date("not-a-timestamp") is None
+
+
+def test_timeline_date_range_falls_back_per_endpoint():
+    pending_end = [perf_row("2026-03-01T00:00:00+00:00", None, [
+        {"started_at": "2026-03-01T00:00:00+00:00",
+         "ended_at": "2026-03-02T00:00:00+00:00"},
+    ])]
+    assert performance.timeline_date_range(pending_end, timezone.utc) == (
+        "2026-03-01 – 2026-03-02"
+    )
+
+
+def test_timeline_date_range_aggregates_across_trials():
+    trials = [
+        perf_row("2026-01-01T08:00:00+00:00", "2026-01-01T09:00:00+00:00"),
+        perf_row("2026-01-03T08:00:00+00:00", "2026-01-03T09:00:00+00:00"),
+    ]
+    assert performance.timeline_date_range(trials, timezone.utc) == (
+        "2026-01-01 – 2026-01-03"
+    )
+
+
+def test_timeline_date_range_skips_rows_without_performance():
+    rows = [{"suite": "suite"}, perf_row("2026-01-01T08:00:00+00:00", None)]
+    assert performance.timeline_date_range(rows, timezone.utc) == "2026-01-01"
+
+
+def test_summary_header_includes_timeline_dates(tmp_path):
+    output = tmp_path / "suite" / "case"
+    output.mkdir(parents=True)
+    host = performance.host_metrics(
+        None, 4000, "adapter",
+        started_at="2026-01-01T00:00:00+00:00",
+        ended_at="2026-01-01T00:00:04+00:00",
+    )
+    performance.update(output, turn=1, host=host)
+    report = {
+        "sandbox": str(tmp_path / "sandbox"),
+        "trials": [{
+            "suite": "suite", "case_id": "case", "trial": "suite/case",
+            "host": "codex", "model": "model", "collection": "automatic",
+            "spex_ref": "abc", "execution": run.execution(None),
+            "performance": performance.trial_summary(output, {"turn_results": [{"turn": 1}]}),
+            "scores": [],
+        }],
+        "cleanup_hint": "none", "scores": {}, "counts": {}, "classifications": {},
+        "issues": [], "improvements": [],
+    }
+    text = run.render_summary_markdown(report)
+    dates = next(line for line in text.splitlines() if line.startswith("- Timeline dates: "))
+    assert re.fullmatch(
+        r"- Timeline dates: \d{4}-\d{2}-\d{2}(?: – \d{4}-\d{2}-\d{2})? \(local\)", dates,
+    )
+    assert dates == f"- Timeline dates: {performance.timeline_date_range(report['trials'])} (local)"

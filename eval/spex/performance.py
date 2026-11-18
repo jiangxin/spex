@@ -483,7 +483,22 @@ def complete_sum(values):
 
 
 def format_seconds(duration_ms: int | float | None) -> str:
-    return "unknown" if duration_ms is None else str(duration_ms / 1000)
+    return "unknown" if duration_ms is None else f"{duration_ms / 1000:.1f}"
+
+
+def _local_dt(value, tz=None):
+    """Parse an ISO timestamp and convert it to `tz` or the local zone at that instant."""
+    parsed = timestamp(value)
+    if parsed is None:
+        return None
+    # No-argument astimezone() resolves the local zone per instant, so DST applies.
+    return parsed.astimezone() if tz is None else parsed.astimezone(tz)
+
+
+def local_time_text(value, tz=None) -> str | None:
+    """Render an ISO timestamp as a local wall-clock time of day."""
+    local = _local_dt(value, tz)
+    return None if local is None else local.strftime("%H:%M:%S")
 
 
 def argv_list(value) -> list[str] | None:
@@ -832,6 +847,30 @@ def timeline_lines(rows: list[dict]) -> list[str]:
     return lines
 
 
+def local_date(value, tz=None):
+    """Return the local calendar date of an ISO timestamp."""
+    local = _local_dt(value, tz)
+    return None if local is None else local.date()
+
+
+def timeline_date_range(rows, tz=None) -> str | None:
+    """Return the local date range covered by the reported trials."""
+    dates = []
+    for row in rows:
+        perf = row.get("performance") or {}
+        start, end = perf.get("case_started_at"), perf.get("case_ended_at")
+        turns = perf.get("host_turns_timeline") or []
+        if not start and turns:
+            start = turns[0].get("started_at")
+        if not end and turns:
+            end = turns[-1].get("ended_at")
+        dates.extend(day for day in (local_date(start, tz), local_date(end, tz)) if day)
+    if not dates:
+        return None
+    first, last = min(dates), max(dates)
+    return first.isoformat() if first == last else f"{first.isoformat()} – {last.isoformat()}"
+
+
 def skill_label(value) -> str:
     text = value if isinstance(value, str) else "unknown"
     return re.sub(r"\s+", " ", text).replace("|", "\\|").strip()
@@ -839,7 +878,8 @@ def skill_label(value) -> str:
 
 def timeline_row(label, *, started=None, ended=None, logged=None, duration=None, elapsed=None,
                  exit_code=None, argv=None) -> str:
-    fields = (label, started, ended, logged, format_seconds(duration), format_seconds(elapsed),
+    fields = (label, local_time_text(started), local_time_text(ended),
+              local_time_text(logged), format_seconds(duration), format_seconds(elapsed),
               exit_code)
     cells = ["unknown" if value is None else str(value) for value in fields]
     cells.append(format_argv_cell(argv))

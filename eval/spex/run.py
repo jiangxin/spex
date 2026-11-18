@@ -407,6 +407,10 @@ def render_summary_markdown(report: dict) -> str:
         f"- Configured execution: {execution_label(report.get('execution', execution(None)))}",
         f"- Counts: {json.dumps(report.get('counts') or {}, sort_keys=True)}",
         f"- Classifications: {json.dumps(report.get('classifications') or {}, sort_keys=True)}",
+        *(
+            [f"- Timeline dates: {dates} (local)"]
+            if (dates := performance.timeline_date_range(report["trials"])) else []
+        ),
         (
             f"- Semantic score total: {scores.get('score_sum', 0)}/"
             f"{scores.get('score_max', 0)} "
