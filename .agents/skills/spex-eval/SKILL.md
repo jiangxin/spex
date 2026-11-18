@@ -9,8 +9,9 @@ From the current working directory, run `git rev-parse --show-toplevel`
 and verify that the returned directory contains `eval/spex/run.py`.
 If either check fails, ask the user to start from a Spex checkout.
 
-Use the verified repository root as the working directory for all runner
-commands and as the base for paths in this SOP. Read `eval/spex/README.md`.
+Use the verified repository root in every command and as the base for paths
+in this SOP; prefix each shell call with it instead of relying on the cwd
+inherited from an earlier call. Read `eval/spex/README.md`.
 Run `python3 eval/spex/run.py` with Python 3.9 or newer. Python 3.11+
 is recommended for full TOML support.
 
@@ -24,7 +25,7 @@ is recommended for full TOML support.
   sessions and resume each across turns. Otherwise use `--jobs 1` for a
   new current-host batch and use serial manual handoffs if sessions must be
   opened manually. Reuse the saved ceiling in an existing sandbox and
-  claim fewer trials when needed. Apply the four-worker default to
+  dispatch fewer trials when needed. Apply the four-worker default to
   automated execution, regrading, and calibration.
 - **Scope args:** translate natural language or explicit args to runner filters.
 
@@ -57,25 +58,56 @@ filters, ref, models, and `--jobs` setting, then go to step 6. Pass the
 resolved `--jobs` to `judge` or `calibrate` when invoked. For current-host
 evaluation, continue to step 3. Read `eval/spex/adapters/README.md` for setup.
 
-## 3. Prepare each case
+## 3. Prepare the batch
 
-For batches, run `prepare --all` with the resolved filters, `--host <agent>`,
-`--model <trial-model>`, `--spex-ref <ref>`, and `--jobs`. It allocates one
-sandbox and prepares every matching case in parallel against the same pinned
-commit. The JSON returns the batch `sandbox`, a `prepared` handoff per case
-(`workspace`, `environment`, `env_script`, `skill`, `trial`, `next_input`),
-and per-case `errors`. Record errors with their case IDs; retry only the
-failed cases with `prepare --case <id> --sandbox <sandbox>`. The
-[structured preparation example](../../../eval/spex/adapters/README.md#prepare-a-batch-with-structured-arguments)
-remains the scripted fallback for a per-case prepare loop. After
-preparation, run `python3 eval/spex/manual.py --sandbox <sandbox> init
-<suite/id> ...` with the prepared case IDs. Initialization rejects a missing
-preparation, so retry the missing prepare before dispatching. A deliberately
+Run the batch prepare with `--init` so the dispatch queue is ready in the
+same call. This block shows the default ceiling of four workers:
+
+```bash
+cd <repo-root>
+python3 eval/spex/run.py prepare --all --host <agent> --model <trial-model> \
+  --spex-ref <ref> --jobs 4 --init
+```
+
+`--jobs` must be the resolved worker limit, not always four: pass the limit
+from step 1 (one to four), or the ceiling saved in `execution.json` when
+`--sandbox` reuses an existing sandbox. Replace `4` with that value; a
+different number fails with `Conflicting --jobs for this sandbox`.
+
+Add `--suite <suite>`, `--case <id>`, or `--tag <tag>` to narrow the batch,
+and `--sandbox <sandbox>` to reuse an allocated sandbox. `prepare --all`
+allocates one sandbox and prepares every matching case in parallel against
+the same pinned commit, writing `_handoff/env-<suite>-<case>.sh` for each
+case. `--init` requires `--all`; without it, no queue is written and the
+payload has no `queue_init` key.
+
+The JSON returns the batch `sandbox`, `execution`, a `prepared` handoff per
+case (`workspace`, `environment`, `env_script`, `skill`, `trial`,
+`next_input`), per-case `errors`, `queue_init`, and `cleanup_hint`. Take
+`env_script` from the prepare JSON or from the dispatch bundle in step 4;
+never write an env script by hand. `queue_init.status` is `initialized` for
+a new queue, `existing` when `queue.json` is already present, or `skipped`
+with `reason` `prepare_errors` (some case failed) or `batch_mismatch` (the
+selected IDs differ from `batch-index.json`, with `detail`).
+
+Each `prepared` entry and each `errors` entry carries the same case ID under
+both `id` and `case`; the two keys are equivalent, and `list` reports `id`.
+Record errors with their IDs and retry only the failed cases with
+`prepare --case <id> --sandbox <sandbox>`. That retry does not initialize the
+queue, so once every case is prepared run
+`python3 eval/spex/manual.py --sandbox <sandbox> init <suite/id> ...` with
+every selected ID. Initialization requires the exact selected ID set, rejects
+a missing preparation, and keeps an existing queue as-is. A deliberately
 reduced batch must be reported as partial relative to the original request.
+The [structured preparation
+example](../../../eval/spex/adapters/README.md#prepare-a-batch-with-structured-arguments)
+remains the scripted fallback for a per-case prepare loop.
 
 ## 4. Execute and collect each turn
 
 Use `python3 eval/spex/manual.py --sandbox <sandbox>` with these commands.
+`dispatch` is the only supported dispatch entry: it claims a pending slot and
+starts the next turn in one call.
 
 Apply the [host capacity and recovery rules](../../../eval/spex/adapters/README.md#account-for-host-capacity)
 before claiming another trial. After a host capacity refusal, pause new
@@ -83,21 +115,36 @@ claims until capacity changes. Resume only the refused operation when
 the original session can safely continue. Record terminal host failures
 in the original queue before preparing a separate rerun.
 
-1. `claim <suite/id>` reserves a worker slot through grade import. Claim up
-   to the configured worker limit.
-2. Open an independent trial session using the returned workspace,
-   environment, and pinned skill. Verify these before dispatch, and source
-   the prepare `env_script` to apply the prepared environment. If the host
-   cannot set cwd and environment at session launch, use
+1. Dispatch one case:
+
+   ```bash
+   cd <repo-root>
+   python3 eval/spex/manual.py --sandbox <sandbox> dispatch <suite/id> \
+     --session <session-id>
+   ```
+
+   The call claims a pending case and starts its next turn. It returns
+   `case`, `turn`, `session`, `trial`, `workspace`, `skill`, `env_script`,
+   `reply`, and `next_input`. Pass `--turn <n>` to assert the expected next
+   turn; a mismatch fails without touching the queue. Dispatch also rejects
+   an invalid or conflicting session, a turn that already has a reply or
+   timer sidecar, a case with no prepared env script, and a full slot set
+   (the error lists the occupying `suite/id` IDs with `jobs=N`). A running
+   case is not re-claimed, so dispatch it again to start its next turn. A
+   failed dispatch leaves the queue unchanged; `claim` plus `start` remain
+   only as the low-level pair behind it.
+2. Open an independent trial session with the returned `workspace`, `skill`,
+   and `env_script`. Verify these before sending input, and source
+   `env_script` to apply the prepared environment. If the host cannot set cwd
+   and environment at session launch, use
    `exec <suite/id> -- <command> ...` on each shell call.
-3. Immediately before dispatch, call
-   `start <suite/id> <turn> --session <id>`. Send the returned `next_input`
-   exactly. Continue in the same session for later turns. Workers write the
-   full reply to a staging file. Finish any optional `.events.jsonl`
-   transcript beside the canonical reply path before publishing the reply.
-   Publish with `stop <suite/id> <turn> --reply-file <staging-file>` or
-   atomically rename the staging file from the same directory to the reply
-   path returned by `start`. The coordinator handles collection.
+3. Send the returned `next_input` exactly. Continue in the same session for
+   later turns. Workers write the full reply to a staging file. Finish any
+   optional `.events.jsonl` transcript beside the canonical reply path before
+   publishing the reply. Publish with
+   `stop <suite/id> <turn> --reply-file <staging-file>` or atomically rename
+   the staging file from the same directory to the returned `reply` path. The
+   coordinator handles collection.
 4. Run `wait --any --timeout <seconds>` to block until a running trial has a
    readable, nonblank UTF-8 reply at the published path. It returns
    immediately when nothing is running and exits 1 on
@@ -105,19 +152,63 @@ in the original queue before preparing a separate rerun.
 5. Run `advance`. For every running turn with a reply it stops the timer,
    collects the turn, and exports the judge packet when the trial is final.
    It returns `advanced`, `waiting` (next inputs ready to dispatch),
-   `exported` (judge prompts ready), and `errors`. Dispatch the `waiting`
-   inputs, send `exported` trials to step 5, and replace finished workers by
-   claiming pending cases.
+   `exported` (judge prompts ready), and `errors`. Dispatch each `waiting`
+   `next_input` with the same call and session, send `exported` trials to
+   step 5, and replace finished workers by dispatching pending cases. The
+   multi-turn loop is driven by `next_input`; never guess the next turn.
 
-## 5. Grade in a separate session
+## 5. Grade and close out the batch
 
-Run `export-packet <trial>` after collection. In a separate judge session,
-read only the returned `judge-prompt.txt` and produce grades JSON.
-Run `import-grades <trial> --grades <file> --host <judge-agent> --model <judge-model>`.
-Pass `--judge-duration-ms` when the adapter measured the judge session.
-The runner validates grades. The hard verdict takes precedence.
-After grade import, run `manual.py --sandbox <sandbox> complete <suite/id>`.
-The queue reads the persisted outcome and rejects incomplete trials.
+`advance` exports the judge packet for every final trial; rerun
+`export-packet <trial>` only when a packet must be regenerated. In a separate
+judge session, read only the returned `judge-prompt.txt` and write grades
+JSON to `<sandbox>/_handoff/grades-<suite>-<case>.json`, the same directory
+`--grades-dir` defaults to. Then close out the batch:
+
+```bash
+cd <repo-root>
+python3 eval/spex/run.py import-grades --all --sandbox <sandbox> \
+  --grades-dir _handoff --host <judge-agent> --model <judge-model>
+python3 eval/spex/manual.py --sandbox <sandbox> complete --all
+```
+
+`--grades-dir` defaults to `<sandbox>/_handoff` and resolves a relative path
+against the sandbox. `import-grades --all` visits every key in
+`batch-index.json` order, imports the saved grades, skips `already_graded`
+(judge output exists), `no_packet` (no judge prompt), and `no_grades` (no
+grades file), collects per-case errors, and exits 1 when any case failed.
+Pass `--judge-duration-ms` when the adapter measured the judge session; batch
+mode attributes that single value to every import. Then `complete --all`
+completes each running case that holds a terminal verdict, skips
+`not_graded` and `not_running` cases, exits 1 on per-case errors, and
+releases the slot. The runner validates grades and the hard verdict takes
+precedence.
+
+Keep the single-case form as a fallback:
+
+```bash
+cd <repo-root>
+python3 eval/spex/run.py import-grades <trial> --grades <file> \
+  --host <judge-agent> --model <judge-model>
+python3 eval/spex/manual.py --sandbox <sandbox> complete <suite/id>
+```
+
+### Coordinator rules
+
+- Never copy `_dispatch.py` or any helper from a previous sandbox;
+  `dispatch` is the only supported entry, and leftover helpers under
+  `eval/spex/runs/` call removed scripts.
+- Every coordinator command must be cwd-independent: prefix it with
+  `cd <repo-root> && …` or use absolute paths. Never rely on the shell
+  working directory inherited from an earlier call.
+- Slot order is `advance → export-packet → judge → import-grades → complete
+  → claim`. Slots are released only by `complete` (or by `fail` for a
+  recorded host failure), so a collected but ungraded trial still holds its
+  slot; close out finished trials before claiming new ones.
+- Read the schema of an unfamiliar MCP tool (`mcp_get`) before calling it;
+  do not guess argument names.
+- The terminal gate `manual.py --sandbox <sandbox> status --require-terminal`
+  still decides completion; `complete` on its own does not end the batch.
 
 ## 6. Summarize the batch
 

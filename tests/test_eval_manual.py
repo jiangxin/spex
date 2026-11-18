@@ -1,6 +1,8 @@
 """Fast checks for manual batch dispatch and batch grade import."""
 
+import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -12,6 +14,13 @@ import pytest
 import run
 
 from tests.conftest import manual_action
+
+SOP_SKILL = (
+    Path(__file__).resolve().parent.parent
+    / ".agents" / "skills" / "spex-eval" / "SKILL.md"
+)
+SOP_FENCE_RE = re.compile(r"^[ \t]*```[^\n]*\n(.*?)^[ \t]*```", re.DOTALL | re.MULTILINE)
+SOP_ALTERNATION_RE = re.compile(r"\[[^\]\n]*\|[^\]\n]*\]")
 
 GRADE_ROW = {
     "criterion_id": "coverage", "score": 2, "verdict": "pass",
@@ -872,3 +881,56 @@ def test_import_grades_rejects_incomplete_arguments(monkeypatch, capsys, argv, m
 
     assert exit_info.value.code == 2
     assert message in capsys.readouterr().err
+
+
+def _parser_option_strings(parser: argparse.ArgumentParser) -> set[str]:
+    """Collect option strings from a parser and all of its subparsers."""
+    options: set[str] = set()
+    for action in parser._actions:
+        options.update(action.option_strings)
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                options |= _parser_option_strings(child)
+    return options
+
+
+def _sop_fences() -> list[str]:
+    return SOP_FENCE_RE.findall(SOP_SKILL.read_text(encoding="utf-8"))
+
+
+def test_sop_fences_have_no_alternation_pseudo_syntax():
+    """Fenced eval commands must stay runnable: no ``[a|b]`` placeholders."""
+    blocks = _sop_fences()
+    assert blocks, "expected fenced blocks in the eval SOP"
+    offenders = SOP_ALTERNATION_RE.findall("\n".join(blocks))
+    assert not offenders, (
+        "replace [a|b] pseudo-syntax with one real form: "
+        + ", ".join(sorted(set(offenders)))
+    )
+
+
+def test_sop_fences_use_only_real_runner_and_manual_flags():
+    """Every ``--flag`` in a fenced run.py/manual.py call exists on its parser."""
+    scripts = {"run.py": run.parser(), "manual.py": manual.parser()}
+    known = {
+        name: _parser_option_strings(parser) for name, parser in scripts.items()
+    }
+    invocations = 0
+    for block in _sop_fences():
+        collapsed = re.sub(r"\\\n\s*", " ", block)
+        for line in collapsed.splitlines():
+            line = line.split("#", 1)[0]
+            tokens = line.split()
+            script = next(
+                (name for name in scripts if any(name in t for t in tokens)),
+                None,
+            )
+            if script is None:
+                continue
+            invocations += 1
+            for token in tokens:
+                if token.startswith("--"):
+                    assert token in known[script], (
+                        f"{script} has no option {token!r} in: {line.strip()!r}"
+                    )
+    assert invocations >= 6, f"expected ≥6 fenced eval calls, got {invocations}"
