@@ -202,6 +202,11 @@ def _build_parser() -> ArgumentParser:
         help="Output as JSON array",
     )
     parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="List existing specs without writing configuration or trace files",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="count",
@@ -241,6 +246,7 @@ def main(argv=None):
     specs, show_repo = gather_specs(
         include_archives=args.archives,
         all_projects=args.all_projects,
+        read_only=args.read_only,
     )
 
     specs = filter_specs(specs, args.patterns)

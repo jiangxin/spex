@@ -570,7 +570,9 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         sys.exit(0)
 
-    if enabled:
+    options = remaining[:remaining.index("--")] if "--" in remaining else remaining
+    read_only_list = args.command == "list" and "--read-only" in options
+    if enabled and not read_only_list:
         log_path = resolve_debug_log_path(full_argv)
         with trace_command(log_path, full_argv):
             args.func(remaining)

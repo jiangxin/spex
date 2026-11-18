@@ -1040,17 +1040,25 @@ def format_spec(spec, verbose: int = 0, show_repo: bool = False) -> str:
 
 def gather_specs(
     include_archives: bool = False, all_projects: bool = False,
+    *, read_only: bool = False,
 ) -> tuple[list, bool]:
     """Collect and filter specs from specs/archives directories.
 
     Returns (specs, show_repo) where show_repo indicates whether the
     caller should display repository labels.
     """
-    specs_dir = get_specs_dir()
+    if read_only:
+        storage = get_project_storage()
+        if not storage.spex_root:
+            return [], all_projects or not storage.in_git_workdir()
+        root = Path(storage.spex_root)
+        specs_dir = root / "specs"
+    else:
+        specs_dir = get_specs_dir()
     dirs = [specs_dir]
     archive_dirs: list[Path] = []
     if include_archives:
-        ad = get_archives_dir()
+        ad = root / "archives" if read_only else get_archives_dir()
         dirs.append(ad)
         archive_dirs.append(ad)
 
