@@ -1,12 +1,12 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
+description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, review-plan, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
 version: 0.8.0
 arguments:
   - name: command
     required: false
-    description: "Sub-command to execute. Must be one of: create (alias: new), modify, apply (aliases: run, do, go; supports --all), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned). High-signal words (create/modify/archive/apply-one-step/init/apply/merge) may match anywhere; high-frequency aliases (new/run/do/go/step/submit) count as a command word only in first-token position. Non-English free-form input is mapped by meaning (Chinese trigger words in the Free-form table); do not strip tokens from non-English text."
+    description: "Sub-command to execute. Must be one of: create (alias: new), modify, review-plan, apply (aliases: run, do, go; supports --all), apply-one-step (alias: step), merge (alias: submit), archive, init. If omitted, infer intent from the remaining text using Free-form Intent Inference rules 1–4 in this file (body is source of truth; keep this summary aligned). High-signal words (create/modify/review-plan/archive/apply-one-step/init/apply/merge) may match anywhere; high-frequency aliases (new/run/do/go/step/submit) count as a command word only in first-token position. Infer review-plan for clear development-plan review requests and clarify mixed review and edit intent. Non-English free-form input is mapped by meaning (Chinese trigger words in the Free-form table); do not strip tokens from non-English text."
   - name: prompt
     required: false
     description: "Optional context passed to the command. For 'create', this is the requirement describing the spec to generate."
@@ -32,6 +32,7 @@ arguments:
 |-----------------|--------------------|--------------------------------------|
 | `create`        | `new`              | Create a spec document (no code changes) |
 | `modify`        |                    | Modify a spec's requirements         |
+| `review-plan`   |                    | Review a spec and its development plan |
 | `apply`         | `run`, `do`, `go`  | Apply a spec to generate code (supports --all) |
 | `apply-one-step`| `step`             | Apply one step from a spec's todo list |
 | `merge`         | `submit`           | Submit completed work (merge or PR)  |
@@ -46,6 +47,7 @@ Command file paths are relative to this `SKILL.md` directory.
 |------------------------------------|-------------------------------|
 | `create` / `new`                   | `commands/create.md`          |
 | `modify`                           | `commands/modify.md`          |
+| `review-plan`                      | `commands/review-plan.md`     |
 | `apply` / `run` / `do` / `go`     | `commands/apply.md`           |
 | `apply-one-step` / `step`          | `commands/apply-one-step.md`  |
 | `merge` / `submit`                 | `commands/merge.md`           |
@@ -121,6 +123,7 @@ Body rules below are the source of truth; keep YAML
 |-----------------------------------------------------|------------------------------------------|-------------------|
 | A new feature, requirement, or idea to implement    | 创建 / 新建 / 加个 / 做一个              | `create`          |
 | Changing requirements for an existing spec           | 修改 / 调整需求 / 改一下 spec             | `modify`          |
+| Reviewing a spec's development plan or task breakdown | 评审开发计划 / 检查任务拆分                | `review-plan`     |
 | Starting implementation of a spec                    | 实施 / 执行 / 开始做 / 跑一下             | `apply`           |
 | Working through a spec one step at a time            | 一步一步 / 单步 / 下一步                  | `apply-one-step`  |
 | Finishing, merging, or submitting completed work     | 提交 / 合并 / 交付                        | `merge`           |
@@ -131,6 +134,8 @@ Body rules below are the source of truth; keep YAML
 Non-English input is mapped by meaning using the Chinese triggers
 above (and equivalent intent in other languages). Do **not** apply
 command-token stripping to non-English free-form text.
+Match command words as whole tokens. A command word embedded in a
+spec name, such as `2026-11-18-14-56-review-plan`, is part of that name.
 
 Decision rules (in order):
 
@@ -138,19 +143,24 @@ Decision rules (in order):
    -> route directly; `$user_prompt` = redacted text **minus** the
    matched token **only when that token is the first token** (trim)
    (same as Routing Discipline). Split command words into two classes:
-   - **High-signal** (`create` / `modify` / `archive` /
+   - **High-signal** (`create` / `modify` / `review-plan` / `archive` /
      `apply-one-step` / `init` / `apply` / `merge`): may match
      anywhere (even if not the first token)
    - **High-frequency aliases** (`new` / `run` / `do` / `go` /
      `step` / `submit`): count as a command word **only** in
      first-token position; elsewhere they are only a weak signal
      for rule 4
-   IF multiple command words/aliases or conflicting intent -> rule 4
-2. Text suggests changing requirements/spec and is uniquely tied to
-   an active spec -> `modify`. **Uniquely tied** = exactly one active
+   IF multiple command words/aliases or conflicting intent -> rule 4.
+   For free-form requests, combined plan review and edits are conflicting
+   intent. Ask which operation the user wants to run first.
+2. Text suggests changing the requirements, spec, or development plan and is
+   uniquely tied to an active spec -> `modify`. **Uniquely tied** = exactly one active
    spec name-token match **OR** exactly one undone spec in the
    current project context; else list candidates
-3. Too short/vague (e.g. "help" / empty) -> show Supported
+   A clear request to review a development plan or check its task breakdown
+   (e.g. "review the development plan" or "检查任务拆分") routes to
+   `review-plan`. Keep the full redacted text as `$user_prompt`.
+3. Too short/vague (e.g. "help", "review", "评审", or empty) -> show Supported
    Commands table -> STOP
 4. Otherwise OR multiple commands plausible -> list candidates
    and ask user to confirm

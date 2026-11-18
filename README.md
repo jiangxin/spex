@@ -140,6 +140,8 @@ disable-model-invocation: true
 
 - **`/spex modify [spec-name] [changes]`** — Modify an existing spec. Updates the `todo.json` development steps, preserving completed steps while regenerating unfinished tasks.
 
+- **`/spex review-plan [spec-name] [focus]`** — Review the spec and its development plan for gaps in coverage, dependency order, step size, and acceptance criteria. The review is read-only. Run the suggested `/spex modify` command manually to adopt the findings.
+
 - **`/spex apply [spec-name]`** — Begin step-by-step implementation. Creates a local `spex/` branch from `meta.branch` (the project base recorded at create time), not from whatever HEAD you happen to be on. Use `spex list` to monitor progress during development.
 
 - **`/spex apply-one-step [spec-name]`** — Same as `/spex apply`, but executes only one step at a time. Useful when you want fine-grained control over each step.

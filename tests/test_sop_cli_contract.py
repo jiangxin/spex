@@ -350,6 +350,8 @@ def _resolve_invocation(
     i = 0
     while i < len(tokens):
         tok = tokens[i]
+        if tok == "--":
+            break
         if _is_flag(tok):
             flags.append(tok)
             # Consume optional value if next token is not a flag / subcmd
@@ -420,7 +422,7 @@ def _check_invocation(rel: str, raw: str, tail: str) -> list[str]:
         ]
 
     # LLM-only surface commands have no real flag parser beyond the stub
-    if command in ("apply", "create", "modify", "new"):
+    if command in _load_spex_entry()._LLM_COMMAND_NAMES:
         # SOPs should not invoke these via scripts/spex; if they do, only
         # the command name is checked above.
         extra = [t for t in rest[1:] if _is_flag(t)] + bracket_flags
@@ -534,6 +536,10 @@ class TestSopCliContract:
         errors = _check_invocation("bogus.md", raw, tail)
         assert errors, "expected bogus flag to be rejected"
         assert any("--not-a-real-flag" in e for e in errors)
+
+    def test_treats_tokens_after_option_separator_as_positional(self):
+        command = "scripts/spex list --read-only --json -- --spec-probe"
+        assert _check_invocation("commands/review-plan.md", command, command) == []
 
     def test_detects_bogus_flag_in_inline_cmd(self, tmp_path: Path):
         sample = tmp_path / "bogus-inline.md"
