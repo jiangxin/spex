@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -10,6 +11,20 @@ from pathlib import Path
 FORMAT = "2000-01-01-00-00-greeting-format"
 DECORATION = "2000-01-01-00-01-greeting-decoration"
 SPECS = Path(".spex/specs")
+GREETING_FIXTURE = Path(__file__).resolve().parent / "fixtures/greeting"
+MODIFY_PLANS = {
+    "modify-rebuild": ("--upper", "--repeat", "--line-number"),
+    "modify-targeted": ("--upper", "--punctuation", "--prefix", "--separator", "--suffix"),
+}
+OPTION = re.compile(r"--[a-z]+(?:-[a-z]+)*")
+CANCELED_OPTIONS = re.compile(
+    r"(?i)^(?:cancel(?:ed|led)?|drop(?:ped)?|remov(?:e|ed)|"
+    r"out of scope|no longer (?:required|planned)|excluded)(?:\s|:|$)"
+)
+CANCELED_STATUS = re.compile(
+    r"(?i)^(?:`?--[a-z-]+`?)\s+(?:is|was)\s+(?:canceled|cancelled|dropped|removed|"
+    r"out of scope|no longer (?:required|planned))\s*[.!]?$"
+)
 
 
 def read(repo, relative):
@@ -81,6 +96,69 @@ def plan_checks(repo, scenario):
     else:
         checks["planning-only"] = tasks == pending
     return checks
+
+
+def active_options(spec):
+    """Read option mentions in the requirements, excluding explicit cancellations."""
+    marker = "<!-- spex:begin:requirement -->"
+    requirements = spec.partition(marker)[2] if marker in spec else spec
+    requirements = requirements.split("<!-- spex:begin:", 1)[0]
+    active = set()
+    canceled_heading_level = None
+    for raw in requirements.splitlines():
+        line = raw.strip()
+        heading = re.match(r"^(#{1,6})\s+(.+)", line)
+        if heading:
+            level = len(heading[1])
+            if canceled_heading_level is not None and level <= canceled_heading_level:
+                canceled_heading_level = None
+            if CANCELED_OPTIONS.match(heading[2]):
+                canceled_heading_level = level
+        line = re.sub(r"^(?:[-*+]\s+|\d+\.\s+)", "", line)
+        if canceled_heading_level is None:
+            for clause in re.split(r"[.;]\s+", line):
+                if not (CANCELED_OPTIONS.match(clause) or CANCELED_STATUS.match(clause)):
+                    active.update(OPTION.findall(clause))
+    return active
+
+
+def modify_path_plan_checks(repo, scenario):
+    plan_data = json.loads(read(GREETING_FIXTURE, ".spex/modify-plans.json"))
+    spec = read(repo, SPECS / FORMAT / "spec.md")
+    meta = json.loads(read(repo, SPECS / FORMAT / "meta.json"))
+    tasks = read_tasks(repo, FORMAT)
+    upper = read_tasks(GREETING_FIXTURE, FORMAT)[0]
+    expected = MODIFY_PLANS[scenario]
+    retained = set(plan_data[scenario]).intersection(expected)
+    removed = set(plan_data[scenario]).difference(expected)
+    active = active_options(spec)
+    details = plan_data["details"]
+    return {
+        "meta-written": isinstance(meta, dict) and meta.get("name") == "greeting-format",
+        "plan-order": len(tasks) == len(expected) and all(
+            flag in OPTION.findall(f"{task.get('name')} {task.get('details')}")
+            for flag, task in zip(expected, tasks)
+        ),
+        "updated-requirements": set(expected) <= active and removed.isdisjoint(active),
+        "task-details-written": all(
+            all(isinstance(task.get(field), str) and task[field].strip()
+                for field in ("name", "details"))
+            for task in tasks
+        ),
+        "valid-task-identifiers": all(type(t.get("id")) is int for t in tasks)
+        and [t["id"] for t in tasks] == list(range(1, len(tasks) + 1)),
+        "completed-step-preserved": tasks[0] == {**upper, "id": 1},
+        "remaining-steps-pending": all(
+            task.get("completed_at") == "" and task.get("commit_title") == ""
+            for task in tasks[1:]
+        ),
+        "retained-payloads": all(
+            task == {"id": index, "name": f"Add {flag}", "details": details[flag],
+                     "completed_at": "", "commit_title": ""}
+            for index, (flag, task) in enumerate(zip(expected, tasks), 1) if flag in retained
+        ),
+        "transaction-closed": not os.path.lexists(repo / SPECS / FORMAT / "todo.json.lock"),
+    }
 
 
 def invoke(repo, *flags):
@@ -176,13 +254,15 @@ def main():
     parser.add_argument(
         "scenario", choices=(
             "new-plan", "modify-plan", "prefix-only", "all-decoration",
-            "lifecycle-plan", "lifecycle-prefix", "lifecycle-all",
+            "lifecycle-plan", "lifecycle-prefix", "lifecycle-all", *MODIFY_PLANS,
         ),
     )
     args = parser.parse_args()
     repo = args.repo.resolve()
     try:
-        if args.scenario.endswith("-plan"):
+        if args.scenario in MODIFY_PLANS:
+            checks = modify_path_plan_checks(repo, args.scenario)
+        elif args.scenario.endswith("-plan"):
             checks = plan_checks(repo, args.scenario)
         else:
             checks = decoration_checks(repo, args.scenario)
