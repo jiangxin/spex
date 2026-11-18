@@ -195,6 +195,67 @@ class TestFormatOutput:
         for line in output.splitlines():
             assert len(line) <= 80
 
+    def test_narrow_output_keeps_mode_and_alignment(self):
+        p = Path("/tmp")
+        specs = [
+            Spec(name="list", path=p,
+                  meta=SpecMeta(created_at="2026-05-21T10:00:00+08:00",
+                                 task_mode="software", prompts=["x"]),
+                  done=0, total=1),
+            Spec(name="show", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 task_mode="general", prompts=["y"]),
+                  done=1, total=1),
+        ]
+        output = format_output(specs, max_width=28)
+        lines = output.splitlines()
+        assert len(lines) == 2
+        for line in lines:
+            assert common_mod.display_width(line) <= 28
+        assert "[software]" in output
+        assert "[general]" in output
+        # Both name columns must start at the same display offset.
+        offsets = []
+        for line, name in zip(lines, ["list", "show"]):
+            start = line.index(name)
+            offsets.append(common_mod.display_width(line[:start]))
+        assert offsets[0] == offsets[1]
+
+    def test_prompt_column_keeps_two_separator_columns(self):
+        # The layout uses exactly two spaces before the prompt, so the
+        # description budget must not subtract a third column.
+        p = Path("/tmp")
+        desc = "d" * 40
+        specs = [
+            Spec(name="n" * 38, path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 task_mode="software", prompts=[desc],
+                                 description=desc),
+                  done=1, total=2),
+        ]
+        output = format_output(specs)
+        line = output.splitlines()[0]
+        # 80 - (icon 3 + space + progress 5 + space + mode 10 + space
+        #       + name 38 + two separator spaces) leaves 20 columns, i.e.
+        # 17 description chars plus the ellipsis (one more than before).
+        assert "d" * 17 in line
+        assert "d" * 18 not in line
+        assert common_mod.display_width(line) <= 80
+
+    def test_whole_line_clamped_at_tiny_width(self):
+        p = Path("/tmp")
+        specs = [
+            Spec(name="list", path=p,
+                  meta=SpecMeta(created_at="2026-05-20T10:00:00+08:00",
+                                 task_mode="software", prompts=["x"]),
+                  done=0, total=1),
+        ]
+        output = format_output(specs, max_width=12)
+        lines = output.splitlines()
+        assert lines
+        for line in lines:
+            assert common_mod.display_width(line) <= 12
+
 
 class TestCollectTopics:
     def test_collects_from_dirs(self, tmp_path):
@@ -261,7 +322,8 @@ class TestFormatOutputRepoPrefix:
                   done=0, total=1),
         ]
         output = format_output(topics, show_repo=False)
-        assert "[" not in output
+        assert "[bar]" not in output
+        assert "[software]" in output
 
     def test_show_repo_true_short_name(self):
         p = Path("/tmp")
@@ -549,6 +611,19 @@ class TestBuildParser:
         assert args.json is True
         assert args.archives is True
 
+    def test_details_default_false(self):
+        args = self._parse([])
+        assert args.details is False
+
+    def test_details_flag(self):
+        args = self._parse(["--details"])
+        assert args.details is True
+
+    def test_details_with_read_only(self):
+        args = self._parse(["--details", "--read-only"])
+        assert args.details is True
+        assert args.read_only is True
+
     def test_must_done_flag(self):
         args = self._parse(["--must-done"])
         assert args.must_done is True
@@ -583,6 +658,7 @@ class TestBuildParser:
 class TestJsonOutput:
     def test_json_empty_topics(self):
         assert format_json_output([]) == "[]"
+        assert format_json_output([], details=True) == "[]"
 
     def test_json_single_topic(self):
         p = Path("/tmp/my-topic")
@@ -745,6 +821,106 @@ class TestMainJsonFlag:
         # Output should be valid JSON, not verbose text format
         result = json.loads(out)
         assert isinstance(result, list)
+
+    def test_details_requires_json(self):
+        with pytest.raises(SystemExit) as exc:
+            main(["--details"])
+        assert exc.value.code == 2
+
+    def test_main_json_default_shape_unchanged(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["--json"])
+
+        result = json.loads(capsys.readouterr().out)
+        assert result
+        for obj in result:
+            assert set(obj.keys()) == {"spec_name", "spec_path"}
+
+    def test_main_json_details(self, tmp_path, monkeypatch, capsys):
+        specs, _ = self._setup(tmp_path, monkeypatch)
+        _make_todo(specs / "related-spec", [
+            _task("1"), _task("2", completed=False),
+        ])
+
+        main(["--json", "--details"])
+
+        result = json.loads(capsys.readouterr().out)
+        detail = next(t for t in result if t["spec_name"] == "related-spec")
+        assert detail["task_mode"] == "software"
+        assert detail["completed_steps"] == 1
+        assert detail["total_steps"] == 2
+        assert detail["next_step"]["id"] == 2
+        for key in ("user_email", "prompts", "remote_url"):
+            assert key not in detail
+
+    def test_main_json_details_read_only(self, tmp_path, monkeypatch, capsys):
+        """--read-only resolves specs from the configured spex root."""
+        specs, _ = self._setup(tmp_path, monkeypatch)
+        _make_todo(specs / "related-spec", [
+            _task("1"), _task("2", completed=False),
+        ])
+
+        ctx = _make_project_context(str(tmp_path / "project-a"))
+        ctx.spex_root = str(tmp_path)
+        monkeypatch.setattr(
+            common_mod, "get_project_storage", lambda _w=None: ctx,
+        )
+
+        main(["--json", "--details", "--read-only"])
+
+        result = json.loads(capsys.readouterr().out)
+        detail = next(t for t in result if t["spec_name"] == "related-spec")
+        assert detail["task_mode"] == "software"
+        assert detail["completed_steps"] == 1
+
+
+class TestMainVerboseMetadata:
+    """main() renders metadata in the verbose (non-JSON) views."""
+
+    def _setup(self, tmp_path, monkeypatch):
+        specs = tmp_path / "specs"
+        archives = tmp_path / "archives"
+        specs.mkdir()
+        archives.mkdir()
+
+        project_workdir = str(tmp_path / "project-a")
+        _setup_topic(specs / "related-spec", project_workdir)
+        _make_todo(specs / "related-spec", [
+            _task("1", completed=False), _task("2", completed=False),
+        ])
+
+        ctx = _make_project_context(project_workdir)
+        monkeypatch.setattr(common_mod, "get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr(
+            common_mod, "get_archives_dir", lambda _w=None: archives,
+        )
+        monkeypatch.setattr(
+            common_mod, "get_project_storage", lambda _w=None: ctx,
+        )
+
+    def test_verbose_shows_task_mode_and_next_step(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["-v"])
+
+        out = capsys.readouterr().out
+        assert "[software]" in out
+        assert "Next: step-1/2:" in out
+
+    def test_very_verbose_shows_step_status(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        self._setup(tmp_path, monkeypatch)
+
+        main(["-vv"])
+
+        out = capsys.readouterr().out
+        assert "[Pending]" in out
 
 
 class TestWrapText:
@@ -1094,6 +1270,13 @@ class TestDoneUndoneFilter:
         main(["--json", "--must-undone"])
         result = json.loads(capsys.readouterr().out)
         assert [t["spec_name"] for t in result] == ["undone-topic"]
+
+        main(["--json", "--details", "--must-undone-or-locked"])
+        result = json.loads(capsys.readouterr().out)
+        assert {t["spec_name"] for t in result} == {"locked-topic", "undone-topic"}
+        undone = next(t for t in result if t["spec_name"] == "undone-topic")
+        assert undone["next_step"] is not None
+        assert undone["next_step"]["id"] == 2
 
     def test_must_undone_with_pattern(self, tmp_path, monkeypatch, capsys):
         self._setup(tmp_path, monkeypatch)
