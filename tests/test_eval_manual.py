@@ -1,4 +1,4 @@
-"""Fast checks for manual batch dispatch slot accounting and one-call dispatch."""
+"""Fast checks for manual batch dispatch and batch grade import."""
 
 import json
 import sys
@@ -12,6 +12,12 @@ import pytest
 import run
 
 from tests.conftest import manual_action
+
+GRADE_ROW = {
+    "criterion_id": "coverage", "score": 2, "verdict": "pass",
+    "reason": "The saved state shows the expected specification.",
+    "evidence_refs": ["turn-1:state"],
+}
 
 
 def build_sandbox(
@@ -406,3 +412,288 @@ def test_single_case_prepare_rejects_init(monkeypatch, capsys):
         run.main()
 
     assert "--init requires --all" in capsys.readouterr().err
+
+
+def build_import_sandbox(
+    root: Path, keys: list[str], monkeypatch, *, stub_sandbox: bool = True,
+) -> Path:
+    """Publish minimal gradable trials, the matching rubric, and a batch index."""
+    sandbox = (root / "runs" / "2026-11-18-09-21-00").resolve()
+    suite = root / "suites" / "example"
+    suite.mkdir(parents=True)
+    rubrics = {"version": 1, "cases": {}}
+    entries = {}
+    for key in keys:
+        _, case = key.split("/")
+        trial = sandbox / "example" / case
+        trial.mkdir(parents=True)
+        state = {"specs": {"demo": {"spec.md": "# Demo", "todo.json": "[]"}}}
+        run.write_json(trial / "turn-1.json", {
+            "turn": 1,
+            "artifacts": {"state": {
+                "id": "turn-1:state", "sha256": run.digest(run.encode(state)),
+                "value": state,
+            }},
+        })
+        run.write_json(trial / "trial.json", {
+            "suite": "example", "case_id": case, "verdict": "pass", "turn_results": [],
+        })
+        (trial / "judge-prompt.txt").write_text("prompt", encoding="utf-8")
+        rubrics["cases"][case] = [{
+            "id": "coverage", "turn": 1, "requires": ["state"], "threshold": 2,
+            "anchors": ["Missing", "Partial", "Complete"],
+        }]
+        entries[key] = {"trial": key, "environment": {}}
+    (suite / "rubrics.json").write_text(json.dumps(rubrics), encoding="utf-8")
+    manual_batch.write(sandbox / "batch-index.json", entries)
+    monkeypatch.setattr(run, "RUNS", root / "runs")
+    monkeypatch.setattr(run, "SUITES", root / "suites")
+    if stub_sandbox:
+        def check_sandbox_path(path=None):
+            # The CLI path must reach batch import, not be dropped on the way.
+            assert path is None or Path(path) == sandbox, f"unexpected sandbox: {path}"
+            return sandbox
+
+        monkeypatch.setattr(run, "resolve_sandbox", check_sandbox_path)
+    return sandbox
+
+
+def write_grades(sandbox: Path, key: str, raw: str | None = None) -> Path:
+    """Save one case's grades under the default batch handoff directory."""
+    suite, case = key.split("/")
+    path = run.grades_path(sandbox / "_handoff", suite, case)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(raw if raw is not None else json.dumps([GRADE_ROW]), encoding="utf-8")
+    return path
+
+
+def import_all(sandbox: Path, *extra: str) -> dict:
+    """Run one batch grade import without going through the process wrapper."""
+    return run.execute(run.parser().parse_args([
+        "import-grades", "--all", "--sandbox", str(sandbox), *extra,
+    ]))
+
+
+def run_cli(monkeypatch, *argv: str) -> int:
+    monkeypatch.setattr(sys, "argv", ["run.py", *argv])
+    return run.main()
+
+
+def test_import_grades_all_imports_saved_grades_and_skips_the_rest(
+    tmp_path, monkeypatch, capsys,
+):
+    # Deliberately unsorted so a sorted() walk would reorder the payload.
+    keys = ["example/charlie", "example/alpha", "example/bravo"]
+    sandbox = build_import_sandbox(tmp_path, keys, monkeypatch)
+    # charlie is already graded, and its packet is gone: the graded check wins.
+    run.write_json(sandbox / "example" / "charlie" / "judge.json", {"verdict": "pass"})
+    (sandbox / "example" / "charlie" / "judge-prompt.txt").unlink()
+    write_grades(sandbox, "example/charlie")
+    before = (sandbox / "example" / "charlie" / "judge.json").read_bytes()
+    write_grades(sandbox, "example/bravo")
+    # alpha stays without grades.
+
+    code = run_cli(monkeypatch, "import-grades", "--all", "--sandbox", str(sandbox))
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "imported": [{"case": "example/bravo", "verdict": "pass", "results": 1}],
+        "skipped": [
+            {"case": "example/charlie", "reason": "already_graded"},
+            {"case": "example/alpha", "reason": "no_grades"},
+        ],
+        "errors": [],
+    }
+    assert (sandbox / "example" / "charlie" / "judge.json").read_bytes() == before
+    judge = run.read_json(sandbox / "example" / "bravo" / "judge.json")
+    assert (judge["source"], judge["host"], judge["model"]) == ("external", "unknown", "unknown")
+    assert judge["verdict"] == "pass"
+    assert run.read_json(sandbox / "example" / "bravo" / "trial.json")["verdict"] == "pass"
+
+
+def test_import_grades_all_keeps_batch_index_insertion_order(tmp_path, monkeypatch):
+    keys = ["example/charlie", "example/alpha", "example/bravo"]
+    sandbox = build_import_sandbox(tmp_path, keys, monkeypatch)
+    for key in keys:
+        write_grades(sandbox, key)
+
+    payload = import_all(sandbox)
+
+    assert [item["case"] for item in payload["imported"]] == keys
+    assert payload["skipped"] == []
+    assert payload["errors"] == []
+
+
+def test_import_grades_all_continues_after_a_corrupt_grade_file(
+    tmp_path, monkeypatch, capsys,
+):
+    keys = ["example/alpha", "example/bravo"]
+    sandbox = build_import_sandbox(tmp_path, keys, monkeypatch)
+    write_grades(sandbox, "example/alpha", "{not json")
+    write_grades(sandbox, "example/bravo")
+
+    code = run_cli(
+        monkeypatch, "import-grades", "--all", "--sandbox", str(sandbox),
+        "--host", "qoder", "--judge-duration-ms", "2500",
+    )
+
+    assert code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["imported"] == [{"case": "example/bravo", "verdict": "pass", "results": 1}]
+    assert [item["case"] for item in payload["errors"]] == ["example/alpha"]
+    assert payload["errors"][0]["error"]
+    assert not (sandbox / "example" / "alpha" / "judge.json").exists()
+    judge = run.read_json(sandbox / "example" / "bravo" / "judge.json")
+    assert (judge["host"], judge["model"]) == ("qoder", "unknown")
+    performance = run.read_json(sandbox / "example" / "bravo" / "performance.json")
+    assert performance["judge"]["duration_ms"] == 2500
+
+
+@pytest.mark.parametrize("raw", [
+    "{}",
+    '{"results": []}',
+    json.dumps([{**GRADE_ROW, "criterion_id": "unknown"}]),
+])
+def test_import_grades_all_rejects_a_grade_contract_violation(
+    tmp_path, monkeypatch, capsys, raw,
+):
+    """A parseable payload that breaks the grades contract stays retryable."""
+    keys = ["example/alpha", "example/bravo"]
+    sandbox = build_import_sandbox(tmp_path, keys, monkeypatch)
+    write_grades(sandbox, "example/alpha", raw)
+    write_grades(sandbox, "example/bravo")
+
+    code = run_cli(monkeypatch, "import-grades", "--all", "--sandbox", str(sandbox))
+
+    assert code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["imported"] == [{"case": "example/bravo", "verdict": "pass", "results": 1}]
+    assert [item["case"] for item in payload["errors"]] == ["example/alpha"]
+    assert not (sandbox / "example" / "alpha" / "judge.json").exists()
+
+
+def test_import_grades_all_skips_a_case_without_a_judge_packet(
+    tmp_path, monkeypatch, capsys,
+):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    write_grades(sandbox, "example/alpha")
+    (sandbox / "example" / "alpha" / "judge-prompt.txt").unlink()
+
+    code = run_cli(monkeypatch, "import-grades", "--all", "--sandbox", str(sandbox))
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "imported": [],
+        "skipped": [{"case": "example/alpha", "reason": "no_packet"}],
+        "errors": [],
+    }
+    assert not (sandbox / "example" / "alpha" / "judge.json").exists()
+
+
+def test_import_grades_all_ignores_grades_for_unselected_keys(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    write_grades(sandbox, "example/zulu")
+
+    payload = import_all(sandbox)
+
+    assert payload == {
+        "imported": [],
+        "skipped": [{"case": "example/alpha", "reason": "no_grades"}],
+        "errors": [],
+    }
+    assert not (sandbox / "example" / "zulu").exists()
+
+
+def test_import_grades_all_uses_an_explicit_grades_directory(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    elsewhere = tmp_path / "grades"
+    elsewhere.mkdir()
+    suite, case = "example", "alpha"
+    (elsewhere / f"grades-{suite}-{case}.json").write_text(
+        json.dumps([GRADE_ROW]), encoding="utf-8",
+    )
+
+    payload = import_all(sandbox, "--grades-dir", str(elsewhere))
+
+    assert payload["imported"] == [{"case": "example/alpha", "verdict": "pass", "results": 1}]
+    assert (sandbox / "example" / "alpha" / "judge.json").is_file()
+
+
+def test_import_grades_all_resolves_a_relative_grades_directory_under_the_sandbox(
+    tmp_path, monkeypatch,
+):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    write_grades(sandbox, "example/alpha")
+    monkeypatch.chdir(tmp_path)
+
+    payload = import_all(sandbox, "--grades-dir", "_handoff")
+
+    assert payload["imported"] == [{"case": "example/alpha", "verdict": "pass", "results": 1}]
+
+
+def test_import_grades_all_rejects_a_missing_grades_directory(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    missing = tmp_path / "nowhere"
+
+    with pytest.raises(ValueError, match="Grades directory does not exist"):
+        import_all(sandbox, "--grades-dir", str(missing))
+
+    assert not (sandbox / "example" / "alpha" / "judge.json").exists()
+
+
+def test_import_grades_all_rejects_a_missing_batch_index(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    (sandbox / "batch-index.json").unlink()
+
+    with pytest.raises(ValueError, match="Batch index is missing"):
+        import_all(sandbox)
+
+
+def test_import_grades_all_rejects_a_non_object_batch_index(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(tmp_path, ["example/alpha"], monkeypatch)
+    manual_batch.write(sandbox / "batch-index.json", [{"trial": "example/alpha"}])
+
+    with pytest.raises(ValueError, match="Batch index must be a JSON object"):
+        import_all(sandbox)
+
+
+def test_import_grades_all_resolves_the_cli_sandbox_without_a_stub(tmp_path, monkeypatch):
+    sandbox = build_import_sandbox(
+        tmp_path, ["example/alpha"], monkeypatch, stub_sandbox=False,
+    )
+    write_grades(sandbox, "example/alpha")
+    verified = []
+    monkeypatch.setattr(run, "verify_sandbox", lambda path, source: verified.append(path))
+
+    payload = import_all(sandbox)
+
+    assert payload["imported"] == [{"case": "example/alpha", "verdict": "pass", "results": 1}]
+    assert verified == [sandbox]
+
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    with pytest.raises(ValueError, match="Expected a sandbox path under eval/spex/runs"):
+        run.execute(run.parser().parse_args([
+            "import-grades", "--all", "--sandbox", str(outside),
+        ]))
+
+
+@pytest.mark.parametrize(("argv", "message"), [
+    (["import-grades", "--all"], "--all requires --sandbox"),
+    (["import-grades", "--all", "--sandbox", "runs/s", "runs/s/trial"],
+     "--all cannot be combined with a trial path"),
+    (["import-grades", "--all", "--sandbox", "runs/s", "--grades", "g.json"],
+     "--all cannot be combined with --grades"),
+    (["import-grades"], "Pass a trial path or --all with --sandbox"),
+    (["import-grades", "runs/s/trial"], "--grades is required unless --all is used"),
+    (["import-grades", "runs/s/trial", "--grades", "g.json", "--sandbox", "runs/s"],
+     "--sandbox requires --all"),
+    (["import-grades", "runs/s/trial", "--grades", "g.json", "--grades-dir", "d"],
+     "--grades-dir requires --all"),
+])
+def test_import_grades_rejects_incomplete_arguments(monkeypatch, capsys, argv, message):
+    with pytest.raises(SystemExit) as exit_info:
+        run_cli(monkeypatch, *argv)
+
+    assert exit_info.value.code == 2
+    assert message in capsys.readouterr().err

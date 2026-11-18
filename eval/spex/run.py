@@ -31,7 +31,9 @@ from judge import (
     final_verdict,
     grade,
     packet_for,
+    partition_criteria,
     rubric_for,
+    validate,
 )
 from scheduling import (
     DEFAULT_JOBS,
@@ -1063,6 +1065,78 @@ def import_judge(output: Path, grades: Path, model: str, *, host: str = "unknown
     }
 
 
+def grades_path(directory: Path, suite: str, case_id: str) -> Path:
+    """Return the fixed grades filename for one batch case."""
+    return directory / f"grades-{suite}-{case_id}.json"
+
+
+def check_batch_grades(trial: Path, path: Path) -> None:
+    """Reject a malformed batch grade file before it becomes a stored judgment.
+
+    A single-trial import records malformed grades as a ``judge_error`` result.
+    In a batch close-out that would make the case skip as ``already_graded`` on
+    the next run, so fail it instead and keep the case retryable. The payload is
+    checked against the trial's ready criteria with the same contract
+    ``apply_grades`` uses; when no criterion is ready, parsing is all there is.
+    """
+    raw = path.read_text(encoding="utf-8")
+    metadata = read_json(trial / "trial.json")
+    packet, _, _ = trial_packet(trial, metadata)
+    ready, _ = partition_criteria(packet)
+    if not ready:
+        json.loads(raw)
+        return
+    validate(raw, ready, packet["evidence"])
+
+
+def import_grades_all(sandbox: Path, grades_dir: Path | None, host: str, model: str,
+                      duration_ms: int | None) -> dict:
+    """Import the saved grades of every case in a prepared batch.
+
+    Cases are visited in batch-index insertion order so close-out order matches
+    prepare order. A case that cannot be graded yet is skipped instead of
+    failing the batch; unexpected per-case errors are collected and reported.
+    A missing or malformed batch input fails the whole command so a mistyped
+    ``--sandbox`` or ``--grades-dir`` cannot pass as an empty batch.
+    """
+    sandbox = resolve_sandbox(sandbox)
+    index = sandbox / "batch-index.json"
+    if not index.is_file():
+        raise ValueError(f"Batch index is missing: {index}")
+    entries = manual_batch.read(index)
+    if not isinstance(entries, dict):
+        raise ValueError(f"Batch index must be a JSON object: {index}")
+    directory = Path(grades_dir) if grades_dir is not None else sandbox / "_handoff"
+    if not directory.is_absolute():
+        # Relative paths follow the sandbox, never the coordinator's cwd.
+        directory = sandbox / directory
+    if grades_dir is not None and not directory.is_dir():
+        raise ValueError(f"Grades directory does not exist: {directory}")
+    imported, skipped, errors = [], [], []
+    for key in entries:
+        try:
+            suite, case = key.split("/")
+            trial = resolve_trial(case_dir(sandbox, suite, case))
+            if (trial / "judge.json").is_file():
+                skipped.append({"case": key, "reason": "already_graded"})
+                continue
+            if not (trial / "judge-prompt.txt").is_file():
+                skipped.append({"case": key, "reason": "no_packet"})
+                continue
+            grades = grades_path(directory, suite, case)
+            if not grades.is_file():
+                skipped.append({"case": key, "reason": "no_grades"})
+                continue
+            check_batch_grades(trial, grades)
+            result = import_judge(trial, grades, model, host=host, duration_ms=duration_ms)
+            imported.append({
+                "case": key, "verdict": result["verdict"], "results": result["results"],
+            })
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            errors.append({"case": key, "error": str(error)})
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
 def replay(run_id: str, model: str, timeout: int, *, jobs: int = DEFAULT_JOBS,
            runtime: CodexRuntime | None = None) -> dict:
     if not saved_run_id(run_id):
@@ -1422,13 +1496,38 @@ def parser() -> argparse.ArgumentParser:
     export = sub.add_parser("export-packet")
     export.add_argument("trial", type=Path)
     imported = sub.add_parser("import-grades")
-    imported.add_argument("trial", type=Path)
     imported.add_argument(
-        "--grades", type=Path, required=True, help="Grades JSON file or - for stdin",
+        "trial", type=Path, nargs="?",
+        help="One prepared trial directory; pass --all instead for a whole batch",
+    )
+    imported.add_argument(
+        "--grades", type=Path, default=None,
+        help="Grades JSON file or - for stdin; required unless --all is used",
+    )
+    imported.add_argument(
+        "--all", dest="all_cases", action="store_true",
+        help=(
+            "Import every saved batch grade and exit 1 when any case fails "
+            "(all-skipped still exits 0)"
+        ),
+    )
+    imported.add_argument(
+        "--sandbox", type=Path, default=None,
+        help="Batch sandbox to close out; required with --all",
+    )
+    imported.add_argument(
+        "--grades-dir", type=Path, default=None,
+        help=(
+            "Directory holding grades-<suite>-<case>.json files; a relative path "
+            "resolves against the sandbox (default: <sandbox>/_handoff)"
+        ),
     )
     imported.add_argument("--host", type=host_name, default="unknown", help="Judge agent host")
     imported.add_argument("--model", type=unknownable, default="unknown", help="Judge model ID")
-    imported.add_argument("--judge-duration-ms", type=duration_argument)
+    imported.add_argument(
+        "--judge-duration-ms", type=duration_argument,
+        help="Measured judge duration; in --all mode every import gets this value",
+    )
     summary = sub.add_parser("summary")
     summary.add_argument(
         "sandbox", type=Path,
@@ -1597,6 +1696,10 @@ def execute(args: argparse.Namespace) -> dict:
         return calibrate(args, runtime=runtime)
     if args.command == "export-packet":
         return export_judge(resolve_trial(args.trial))
+    if args.command == "import-grades" and args.all_cases:
+        return import_grades_all(
+            args.sandbox, args.grades_dir, args.host, args.model, args.judge_duration_ms,
+        )
     if args.command == "import-grades":
         return import_judge(resolve_trial(args.trial), args.grades, args.model, host=args.host,
                             duration_ms=args.judge_duration_ms)
@@ -1651,11 +1754,45 @@ def execute(args: argparse.Namespace) -> dict:
     }
 
 
+def validate_import_args(command: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Enforce the single-trial versus batch grade-import contracts."""
+    if args.all_cases:
+        if args.sandbox is None:
+            command.error("--all requires --sandbox")
+        if args.trial is not None:
+            command.error("--all cannot be combined with a trial path")
+        if args.grades is not None:
+            command.error("--all cannot be combined with --grades")
+    else:
+        if args.sandbox is not None:
+            command.error("--sandbox requires --all")
+        if args.grades_dir is not None:
+            command.error("--grades-dir requires --all")
+        if args.trial is None:
+            command.error("Pass a trial path or --all with --sandbox")
+        elif args.grades is None:
+            command.error("--grades is required unless --all is used")
+
+
+def exit_status(args: argparse.Namespace, result: dict) -> int:
+    """Map a completed command to its process status.
+
+    Batch grade import reports per-case failures inside its payload so callers
+    keep every verdict, and exits 1 to flag that some case needs a retry.
+    Every other successful command exits 0.
+    """
+    if args.command == "import-grades" and getattr(args, "all_cases", False):
+        return 1 if result["errors"] else 0
+    return 0
+
+
 def main() -> int:
     command = parser()
     args = command.parse_args()
     if args.command == "prepare" and args.init and not args.all_cases:
         command.error("--init requires --all")
+    if args.command == "import-grades":
+        validate_import_args(command, args)
     try:
         result = execute(args)
     except (ValueError, OSError, TransportError, subprocess.SubprocessError) as error:
@@ -1673,7 +1810,7 @@ def main() -> int:
         print(json.dumps(payload, ensure_ascii=True, indent=2))
         return 2
     print(json.dumps(result, ensure_ascii=True, indent=2))
-    return 0
+    return exit_status(args, result)
 
 
 if __name__ == "__main__":
