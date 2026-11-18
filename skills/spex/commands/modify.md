@@ -210,6 +210,9 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   --name "$spec_name" --event-type modify
 ```
 
+- The helper synchronizes a revised description with the bound repository's
+  local Spex branch, when present. This is the shared write whitelist's
+  Git configuration exception.
 - ON_FAIL: correct recoverable errors and re-run post-action. If a
   todo edit is needed, follow Phase 7 transaction rules. If giving up,
   follow Failure Handling.
@@ -234,8 +237,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 ### Phase 10: STOP — Do NOT Implement
 
-- Follow `references/plan-command-common.md` hard STOP — no
-  application code; any write outside `$spec_path` is a violation
+- Follow `references/plan-command-common.md` hard STOP and write whitelist.
 - Sole responsibility: update spec documents. Wait for user review
   -> `/spex apply` or `/spex apply-one-step`.
 

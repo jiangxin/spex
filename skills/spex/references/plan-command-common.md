@@ -8,14 +8,17 @@ PLAN-only guards.
 
 ## Write whitelist (SCOPE)
 
-- Write **only** under `$spec_path` (`spec.md`, `todo.json`,
+- Spec writes are limited to `$spec_path` (`spec.md`, `todo.json`,
   `meta.json`, the `todo.json.lock` backup and its temporary file
   managed by todo-helper, optional `assets/`).
 - The modify helper also manages `versions/`,
   and `modify-pending.json` under `$spec_path`, including temporary
   files used for atomic writes.
-- NO application code. NO existing project file modifications
-  outside `$spec_path`.
+- The modify post-action helper may update or restore
+  `branch.<spex_branch>.description` in the spec's bound repository's local
+  Git configuration. This is the only permitted Git configuration write.
+- NO application code. Existing project files outside `$spec_path`
+  are outside the write whitelist.
 - Implementation later via `/spex apply` or `/spex apply-one-step`.
 
 ## Explore whitelist (read-only)
@@ -57,8 +60,8 @@ PLAN-only guards.
 
 ## Out-of-whitelist write → STOP
 
-- Any Write / ApplyPatch / tree-changing shell **outside**
-  `$spec_path` -> **immediate STOP**; roll back those out-of-scope
+- Any write **outside the whitelist** -> **immediate STOP**;
+  roll back those out-of-scope
   changes if possible; do **not** continue later phases
 
 ## Todo transaction failure handling
@@ -110,9 +113,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
 
 ## Hard STOP — Do NOT Implement
 
-- Hard STOP. Do NOT write application code, modify project files
-  outside `$spec_path`, or begin implementing steps in `todo.json`.
-  Any write outside `$spec_path` is a Preconditions violation.
-- Sole responsibility: produce or update `spec.md`, `todo.json`,
-  `meta.json` inside the spec directory.
+- Hard STOP. Follow the write whitelist. Do NOT write application code
+  or begin implementing steps in `todo.json`.
+- Sole responsibility: produce or update the spec and its development plan.
 - Wait for user review -> `/spex apply` or `/spex apply-one-step`.

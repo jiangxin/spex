@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import unicodedata
 from pathlib import Path
@@ -141,18 +142,68 @@ def switch_branch(branch_name: str, cwd: str | Path | None = None) -> None:
 
 
 def set_branch_description(
-    branch: str, description: str, cwd: str | Path | None = None,
+    branch: str, description: str, cwd: str | Path | None = None, *,
+    env: dict[str, str] | None = None,
 ) -> None:
     """Set the git branch description. Branch must be short format (no refs/heads/)."""
     branch = _strip_refs_prefix(branch)
     subprocess.run(
-        ["git", "config", f"branch.{branch}.description", description],
+        ["git", "config", "--local", f"branch.{branch}.description", description],
         capture_output=True,
         text=True,
         check=True,
         cwd=cwd,
+        env=env,
     )
     clear_git_config_cache(local_only=True, cwd=cwd)
+
+
+def get_branch_description(
+    branch: str, cwd: Path, *, env: dict[str, str] | None = None,
+) -> str | None:
+    """Read the single local value that set_branch_description would replace."""
+    key = f"branch.{_strip_refs_prefix(branch)}.description"
+    result = subprocess.run(
+        ["git", "config", "--local", "--no-includes", "--null", "--get-all", key],
+        capture_output=True, cwd=cwd, env=env,
+    )
+    if result.returncode == 1 and not result.stderr:
+        return None
+    result.check_returncode()
+    values = result.stdout.split(b"\0")[:-1]
+    if len(values) != 1:
+        raise ValueError(f"Expected one local value for {key} in {cwd}.")
+    return os.fsdecode(values[0])
+
+
+def unset_branch_description(
+    branch: str, cwd: Path, *, env: dict[str, str] | None = None,
+) -> None:
+    """Remove the local description written by set_branch_description."""
+    key = f"branch.{_strip_refs_prefix(branch)}.description"
+    subprocess.run(
+        ["git", "config", "--local", "--unset", key],
+        capture_output=True, text=True, check=True, cwd=cwd, env=env,
+    )
+    clear_git_config_cache(local_only=True, cwd=cwd)
+
+
+def has_local_branch(
+    branch: str, cwd: Path, *, env: dict[str, str] | None = None,
+) -> bool:
+    """Check an exact ref in a validated worktree, reporting Git query errors."""
+    ref = f"refs/heads/{_strip_refs_prefix(branch)}"
+    subprocess.run(
+        ["git", "check-ref-format", ref],
+        capture_output=True, text=True, check=True, cwd=cwd, env=env,
+    )
+    result = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname)", ref],
+        capture_output=True, text=True, check=True, cwd=cwd, env=env,
+    )
+    if result.stderr:
+        raise ValueError(result.stderr.strip())
+    return ref in result.stdout.splitlines()
 
 
 def merge_branch(
