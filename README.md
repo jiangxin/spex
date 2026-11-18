@@ -202,22 +202,31 @@ Show in-progress specs. When run inside a repository, it shows specs for that re
 
 ```bash
 spex list                    # Specs for the current repository
-spex list -v                 # Include spec descriptions
-spex list -vv                # Include step completion details
+spex list -v                 # Add spec metadata and the next step
+spex list -vv                # Add worktree info and per-step status
 spex list --archives         # Archived specs
 spex list --all-projects     # Specs from all projects
-spex list --json             # JSON array on stdout (no matches → [] + exit 0)
+spex list --json             # JSON array of {spec_name, spec_path} (no matches → [] + exit 0)
+spex list --json --details   # JSON array with metadata, progress, and next step
 ```
+
+In the default table view, each row shows the spec's task mode in brackets (`[software]` or `[general]`) between the progress counter and the name; verbose rows (`-v`, `-vv`, and `spex show --list`) append `[task_mode]` at the end of the header line instead. `-v` adds a metadata block under each spec: creation time, project workdir, base branch, spex branch, and the next unfinished step. `-vv` additionally shows the linked worktree and the status of every step. The default `--json` output keeps the stable `{spec_name, spec_path}` shape; `--details` expands each entry with the same fields used by `spex show --json` (without the `steps` array) and requires `--json`.
 
 ### spex show
 
 Display the detailed requirements, design, and development step plan for a given spec.
 
 ```bash
-spex show [spec-name]
+spex show [spec-name]         # Detailed view
+spex show [spec-name] --list  # Brief list view (the -vv layout without the spec content)
+spex show [spec-name] --json  # Machine-readable summary and steps on stdout
 ```
 
-When stdout is a TTY, `spex show` pages the output by starting `$PAGER` as argv (default `less -R`), not via `/bin/sh -c`. Set `PAGER=cat` to disable paging. Shell metacharacters in `PAGER` are not interpreted.
+The detailed view starts with a metadata block: task mode, description, spec path, creation time, project workdir, base branch, spex branch, lifecycle (active or archived), whether a linked worktree is enabled, and the worktree path. Each TODO step ends with its status: `Pending`, `Review pending` (implementation committed but not yet marked complete), or `Completed` together with the commit title and completion date. The `Next:` line names the first unfinished step as `step-N/total`, or reports `Completed` / `No tasks`.
+
+`--json` prints the metadata summary (including `next_step`) plus a `steps` array with `id`, `name`, `status`, `commit_title`, and `completed_at` for every step. `--json` and `--list` are mutually exclusive. Neither `--json` nor `--list` output is paged.
+
+When stdout is a TTY, the detailed view pages its output by starting `$PAGER` as argv (default `less -R`), not via `/bin/sh -c`. Set `PAGER=cat` to disable paging. Shell metacharacters in `PAGER` are not interpreted.
 
 ### spex open
 
