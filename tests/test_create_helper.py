@@ -665,6 +665,7 @@ class TestCliPrepareSpec:
             tmp_path / "2026-05-20-14-30-new-topic"
         )
         assert output["spec_template"] == "# Rendered Template"
+        assert output["spec_prompt"] == "# Rendered Template"
 
         meta_path = tmp_path / "2026-05-20-14-30-new-topic" / "meta.json"
         assert meta_path.exists()
@@ -674,6 +675,93 @@ class TestCliPrepareSpec:
              "timestamp": "2026-05-24T20:00:00+08:00"},
         ]
         assert meta["description"] == "Test desc"
+
+
+@pytest.fixture
+def create_template_root(tmp_path, monkeypatch):
+    import common
+
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    (tmp_path / "templates").mkdir()
+    ctx = _fake_project_context(spex_root=str(tmp_path))
+    monkeypatch.setattr(cfg, "get_project_context", lambda: ctx)
+    monkeypatch.setattr(common, "get_project_storage", lambda _workdir: ctx)
+    monkeypatch.setattr(common, "get_spex_root", lambda _workdir: str(tmp_path))
+    monkeypatch.setattr(common, "get_specs_dir", lambda: specs)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("Retain recovery behavior."))
+    return tmp_path
+
+
+@pytest.mark.parametrize(("custom_prompt", "custom_skeleton"), [
+    (False, False),
+    (True, False),
+    (False, True),
+    (True, True),
+])
+def test_prepare_renders_independent_templates(
+    create_template_root, capsys, custom_prompt, custom_skeleton,
+):
+    templates = create_template_root / "templates"
+    if custom_skeleton:
+        (templates / "spec-template.md").write_text("# Custom skeleton", encoding="utf-8")
+    if custom_prompt:
+        (templates / "create-spec.md").write_text(
+            "Custom {{ spec_name }}: {{ prompt_context }}", encoding="utf-8",
+        )
+    with patch("hooks.run_pre_action") as hook:
+        cli_prepare_spec(["--name", "template-demo", "--description", "Test templates"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert "Retain recovery behavior." in result["spec_prompt"]
+    assert result["spec_name"] in result["spec_prompt"]
+    assert result["spec_prompt"].startswith("Custom ") is custom_prompt
+    assert (result["spec_template"] == "# Custom skeleton") is custom_skeleton
+    assert (templates / "examples" / "create-spec.md").is_file()
+    hook.assert_called_once()
+
+
+@pytest.mark.parametrize(("template", "diagnostic"), [
+    (None, "Built-in template not found"),
+    (b"{% if prompt_context %}", "Unclosed if block"),
+    (b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
+    (b"\n", "Rendered prompt is empty"),
+    (b"\xff", "invalid start byte"),
+    (b"Unreadable prompt", "Permission denied"),
+])
+def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
+    create_template_root, monkeypatch, capsys, caplog, template, diagnostic,
+):
+    import common
+
+    if template is None:
+        monkeypatch.setattr(common, "_get_skill_path", lambda: create_template_root / "missing")
+    else:
+        custom = create_template_root / "templates" / "create-spec.md"
+        custom.write_bytes(template)
+        if template == b"Unreadable prompt":
+            read_text = Path.read_text
+
+            def read_template(path, *args, **kwargs):
+                if path == custom:
+                    raise PermissionError("Permission denied")
+                return read_text(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "read_text", read_template)
+    with (
+        patch("hooks.run_pre_action") as hook,
+        patch.object(create_helper, "_handoff_session_after_prepare") as handoff,
+        pytest.raises(SystemExit) as failure,
+    ):
+        cli_prepare_spec(["--name", "bad-template", "--description", "Test rollback"])
+
+    assert failure.value.code == 2
+    assert "create-spec.md" in caplog.text
+    assert diagnostic in caplog.text
+    assert not capsys.readouterr().out
+    assert not list((create_template_root / "specs").iterdir())
+    handoff.assert_not_called()
+    hook.assert_not_called()
 
 
 class TestValidateCreateBranch:

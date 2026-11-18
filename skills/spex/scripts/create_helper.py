@@ -501,7 +501,9 @@ def _do_prepare_spec(args):
     """Create spec directory and return JSON with metadata."""
     import config as cfg
     import hooks
+    import prompt as prompt_mod
     from common import get_specs_dir, local_iso_timestamp
+    from template import TemplateError
 
     specs_dir = get_specs_dir()
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
@@ -525,6 +527,21 @@ def _do_prepare_spec(args):
             spec_dir, ctx, prompt, timestamp, validated["description"],
         )
 
+        try:
+            spec_prompt = prompt_mod.render_prompt(
+                "create-spec",
+                metadata={"prompt_context": prompt, "spec_name": spec_name},
+            )
+            if not spec_prompt.strip():
+                raise TemplateError("Rendered prompt is empty")
+        except SystemExit:
+            # Required metadata validation already reports the missing fields.
+            logger.error("Invalid metadata for create-spec.md.")
+            sys.exit(2)
+        except (OSError, UnicodeError, TemplateError) as err:
+            logger.error("Error rendering create-spec.md: %s", err)
+            sys.exit(2)
+
         if ctx.spex_root:
             _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
 
@@ -536,12 +553,11 @@ def _do_prepare_spec(args):
             spec_name=spec_name,
         )
 
-        import prompt as prompt_mod
-
         result = {
             "spec_name": spec_name,
             "spec_path": str(spec_dir),
             "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
+            "spec_prompt": spec_prompt,
         }
         print(json.dumps(result, indent=2))
     except BaseException:
