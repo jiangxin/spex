@@ -84,7 +84,22 @@ Also resolve the current tip:
 git rev-parse --short HEAD
 ```
 
-Save as `$head_sha`. Set `$commit_sha` in this order:
+Save as `$head_sha`. First check for a recovered general-task amendment:
+
+- IF status provides `pending_amend` and its full `head_sha` matches the
+  current tip, the helper has verified an amendment of the pending
+  batch's `base_sha`. Probe `prompt apply-review --json` for that base
+  commit as below. On error or a skipped review with open majors, stop
+  with the pending batch intact. Otherwise, bind `$commit_sha` to
+  `base_sha`, `$new_sha` to the full `head_sha`, and `$batch_ids` to
+  `finding_ids`.
+- Inspect the fixes against the pending findings and rerun the acceptance
+  checks on the amended checkout. Bind the fresh acceptance evidence to
+  `$new_sha`. If the fixes or checks fail, stop with the batch intact.
+  Continue directly to the `complete-batch` call in **6c-ii** and route
+  from its result. Reuse the existing batch and amended commit.
+
+Otherwise set `$commit_sha` in this order:
 
 1. If status JSON `"commit_sha"` is non-empty **and** equals
    `$head_sha`, use that value.
@@ -296,6 +311,10 @@ $spex_skill_dir/scripts/spex prompt apply-fix --json \
   `bump-round` / `append` / `init`
 - **Not** run `git checkout` / `git switch` / `git reset`
 - Return `processed_ids`, `new_head`, and `check_evidence` JSON
+- For a general task, bind `check_evidence.commit_sha` to the full
+  amended HEAD and return successful command or inspection records in
+  `check_evidence.acceptance_evidence`. Use the shared evidence format
+  in `apply-task-phases.md`. Software tasks retain the `checks` format.
 
 Amend constraints:
 

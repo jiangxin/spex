@@ -241,6 +241,7 @@ def is_check_evidence_reusable(
     tree_clean: Optional[bool] = None,
     spex_root=None,
     cwd=None,
+    general=False,
 ) -> bool:
     """True when lint/test evidence may be reused for the current HEAD.
 
@@ -254,10 +255,12 @@ def is_check_evidence_reusable(
 
     if not head_sha or not str(head_sha).strip():
         return False
-    normalized = review_helper.normalize_check_evidence(evidence)
+    normalized = review_helper.normalize_check_evidence(evidence, general=general)
     if not normalized:
         return False
     if not review_helper.evidence_is_successful(normalized, head_sha):
+        return False
+    if general and not review_helper.sha_matches(head_sha, review_helper.get_head_sha(cwd)):
         return False
     if tree_clean is None:
         tree_clean, _ = review_helper.is_project_tree_clean(
@@ -268,7 +271,7 @@ def is_check_evidence_reusable(
     if required_commands:
         have = {
             str(item.get("command", ""))
-            for item in (normalized.get("checks") or [])
+            for item in (normalized.get("checks") or normalized.get("acceptance_evidence") or [])
             if isinstance(item, dict)
         }
         for command in required_commands:
@@ -548,6 +551,7 @@ def build_compact_review_context(
     if evidence and bind_sha:
         reusable = is_check_evidence_reusable(
             evidence, bind_sha, tree_clean=None, cwd=cwd,
+            general=metadata.get("task_mode") == GENERAL,
         )
 
     pending_has_major = False
@@ -852,6 +856,7 @@ def _enrich_review_metadata(
         review_data=review_data,
         finding_id=finding_id or "",
         commit_sha=metadata.get("commit_sha") or "",
+        cwd=metadata.get("spex_worktree") or None,
     )
     metadata.update(compact)
     return metadata
@@ -1124,10 +1129,7 @@ def _do_apply_one_task(args):
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
             "skip_commit": metadata.get("skip_commit", "false"),
-            **({
-                "task_mode": GENERAL,
-                "general_commit_allowed": _general_commit_allowed(),
-            } if metadata.get("task_mode") == GENERAL else {}),
+            **({"task_mode": GENERAL} if metadata.get("task_mode") == GENERAL else {}),
         }), args.output)
     else:
         _output_rendered(rendered, args.output)
@@ -1160,10 +1162,6 @@ def _read_stdin_extra_vars(stdin_flag):
     return extra_vars
 
 
-def _general_commit_allowed():
-    return get_project_context().config.get("step_review") is False
-
-
 def _do_apply_commit(args):
     """Handle apply-commit subcommand."""
 
@@ -1181,8 +1179,6 @@ def _do_apply_commit(args):
                 _output_rendered(json.dumps({"prompt": "", "all_done": True}), args.output)
             sys.exit(0)
 
-        if metadata.get("task_mode") == GENERAL and not _general_commit_allowed():
-            raise TemplateError("General tasks requiring a commit need step_review=false.")
         rendered = render_prompt("apply-commit", args.name, metadata=metadata)
     except FileNotFoundError as e:
         logger.error("Error: %s", e)

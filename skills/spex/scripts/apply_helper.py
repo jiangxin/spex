@@ -686,6 +686,7 @@ def _do_verify_handoff(args):
     from branch import get_current_branch
     from common import load_meta, resolve_spec_dir, sha_from_commit_title
     from config import get_project_context
+    from review_helper import general_review_head, review_filename, sha_matches
     from todo_helper import normalize_skip_commit, validate_todo
 
     try:
@@ -705,12 +706,20 @@ def _do_verify_handoff(args):
         if meta.spex_branch and get_current_branch(cwd) != meta.spex_branch:
             raise ValueError("checkout is no longer on the spec branch")
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd, text=True).strip()
+        commit_title = ""
         if task["commit_title"]:
-            if ctx.config.get("step_review") is not False or skip_commit == "true":
+            if skip_commit == "true":
                 raise ValueError("this general task cannot complete through the committed path")
             recorded = sha_from_commit_title(task["commit_title"])
-            if not recorded or not head.startswith(recorded):
+            expected = general_review_head(
+                spec_dir / review_filename(args.id), recorded or "",
+                review_enabled=ctx.config.get("step_review") is not False,
+            )
+            if not sha_matches(head, expected):
                 raise ValueError("HEAD does not match the step's recorded commit")
+            commit_title = subprocess.check_output(
+                ["git", "log", "-1", "--format=%h: %s", head], cwd=cwd, text=True,
+            ).strip()
         elif skip_commit == "false":
             raise ValueError("the general task requires a recorded commit")
         if head != args.head:
@@ -723,7 +732,9 @@ def _do_verify_handoff(args):
         logger.error("Error: invalid general task handoff: %s", exc)
         sys.exit(1)
 
-    print(json.dumps({"task_id": args.id, "acceptance_evidence": evidence}))
+    print(json.dumps({
+        "task_id": args.id, "acceptance_evidence": evidence, "commit_title": commit_title,
+    }))
 
 
 def _build_parser():

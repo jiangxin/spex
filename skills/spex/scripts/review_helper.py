@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from acceptance import validate_acceptance_evidence
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
     atomic_write_json,
@@ -24,6 +25,7 @@ from common import (
     resolve_spec_dir,
     sha_from_commit_title,
 )
+from task_mode import GENERAL
 
 VALID_SEVERITIES = ("major", "minor")
 VALID_CATEGORIES = (
@@ -82,10 +84,12 @@ def resolve_review_path(spec_name: str, step_id: int | str) -> Path:
     return spec_dir / review_filename(step_id)
 
 
-def _is_legacy_amend_chain(path: Path, actual_sha: str, expected_sha: str) -> bool:
+def _is_amend_chain(
+    path: Path, actual_sha: str, expected_sha: str, *, cwd: Optional[str] = None,
+) -> bool:
     """Verify contiguous amendments of the original commit at the coding tip."""
     meta = load_meta(path.parent)
-    cwd = (meta.spex_worktree or meta.workdir or None) if meta else None
+    cwd = cwd or ((meta.spex_worktree or meta.workdir or None) if meta else None)
     ref = f"refs/heads/{meta.spex_branch}" if meta and meta.spex_branch else "HEAD"
     try:
         result = subprocess.run(
@@ -121,7 +125,7 @@ def validate_review_commit(path: Path, data: dict, expected_sha: str | None) -> 
     matches_batch = sha_matches(actual_sha, fixed_sha) and sha_matches(base_sha, expected_sha)
     if matches_batch or (
         not data.get("original_commit_sha")
-        and _is_legacy_amend_chain(path, actual_sha, expected_sha)
+        and _is_amend_chain(path, actual_sha, expected_sha)
     ):
         if not data.get("original_commit_sha"):
             data["original_commit_sha"] = expected_sha
@@ -536,6 +540,22 @@ def _clean_status_payload(path: Path, step_id: str = "") -> dict:
     }
 
 
+def _pending_general_amend(path: Path, data: dict) -> Optional[dict]:
+    pending = data.get("pending_findings")
+    base = data.get("fix_base_commit_sha") or ""
+    if not pending or not sha_matches(base, data.get("commit_sha") or ""):
+        return None
+    meta = load_meta(path.parent)
+    if meta is None or meta.task_mode != GENERAL:
+        return None
+
+    cwd = meta.spex_worktree or meta.workdir or None
+    head = get_head_sha(cwd)
+    if not head or sha_matches(head, base) or not _is_amend_chain(path, head, base, cwd=cwd):
+        return None
+    return {"base_sha": base, "head_sha": head, "finding_ids": pending}
+
+
 def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
     """Print review status (open counts and fix/complete flags)."""
     if not path.is_file():
@@ -568,6 +588,8 @@ def cmd_status(path: Path, as_json: bool, step_id: str = "") -> None:
             "exists": True,
             "review_file": path.name,
         }
+        if as_json and (amend := _pending_general_amend(path, data)):
+            payload["pending_amend"] = amend
     if as_json:
         print(json.dumps(payload))
     else:
@@ -855,7 +877,7 @@ def is_project_tree_clean(
     return (not dirty, list(paths))
 
 
-def normalize_check_evidence(raw) -> Optional[dict]:
+def normalize_check_evidence(raw, *, general=False) -> Optional[dict]:
     """Parse and normalize check evidence; return None if invalid."""
     if isinstance(raw, str):
         try:
@@ -867,6 +889,12 @@ def normalize_check_evidence(raw) -> Optional[dict]:
     commit_sha = raw.get("commit_sha")
     if not isinstance(commit_sha, str) or not commit_sha.strip():
         return None
+    if general:
+        try:
+            records = validate_acceptance_evidence(raw.get("acceptance_evidence"))
+        except ValueError:
+            return None
+        return {"commit_sha": commit_sha.strip(), "acceptance_evidence": records}
     checks = raw.get("checks")
     if not isinstance(checks, list) or not checks:
         return None
@@ -905,6 +933,8 @@ def evidence_is_successful(evidence: dict, expected_sha: str) -> bool:
     """True if evidence is bound to expected_sha and every check exited 0."""
     if not sha_matches(evidence.get("commit_sha", ""), expected_sha):
         return False
+    if "acceptance_evidence" in evidence:
+        return normalize_check_evidence(evidence, general=True) is not None
     checks = evidence.get("checks") or []
     if not checks:
         return False
@@ -914,6 +944,31 @@ def evidence_is_successful(evidence: dict, expected_sha: str) -> bool:
         and c.get("exit_code") == 0
         for c in checks
     )
+
+
+def general_review_head(path: Path, original_sha: str, *, review_enabled: bool) -> str:
+    """Return the step's accepted commit identity from its durable review batch."""
+    if not path.is_file():
+        return original_sha
+    data = load_review(path)
+    open_findings = get_open_findings(data)
+    if any(item.get("severity") == "major" for item in open_findings) or (
+        review_enabled and (open_findings or data["awaiting_delta"] or data["pending_findings"])
+    ):
+        raise ValueError("the step still has pending review work")
+    fixed = data["fixed_commit_sha"]
+    if not fixed:
+        if data["commit_sha"] and not sha_matches(data["commit_sha"], original_sha):
+            raise ValueError("the review does not match the step's recorded commit")
+        return original_sha
+    evidence = normalize_check_evidence(data["check_evidence"], general=True)
+    if not (
+        sha_matches(data.get("original_commit_sha", ""), original_sha)
+        and sha_matches(data["commit_sha"], fixed)
+        and evidence and evidence_is_successful(evidence, fixed)
+    ):
+        raise ValueError("the review amendment is not verified for the step's recorded commit")
+    return fixed
 
 
 def _finding_ids_set(ids) -> set[str]:
@@ -1096,11 +1151,14 @@ def cmd_complete_batch(
     On any validation failure: exit non-zero without writing completed_at.
     Supports resume when amend already moved HEAD but the write was skipped.
     """
-    evidence = normalize_check_evidence(evidence_raw)
+    meta = load_meta(path.parent)
+    general = meta is not None and meta.task_mode == GENERAL
+    evidence = normalize_check_evidence(evidence_raw, general=general)
     if evidence is None:
         logger.error(
             "Error: --evidence must be JSON with commit_sha and "
-            "non-empty successful checks.",
+            "non-empty successful %s.",
+            "acceptance_evidence" if general else "checks",
         )
         sys.exit(1)
 
@@ -1129,6 +1187,8 @@ def cmd_complete_batch(
     err = validate_complete_batch(
         data, ids, base_sha, new_sha, evidence, head_sha, tree_clean,
     )
+    if not err and general and not _is_amend_chain(path, head_sha, base_sha, cwd=cwd):
+        err = "current HEAD is not an amendment of the pending base commit"
     if err:
         logger.error("Error: complete-batch rejected: %s.", err)
         if dirty_paths and not tree_clean:
@@ -1187,11 +1247,9 @@ def _emit_complete_batch_telemetry(
         sum_check_evidence_duration_ms,
     )
 
-    checks = list(evidence.get("checks") or [])
+    checks = list(evidence.get("checks") or evidence.get("acceptance_evidence") or [])
     evidence_ms = sum_check_evidence_duration_ms(evidence)
-    ok = all(
-        isinstance(c, dict) and c.get("exit_code") == 0 for c in checks
-    ) if checks else False
+    ok = evidence_is_successful(evidence, new_sha)
 
     # Checks duration is evidence-bound only — never wall-clock from an
     # early open span (e.g. fix-prompt time). Missing per-check

@@ -72,9 +72,6 @@ route as below.
     missing → `false`)
   - `$task_mode` ← `"task_mode"` (missing → `software`). Reset
     the mode and clear prior acceptance evidence on every task prompt.
-    For `general`, bind `$general_commit_allowed` from
-    `"general_commit_allowed"`. If false, stop before implementation
-    when the step has a pending commit or `skip_commit=false`.
     Record the full `$base_head` with `git rev-parse HEAD` in the bound
     worktree before implementation or sub-agent launch.
 
@@ -116,8 +113,8 @@ route as below.
   code; docs-only / no-op steps may leave the tree clean
 - For `general`, read the agreed sources and write local outputs only
   to agreed paths. Resolve repository-relative paths in the bound
-  worktree. Write versioned outputs only if `$general_commit_allowed`
-  is true and the step can commit. Reuse existing outputs that pass the task
+  worktree. Write versioned outputs only if the step can commit.
+  Reuse existing outputs that pass the task
   criteria. Stop with the task unfinished if an input or verification
   fails. Keep the output paths and a successful record for each criterion:
   `kind: command`, `criterion`, `command`, integer `exit_code: 0`; or
@@ -165,10 +162,6 @@ CLI; do **not** re-implement by hand in normal apply):
 ### skip_commit six-arm matrix
 
 Branch on `$skip_commit` + `$dirty`:
-
-For `general` tasks, a dirty tree stops before Phase 5 when
-`$general_commit_allowed` is false, including `skip_commit=auto`.
-Report the paths and leave the task unfinished.
 
 | `$skip_commit` | `$dirty` | Action |
 |----------------|----------|--------|
@@ -298,14 +291,15 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   complete after that transaction commits.
 
 - For `general` in either apply entrypoint, use the pre-execution SHA
-  as `$acceptance_head` after a clean skip. For a committed task, read
-  the recorded commit title of the current step and compare its SHA
-  with the full current HEAD in the bound worktree. Stop if they do not
-  match. Otherwise use that full HEAD as `$acceptance_head` and verify
-  the actual committed deliverables against every acceptance criterion.
-  Repeat this verification on resume without rerunning implementation
-  or creating another commit. Leave the step unfinished if evidence is
-  unavailable or any check fails.
+  as `$acceptance_head` after a clean skip. After a commit, compare the
+  full HEAD in the bound worktree with the step's recorded commit or
+  its completed review batch's verified `fixed_commit_sha`. Stop on
+  a mismatch. Use the matched full HEAD as `$acceptance_head` and verify
+  every criterion against the actual final deliverables. Reuse prior
+  evidence only if it covers those deliverables at the same SHA.
+  Reinspect any external files before relying on them. On resume, do
+  not rerun implementation or create another commit. Leave the step
+  unfinished if evidence is unavailable or a check fails.
 - Validate the handoff using the selected SHA and successful evidence:
 
   ```bash
@@ -315,7 +309,8 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   EOF
   ```
 
-  Stop on failure. Keep the validated `acceptance_evidence` from stdout.
+  Stop on failure. Keep the validated `acceptance_evidence` and
+  `commit_title` from stdout. The title is empty after a clean skip.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
@@ -327,7 +322,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
 
   ```bash
   $spex_skill_dir/scripts/spex todo-helper complete "$spec_name" \
-    --id "$current_task_id" --acceptance-evidence-stdin <<'EOF'
+    --id "$current_task_id" --commit-title "$commit_title" --acceptance-evidence-stdin <<'EOF'
   <validated JSON array of acceptance evidence>
   EOF
   ```

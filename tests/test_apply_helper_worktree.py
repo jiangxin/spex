@@ -139,7 +139,6 @@ def test_general_external_handoff_completes_without_commit(tmp_path, monkeypatch
     blocked = cli(*handoff, "--head", base, stdin=json.dumps(evidence))
     assert blocked.returncode != 0
     assert "outside spex_root" in blocked.stderr
-    assert cli("prompt", "apply-commit", spec.name).returncode != 0
     assert todo.read_bytes() == before
     assert head() == base
     unrelated.unlink()
@@ -159,7 +158,10 @@ def test_general_external_handoff_completes_without_commit(tmp_path, monkeypatch
 
 
 @pytest.mark.slow
-def test_general_committed_handoff_resumes_only_the_recorded_head(tmp_path, monkeypatch):
+@pytest.mark.parametrize("review_enabled", [False, True])
+def test_general_committed_handoff_resumes_only_the_recorded_head(
+    tmp_path, monkeypatch, review_enabled,
+):
     repo = tmp_path / "repo"
     _git_init_with_commit(repo)
     root = tmp_path / "spex"
@@ -186,18 +188,9 @@ def test_general_committed_handoff_resumes_only_the_recorded_head(tmp_path, monk
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
 
-    config.write_text(f'[spex]\nspex_root = "{root}"\nstep_review = true\n')
-    base = git("rev-parse", "HEAD")
-    before = todo.read_bytes()
-    assert not json.loads(cli("prompt", "apply-one-task", spec.name, "--json").stdout)[
-        "general_commit_allowed"]
-    assert cli("prompt", "apply-commit", spec.name).returncode != 0
-    assert git("rev-parse", "HEAD") == base
-    assert todo.read_bytes() == before
-
-    config.write_text(f'[spex]\nspex_root = "{root}"\nstep_review = false\n')
-    assert json.loads(cli("prompt", "apply-one-task", spec.name, "--json").stdout)[
-        "general_commit_allowed"]
+    config.write_text(
+        f'[spex]\nspex_root = "{root}"\nstep_review = {str(review_enabled).lower()}\n',
+    )
     rendered = cli("prompt", "apply-commit", spec.name)
     assert rendered.returncode == 0, rendered.stderr
     assert "current task's versioned" in rendered.stdout
@@ -216,8 +209,73 @@ def test_general_committed_handoff_resumes_only_the_recorded_head(tmp_path, monk
         "location": "GUIDE.md", "observation": "Workflow guide is present",
     }]
     handoff = ("apply-helper", "verify-handoff", "--name", spec.name, "--id", "1", "--head")
+    review = cli("prompt", "apply-review", spec.name, "--commit", head, "--json")
+    assert review.returncode == 0, review.stderr
+    if review_enabled:
+        assert "factual accuracy" in json.loads(review.stdout)["prompt"]
+        step_args = (spec.name, "--step", "1")
+        finding = ("--id", "r1-f1", "--severity", "major", "--category", "other",
+                   "--title", "Document the verification command", "--details", "Add a command.")
+        appended = cli("review-helper", "append", *step_args, "--commit", head, *finding)
+        assert appended.returncode == 0, appended.stderr
+        assert cli(*handoff, head, stdin=json.dumps(evidence)).returncode != 0
+        pending = cli("review-helper", "set-pending", *step_args, "--ids", "r1-f1",
+                      "--base-commit", head)
+        assert pending.returncode == 0, pending.stderr
+        fix = cli("prompt", "apply-fix", spec.name, "--commit", head, "--json")
+        assert fix.returncode == 0, fix.stderr
+        assert "check_evidence.acceptance_evidence" in json.loads(fix.stdout)["prompt"]
+        status = ("review-helper", "status", *step_args, "--json")
+        assert "pending_amend" not in json.loads(cli(*status).stdout)
+        review_file = spec / "review-step-1.json"
+        pending_bytes = review_file.read_bytes()
+        git("commit", "--allow-empty", "-m", "ordinary child")
+        child = git("rev-parse", "HEAD")
+        assert "pending_amend" not in json.loads(cli(*status).stdout)
+        rejected = cli("review-helper", "complete-batch", *step_args, "--ids", "r1-f1",
+                       "--base-commit", head, "--new-commit", child, "--evidence-from-stdin",
+                       stdin=json.dumps({"commit_sha": child, "acceptance_evidence": evidence}))
+        assert rejected.returncode != 0
+        assert "not an amendment" in rejected.stderr
+        assert review_file.read_bytes() == pending_bytes
+        git("reset", "--hard", head)
+
+        (repo / "GUIDE.md").write_text("Workflow guide\nVerify with: git status\n")
+        git("add", "GUIDE.md")
+        git("commit", "--amend", "--no-edit")
+        amended = git("rev-parse", "HEAD")
+        assert json.loads(cli(*status).stdout)["pending_amend"] == {
+            "base_sha": head, "head_sha": amended, "finding_ids": ["r1-f1"],
+        }
+        assert review_file.read_bytes() == pending_bytes
+        batch = ("review-helper", "complete-batch", *step_args, "--ids", "r1-f1",
+                 "--base-commit", head, "--new-commit", amended, "--evidence-from-stdin")
+        for stale in (
+            {"commit_sha": amended}, {"commit_sha": head, "acceptance_evidence": evidence},
+        ):
+            assert cli(*batch, stdin=json.dumps(stale)).returncode != 0
+        evidence[0]["observation"] = "Workflow guide includes its verification command"
+        fixed = cli(*batch, stdin=json.dumps({
+            "commit_sha": amended, "acceptance_evidence": evidence,
+        }))
+        assert fixed.returncode == 0, fixed.stderr
+        assert git("rev-parse", "HEAD") == amended
+        assert "pending_amend" not in json.loads(cli(*status).stdout)
+        assert cli(*handoff, amended, stdin=json.dumps(evidence)).returncode != 0
+        delta = cli("prompt", "apply-review", spec.name, "--commit", amended,
+                    "--mode", "delta", "--json")
+        assert delta.returncode == 0, delta.stderr
+        assert json.loads(delta.stdout)["check_evidence_reusable"]
+        head = amended
+    else:
+        assert json.loads(review.stdout)["skipped"]
     assert cli(*handoff, head, stdin="[]").returncode != 0
     git("commit", "--allow-empty", "-m", "unrelated")
+    if review_enabled:
+        stale_review = cli("prompt", "apply-review", spec.name, "--commit", head,
+                           "--mode", "full", "--json")
+        assert stale_review.returncode == 0, stale_review.stderr
+        assert not json.loads(stale_review.stdout)["check_evidence_reusable"]
     blocked = cli(*handoff, git("rev-parse", "HEAD"), stdin=json.dumps(evidence))
     assert blocked.returncode != 0
     assert "recorded commit" in blocked.stderr
@@ -227,12 +285,14 @@ def test_general_committed_handoff_resumes_only_the_recorded_head(tmp_path, monk
     count = git("rev-list", "--count", "HEAD")
     verified = cli(*handoff, head, stdin=json.dumps(evidence))
     assert verified.returncode == 0, verified.stderr
+    final_title = json.loads(verified.stdout)["commit_title"]
     completed = cli("todo-helper", "complete", spec.name, "--id", "1",
-                    "--acceptance-evidence-stdin", stdin=json.dumps(evidence))
+                    "--commit-title", final_title, "--acceptance-evidence-stdin",
+                    stdin=json.dumps(evidence))
     assert completed.returncode == 0, completed.stderr
     result = json.loads(todo.read_text())[0]
     assert result["completed_at"]
-    assert result["commit_title"] == step["commit_title"]
+    assert result["commit_title"] == git("log", "-1", "--pretty=%h: %s")
     assert result["acceptance_evidence"] == evidence
     assert git("rev-list", "--count", "HEAD") == count
 
