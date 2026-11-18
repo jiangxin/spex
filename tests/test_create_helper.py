@@ -109,6 +109,16 @@ class TestDiscardIncompleteSpec:
         assert discard_incomplete_spec(stub, specs_dir=specs) is True
         assert not stub.exists()
 
+    def test_nested_logs_are_allowed_in_incomplete_spec(self, tmp_path):
+        stub = tmp_path / "specs" / "2026-05-20-14-30-test"
+        logs = stub / "logs"
+        logs.mkdir(parents=True)
+        (stub / "meta.json").write_text("{}")
+        (logs / "trace.jsonl").touch()
+        assert create_helper.is_incomplete_spec_stub(stub)
+        (logs / "notes.txt").touch()
+        assert not create_helper.is_incomplete_spec_stub(stub)
+
     def test_refuses_complete_spec(self, tmp_path):
         from create_helper import discard_incomplete_spec
 
@@ -1577,7 +1587,7 @@ class TestBeginEndSession:
             session_dir = Path(begin["log_path"]).parent
             assert session_dir.is_dir()
             assert not Path(begin["log_path"]).exists()
-            assert not (spec_dir / "debug.log").exists()
+            assert not (spec_dir / "logs" / "debug.log").exists()
             create_helper.main(
                 ["end-session", "--name", "2026-08-04-15-50-demo"]
             )
@@ -1591,7 +1601,7 @@ class TestBeginEndSession:
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_dir.exists()
         assert not (spex_root / "sessions" / begin["session_id"]).exists()
-        assert not (spec_dir / "debug.log").exists()
+        assert not (spec_dir / "logs" / "debug.log").exists()
 
     def test_end_session_with_name_merges_then_deletes(
         self, tmp_path, monkeypatch, capsys,
@@ -1600,7 +1610,8 @@ class TestBeginEndSession:
         spex_root = Path(ctx.spex_root)
         spec_dir = spex_root / "specs" / "2026-08-04-15-50-demo"
         spec_dir.mkdir()
-        (spec_dir / "debug.log").write_text(
+        (spec_dir / "logs").mkdir()
+        (spec_dir / "logs" / "debug.log").write_text(
             "===== existing =====\n", encoding="utf-8",
         )
         monkeypatch.chdir(tmp_path)
@@ -1626,16 +1637,16 @@ class TestBeginEndSession:
 
         assert end["ended"] is True
         assert end["deleted"] is True
-        assert end["merged_into"] == str(spec_dir / "debug.log")
+        assert end["merged_into"] == str(spec_dir / "logs" / "debug.log")
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_log.exists()
         assert not session_log.parent.exists()
         spans = [
             json.loads(line) for line in
-            (spec_dir / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+            (spec_dir / "logs" / "trace.jsonl").read_text(encoding="utf-8").splitlines()
         ]
         assert spans == [trace_history]
-        assert (spec_dir / "debug.log").read_text(encoding="utf-8") == (
+        assert (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8") == (
             "===== existing =====\n"
             "===== session history =====\n"
         )
@@ -1665,7 +1676,7 @@ class TestBeginEndSession:
             end = json.loads(capsys.readouterr().out.strip())
 
         assert end["deleted"] is True
-        assert (spec_dir / "debug.log").read_text(encoding="utf-8") == (
+        assert (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8") == (
             "pre-name timeline\n"
         )
         assert get_active_session_id(ctx.spex_root) is None
@@ -1821,7 +1832,7 @@ class TestPreparePostActionSession:
                 )
 
         spec_dir = Path(out["spec_path"])
-        debug_log = spec_dir / "debug.log"
+        debug_log = spec_dir / "logs" / "debug.log"
         assert out["spec_name"].endswith("-handoff")
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_log.exists()
@@ -1856,7 +1867,7 @@ class TestPreparePostActionSession:
         spec_dir = Path(out["spec_path"])
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_dir.exists()
-        assert not (spec_dir / "debug.log").exists()
+        assert not (spec_dir / "logs" / "debug.log").exists()
 
     def test_prepare_keeps_pointer_when_merge_fails(
         self, tmp_path, monkeypatch, capsys,
@@ -1891,7 +1902,7 @@ class TestPreparePostActionSession:
         assert get_active_session_id(ctx.spex_root) == session_id
         assert session_log.is_file()
         # Prepare still succeeded; debug anchor may be written.
-        content = (Path(out["spec_path"]) / "debug.log").read_text(
+        content = (Path(out["spec_path"]) / "logs" / "debug.log").read_text(
             encoding="utf-8",
         )
         assert (
@@ -1973,7 +1984,8 @@ class TestPreparePostActionSession:
                 named_path = resolve_debug_log_path(
                     ["spex", "prompt", "apply-one-task", "2026-08-04-15-50-side"],
                 )
-            assert named_path == side_spec / "debug.log"
+            assert named_path == side_spec / "logs" / "debug.log"
+            named_path.parent.mkdir()
             named_path.write_text("spec-entry\n", encoding="utf-8")
 
             assert session_log.stat().st_size == session_size
@@ -1986,14 +1998,14 @@ class TestPreparePostActionSession:
         new_spec = Path(out["spec_path"])
         assert not session_log.exists()
         assert get_active_session_id(ctx.spex_root) is None
-        content = (new_spec / "debug.log").read_text(encoding="utf-8")
+        content = (new_spec / "logs" / "debug.log").read_text(encoding="utf-8")
         assert content.startswith("session-entry\n")
         assert (
             f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
             in content
         )
         # Side-spec log was never the handoff target.
-        assert (side_spec / "debug.log").read_text(encoding="utf-8") == (
+        assert (side_spec / "logs" / "debug.log").read_text(encoding="utf-8") == (
             "spec-entry\n"
         )
 
@@ -2046,7 +2058,7 @@ class TestPreparePostActionSession:
             out = json.loads(capsys.readouterr().out.strip())
 
         spec_dir = Path(out["spec_path"])
-        debug_log = spec_dir / "debug.log"
+        debug_log = spec_dir / "logs" / "debug.log"
         assert get_active_session_id(ctx.spex_root) is None
         assert not session_log.exists()
         assert not session_log.parent.exists()
@@ -2061,7 +2073,7 @@ class TestPreparePostActionSession:
             "argv: spex create-helper prepare-spec",
         )
         assert "===== END exit=0 duration_ms=" in content
-        span = json.loads((spec_dir / "trace.jsonl").read_text(encoding="utf-8"))
+        span = json.loads((spec_dir / "logs" / "trace.jsonl").read_text(encoding="utf-8"))
         assert span["name"] == "create-helper"
 
     def test_post_action_writes_anchor_when_debug_enabled(
@@ -2100,7 +2112,7 @@ class TestPreparePostActionSession:
                 ["--name", "2026-08-04-15-50-post"],
             )
 
-        content = (spec_dir / "debug.log").read_text(encoding="utf-8")
+        content = (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8")
         assert content == (
             "===== CREATE post-action ok "
             "name=2026-08-04-15-50-post steps=2 =====\n"
@@ -2138,4 +2150,4 @@ class TestPreparePostActionSession:
                 ["--name", "2026-08-04-15-50-quiet"],
             )
 
-        assert not (spec_dir / "debug.log").exists()
+        assert not (spec_dir / "logs" / "debug.log").exists()

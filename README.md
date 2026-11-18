@@ -547,6 +547,8 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 This lets the platform control the `spex_root` location, templates, and hooks centrally, ensuring specs from all repositories are stored and managed in one place.
 
+Spec-bound runtime logs and their sidecars default to `<spec_dir>/logs/`.
+Existing root-level logs remain available to evaluation tools.
 With debug logging enabled, set `SPEX_LOG_DIR` to write CLI `debug.log` and
 `trace.jsonl` into one directory. A relative directory is resolved from the
 current working directory. Workflow anchors and review state remain with each spec.

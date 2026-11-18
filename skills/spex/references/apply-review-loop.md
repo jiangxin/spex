@@ -534,7 +534,7 @@ aliases of `show` (compat).
   STOP).
 - Debug timeline: with debug enabled, `prompt apply-review` and
   `review-helper bump-round` append APPLY anchors to
-  `$spec_path/debug.log` automatically. Agent need not intervene.
+  `$spec_path/logs/debug.log` automatically. Agent need not intervene.
 - Never reference `$commit_sha` (or other `$var`) inside
   `python3 -c` unless already expanded to a literal in the command
   text.

@@ -997,7 +997,7 @@ class TestGenerateDefaultToml:
         result = generate_default_toml()
         assert "# Root directory for spec storage" in result
         assert "# Create and manage branches for specs" in result
-        assert "# Append script traces to <spec_dir>/debug.log" in result
+        assert "# Append script traces to <spec_dir>/logs/debug.log" in result
         assert "# debug = false" in result
         assert "# Review each apply step commit before marking it done" in result
         assert "# step_review = true" in result

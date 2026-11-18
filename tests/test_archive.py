@@ -298,6 +298,18 @@ class TestDebugOrphanStub:
         (d / f"{DEBUG_LOG_NAME}.prev_end").write_text("0\n", encoding="utf-8")
         assert is_debug_orphan_stub(d) is False
 
+    def test_nested_log_stub_preserves_unknown_content_and_symlinks(self, tmp_path):
+        stub = tmp_path / "spec"
+        logs = self._make_stub(stub / "logs", with_prev_end=True)
+        (logs / "trace.jsonl").write_text("{}\n")
+        assert is_debug_orphan_stub(stub)
+        (logs / "notes.txt").touch()
+        assert not is_debug_orphan_stub(stub)
+        target = logs.rename(tmp_path / "elsewhere")
+        (target / "notes.txt").unlink()
+        logs.symlink_to(target, target_is_directory=True)
+        assert not is_debug_orphan_stub(stub)
+
     def test_remove_stub_with_archives_sibling(self, tmp_path, caplog):
         specs = tmp_path / "specs"
         stub = self._make_stub(specs / "my-topic")
@@ -1571,7 +1583,8 @@ class TestDebugArchiveCliRegression:
             cwd=str(tmp_path),
         )
 
-    def test_debug_archive_name_no_specs_stub(self, tmp_path):
+    @pytest.mark.parametrize("explicit_route", [None, "log", "trace"])
+    def test_debug_archive_name_no_specs_stub(self, tmp_path, monkeypatch, explicit_route):
         """debug=true + archive <spec-name>: specs gone; tee in archives."""
         spex_root = self._setup_repo(tmp_path, debug=True)
         spec_name = "2026-08-05-09-44-cli-archive-debug"
@@ -1585,6 +1598,15 @@ class TestDebugArchiveCliRegression:
         (spec_dir / DEBUG_LOG_NAME).write_text(
             "===== pre-archive =====\n", encoding="utf-8"
         )
+        monkeypatch.delenv("SPEX_LOG_DIR", raising=False)
+        monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+        if explicit_route:
+            log_dir = spec_dir / "logs"
+            log_dir.mkdir()
+            if explicit_route == "log":
+                monkeypatch.setenv("SPEX_LOG_DIR", str(log_dir))
+            else:
+                monkeypatch.setenv("SPEX_TRACE_FILE", str(log_dir / "trace.jsonl"))
 
         result = self._run_spex(tmp_path, "archive", spec_name)
 
@@ -1595,12 +1617,16 @@ class TestDebugArchiveCliRegression:
         assert (archived / "todo.json").is_file()
         assert (archived / "meta.json").is_file()
         assert (archived / "spec.md").is_file()
-        debug_log = archived / DEBUG_LOG_NAME
-        assert debug_log.is_file()
-        content = debug_log.read_text(encoding="utf-8")
-        assert "===== pre-archive =====\n" in content
-        assert f"argv: spex archive {spec_name}" in content
-        assert "===== END exit=0 duration_ms=" in content
+        assert (archived / DEBUG_LOG_NAME).read_text(encoding="utf-8") == (
+            "===== pre-archive =====\n"
+        )
+        debug_log = archived / "logs" / DEBUG_LOG_NAME
+        if explicit_route == "log":
+            assert not debug_log.exists()
+        else:
+            content = debug_log.read_text(encoding="utf-8")
+            assert f"argv: spex archive {spec_name}" in content
+            assert "===== END exit=0 duration_ms=" in content
         # No debug-only stub recreated under specs/
         specs_entries = list((spex_root / "specs").iterdir())
         assert specs_entries == []

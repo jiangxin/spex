@@ -16,7 +16,7 @@ from debug_log import DEBUG_LOG_NAME, append_debug_anchor, emit_apply_anchor
 
 
 def _read_log(spec_dir: Path) -> str:
-    return (spec_dir / DEBUG_LOG_NAME).read_text(encoding="utf-8")
+    return (spec_dir / "logs" / DEBUG_LOG_NAME).read_text(encoding="utf-8")
 
 
 class TestAppendDebugAnchor:
@@ -40,7 +40,7 @@ class TestAppendDebugAnchor:
     def test_emit_apply_anchor_respects_debug_flag(self, tmp_path):
         with patch("debug_log.debug_enabled", return_value=False):
             emit_apply_anchor(tmp_path, "===== APPLY post-action ok =====")
-        assert not (tmp_path / DEBUG_LOG_NAME).exists()
+        assert not (tmp_path / "logs" / DEBUG_LOG_NAME).exists()
 
         with patch("debug_log.debug_enabled", return_value=True):
             emit_apply_anchor(tmp_path, "===== APPLY post-action ok =====")
@@ -101,7 +101,7 @@ class TestPromptApplyAnchors:
         ):
             prompt._do_apply_one_task(args)
         assert exc.value.code == 0
-        assert not (spec_dir / DEBUG_LOG_NAME).exists()
+        assert not (spec_dir / "logs" / DEBUG_LOG_NAME).exists()
 
     def test_apply_review_emits_begin_anchor(
         self, tmp_path, monkeypatch, capsys,
@@ -241,7 +241,7 @@ class TestTodoEditAnchors:
         )
         with patch("debug_log.debug_enabled", return_value=False):
             todo_helper.cmd_edit(todo, args)
-        assert not (tmp_path / DEBUG_LOG_NAME).exists()
+        assert not (tmp_path / "logs" / DEBUG_LOG_NAME).exists()
 
 
 class TestReviewAndPostActionAnchors:

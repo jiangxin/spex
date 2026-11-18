@@ -244,19 +244,20 @@ def _handoff_session_after_prepare(
 ) -> None:
     """Merge active session into spec debug.log, write prepare anchor, clear.
 
-    Fixed order: (1) merge session content into ``spec_dir/debug.log`` and
+    Fixed order: (1) merge session content into ``spec_dir/logs/debug.log`` and
     delete the session log; (2) if debug, append prepare-spec ok anchor;
     (3) clear the active-session pointer — only after a successful merge or
     when there was no session log to merge (so a failed merge keeps the
     pointer for retry).
     """
     from debug_log import (
-        DEBUG_LOG_NAME,
         clear_active_session,
         debug_enabled,
         get_active_session_id,
         merge_session_log_into_spec,
+        prepare_spec_log_parent,
         session_debug_log_path,
+        spec_debug_log_path,
     )
 
     session_id = get_active_session_id(spex_root)
@@ -274,8 +275,11 @@ def _handoff_session_after_prepare(
                 should_clear = True
 
     if debug_enabled(sys.argv):
+        log_path = spec_debug_log_path(spec_dir)
+        if not prepare_spec_log_parent(log_path):
+            raise OSError(f"Cannot write spec log: {log_path}")
         _append_create_debug_anchor(
-            Path(spec_dir) / DEBUG_LOG_NAME,
+            log_path,
             f"===== CREATE prepare-spec ok name={spec_name} =====",
         )
 
@@ -313,14 +317,6 @@ def create_spec(spec, specs_dir, auto_prefix=True):
     return (spec, spec_dir)
 
 
-# prepare-spec stubs may only contain meta plus optional debug tee files.
-_INCOMPLETE_STUB_ALLOWED = frozenset({
-    "meta.json",
-    "debug.log",
-    "debug.log.prev_end",
-})
-
-
 def is_incomplete_spec_dir(spec_dir: Path) -> bool:
     """True when a directory exists but has no ``spec.md`` yet.
 
@@ -342,7 +338,7 @@ def is_incomplete_spec_stub(
     ``specs_dir`` is set, the path must be a direct child of that directory.
     """
     path = Path(spec_dir)
-    if not path.is_dir() or (path / "spec.md").is_file():
+    if path.is_symlink() or not path.is_dir() or (path / "spec.md").is_file():
         return False
     if not SPEC_NAME_PATTERN.match(path.name):
         return False
@@ -351,10 +347,15 @@ def is_incomplete_spec_stub(
         expected = Path(specs_dir).resolve()
         if parent != expected:
             return False
-    names = {entry.name for entry in path.iterdir()}
-    if not names:
+    entries = list(path.iterdir())
+    if not entries:
         return True
-    return "meta.json" in names and names <= _INCOMPLETE_STUB_ALLOWED
+    from debug_log import spec_logs_only
+
+    meta = path / "meta.json"
+    return meta.is_file() and not meta.is_symlink() and spec_logs_only(
+        [entry for entry in entries if entry.name != "meta.json"],
+    )
 
 
 def discard_incomplete_spec(
@@ -756,7 +757,7 @@ def _do_post_action(args):
                 atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
-    from debug_log import DEBUG_LOG_NAME, debug_enabled
+    from debug_log import debug_enabled, prepare_spec_log_parent, spec_debug_log_path
 
     meta = load_meta(spec_dir)
     spec_name = spec_dir.name
@@ -772,8 +773,11 @@ def _do_post_action(args):
     spex_branch = meta.spex_branch if meta else ""
 
     if debug_enabled(sys.argv):
+        log_path = spec_debug_log_path(spec_dir)
+        if not prepare_spec_log_parent(log_path):
+            raise OSError(f"Cannot write spec log: {log_path}")
         _append_create_debug_anchor(
-            spec_dir / DEBUG_LOG_NAME,
+            log_path,
             f"===== CREATE post-action ok name={spec_name} "
             f"steps={len(data)} =====",
         )

@@ -284,7 +284,7 @@ def test_branch_description_refresh_preserves_other_layers(tmp_path, isolated_gi
         with pytest.raises(subprocess.CalledProcessError):
             set_branch_description("main", "bad", cwd=tmp_path)
         assert git_config.get(key, repo) == "command"
-        assert calls == [["--local", *_CONFIG_LIST]] * 2 + [[key, "bad"]]
+        assert calls == [["--local", *_CONFIG_LIST]] * 2 + [["--local", key, "bad"]]
     assert_git_parity(git, linked, key)
 
 

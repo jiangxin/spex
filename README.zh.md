@@ -529,6 +529,8 @@ export SPEX_CONFIG_FILE=/path/to/platform-spex.toml
 
 这样平台可以统一控制 `spex_root` 位置、模板和 hook，确保所有仓库的 spec 集中存储和统一管理。
 
+与 spec 绑定的运行时日志及辅助文件默认写入 `<spec_dir>/logs/`。
+评测工具仍可读取 spec 根目录中的历史日志。
 启用调试日志后，设置 `SPEX_LOG_DIR` 可将 CLI 的 `debug.log` 和
 `trace.jsonl` 写入同一目录。相对目录以当前工作目录为基准。
 工作流锚点和评审状态仍保存在各自的 spec 目录中。

@@ -356,17 +356,22 @@ def debug_logs(repo: Path, filename: str = "debug.log"):
         parent = root / directory
         if parent.resolve() == parent:
             paths.extend(parent.glob(f"*/{filename}"))
+            if directory in {"specs", "archives"}:
+                paths.extend(parent.glob(f"*/logs/{filename}"))
         else:
             yield f"{directory}/{filename}", None, "unsafe_debug_log"
     for path in sorted(paths):
         if not path.exists() and not path.is_symlink():
             continue
         relative = path.relative_to(root)
-        if len(relative.parts) not in (1, 2, 3) or (
+        if len(relative.parts) not in (1, 2, 3, 4) or (
             len(relative.parts) == 3 and relative.parts[0] not in {"specs", "archives", "sessions"}
+        ) or (
+            len(relative.parts) == 4
+            and (relative.parts[0] not in {"specs", "archives"} or relative.parts[2] != "logs")
         ):
             continue
-        if len(relative.parts) == 3 and not IDENTIFIER.fullmatch(relative.parts[1]):
+        if len(relative.parts) >= 3 and not IDENTIFIER.fullmatch(relative.parts[1]):
             continue
         source = relative.as_posix()
         try:
@@ -381,6 +386,16 @@ def debug_logs(repo: Path, filename: str = "debug.log"):
             yield source, content, None
         except OSError:
             yield source, None, "unreadable_debug_log"
+
+
+def log_spec_name(source: str) -> str | None:
+    """Identify the spec for legacy and nested per-spec log paths."""
+    parts = Path(source).parts
+    if parts[0:1] not in {("specs",), ("archives",)}:
+        return None
+    if len(parts) == 3 or (len(parts) == 4 and parts[2] == "logs"):
+        return parts[1]
+    return None
 
 
 def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool = False) -> dict:
@@ -412,7 +427,9 @@ def workflow_metrics(repo: Path, previous: dict | None = None, *, new_turn: bool
             parsed = parse_log(segments)
             gaps.extend(parsed.pop("gaps"))
             for task in parsed["tasks"]:
-                task["spec"] = relative.parts[1] if len(relative.parts) == 3 else None
+                task["spec"] = log_spec_name(source)
+                if len(relative.parts) == 3 and relative.parts[0] == "sessions":
+                    task["spec"] = relative.parts[1]
             logs.append({
                 "source": source, "size_bytes": len(content), "turn_offsets": offsets,
                 "content_sha256": hashlib.sha256(content).hexdigest(), **parsed,
