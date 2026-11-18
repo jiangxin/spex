@@ -879,6 +879,35 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     return data
 
 
+# Tuple order IS precedence: the first matching signal id wins (spec 17).
+# Ordering also breaks ties between the English and Chinese patterns, so do not
+# regroup or reorder these entries without changing the spec.
+CLARIFICATION_SIGNALS = (
+    ("question-mark", re.compile(r"[?？]")),
+    ("blocked-on-answer", re.compile(
+        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me)"
+        r"|before I (?:can )?(?:write|continue|proceed|design|finali[sz]e))\b", re.I,
+    )),
+    ("explicit-request", re.compile(
+        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one)\b", re.I,
+    )),
+    ("question-heading", re.compile(r"(?m)^\s*(?:\*\*|#{1,6}\s*)?questions?\b", re.I)),
+    ("explicit-request-zh", re.compile(r"请(?:选择|确认|指定|回复|提供|补充)")),
+    ("blocked-on-answer-zh", re.compile(
+        r"(?:必须|需要)先(?:确定|确认)[^。！？\n]{1,60}才能继续"
+        r"|(?:补充|提供)[^。！？\n]{1,60}后可(?:重新执行|继续)",
+    )),
+)
+
+
+def clarification_signal(reply: str) -> str | None:
+    """Return the first ordered clarification signal found in a host reply."""
+    for signal_id, pattern in CLARIFICATION_SIGNALS:
+        if pattern.search(reply):
+            return signal_id
+    return None
+
+
 def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
                host_duration_ms: int | None = None, host_source: str = "runner",
                host_started_at: str | None = None, host_ended_at: str | None = None,
@@ -962,16 +991,15 @@ def store_turn(output: Path, trial: Trial, metadata: dict, host: HostTurn, *,
         })
     turns = metadata["case"]["turns"]
     if index + 1 < len(turns) and not turns[index + 1]["input"].startswith("/spex "):
-        checks.append({
+        signal = clarification_signal(host.reply)
+        check = {
             "check_id": "requests-clarification", "phase": "continuation",
-            "verdict": "pass" if re.search(
-                r"[?？]|\b(?:please|choose|select)\b|请(?:选择|确认|指定|回复|提供|补充)"
-                r"|(?:必须|需要)先(?:确定|确认)[^。！？\n]{1,60}才能继续"
-                r"|(?:补充|提供)[^。！？\n]{1,60}后可(?:重新执行|继续)",
-                host.reply, re.I,
-            ) else "insufficient_evidence",
+            "verdict": "pass" if signal else "insufficient_evidence",
             "evidence_refs": [current["artifacts"]["reply"]["id"]],
-        })
+        }
+        if signal:
+            check["signal"] = signal
+        checks.append(check)
     metadata["session"] = host.session
     metadata["turn_results"].append({"turn": index + 1, "checks": checks})
     metadata["verdict"] = trial_verdict(metadata["turn_results"], index + 1 == len(turns))

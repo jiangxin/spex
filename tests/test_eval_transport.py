@@ -21,6 +21,16 @@ from tests.conftest import manual_action
 
 REPO = Path(__file__).resolve().parents[1]
 
+CLARIFY_INPUTS = ("/spex create Add a setting", "Use a boolean setting")
+
+
+def clarify_case(checks: list[str]) -> dict:
+    """Return the two-turn clarify manifest shared by the fixture and unit tests."""
+    return {
+        "id": "clarify", "fixture": "example", "tags": ["smoke"],
+        "turns": [{"input": text, "checks": list(checks)} for text in CLARIFY_INPUTS],
+    }
+
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
@@ -28,12 +38,9 @@ def runner(tmp_path, monkeypatch):
     fixture = suite / "fixtures" / "example"
     fixture.mkdir(parents=True)
     (fixture / "app.py").write_text("pass\n", encoding="utf-8")
-    (suite / "cases.json").write_text(json.dumps([{
-        "id": "clarify", "fixture": "example", "tags": ["smoke"], "turns": [
-            {"input": "/spex create Add a setting", "checks": ["no-code-change"]},
-            {"input": "Use a boolean setting", "checks": ["no-code-change"]},
-        ],
-    }]), encoding="utf-8")
+    (suite / "cases.json").write_text(
+        json.dumps([clarify_case(["no-code-change"])]), encoding="utf-8",
+    )
     monkeypatch.setattr(run, "SUITES", suite.parent)
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     return run.parser()
@@ -1648,3 +1655,97 @@ def test_record_issue_cli_round_trips_the_recovered_flag(
     assert issue["recovered"] is True
     markdown = Path(result["report"]).read_text(encoding="utf-8")
     assert "recovered: yes" in markdown
+
+
+SOURCE_HANDOFF_TURN_TWO = """\
+The case asks for a numeric limit while the source spec fixes it at ten, so the
+two conflict on the allowed range.
+
+I need you to resolve it before I write the spec.
+
+**Question 1 — allowed range for --limit**
+- 1 to 10 (matches the current source)
+- 1 to 100 (matches the sibling command)
+
+tell me the exact rule you want and I will continue."""
+
+SPEC_SUMMARY_TURN_THREE = """\
+Implemented the `--limit` option on the example command.
+
+Files changed:
+- `app.py` records the parsed limit on the settings object.
+- `tests/test_app.py` covers the default and the explicit value.
+
+Verification:
+- `pytest tests/test_app.py` passes.
+- The default stays at ten, so existing callers are unaffected."""
+
+
+def test_clarification_signal_reads_the_source_handoff_conflict_reply():
+    assert run.clarification_signal(SOURCE_HANDOFF_TURN_TWO) == "blocked-on-answer"
+
+
+@pytest.mark.parametrize("reply, expected", [
+    ("**Question 1 — default value**\nOptions: 10 or 100.", "question-heading"),
+    ("Which default should I use?\n**Question 1 — default value**", "question-mark"),
+    ("Which default？", "question-mark"),
+    ("Please do one of the following:\n1. Keep the default at 10\n2. Raise it to 100",
+     "explicit-request"),
+    ("Once you confirm the default I will continue.", "blocked-on-answer"),
+    ("I cannot proceed before I can design the schema.", "blocked-on-answer"),
+    ("## questions\n- 10\n- 100", "question-heading"),
+    ("请确认默认范围后再继续。", "explicit-request-zh"),
+    ("请选择其中一种方案：10 或 100。", "explicit-request-zh"),
+    ("你必须先确认默认范围才能继续。", "blocked-on-answer-zh"),
+    ("补充失败用例的期望输出后可重新执行。", "blocked-on-answer-zh"),
+    (SPEC_SUMMARY_TURN_THREE, None),
+])
+def test_clarification_signal_returns_the_first_matching_signal(reply, expected):
+    assert run.clarification_signal(reply) == expected
+
+
+def seed_continuation_trial(tmp_path, reply):
+    """Pre-seed a started continuation turn so `store_turn` reuses its evidence."""
+    output = tmp_path / "example" / "clarify"
+    output.mkdir(parents=True)
+    first_input = CLARIFY_INPUTS[0]
+    run.write_json(output / "turn-0.json", {"turn": 0, "artifacts": {}})
+    run.write_json(output / "turn-1.json", {"turn": 1, "artifacts": {
+        "input": {"id": "turn-1:input", "value": first_input},
+        "reply": {"id": "turn-1:reply", "value": reply},
+    }})
+    metadata = {
+        "suite": "example", "case_id": "clarify", "turn_results": [],
+        "case": clarify_case([]),
+    }
+    trial = workspace.Trial(tmp_path / "workspace", "ref")
+    return output, metadata, trial
+
+
+def record_final_turn(output, trial, metadata):
+    """Store the final turn from its pre-seeded evidence to settle the verdict."""
+    reply = "Done."
+    run.write_json(output / "turn-2.json", {"turn": 2, "artifacts": {
+        "input": {"id": "turn-2:input", "value": CLARIFY_INPUTS[1]},
+        "reply": {"id": "turn-2:reply", "value": reply},
+    }})
+    run.store_turn(output, trial, metadata, transport.HostTurn("same-session", reply, None, ""))
+
+
+@pytest.mark.parametrize("reply, expected, final_verdict", [
+    ("**Question 1 — default value**\n- keep 10\n- raise to 100", "question-heading", "pass"),
+    (SPEC_SUMMARY_TURN_THREE, None, "insufficient_evidence"),
+])
+def test_store_turn_records_the_clarification_signal(tmp_path, reply, expected, final_verdict):
+    output, metadata, trial = seed_continuation_trial(tmp_path, reply)
+    host = transport.HostTurn("same-session", reply, None, "")
+    run.store_turn(output, trial, metadata, host)
+    checks = run.read_json(output / "trial.json")["turn_results"][0]["checks"]
+    assert checks[0]["check_id"] == "requests-clarification"
+    assert checks[0]["phase"] == "continuation"
+    assert checks[0]["evidence_refs"] == ["turn-1:reply"]
+    assert checks[0]["verdict"] == ("pass" if expected else "insufficient_evidence")
+    assert checks[0].get("signal") == expected
+    assert ("signal" in checks[0]) is bool(expected)
+    record_final_turn(output, trial, metadata)
+    assert run.read_json(output / "trial.json")["verdict"] == final_verdict
