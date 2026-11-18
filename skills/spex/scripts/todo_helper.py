@@ -119,11 +119,11 @@ def validate_todo(todo_path, *, allow_empty=True):
     if not allow_empty and not data:
         logger.error("Error: empty array, nothing to process.")
         sys.exit(1)
-    _validate_todo_fields(data)
+    validate_todo_fields(data)
     return data
 
 
-def _validate_todo_fields(data):
+def validate_todo_fields(data):
     """Validate todo entries independently of their stored IDs."""
     for i, item in enumerate(data):
         if not isinstance(item, dict):
@@ -153,7 +153,7 @@ def cmd_renumber(todo_path):
             logger.error("Error: todo transaction is open; use transaction commit to renumber.")
             sys.exit(1)
         data = load_and_validate_todo_json(todo_path, allow_empty=True)
-        _validate_todo_fields(data)
+        validate_todo_fields(data)
         atomic_write_json(todo_path, number_todo_items(data))
     except (OSError, UnicodeError) as exc:
         logger.error("Error: cannot renumber todo file '%s': %s", todo_path, exc)

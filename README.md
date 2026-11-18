@@ -558,6 +558,14 @@ Run `spex config get spex_root` to find the selected storage directory.
 Put custom templates in its `templates/` directory. Spex falls back to
 built-in templates, which you can copy from `templates/examples/`.
 
+To customize `/spex review-plan`, copy the built-in
+[`review-plan.md`](skills/spex/templates/review-plan.md) for software specs
+or [`general-review-plan.md`](skills/spex/templates/general-review-plan.md)
+for general specs into the invoking project's effective template directory.
+These templates receive `spec_name`, `task_mode`, `spec_content`,
+`todo_json`, and `prompt_context` (the review focus). Plan review reads
+the spec and tasks from the selected path and runs without writing files.
+
 ### Customizing Hooks
 
 Spex supports pre-action and post-action hooks. They are project-local (equivalent to git hooks): Spex runs a user-provided script from the project's spex_root, not remote code.

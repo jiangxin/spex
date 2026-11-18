@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import re
 import subprocess
@@ -12,8 +14,10 @@ from typing import Optional
 
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
+    find_template_path,
     get_spex_root,
     get_template,
+    load_and_validate_todo_json,
     load_meta,
     load_todo,
     local_iso_timestamp,
@@ -22,12 +26,13 @@ from common import (
     sha_from_commit_title,
     strip_front_matter,
     todo_step_label,
+    validate_unique_ids,
 )
 from config import get_project_context
-from task_mode import GENERAL, SOFTWARE, template_filename
+from task_mode import GENERAL, SOFTWARE, TaskModeError, template_filename
 from template import TemplateError
 from template import render as render_template
-from todo_helper import normalize_skip_commit
+from todo_helper import normalize_skip_commit, validate_todo_fields
 
 # Review/fix prompt context (Phase 6 compact payloads).
 VALID_REVIEW_MODES = ("full", "delta")
@@ -924,6 +929,13 @@ def _output_rendered(rendered, output_path):
         print(rendered)
 
 
+def _absolute_spec_path(value):
+    path = Path(value)
+    if not path.is_absolute():
+        raise argparse.ArgumentTypeError("review-plan requires an absolute spec path")
+    return path
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -931,6 +943,15 @@ def _build_parser():
         description="Render Spex templates with metadata.",
     )
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
+
+    p = subs.add_parser("review-plan", help="Render a read-only plan review prompt")
+    p.add_argument(
+        "spec_path", type=_absolute_spec_path, help="Absolute spec path selected by spex list",
+    )
+    p.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Read the redacted review focus from stdin",
+    )
 
     # apply-one-task
     p = subs.add_parser(
@@ -1069,8 +1090,48 @@ def _build_parser():
 # Known subcommands for routing (fallback to cli_render for others)
 _KNOWN_SUBCMDS = {
     "apply-one-task", "apply-commit", "apply-review", "apply-fix",
-    "modify-spec", "modify-todo",
+    "modify-spec", "modify-todo", "review-plan",
 }
+
+
+def _build_plan_review_context(spec_path, focus):
+    lock_path = spec_path / "todo.json.lock"
+    if lock_path.exists():
+        raise TemplateError(f"Unfinished todo transaction: {lock_path}")
+    spec_text = (spec_path / "spec.md").read_text(encoding="utf-8")
+    todos = load_and_validate_todo_json(spec_path / "todo.json", allow_empty=True)
+    validate_unique_ids(todos)
+    validate_todo_fields(todos)
+    meta = load_meta(spec_path)
+    if meta is None and (spec_path / "meta.json").exists():
+        raise TemplateError(f"Invalid spec metadata: {spec_path / 'meta.json'}")
+    if lock_path.exists():
+        raise TemplateError(f"Unfinished todo transaction: {lock_path}")
+    return {
+        "spec_name": spec_path.name,
+        "task_mode": meta.task_mode if meta else SOFTWARE,
+        "spec_content": spec_text,
+        "todo_json": json.dumps(todos, ensure_ascii=False, indent=2),
+        "prompt_context": focus,
+    }
+
+
+def _do_review_plan(args):
+    try:
+        focus = sys.stdin.read() if args.stdin_flag else ""
+        context = _build_plan_review_context(args.spec_path, focus)
+        template_path = find_template_path(
+            template_filename("review-plan", context["task_mode"]),
+        )
+        content = template_path.read_text(encoding="utf-8")
+        validate_required_meta(content, context)
+        rendered = render_template(strip_front_matter(content), context)
+        if not rendered.strip():
+            raise TemplateError(f"{template_path} rendered an empty prompt")
+    except (OSError, UnicodeError, TaskModeError, TemplateError) as exc:
+        logger.error("Error rendering review-plan prompt: %s", exc)
+        sys.exit(1)
+    print(rendered)
 
 
 def _do_apply_one_task(args):
@@ -1610,6 +1671,8 @@ def main(argv=None):
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     if hasattr(args, "template"):
         _do_render(args)
+    elif args.subcmd == "review-plan":
+        _do_review_plan(args)
     elif args.subcmd == "apply-one-task":
         _do_apply_one_task(args)
     elif args.subcmd == "apply-commit":

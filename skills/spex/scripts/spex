@@ -6,6 +6,10 @@ import re
 import sys
 from pathlib import Path
 
+if __name__ == "__main__":
+    # Read-only commands must also leave the skill's script directory untouched.
+    sys.dont_write_bytecode = True
+
 # Add scripts/ to sys.path for sibling imports.
 _scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(_scripts_dir))
@@ -573,7 +577,11 @@ def main(argv=None):
 
     options = remaining[:remaining.index("--")] if "--" in remaining else remaining
     read_only_list = args.command == "list" and "--read-only" in options
-    if enabled and not read_only_list:
+    read_only_prompt = (
+        args.command == "prompt" and remaining
+        and remaining[0].replace("_", "-") == "review-plan"
+    )
+    if enabled and not (read_only_list or read_only_prompt):
         log_path = resolve_debug_log_path(full_argv)
         with trace_command(log_path, full_argv):
             args.func(remaining)

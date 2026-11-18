@@ -544,6 +544,14 @@ class TestSopCliContract:
         command = "scripts/spex list --read-only --json -- --spec-probe"
         assert _check_invocation("commands/review-plan.md", command, command) == []
 
+    def test_plan_review_prompt_accepts_stdin_but_no_output_file(self):
+        rel = "commands/review-plan.md"
+        command = 'scripts/spex prompt review-plan --stdin -- "$spec_path"'
+        assert _check_invocation(rel, command, command) == []
+        command = 'scripts/spex prompt review-plan --output result "$spec_path"'
+        errors = _check_invocation(rel, command, command)
+        assert any("unknown flag '--output'" in error for error in errors)
+
     def test_detects_bogus_flag_in_inline_cmd(self, tmp_path: Path):
         sample = tmp_path / "bogus-inline.md"
         sample.write_text(

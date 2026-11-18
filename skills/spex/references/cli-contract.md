@@ -40,3 +40,14 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json \
 
 Check the exit code before reading the JSON file. Non-JSON output
 keeps its existing text format.
+
+## Read-only plan review prompt
+
+`spex prompt review-plan --stdin -- "$spec_path"` takes the exact
+absolute path returned by `list --read-only --json`. With `--stdin`,
+send the redacted review focus as plain text. Run from the invoking
+project to resolve its effective template override. On success,
+stdout contains the rendered prompt. On failure, stderr contains
+the diagnostic and stdout is empty. Blank rendering is a failure
+that identifies the template path. The helper performs no writes
+and accepts no output-file option.
