@@ -10,11 +10,13 @@ from unittest.mock import patch
 
 import pytest
 from apply_helper import (
+    collect_dirty,
     resolve_apply_git_cwd,
     validate_apply_branch,
 )
 from branch import get_current_branch
 from common import SpecMeta, load_meta
+from prompt import fetch_review_diff
 from worktree import (
     is_registered_worktree,
     list_worktrees,
@@ -45,6 +47,86 @@ def _git_init_with_commit(repo: Path, branch: str = "main") -> None:
         ["git", "commit", "-m", "initial"],
         cwd=repo, check=True, capture_output=True,
     )
+
+
+@pytest.mark.slow
+def test_split_recovery_scopes_commit_and_cleans_follow_up_paths(tmp_path):
+    repo = tmp_path / "coding"
+    _git_init_with_commit(repo)
+    repo.joinpath(".git", "info", "exclude").write_text("ignored\n", encoding="utf-8")
+    tracked = repo / "README"
+    shared_context = "".join(f"context {i}\n" for i in range(10))
+    baseline = f"first original\n{shared_context}last original\n"
+    first = baseline.replace("first original", "first verified")
+    follow_up = baseline.replace("last original", "last follow-up")
+
+    def git(*args, patch_text=None):
+        return subprocess.run(
+            ["git", *args], cwd=repo, input=patch_text, check=True,
+            capture_output=True, text=True,
+        ).stdout
+
+    tracked.write_text(baseline, encoding="utf-8")
+    git("add", "README")
+    git("commit", "-m", "prepare two hunk locations")
+    spex_root = str(repo / ".spex")
+    assert not collect_dirty(spex_root, cwd=repo)[0]
+    tracked.write_text(first, encoding="utf-8")
+    first_patch = git("diff", "--", "README")
+
+    # The split was saved with follow-up work in the index and the
+    # first step in the working copy.
+    tracked.write_text(follow_up, encoding="utf-8")
+    git("add", "README")
+    tracked.write_text(follow_up.replace("first original", "first verified"), encoding="utf-8")
+    later_file = repo / "later.txt"
+    later_file.write_text("additional follow-up\n", encoding="utf-8")
+    ignored_file = repo / "ignored"
+    ignored_file.write_text("preserve\n", encoding="utf-8")
+    assert "+last follow-up" in git("diff", "--cached")
+    assert "+first verified" in git("diff")
+
+    git("--literal-pathspecs", "restore", "--staged", "--", "README")
+    assert "+last follow-up" in git("diff")
+    git("apply", "--cached", patch_text=first_patch)
+    assert git("diff", "--cached") == first_patch
+    git("commit", "-m", "deliver only the narrowed step")
+    head = git("rev-parse", "HEAD").strip()
+    review = fetch_review_diff(head, cwd=repo)
+    assert "+first verified" in review
+    assert "last follow-up" not in review
+    assert git("diff", "--cached") == ""
+    assert "+last follow-up" in git("diff")
+    assert git("ls-files", "--others", "--exclude-standard") == "later.txt\n"
+
+    git("--literal-pathspecs", "restore", "--worktree", "--", "README")
+    later_file.unlink()
+    assert not collect_dirty(spex_root, cwd=repo)[0]
+    assert git("rev-parse", "HEAD").strip() == head
+    assert tracked.read_text(encoding="utf-8") == first
+    assert ignored_file.read_text(encoding="utf-8") == "preserve\n"
+
+
+@pytest.mark.slow
+def test_split_cleanup_preserves_ignored_descendant_of_tracked_path(tmp_path):
+    repo = tmp_path / "coding"
+    _git_init_with_commit(repo)
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_text("/README/cache\n", encoding="utf-8")
+    tracked_path = repo / "README"
+    tracked_path.unlink()
+    tracked_path.mkdir()
+    ignored_file = tracked_path / "cache"
+    ignored_file.write_text("preserve\n", encoding="utf-8")
+
+    # Git reports a tracked deletion while omitting the ignored file.
+    dirty, paths, _ = collect_dirty(str(repo / ".spex"), cwd=repo)
+    assert dirty
+    assert paths == [str(tracked_path.resolve())]
+
+    # The SOP checks the actual path shape before offering a restore.
+    assert tracked_path.is_dir()
+    assert ignored_file.read_text(encoding="utf-8") == "preserve\n"
 
 
 def _write_spec(

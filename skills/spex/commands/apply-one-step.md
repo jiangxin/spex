@@ -32,8 +32,9 @@ Apply a single step from a specification's todo list.
   strips the recognized command/alias token (see SKILL.md Routing
   Discipline). Phase 1 follows `resolve-spec-name.md`
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
-  stage/commit paths under `$spex_root/`. Persist `commit_title`
-  before `completed_at` when committing
+  stage/commit paths under `$spex_root/`. Follow the shared split rules
+  to split the current todo. Persist `commit_title` before
+  `completed_at` when committing.
 - Exactly one step then STOP (HARD STOP in Phase 8) — see
   Differences table
 - When a dirty check is required, use `apply-helper dirty --json`
