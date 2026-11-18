@@ -435,6 +435,7 @@ def _check_invocation(rel: str, raw: str, tail: str) -> list[str]:
 
     subcmd, flags = _resolve_invocation(command, rest[1:])
     all_flags = flags + bracket_flags
+    opts = _combined_option_strings(command, subcmd)
 
     if command in NESTED_COMMANDS:
         subs = _subparsers_map(_parser_for_command(command))
@@ -443,11 +444,13 @@ def _check_invocation(rel: str, raw: str, tail: str) -> list[str]:
                 f"{rel}: missing subcommand for {command!r} in: {raw!r}"
             ]
         if subcmd not in subs:
-            return [
-                f"{rel}: unknown {command} subcommand {subcmd!r} in: {raw!r}"
-            ]
+            if command == "prompt" and (SPEX_ROOT / "templates" / f"{subcmd}.md").is_file():
+                opts = _option_strings(_load_module("prompt")._build_render_parser())
+            else:
+                return [
+                    f"{rel}: unknown {command} subcommand {subcmd!r} in: {raw!r}"
+                ]
 
-    opts = _combined_option_strings(command, subcmd)
     errors: list[str] = []
     for flag in all_flags:
         # Flag may be --foo=bar

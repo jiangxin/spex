@@ -2,7 +2,7 @@
 
 ## 什么是 Spex？
 
-Spex，发音 /speks/，是一个 Coding Agent 的 skill 和命令行程序，帮助开发者使用 SDD（Spec-Driven Development，规格驱动开发）模式进行软件开发的完整生命周期管理。
+Spex，发音 /speks/，是一个 Coding Agent 的 skill 和命令行程序，用规格驱动的方式组织软件开发、独立文档、调研和其他本地交付。
 
 它的核心目标是帮助你以规格驱动的方式进行开发——先定义要做什么（create），再一步步实现（apply），最后合并结果（merge）。
 
@@ -399,17 +399,30 @@ Phase 6 review 循环：
 {% endif -%}
 ```
 
-模板文件位于 `templates/` 目录下：
+创建规格时分别使用规格写作提示、规格文档骨架和待办拆分提示。已有的软件规格骨架可以继续使用。
 
-| 模板文件 | 用途 |
-|---|---|
-| `spec-template.md` | Spec 文档模板 |
-| `modify-spec.md` | 修改现存 spec 的提示词模板 |
-| `modify-todo.md` | 修改 `todo.json` 的提示词模板 |
-| `apply-one-task.md` | 聚合 spec 和当前开发任务的提示词模板 |
-| `apply-commit.md` | 生成提交的提示词模板 |
+| 软件模式 | 通用模式 | 用途 |
+|---|---|---|
+| `create-spec.md` | `general-create-spec.md` | 规格写作提示，使用 `prompt_context` 和 `spec_name` |
+| `spec-template.md` | `general-spec-template.md` | 规格文档骨架 |
+| `create-todo.md` | `general-create-todo.md` | 待办拆分提示，使用落盘的 `spec_content` 和 `spec_name` |
 
-你可以在 `~/.spex/templates/` 下创建替换模板，覆盖内置模板。
+Spex 先在选中的 `spex_root/templates/` 查找对应模式的文件，再回退到同名内置文件。
+可以从 `templates/examples/` 复制内置示例。完整的创建、修改、执行、提交、评审和修订模板映射见模板指南。 [模板指南](skills/spex/templates/AGENTS.md)
+
+#### 任务模式
+
+`/spex create` 按最终交付分类。软件变更及其配套文档使用 `software`，
+独立文档、调研和其他本地交付使用 `general`。Spex 在 `meta.json` 保存模式。
+旧规格默认使用 `software`。主要交付目标改变且需要切换模式时，应创建新规格。
+
+仓库内相对路径以绑定的工作区为基准。仓库外本地产物使用约定的绝对路径或基准目录。
+仓库内成果可以提交和评审。只读步骤和仅交付仓库外成果的步骤默认使用
+`skip_commit: true`，并要求 Git 工作树干净。
+
+通用步骤同时保存验收证据与完成状态。证据可以是执行成功的命令，也可以是对实际产物的检查。
+恢复已提交的步骤时，先核对 HEAD 与记录的提交。修订提交需要对应最终 SHA 的证据。
+缺少验收证据或检查失败时，步骤保持未完成。
 
 ### 5. 多项目支持
 

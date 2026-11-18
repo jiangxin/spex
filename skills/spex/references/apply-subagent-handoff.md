@@ -19,6 +19,9 @@ Pass:
 
 - `$task_prompt` as Phase 4 guide
 - `$current_task_id`, `$spec_name`, `$skip_commit`, `$spex_root`
+- `$task_mode`; for `general`, require the output paths and an
+  `acceptance_evidence` array in the
+  successful skip handoff.
 - `$spex_worktree` (may be empty). When non-empty, instruct the
   sub-agent to use it as `working_directory` for implement /
   commit — do **not** switch the user's IDE root

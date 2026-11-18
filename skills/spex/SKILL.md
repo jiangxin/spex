@@ -1,7 +1,7 @@
 ---
 name: spex
 disable-model-invocation: true
-description: "Spec-Driven Development (Spex) skill that manages the full SDLC — from requirement analysis and design to incremental implementation and submission. Invoked manually via /spex <command>. Supports commands: create (new), modify, review-plan, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
+description: "Spec-Driven Development (Spex) skill for software development and other local deliverables, from requirements and planning to incremental execution and verification. Invoked manually via /spex <command>. Supports commands: create (new), modify, review-plan, apply (run, do, go), apply-one-step (step), merge (submit), archive, init."
 version: 0.8.0
 arguments:
   - name: command
@@ -38,6 +38,20 @@ arguments:
 | `merge`         | `submit`           | Submit completed work (merge or PR)  |
 | `archive`       |                    | Archive a completed spec             |
 | `init`          |                    | Initialize spex environment          |
+
+## Task Modes
+
+- Classify the final deliverable during `create`. Use `software` for
+  software changes and their accompanying documentation. Use `general`
+  for independent documentation, research, or other local deliverables.
+- Preserve the mode saved in `meta.json` for modify and apply. Treat
+  legacy specs with no `task_mode` as `software`.
+- Resolve repository-relative outputs in the bound workspace. For
+  `general`, agree on external local paths, record successful acceptance
+  evidence, and verify the recorded commit when resuming committed work.
+- See [template guidance](templates/AGENTS.md) for mode-specific names
+  and overrides, and [apply phases](references/apply-task-phases.md)
+  for completion and recovery.
 
 ## Command Routing
 

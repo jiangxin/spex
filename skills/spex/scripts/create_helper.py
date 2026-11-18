@@ -21,6 +21,7 @@ from common import (
     strip_date_prefix,
     wrap_text,
 )
+from task_mode import SOFTWARE, TASK_MODES, template_filename
 
 SPEC_NAME_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$")
 DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
@@ -372,7 +373,7 @@ def discard_incomplete_spec(
     return True
 
 
-def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
+def _write_meta(spec_dir, ctx, prompt, timestamp, description="", *, task_mode=SOFTWARE):
     """Write meta.json into spec_dir with project context and prompt."""
     workdir = str(ctx.top_workdir) if ctx.in_git_workdir() else ""
     main_worktree = str(ctx.main_worktree) if ctx.main_worktree else workdir
@@ -388,6 +389,7 @@ def _write_meta(spec_dir, ctx, prompt, timestamp, description=""):
         prompts=[{"text": prompt, "timestamp": timestamp}] if prompt else [],
         description=wrap_text(description) if description else "",
         use_git_worktree=bool(ctx.config.get("use_git_worktree", False)),
+        task_mode=task_mode,
     )
     meta_path = Path(spec_dir) / "meta.json"
     atomic_write_json(meta_path, meta.to_dict())
@@ -498,10 +500,22 @@ def cli_create_validate() -> None:
 
 
 def _do_prepare_spec(args):
+    try:
+        exit_code = _prepare_spec(args)
+    except (Exception, SystemExit) as err:
+        logger.error("Error preparing spec: %s", err)
+        sys.exit(3)
+    if exit_code:
+        sys.exit(exit_code)
+
+
+def _prepare_spec(args):
     """Create spec directory and return JSON with metadata."""
     import config as cfg
     import hooks
+    import prompt as prompt_mod
     from common import get_specs_dir, local_iso_timestamp
+    from template import TemplateError
 
     specs_dir = get_specs_dir()
     prompt = "" if sys.stdin.isatty() else sys.stdin.read().strip()
@@ -510,20 +524,44 @@ def _do_prepare_spec(args):
         validated = validate_create_name(args.name, args.description)
     except ValueError as e:
         logger.error("Error: %s", e)
-        sys.exit(1)
+        return 1
 
     try:
         spec_name, spec_dir = create_spec(validated["name"], specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
-        sys.exit(1)
+        return 1
 
     try:
         ctx = cfg.get_project_context()
         timestamp = local_iso_timestamp()
         _write_meta(
             spec_dir, ctx, prompt, timestamp, validated["description"],
+            task_mode=args.mode,
         )
+
+        filename = template_filename("create-spec", args.mode)
+        template_error = False
+        try:
+            spec_prompt = prompt_mod.render_prompt(
+                "create-spec",
+                metadata={
+                    "prompt_context": prompt, "spec_name": spec_name, "task_mode": args.mode,
+                },
+            )
+            if not spec_prompt.strip():
+                raise TemplateError("Rendered prompt is empty")
+        except SystemExit:
+            # Required metadata validation already reports the missing fields.
+            logger.error("Invalid metadata for %s.", filename)
+            template_error = True
+        except (OSError, UnicodeError, TemplateError) as err:
+            logger.error("Error rendering %s: %s", filename, err)
+            template_error = True
+
+        if template_error:
+            discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+            return 2
 
         if ctx.spex_root:
             _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
@@ -536,12 +574,12 @@ def _do_prepare_spec(args):
             spec_name=spec_name,
         )
 
-        import prompt as prompt_mod
-
         result = {
             "spec_name": spec_name,
             "spec_path": str(spec_dir),
             "spec_template": prompt_mod.render_prompt("spec-template", spec_name),
+            "spec_prompt": spec_prompt,
+            "task_mode": args.mode,
         }
         print(json.dumps(result, indent=2))
     except BaseException:
@@ -713,6 +751,9 @@ def _build_parser():
     p_prepare.add_argument(
         "--description", default="",
         help="Brief description (saved to meta.json)",
+    )
+    p_prepare.add_argument(
+        "--mode", choices=TASK_MODES, default=SOFTWARE, help="Task mode (default: software)",
     )
 
     p_discard = subs.add_parser(

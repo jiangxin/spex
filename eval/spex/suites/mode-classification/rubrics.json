@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "cases": {
+    "operator-guide": [
+      {
+        "id": "delivery-alignment",
+        "turn": 1,
+        "requires": [
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The plan changes the requested deliverable or ignores its scope.",
+          "The plan identifies the deliverable but omits a material constraint or leaves its verification vague.",
+          "The plan preserves the requested deliverable and scope and gives observable acceptance criteria."
+        ]
+      }
+    ],
+    "negative-amounts": [
+      {
+        "id": "delivery-alignment",
+        "turn": 1,
+        "requires": [
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The plan changes the requested deliverable or ignores its scope.",
+          "The plan identifies the deliverable but omits a material constraint or leaves its verification vague.",
+          "The plan preserves the requested deliverable and scope and gives observable acceptance criteria."
+        ]
+      }
+    ],
+    "event-analysis": [
+      {
+        "id": "delivery-alignment",
+        "turn": 1,
+        "requires": [
+          "acceptance"
+        ],
+        "threshold": 2,
+        "anchors": [
+          "The plan changes the requested deliverable or ignores its scope.",
+          "The plan identifies the deliverable but omits a material constraint or leaves its verification vague.",
+          "The plan preserves the requested deliverable and scope and gives observable acceptance criteria."
+        ]
+      }
+    ]
+  }
+}

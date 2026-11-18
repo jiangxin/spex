@@ -483,6 +483,35 @@ class TestCreatePlanOnlySop:
         )
         _index(phase7, "After post-action exits successfully")
 
+    def test_create_reads_named_sources_before_preparation(self):
+        text = _read(CREATE_MD)
+        clarify = _h3_section(text, "Phase 2: Clarify Requirement")
+        _index(clarify, "Read every explicitly named requirement document in full")
+        _index(clarify, "a critical source cannot be read")
+        _index(clarify, "sources conflict")
+        _index(clarify, "clarify before preparing the spec")
+        post = _h3_section(text, "Phase 7: Post-Action")
+        assert _index(post, "Apply these checks with custom templates too") < _index(
+            post, "create-helper post-action"
+        )
+
+    def test_create_template_failure_gates_precede_side_effects(self):
+        text = _read(CREATE_MD)
+        prepare = _h3_section(text, "Phase 4: Prepare Spec Directory")
+        template_failure = prepare.split("IF exit 2", 1)[1].split("IF any other", 1)[0]
+        _index(template_failure, "create-helper end-session")
+        _index(template_failure, "STOP")
+        design = _h3_section(text, "Phase 5: Design Specification")
+        _index(design, "Use `$spec_prompt` to guide")
+        _index(design, "Using `$spec_template`, create")
+        plan = _h3_section(text, "Phase 6: Plan Implementation Steps")
+        render = _index(plan, 'prompt create-todo "$spec_name"')
+        transaction = _index(plan, 'todo-helper transaction start "$spec_name"')
+        assert render < transaction
+        failure_gate = " ".join(plan[render:transaction].split())
+        assert "IF non-zero exit -> report stderr and STOP" in failure_gate
+        assert "Do not start the todo transaction, write tasks, or run post-action" in failure_gate
+
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")

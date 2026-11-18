@@ -103,18 +103,30 @@ Do **not** use (the engine rejects them):
 
 ## Front matter
 
-YAML front matter (`---` … `---`) is stripped **after** render by
-`prompt.py` (`strip_front_matter`). Optional `required:` / `optional:`
+YAML front matter (`---` … `---`) is stripped by `prompt.py` with
+`strip_front_matter`. For `create-todo`, strip the template front matter
+before rendering so the saved spec's front matter can appear in the output.
+Optional `required:` / `optional:`
 lists document metadata keys; `validate_required_meta` enforces
 `required` before render. Front matter is plain YAML for agents — it is
 not evaluated as Spex template syntax.
 
 ## Files in this directory
 
-| Template | Role |
-|----------|------|
-| `spec-template.md` | New spec body (no template tags today) |
-| `modify-spec.md` / `modify-todo.md` | Modify-plan prompts |
-| `apply-one-task.md` / `apply-commit.md` | Apply one step + commit |
-| `apply-review.md` / `apply-fix.md` | Review / fix loop prompts |
-| `AGENTS.md` | This dialect spec (not rendered) |
+| Software | General | Role |
+|----------|---------|------|
+| `create-spec.md` | `general-create-spec.md` | Spec writing guidance using `prompt_context` and `spec_name` |
+| `spec-template.md` | `general-spec-template.md` | Spec document skeleton |
+| `create-todo.md` | `general-create-todo.md` | Task planning guidance using saved `spec_content` and `spec_name` |
+| `modify-spec.md` | `general-modify-spec.md` | Spec revision |
+| `modify-todo.md` | `general-modify-todo.md` | Task plan revision |
+| `apply-one-task.md` | `general-apply-one-task.md` | Current step execution |
+| `apply-commit.md` | `general-apply-commit.md` | Commit guidance |
+| `apply-review.md` | `general-apply-review.md` | Step review |
+| `apply-fix.md` | `general-apply-fix.md` | Review fixes |
+
+Use the logical template name in workflow commands. Spex selects the
+filename for the persisted task mode, then looks in the selected
+`spex_root/templates/` and falls back to the built-in file of that name.
+The built-in examples sync to `templates/examples/`. Existing custom
+`spec-template.md` files continue to serve as software skeletons.

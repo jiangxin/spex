@@ -24,6 +24,7 @@ from common import (
     todo_step_label,
 )
 from config import get_project_context
+from task_mode import GENERAL, SOFTWARE, template_filename
 from template import TemplateError
 from template import render as render_template
 from todo_helper import normalize_skip_commit
@@ -240,6 +241,7 @@ def is_check_evidence_reusable(
     tree_clean: Optional[bool] = None,
     spex_root=None,
     cwd=None,
+    general=False,
 ) -> bool:
     """True when lint/test evidence may be reused for the current HEAD.
 
@@ -253,10 +255,12 @@ def is_check_evidence_reusable(
 
     if not head_sha or not str(head_sha).strip():
         return False
-    normalized = review_helper.normalize_check_evidence(evidence)
+    normalized = review_helper.normalize_check_evidence(evidence, general=general)
     if not normalized:
         return False
     if not review_helper.evidence_is_successful(normalized, head_sha):
+        return False
+    if general and not review_helper.sha_matches(head_sha, review_helper.get_head_sha(cwd)):
         return False
     if tree_clean is None:
         tree_clean, _ = review_helper.is_project_tree_clean(
@@ -267,7 +271,7 @@ def is_check_evidence_reusable(
     if required_commands:
         have = {
             str(item.get("command", ""))
-            for item in (normalized.get("checks") or [])
+            for item in (normalized.get("checks") or normalized.get("acceptance_evidence") or [])
             if isinstance(item, dict)
         }
         for command in required_commands:
@@ -547,6 +551,7 @@ def build_compact_review_context(
     if evidence and bind_sha:
         reusable = is_check_evidence_reusable(
             evidence, bind_sha, tree_clean=None, cwd=cwd,
+            general=metadata.get("task_mode") == GENERAL,
         )
 
     pending_has_major = False
@@ -702,6 +707,8 @@ def _build_metadata(template_name, spec_name=None):
 
     Different template names may produce different metadata.
     """
+    if template_name == "create-todo" and not spec_name:
+        raise TemplateError("create-todo.md requires a spec name")
     metadata = {}
     if spec_name:
         spec_dir = resolve_spec_dir(spec_name)
@@ -737,10 +744,11 @@ def _build_metadata(template_name, spec_name=None):
                 and metadata.get("user_email") == ctx.user_email):
             metadata["user_name"] = ""
             metadata["user_email"] = ""
-    # All spec-based templates except spec-template need task context:
-    # apply-commit, apply-one-task, apply-review, apply-fix,
-    # modify-spec, modify-todo
-    if template_name != "spec-template" and spec_name:
+    if template_name == "create-todo" and spec_name:
+        metadata["spec_name"] = spec_dir.name
+        spec_path = spec_dir / "spec.md"
+        metadata["spec_content"] = spec_path.read_bytes().decode("utf-8")
+    elif template_name != "spec-template" and spec_name:
         metadata.update(_build_task_context(spec_dir))
 
     metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
@@ -848,6 +856,7 @@ def _enrich_review_metadata(
         review_data=review_data,
         finding_id=finding_id or "",
         commit_sha=metadata.get("commit_sha") or "",
+        cwd=metadata.get("spex_worktree") or None,
     )
     metadata.update(compact)
     return metadata
@@ -865,11 +874,16 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
     Returns:
         Rendered template content with front-matter stripped.
     """
-    content = get_template(name + ".md")
     if metadata is None:
         metadata = _build_metadata(name, spec_name)
         if extra_vars:
-            metadata.update(extra_vars)
+            metadata.update((key, value) for key, value in extra_vars.items() if key != "task_mode")
+    content = get_template(template_filename(name, metadata.get("task_mode", SOFTWARE)))
+
+    if name == "create-todo":
+        spec_content = metadata.get("spec_content")
+        if not isinstance(spec_content, str) or not spec_content.strip():
+            raise TemplateError("create-todo.md requires a non-empty spec.md")
 
     # All-done detection for task-based templates.
     # apply-one-task / apply-commit: empty description means no current task.
@@ -886,6 +900,12 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
         return ""
 
     validate_required_meta(content, metadata)
+    if name == "create-todo":
+        # Preserve the specification's own front matter in custom prompts.
+        rendered = render_template(strip_front_matter(content), metadata)
+        if not rendered.strip():
+            raise TemplateError("create-todo.md rendered an empty prompt")
+        return rendered
     rendered = render_template(content, metadata)
     return strip_front_matter(rendered)
 
@@ -1109,6 +1129,7 @@ def _do_apply_one_task(args):
             "resume_phase": metadata.get("resume_phase", "implement"),
             "commit_title": metadata.get("current_commit_title", ""),
             "skip_commit": metadata.get("skip_commit", "false"),
+            **({"task_mode": GENERAL} if metadata.get("task_mode") == GENERAL else {}),
         }), args.output)
     else:
         _output_rendered(rendered, args.output)
@@ -1132,10 +1153,13 @@ def _read_stdin_extra_vars(stdin_flag):
     if stdin_flag:
         return {"prompt_context": stdin_data}
     try:
-        return json.loads(stdin_data)
+        extra_vars = json.loads(stdin_data)
     except json.JSONDecodeError:
         logger.error("Error: stdin must be valid JSON")
         sys.exit(1)
+    if isinstance(extra_vars, dict):
+        extra_vars.pop("task_mode", None)
+    return extra_vars
 
 
 def _do_apply_commit(args):
@@ -1536,16 +1560,23 @@ def cli_render(argv):
 
 
 def _do_render(args):
+    if args.template == "create-todo" and args.output is not None:
+        logger.error("Error: create-todo writes to stdout and does not accept --output")
+        sys.exit(1)
+
     extra_vars = _read_stdin_extra_vars(args.stdin_flag)
 
     try:
         metadata = _build_metadata(args.template, args.name)
         if extra_vars:
+            if args.template == "create-todo":
+                extra_vars.pop("spec_content", None)
+                extra_vars.pop("spec_name", None)
             metadata.update(extra_vars)
 
         rendered = render_prompt(args.template, args.name, metadata=metadata)
-    except FileNotFoundError as e:
-        logger.error("Error: %s", e)
+    except (OSError, UnicodeError) as e:
+        logger.error("Error loading %s prompt input: %s", args.template, e)
         sys.exit(1)
     except TemplateError as e:
         logger.error("Error rendering template: %s", e)

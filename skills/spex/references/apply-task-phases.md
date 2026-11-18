@@ -70,6 +70,10 @@ route as below.
   - `$commit_title` ← `"commit_title"` (may be empty)
   - `$skip_commit` ← `"skip_commit"` (`false` | `auto` | `true`;
     missing → `false`)
+  - `$task_mode` ← `"task_mode"` (missing → `software`). Reset
+    the mode and clear prior acceptance evidence on every task prompt.
+    Record the full `$base_head` with `git rev-parse HEAD` in the bound
+    worktree before implementation or sub-agent launch.
 
 - **Single render:** Call `prompt apply-one-task` **once** per task
   iteration. Reuse `$task_prompt` for Phase 4 and sub-agent
@@ -107,6 +111,14 @@ route as below.
   the IDE root
 - Deliver production code + tests together when the step changes
   code; docs-only / no-op steps may leave the tree clean
+- For `general`, read the agreed sources and write local outputs only
+  to agreed paths. Resolve repository-relative paths in the bound
+  worktree. Write versioned outputs only if the step can commit.
+  Reuse existing outputs that pass the task
+  criteria. Stop with the task unfinished if an input or verification
+  fails. Keep the output paths and a successful record for each criterion:
+  `kind: command`, `criterion`, `command`, integer `exit_code: 0`; or
+  `kind: inspection`, `criterion`, `location`, `observation`.
 - Do NOT create git commit here — Phase 5 handles commit when
   required
 - `$dirty` = **whole working tree** after implementation (not
@@ -278,11 +290,44 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   **`completed_at`** using a new short transaction. The step is
   complete after that transaction commits.
 
+- For `general` in either apply entrypoint, use the pre-execution SHA
+  as `$acceptance_head` after a clean skip. After a commit, compare the
+  full HEAD in the bound worktree with the step's recorded commit or
+  its completed review batch's verified `fixed_commit_sha`. Stop on
+  a mismatch. Use the matched full HEAD as `$acceptance_head` and verify
+  every criterion against the actual final deliverables. Reuse prior
+  evidence only if it covers those deliverables at the same SHA.
+  Reinspect any external files before relying on them. On resume, do
+  not rerun implementation or create another commit. Leave the step
+  unfinished if evidence is unavailable or a check fails.
+- Validate the handoff using the selected SHA and successful evidence:
+
+  ```bash
+  $spex_skill_dir/scripts/spex apply-helper verify-handoff \
+    --name "$spec_name" --id "$current_task_id" --head "$acceptance_head" <<'EOF'
+  <JSON array of acceptance evidence>
+  EOF
+  ```
+
+  Stop on failure. Keep the validated `acceptance_evidence` and
+  `commit_title` from stdout. The title is empty after a clean skip.
+
 ```bash
 $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
 ```
 
-- IF `$did_commit`:
+- IF `$task_mode` is `general`, write validated evidence and completion
+  in one operation. Include verified output paths and the actual checks
+  in the completion summary:
+
+  ```bash
+  $spex_skill_dir/scripts/spex todo-helper complete "$spec_name" \
+    --id "$current_task_id" --commit-title "$commit_title" --acceptance-evidence-stdin <<'EOF'
+  <validated JSON array of acceptance evidence>
+  EOF
+  ```
+
+- ELSE IF `$did_commit`:
   - Refresh `$commit_title` if needed (from todo `commit_title`,
     or `git log -1 --pretty="%h: %s"`) before the edit below —
     main's `$commit_title` may still be empty after a Phases 4–5

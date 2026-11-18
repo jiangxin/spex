@@ -1175,6 +1175,7 @@ class TestSpecMeta:
             "spex_branch": "spex/my-topic",
             "use_git_worktree": True,
             "spex_worktree": "/home/user/.spex/worktree/repo/my-topic",
+            "task_mode": "general",
         }
         m = SpecMeta.from_dict(data)
         result = m.to_dict()

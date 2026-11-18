@@ -437,7 +437,7 @@ class TestWriteMeta:
         assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
-        """Verify JSON field order from SpecMeta matches legacy format."""
+        """Verify task mode is appended to the legacy metadata fields."""
         spec_dir = tmp_path / "2026-01-01-10-00-order-test"
         spec_dir.mkdir()
 
@@ -459,7 +459,7 @@ class TestWriteMeta:
         expected_keys = [
             "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
-            "prompts", "use_git_worktree",
+            "prompts", "use_git_worktree", "task_mode",
         ]
         assert keys == expected_keys
         assert meta["use_git_worktree"] is False
@@ -665,6 +665,7 @@ class TestCliPrepareSpec:
             tmp_path / "2026-05-20-14-30-new-topic"
         )
         assert output["spec_template"] == "# Rendered Template"
+        assert output["spec_prompt"] == "# Rendered Template"
 
         meta_path = tmp_path / "2026-05-20-14-30-new-topic" / "meta.json"
         assert meta_path.exists()
@@ -674,6 +675,275 @@ class TestCliPrepareSpec:
              "timestamp": "2026-05-24T20:00:00+08:00"},
         ]
         assert meta["description"] == "Test desc"
+
+
+@pytest.fixture
+def create_template_root(tmp_path, monkeypatch):
+    import common
+
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    (tmp_path / "templates").mkdir()
+    ctx = _fake_project_context(spex_root=str(tmp_path))
+    monkeypatch.setattr(cfg, "get_project_context", lambda: ctx)
+    monkeypatch.setattr(common, "get_project_storage", lambda _workdir: ctx)
+    monkeypatch.setattr(common, "get_spex_root", lambda _workdir: str(tmp_path))
+    monkeypatch.setattr(common, "get_specs_dir", lambda: specs)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("Retain recovery behavior."))
+    return tmp_path
+
+
+@pytest.mark.parametrize(("custom_prompt", "custom_skeleton"), [
+    (False, False),
+    (True, False),
+    (False, True),
+    (True, True),
+])
+def test_prepare_renders_independent_templates(
+    create_template_root, capsys, custom_prompt, custom_skeleton,
+):
+    templates = create_template_root / "templates"
+    if custom_skeleton:
+        (templates / "spec-template.md").write_text("# Custom skeleton", encoding="utf-8")
+    if custom_prompt:
+        (templates / "create-spec.md").write_text(
+            "Custom {{ spec_name }}: {{ prompt_context }}", encoding="utf-8",
+        )
+    with patch("hooks.run_pre_action") as hook:
+        cli_prepare_spec(["--name", "template-demo", "--description", "Test templates"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["task_mode"] == "software"
+    assert "Retain recovery behavior." in result["spec_prompt"]
+    assert result["spec_name"] in result["spec_prompt"]
+    assert result["spec_prompt"].startswith("Custom ") is custom_prompt
+    assert (result["spec_template"] == "# Custom skeleton") is custom_skeleton
+    assert (templates / "examples" / "create-spec.md").is_file()
+    hook.assert_called_once()
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_prepare_and_render_general_templates(
+    create_template_root, capsys, monkeypatch, custom,
+):
+    from prompt import main
+
+    templates = create_template_root / "templates"
+    for name in ("create-spec", "spec-template", "create-todo"):
+        (templates / f"{name}.md").write_text("Software override", encoding="utf-8")
+        if custom:
+            (templates / f"general-{name}.md").write_text(
+                f"General override for {name}", encoding="utf-8",
+            )
+
+    with patch("hooks.run_pre_action"):
+        cli_prepare_spec([
+            "--name", "general-demo", "--description", "General deliverables",
+            "--mode", "general",
+        ])
+    prepared = json.loads(capsys.readouterr().out)
+    spec_dir = Path(prepared["spec_path"])
+    meta = json.loads((spec_dir / "meta.json").read_text(encoding="utf-8"))
+    assert prepared["task_mode"] == meta["task_mode"] == "general"
+    assert prepared["spec_template"].startswith("General override") is custom
+    assert prepared["spec_prompt"].startswith("General override") is custom
+    assert "Software override" not in prepared["spec_template"] + prepared["spec_prompt"]
+
+    (spec_dir / "spec.md").write_text("# Local deliverables", encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"task_mode": "software"}'))
+    main(["create-todo", spec_dir.name])
+    rendered = capsys.readouterr().out
+    assert rendered.startswith("General override") is custom
+    assert "Software override" not in rendered
+    if not custom:
+        assert "# Local deliverables" in rendered
+    assert not (spec_dir / "todo.json").exists()
+
+
+def test_prepare_rejects_invalid_mode_before_storage_or_hooks(capsys):
+    with (
+        patch("common.get_specs_dir") as storage,
+        patch("hooks.run_pre_action") as hook,
+        pytest.raises(SystemExit) as failure,
+    ):
+        cli_prepare_spec(["--name", "mode-demo", "--mode", "unknown"])
+
+    assert failure.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    storage.assert_not_called()
+    hook.assert_not_called()
+
+
+def test_spec_metadata_validates_explicit_modes_and_preserves_extensions(tmp_path, caplog):
+    from common import Spec, SpecMeta, load_meta
+    from task_mode import TaskModeError
+
+    legacy = SpecMeta.from_dict({"extension": {"key": "value"}})
+    assert legacy.task_mode == "software"
+    assert legacy.to_dict()["extension"] == {"key": "value"}
+    (tmp_path / "meta.json").write_text('{"task_mode": null}', encoding="utf-8")
+    with pytest.raises(TaskModeError, match=r"meta\.json: Invalid task mode"):
+        load_meta(tmp_path)
+    assert Spec.from_dir(tmp_path) is None
+    assert "meta.json: Invalid task mode" in caplog.text
+
+
+@pytest.mark.parametrize(("mode", "template", "diagnostic"), [
+    ("software", None, "Built-in template not found"),
+    ("software", b"{% if prompt_context %}", "Unclosed if block"),
+    ("software", b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
+    ("software", b"\n", "Rendered prompt is empty"),
+    ("general", b"\n", "Rendered prompt is empty"),
+    ("software", b"\xff", "invalid start byte"),
+    ("software", b"Unreadable prompt", "Permission denied"),
+])
+def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
+    create_template_root, monkeypatch, capsys, caplog, mode, template, diagnostic,
+):
+    import common
+
+    filename = "general-create-spec.md" if mode == "general" else "create-spec.md"
+    if template is None:
+        monkeypatch.setattr(common, "_get_skill_path", lambda: create_template_root / "missing")
+    else:
+        custom = create_template_root / "templates" / filename
+        custom.write_bytes(template)
+        if template == b"Unreadable prompt":
+            read_text = Path.read_text
+
+            def read_template(path, *args, **kwargs):
+                if path == custom:
+                    raise PermissionError("Permission denied")
+                return read_text(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "read_text", read_template)
+    with (
+        patch("hooks.run_pre_action") as hook,
+        patch.object(create_helper, "_handoff_session_after_prepare") as handoff,
+        pytest.raises(SystemExit) as failure,
+    ):
+        cli_prepare_spec([
+            "--name", "bad-template", "--description", "Test rollback", "--mode", mode,
+        ])
+
+    assert failure.value.code == 2
+    assert filename in caplog.text
+    assert diagnostic in caplog.text
+    assert not capsys.readouterr().out
+    assert not list((create_template_root / "specs").iterdir())
+    handoff.assert_not_called()
+    hook.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", [PermissionError("meta denied"), SystemExit(1)])
+def test_prepare_unexpected_failure_does_not_retry_name(
+    create_template_root, capsys, caplog, failure,
+):
+    with (
+        patch.object(create_helper, "_write_meta", side_effect=failure),
+        pytest.raises(SystemExit) as result,
+    ):
+        cli_prepare_spec(["--name", "template-demo", "--description", "Test failure"])
+
+    assert result.value.code == 3
+    assert "Error preparing spec" in caplog.text
+    assert not capsys.readouterr().out
+    assert not list((create_template_root / "specs").iterdir())
+
+
+@pytest.fixture
+def create_todo_spec(create_template_root, monkeypatch):
+    spec_dir = create_template_root / "specs" / "2026-05-20-14-30-todo"
+    spec_dir.mkdir()
+    (spec_dir / "todo.json").write_bytes(b"[null]\n")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    return spec_dir
+
+
+def test_create_todo_uses_latest_saved_spec_and_its_canonical_name(
+    create_template_root, create_todo_spec, capsys, monkeypatch,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    initial = b"# First specification\n\nPreserve failure behavior.\n"
+    spec.write_bytes(initial)
+    main(["create-todo", "14-30-todo"])
+    captured = capsys.readouterr().out
+    assert create_todo_spec.name in captured
+    assert initial.decode() in captured
+    assert spec.read_bytes() == initial
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+    updated = b"---\r\ndescription: Preserve this header\r\n---\r\n# Latest version\r\n"
+    spec.write_bytes(updated)
+    custom = create_template_root / "templates" / "create-todo.md"
+    custom.write_text(
+        "---\nrequired:\n  - spec_content\n---\n"
+        "{{ spec_content }}\nPlan for {{ spec_name }}.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({
+        "spec_content": "Stale specification", "spec_name": "Other name",
+    })))
+    main(["create-todo", "14-30-todo"])
+    assert capsys.readouterr().out == f"{updated.decode()}\nPlan for {create_todo_spec.name}.\n"
+    assert spec.read_bytes() == updated
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+
+@pytest.mark.parametrize(("option", "filename"), [
+    ("--output", "spec.md"),
+    ("-o", "todo.json"),
+])
+def test_create_todo_rejects_output_option_without_overwriting_inputs(
+    create_todo_spec, capsys, caplog, option, filename,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    spec_content = b"# Specification\n"
+    spec.write_bytes(spec_content)
+
+    with pytest.raises(SystemExit) as failure:
+        main(["create-todo", create_todo_spec.name, option, str(create_todo_spec / filename)])
+
+    assert failure.value.code == 1
+    assert "create-todo writes to stdout" in caplog.text
+    assert capsys.readouterr().out == ""
+    assert spec.read_bytes() == spec_content
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
+
+
+@pytest.mark.parametrize(("spec_content", "custom_prompt", "diagnostic"), [
+    (None, None, "spec.md"),
+    (b" \n", None, "requires a non-empty spec.md"),
+    (b"\xff", None, "invalid start byte"),
+    (b"# Spec\n", b"{% if spec_content %}", "Unclosed if block"),
+    (b"# Spec\n", b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
+    (b"# Spec\n", b" \n", "rendered an empty prompt"),
+    (b"# Spec\n", b"\xff", "invalid start byte"),
+])
+def test_create_todo_reports_input_errors_without_writing(
+    create_template_root, create_todo_spec, capsys, caplog,
+    spec_content, custom_prompt, diagnostic,
+):
+    from prompt import main
+
+    spec = create_todo_spec / "spec.md"
+    if spec_content is not None:
+        spec.write_bytes(spec_content)
+    if custom_prompt is not None:
+        (create_template_root / "templates" / "create-todo.md").write_bytes(custom_prompt)
+
+    with pytest.raises(SystemExit) as failure:
+        main(["create-todo", create_todo_spec.name])
+
+    assert failure.value.code == 1
+    assert diagnostic in caplog.text
+    assert capsys.readouterr().out == ""
+    assert (spec.read_bytes() if spec.exists() else None) == spec_content
+    assert (create_todo_spec / "todo.json").read_bytes() == b"[null]\n"
 
 
 class TestValidateCreateBranch:
@@ -1629,7 +1899,7 @@ class TestPreparePostActionSession:
             )
 
     def test_prepare_anchor_write_failure_keeps_pointer(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, monkeypatch, capsys, caplog,
     ):
         """CREATE anchor write must raise so handoff does not clear session."""
         ctx = self._ctx(tmp_path, debug=True)
@@ -1652,10 +1922,12 @@ class TestPreparePostActionSession:
                 "_append_create_debug_anchor",
                 side_effect=OSError("permission denied"),
             ):
-                with pytest.raises(OSError, match="permission denied"):
+                with pytest.raises(SystemExit) as failure:
                     self._run_prepare(
                         tmp_path, ctx, monkeypatch, capsys, name,
                     )
+                assert failure.value.code == 3
+                assert "permission denied" in caplog.text
 
         assert get_active_session_id(ctx.spex_root) == session_id
 

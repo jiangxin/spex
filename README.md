@@ -2,7 +2,7 @@
 
 ## What is Spex?
 
-Spex, pronounced /speks/, is a coding agent skill and command-line tool that helps developers manage the full software development lifecycle using SDD (Spec-Driven Development).
+Spex, pronounced /speks/, is a coding agent skill and command-line tool for spec-driven software development, independent documentation, research, and other local deliverables.
 
 Its core goal is to drive development through specs — first define what to build (create), then implement step by step (apply), and finally merge the result (merge).
 
@@ -406,17 +406,38 @@ Every team has its own standards: spec document format, commit message style, co
 {% endif -%}
 ```
 
-Templates are located in the `templates/` directory:
+Create uses separate templates for writing the spec, providing its skeleton,
+and planning tasks. The existing software skeleton remains compatible.
 
-| Template File | Purpose |
-|---|---|
-| `spec-template.md` | Spec document template |
-| `modify-spec.md` | Prompt template for modifying existing specs |
-| `modify-todo.md` | Prompt template for modifying `todo.json` |
-| `apply-one-task.md` | Prompt template aggregating spec and current task |
-| `apply-commit.md` | Prompt template for generating commits |
+| Software | General | Purpose |
+|---|---|---|
+| `create-spec.md` | `general-create-spec.md` | Spec writing guidance with `prompt_context` and `spec_name` |
+| `spec-template.md` | `general-spec-template.md` | Spec document skeleton |
+| `create-todo.md` | `general-create-todo.md` | Task planning guidance with the saved `spec_content` and `spec_name` |
 
-You can create replacement templates in `~/.spex/templates/` to override the built-in templates.
+Spex looks for the mode-specific filename in the selected `spex_root/templates/`,
+then uses the built-in file of that name as the fallback. Copy built-in examples
+from `templates/examples/`. The template guide lists the full mapping for create,
+modify, apply, commit, review, and fix. [Template guide](skills/spex/templates/AGENTS.md)
+
+#### Task Modes
+
+`/spex create` classifies the final deliverable as `software` for software
+changes and their accompanying docs, or `general` for independent docs,
+research, and other local outputs. Spex saves the mode in `meta.json`.
+Legacy specs default to `software`. A change to the primary deliverable
+that would change the mode requires a new spec.
+
+Resolve repository-relative outputs within the bound workspace. Agree on
+absolute paths or a base directory for external local outputs. Repository
+outputs can be committed and reviewed. Read-only and external-only steps
+default to `skip_commit: true` and require a clean Git worktree.
+
+General steps save successful acceptance evidence with their completion.
+Evidence can describe a command that exited successfully or an inspection
+of an actual output. On resume, verify the recorded commit against HEAD
+before completing committed work. An amended commit requires evidence for
+its final SHA. Missing or failed checks leave the step unfinished.
 
 ### 5. Multi-Project Support
 

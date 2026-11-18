@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from acceptance import validate_acceptance_evidence
 from cli import ArgumentParser
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
@@ -14,6 +15,7 @@ from common import (
     logger,
     strip_date_prefix,
 )
+from task_mode import GENERAL
 
 # ---------------------------------------------------------------------------
 # Dirty detection (apply.md Phase 4 six-step algorithm)
@@ -679,6 +681,62 @@ def cli_dirty(argv=None):
     _do_dirty(args)
 
 
+def _do_verify_handoff(args):
+    """Validate evidence and the expected checkout for a general task."""
+    from branch import get_current_branch
+    from common import load_meta, resolve_spec_dir, sha_from_commit_title
+    from config import get_project_context
+    from review_helper import general_review_head, review_filename, sha_matches
+    from todo_helper import normalize_skip_commit, validate_todo
+
+    try:
+        spec_dir = resolve_spec_dir(args.name)
+        meta = load_meta(spec_dir)
+        if meta is None or meta.task_mode != GENERAL:
+            raise ValueError("verify-handoff requires a general-mode spec")
+        todo = validate_todo(spec_dir / "todo.json")
+        task = next((item for item in todo if not item["completed_at"]), None)
+        if task is None or task["id"] != args.id:
+            raise ValueError("handoff task is not the first unfinished step")
+        skip_commit = normalize_skip_commit(task.get("skip_commit"))
+        ctx = get_project_context()
+        cwd = resolve_apply_git_cwd(meta, ctx.top_workdir or ctx.cwd)
+        if not ctx.spex_root:
+            raise ValueError("spex_root is not configured")
+        if meta.spex_branch and get_current_branch(cwd) != meta.spex_branch:
+            raise ValueError("checkout is no longer on the spec branch")
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd, text=True).strip()
+        commit_title = ""
+        if task["commit_title"]:
+            if skip_commit == "true":
+                raise ValueError("this general task cannot complete through the committed path")
+            recorded = sha_from_commit_title(task["commit_title"])
+            expected = general_review_head(
+                spec_dir / review_filename(args.id), recorded or "",
+                review_enabled=ctx.config.get("step_review") is not False,
+            )
+            if not sha_matches(head, expected):
+                raise ValueError("HEAD does not match the step's recorded commit")
+            commit_title = subprocess.check_output(
+                ["git", "log", "-1", "--format=%h: %s", head], cwd=cwd, text=True,
+            ).strip()
+        elif skip_commit == "false":
+            raise ValueError("the general task requires a recorded commit")
+        if head != args.head:
+            raise ValueError("HEAD changed during general task execution")
+        dirty, paths, _ = collect_dirty(ctx.spex_root, cwd=cwd)
+        if dirty:
+            raise ValueError(f"working tree changed outside spex_root: {', '.join(paths)}")
+        evidence = validate_acceptance_evidence(json.load(sys.stdin))
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        logger.error("Error: invalid general task handoff: %s", exc)
+        sys.exit(1)
+
+    print(json.dumps({
+        "task_id": args.id, "acceptance_evidence": evidence, "commit_title": commit_title,
+    }))
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -745,6 +803,11 @@ def _build_parser():
         help="Spec name (prefer meta.spex_worktree as git cwd when set)",
     )
 
+    p_handoff = subs.add_parser("verify-handoff", help="Validate general task evidence from stdin")
+    p_handoff.add_argument("--name", required=True, help="Spec name")
+    p_handoff.add_argument("--id", required=True, type=int, help="Current task ID")
+    p_handoff.add_argument("--head", required=True, help="Full SHA of the accepted checkout")
+
     return parser
 
 
@@ -766,3 +829,5 @@ def main(argv=None):
         _do_post_action(args)
     elif args.subcmd == "dirty":
         _do_dirty(args)
+    elif args.subcmd == "verify-handoff":
+        _do_verify_handoff(args)
