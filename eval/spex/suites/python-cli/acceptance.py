@@ -48,10 +48,11 @@ def lifecycle_name(repo):
     return names[0]
 
 
-def ordered_task_ids(ids, count, *, generated):
+def valid_task_ids(ids, count):
+    """Accept both step-N identifiers and the integers left by todo renumber."""
     numbers = list(range(1, count + 1))
     return ids == [f"step-{number}" for number in numbers] or (
-        generated and all(type(task_id) is int for task_id in ids) and ids == numbers
+        all(type(task_id) is int for task_id in ids) and ids == numbers
     )
 
 
@@ -77,9 +78,7 @@ def plan_checks(repo, scenario):
     checks = {
         "spec-written": bool(spec.strip()),
         "meta-written": isinstance(meta, dict) and bool(meta.get("name")),
-        "valid-task-identifiers": ordered_task_ids(
-            ids, len(tasks), generated=scenario in ("new-plan", "lifecycle-plan"),
-        ),
+        "valid-task-identifiers": valid_task_ids(ids, len(tasks)),
         "pending-tasks": bool(pending),
         "task-details-written": all(t.get("name") and t.get("details") for t in tasks),
     }
@@ -145,8 +144,7 @@ def modify_path_plan_checks(repo, scenario):
                 for field in ("name", "details"))
             for task in tasks
         ),
-        "valid-task-identifiers": all(type(t.get("id")) is int for t in tasks)
-        and [t["id"] for t in tasks] == list(range(1, len(tasks) + 1)),
+        "valid-task-identifiers": valid_task_ids([t.get("id") for t in tasks], len(tasks)),
         "completed-step-preserved": tasks[0] == {**upper, "id": 1},
         "remaining-steps-pending": all(
             task.get("completed_at") == "" and task.get("commit_title") == ""
@@ -242,8 +240,8 @@ def decoration_checks(repo, scenario):
             repo, "[hi] HELLO, ADA! tail\n", "--upper", "--prefix", "[hi] ", suffix_flag, " tail"
         )
         checks["suffix-only"] = output_is(repo, "Hello, Ada! tail\n", suffix_flag, " tail")
-    checks["expected-completed-steps"] = ordered_task_ids(
-        [task.get("id") for task in done], expected_count, generated=lifecycle,
+    checks["expected-completed-steps"] = valid_task_ids(
+        [task.get("id") for task in done], expected_count,
     )
     return checks
 
