@@ -21,6 +21,7 @@ from config import (
     get_project_storage,
     safe_update_toml,
 )
+from task_mode import SOFTWARE, TaskModeError, validate_task_mode
 
 logger = logging.getLogger("spex")
 
@@ -50,7 +51,7 @@ ICON_ARCHIVED = "\U0001f4e6"
 _SPEC_META_FIELD_ORDER = [
     "name", "workdir", "main_worktree", "remote_url", "branch",
     "user_name", "user_email", "created_at", "prompts", "description",
-    "spex_branch", "use_git_worktree", "spex_worktree",
+    "spex_branch", "use_git_worktree", "spex_worktree", "task_mode",
 ]
 
 
@@ -72,6 +73,10 @@ class SpecMeta:
     use_git_worktree: bool = False
     spex_worktree: str = ""
     extras: dict = field(default_factory=dict)
+    task_mode: str = SOFTWARE
+
+    def __post_init__(self):
+        validate_task_mode(self.task_mode)
 
     @classmethod
     def from_dict(cls, data: dict) -> SpecMeta:
@@ -131,7 +136,11 @@ class Spec:
 
         Returns None if meta.json is missing or invalid.
         """
-        meta = load_meta(spec_dir)
+        try:
+            meta = load_meta(spec_dir)
+        except TaskModeError as exc:
+            logger.warning("%s", exc)
+            return None
         if meta is None:
             return None
         done, total = get_todo_progress(spec_dir)
@@ -466,7 +475,10 @@ def load_meta(spec_dir: Path) -> SpecMeta | None:
         return None
     if not isinstance(data, dict):
         return None
-    return SpecMeta.from_dict(data)
+    try:
+        return SpecMeta.from_dict(data)
+    except TaskModeError as exc:
+        raise TaskModeError(f"{meta_path}: {exc}") from exc
 
 
 def get_spec_workdir(spec_dir: Path) -> str:

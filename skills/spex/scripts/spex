@@ -587,8 +587,9 @@ if __name__ == "__main__":
         sys.exit("Spex requires Python 3.9 or newer. Update python3 on PATH.")
 
     from config import ConfigParseError
+    from task_mode import TaskModeError
 
     try:
         main()
-    except ConfigParseError as exc:
+    except (ConfigParseError, TaskModeError) as exc:
         sys.exit(str(exc))

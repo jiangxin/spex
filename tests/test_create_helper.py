@@ -437,7 +437,7 @@ class TestWriteMeta:
         assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
-        """Verify JSON field order from SpecMeta matches legacy format."""
+        """Verify task mode is appended to the legacy metadata fields."""
         spec_dir = tmp_path / "2026-01-01-10-00-order-test"
         spec_dir.mkdir()
 
@@ -459,7 +459,7 @@ class TestWriteMeta:
         expected_keys = [
             "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
-            "prompts", "use_git_worktree",
+            "prompts", "use_git_worktree", "task_mode",
         ]
         assert keys == expected_keys
         assert meta["use_git_worktree"] is False
@@ -713,6 +713,7 @@ def test_prepare_renders_independent_templates(
         cli_prepare_spec(["--name", "template-demo", "--description", "Test templates"])
 
     result = json.loads(capsys.readouterr().out)
+    assert result["task_mode"] == "software"
     assert "Retain recovery behavior." in result["spec_prompt"]
     assert result["spec_name"] in result["spec_prompt"]
     assert result["spec_prompt"].startswith("Custom ") is custom_prompt
@@ -721,23 +722,91 @@ def test_prepare_renders_independent_templates(
     hook.assert_called_once()
 
 
-@pytest.mark.parametrize(("template", "diagnostic"), [
-    (None, "Built-in template not found"),
-    (b"{% if prompt_context %}", "Unclosed if block"),
-    (b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
-    (b"\n", "Rendered prompt is empty"),
-    (b"\xff", "invalid start byte"),
-    (b"Unreadable prompt", "Permission denied"),
+@pytest.mark.parametrize("custom", [False, True])
+def test_prepare_and_render_general_templates(
+    create_template_root, capsys, monkeypatch, custom,
+):
+    from prompt import main
+
+    templates = create_template_root / "templates"
+    for name in ("create-spec", "spec-template", "create-todo"):
+        (templates / f"{name}.md").write_text("Software override", encoding="utf-8")
+        if custom:
+            (templates / f"general-{name}.md").write_text(
+                f"General override for {name}", encoding="utf-8",
+            )
+
+    with patch("hooks.run_pre_action"):
+        cli_prepare_spec([
+            "--name", "general-demo", "--description", "General deliverables",
+            "--mode", "general",
+        ])
+    prepared = json.loads(capsys.readouterr().out)
+    spec_dir = Path(prepared["spec_path"])
+    meta = json.loads((spec_dir / "meta.json").read_text(encoding="utf-8"))
+    assert prepared["task_mode"] == meta["task_mode"] == "general"
+    assert prepared["spec_template"].startswith("General override") is custom
+    assert prepared["spec_prompt"].startswith("General override") is custom
+    assert "Software override" not in prepared["spec_template"] + prepared["spec_prompt"]
+
+    (spec_dir / "spec.md").write_text("# Local deliverables", encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"task_mode": "software"}'))
+    main(["create-todo", spec_dir.name])
+    rendered = capsys.readouterr().out
+    assert rendered.startswith("General override") is custom
+    assert "Software override" not in rendered
+    if not custom:
+        assert "# Local deliverables" in rendered
+    assert not (spec_dir / "todo.json").exists()
+
+
+def test_prepare_rejects_invalid_mode_before_storage_or_hooks(capsys):
+    with (
+        patch("common.get_specs_dir") as storage,
+        patch("hooks.run_pre_action") as hook,
+        pytest.raises(SystemExit) as failure,
+    ):
+        cli_prepare_spec(["--name", "mode-demo", "--mode", "unknown"])
+
+    assert failure.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    storage.assert_not_called()
+    hook.assert_not_called()
+
+
+def test_spec_metadata_validates_explicit_modes_and_preserves_extensions(tmp_path, caplog):
+    from common import Spec, SpecMeta, load_meta
+    from task_mode import TaskModeError
+
+    legacy = SpecMeta.from_dict({"extension": {"key": "value"}})
+    assert legacy.task_mode == "software"
+    assert legacy.to_dict()["extension"] == {"key": "value"}
+    (tmp_path / "meta.json").write_text('{"task_mode": null}', encoding="utf-8")
+    with pytest.raises(TaskModeError, match=r"meta\.json: Invalid task mode"):
+        load_meta(tmp_path)
+    assert Spec.from_dir(tmp_path) is None
+    assert "meta.json: Invalid task mode" in caplog.text
+
+
+@pytest.mark.parametrize(("mode", "template", "diagnostic"), [
+    ("software", None, "Built-in template not found"),
+    ("software", b"{% if prompt_context %}", "Unclosed if block"),
+    ("software", b"---\nrequired:\n  - unknown\n---\nPrompt", "missing required metadata"),
+    ("software", b"\n", "Rendered prompt is empty"),
+    ("general", b"\n", "Rendered prompt is empty"),
+    ("software", b"\xff", "invalid start byte"),
+    ("software", b"Unreadable prompt", "Permission denied"),
 ])
 def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
-    create_template_root, monkeypatch, capsys, caplog, template, diagnostic,
+    create_template_root, monkeypatch, capsys, caplog, mode, template, diagnostic,
 ):
     import common
 
+    filename = "general-create-spec.md" if mode == "general" else "create-spec.md"
     if template is None:
         monkeypatch.setattr(common, "_get_skill_path", lambda: create_template_root / "missing")
     else:
-        custom = create_template_root / "templates" / "create-spec.md"
+        custom = create_template_root / "templates" / filename
         custom.write_bytes(template)
         if template == b"Unreadable prompt":
             read_text = Path.read_text
@@ -753,10 +822,12 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
         patch.object(create_helper, "_handoff_session_after_prepare") as handoff,
         pytest.raises(SystemExit) as failure,
     ):
-        cli_prepare_spec(["--name", "bad-template", "--description", "Test rollback"])
+        cli_prepare_spec([
+            "--name", "bad-template", "--description", "Test rollback", "--mode", mode,
+        ])
 
     assert failure.value.code == 2
-    assert "create-spec.md" in caplog.text
+    assert filename in caplog.text
     assert diagnostic in caplog.text
     assert not capsys.readouterr().out
     assert not list((create_template_root / "specs").iterdir())

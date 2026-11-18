@@ -24,6 +24,7 @@ from common import (
     todo_step_label,
 )
 from config import get_project_context
+from task_mode import SOFTWARE, template_filename
 from template import TemplateError
 from template import render as render_template
 from todo_helper import normalize_skip_commit
@@ -868,11 +869,11 @@ def render_prompt(name, spec_name=None, extra_vars=None, metadata=None):
     Returns:
         Rendered template content with front-matter stripped.
     """
-    content = get_template(name + ".md")
     if metadata is None:
         metadata = _build_metadata(name, spec_name)
         if extra_vars:
-            metadata.update(extra_vars)
+            metadata.update((key, value) for key, value in extra_vars.items() if key != "task_mode")
+    content = get_template(template_filename(name, metadata.get("task_mode", SOFTWARE)))
 
     if name == "create-todo":
         spec_content = metadata.get("spec_content")
@@ -1146,10 +1147,13 @@ def _read_stdin_extra_vars(stdin_flag):
     if stdin_flag:
         return {"prompt_context": stdin_data}
     try:
-        return json.loads(stdin_data)
+        extra_vars = json.loads(stdin_data)
     except json.JSONDecodeError:
         logger.error("Error: stdin must be valid JSON")
         sys.exit(1)
+    if isinstance(extra_vars, dict):
+        extra_vars.pop("task_mode", None)
+    return extra_vars
 
 
 def _do_apply_commit(args):
