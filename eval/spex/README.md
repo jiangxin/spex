@@ -26,7 +26,15 @@ python3 eval/spex/run.py prepare --suite docs --case analyze-incident \
   --host qoder
 ```
 
-The first `prepare` or `run` creates a sandbox at
+For a whole batch in one sandbox with a ready dispatch queue:
+
+```sh
+python3 eval/spex/run.py prepare --all --host qoder \
+  --spex-ref HEAD --jobs 4 --init
+```
+
+`--init` requires `--all` and initializes the queue once every case is
+prepared. The first `prepare` or `run` creates a sandbox at
 `eval/spex/runs/YYYY-MM-DD-HH-MM-SS` (with `-2`, `-3`, … on name clash). That
 directory is git-ignored via `/eval/spex/runs/` and is itself `git init`'d so
 git commands inside the sandbox do not resolve to the Spex monorepo. Case
@@ -67,8 +75,22 @@ Filters match by intersection.
 
 For current-host runs, add `--all` to prepare every listed case into one
 sandbox in parallel against the same pinned commit. The JSON reports a
-`prepared` handoff and an `env_script` path per case plus per-case `errors`.
-Retry individual failures with `prepare --case CASE --sandbox PATH`.
+`prepared` handoff per case and per-case `errors`; with `--init`, the payload
+also reports `queue_init`. Each
+`prepared` and `errors` entry carries the case ID as both `id` and `case`;
+`list` reports `id`. Retry individual failures with
+`prepare --case CASE --sandbox PATH`.
+
+`queue_init.status` is `initialized` for a new queue, `existing` when
+`queue.json` is already present, and `skipped` with `reason`
+`prepare_errors` (a case failed) or `batch_mismatch` (the selected IDs differ
+from `batch-index.json`) when the batch must be retried first. A retry with
+`prepare --case` does not initialize the queue, so run `manual.py init` with
+every selected ID afterward.
+
+`prepare` already writes `_handoff/env-<suite>-<case>.sh` for every case and
+returns it as `env_script`. Source that file in the trial session; never
+rebuild the exports or write an env script by hand.
 
 ## Current-host trials
 
@@ -77,7 +99,7 @@ trial through grading, with ordered turns and one session per trial. For
 current-host trials, dispatch in parallel when the host can open
 independent sessions and resume them across turns. Otherwise prepare a
 new batch with `--jobs 1` and use serial manual handoffs when needed.
-An existing sandbox retains the saved ceiling. Its coordinator can claim
+An existing sandbox retains the saved ceiling. Its coordinator can dispatch
 fewer trials when the host supports less concurrency.
 
 Pass `--jobs N` (1–4) to configure the limit for a new `prepare` batch
@@ -113,9 +135,9 @@ The runner does not open host sessions. The portable interface is:
 | Step | Any host |
 | --- | --- |
 | Isolate | One session (or equivalent) per trial; separate session for judge |
-| Env | Verify the prepared cwd, environment, and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
+| Env | Source the `env_script` written by `prepare` (`_handoff/env-<suite>-<case>.sh`) or returned by `dispatch`; never rebuild the exports by hand. Verify the prepared cwd and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
 | Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
-| Input | Send `next_input` exactly; keep the same session for later turns |
+| Input | Dispatch each turn with `manual.py dispatch`, send its `next_input` exactly, and keep the same session for later turns |
 | Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
 | Collect | `collect --session ID --reply <handoff-file> [--events …]` |
 
@@ -125,17 +147,44 @@ these commands.
 
 | Command | Result |
 | --- | --- |
-| `init SUITE/CASE ...` | Initialize the queue from all selected and published cases |
-| `claim SUITE/CASE` | Reserve a trial slot through grading |
+| `init SUITE/CASE ...` | Initialize the queue from all selected and published cases; `prepare --all --init` does this in the same call |
+| `dispatch SUITE/CASE --session ID` | Claim a pending slot and start the next turn in one call; the authoritative dispatch entry |
+| `claim SUITE/CASE` | Low-level slot claim behind `dispatch`; it does not start a turn |
 | `exec SUITE/CASE -- COMMAND ...` | Run a shell command with the prepared cwd and environment |
-| `start SUITE/CASE TURN --session ID` | Bind the session and timer, then return the exact input and reply path |
+| `start SUITE/CASE TURN --session ID` | Low-level turn start behind `dispatch`: bind the session and timer, then return the exact input and reply path |
 | `wait --any --timeout SECONDS` | Block until a running turn has a readable, nonblank UTF-8 reply; exit 1 on timeout |
 | `advance` | Stop, collect, and export running turns with published replies |
 | `stop SUITE/CASE TURN [--reply-file PATH]` | Finish the current timer and atomically publish a staged reply first when supplied |
 | `collect SUITE/CASE TURN` | Collect the saved reply and timing sidecars, then return the next input |
-| `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot |
+| `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot; `complete --all` closes out a batch |
 | `fail SUITE/CASE --reason launch_failed\|exited\|timeout` | Record a host failure on a claimed, pending trial and release its slot while preserving collected evidence |
 | `status --require-terminal` | Exit 1 until every queued case has a terminal verdict |
+
+`dispatch` returns `case`, `turn`, `session`, `trial`, `workspace`, `skill`,
+`env_script`, `reply`, and `next_input`. Dispatch a running case again to
+start its next turn. Add `--turn N` to assert the expected next turn; a
+mismatch fails without touching the queue. A failed dispatch also leaves the
+queue unchanged: an invalid or conflicting session, an already-started turn,
+a missing env script, or a full slot set (the error lists the occupying
+`SUITE/CASE` IDs with `jobs=N`) all exit nonzero. `claim` and `start` remain
+the low-level pair behind `dispatch`.
+
+### Coordinator rules
+
+The [spex-eval skill](../../.agents/skills/spex-eval/SKILL.md) holds the full
+SOP. These rules prevent the recurring coordinator failures:
+
+- Every command must be cwd-independent: prefix it with `cd <repo-root> && …`
+  or use absolute paths. Never rely on the shell working directory inherited
+  from an earlier call.
+- Dispatch only through `manual.py dispatch`, one call per turn; never copy
+  `_dispatch.py` or any other helper from a previous sandbox.
+- Slot order is `advance → export-packet → judge → import-grades → complete
+  → claim`. Slots are released only by `complete`, or by `fail` for a
+  recorded host failure, so a collected but ungraded trial still holds its
+  slot.
+- Read the schema of an unfamiliar host MCP tool before calling it; do not
+  guess argument names.
 
 The guarded path collects each turn before dispatching the next one. Direct
 `collect` and `collect_handoff.py` remain available for existing handoffs and
@@ -207,6 +256,30 @@ The **Score summary** shows one verdict per trial, with the hard verdict
 in parentheses when it differs. Scores show how many rubric criteria
 were graded. An asterisk beside full marks on a non-passing trial links
 the score coverage to the verdict reason. Hard failures take precedence.
+
+### Batch close-out
+
+`prepare` records the whole batch in `batch-index.json`, so saved judge
+grades can be imported and the slots released in two calls instead of one per
+case. Judges write each verdict to `_handoff/grades-<suite>-<case>.json`.
+`--grades-dir` defaults to `<sandbox>/_handoff` and resolves a relative path
+against the sandbox.
+
+```sh
+python3 eval/spex/run.py import-grades --all --sandbox "$sandbox" \
+  --grades-dir _handoff --host qoder --model gpt-6.1-sol
+python3 eval/spex/manual.py --sandbox "$sandbox" complete --all
+```
+
+`import-grades --all` visits every key in `batch-index.json` order, imports
+each saved grade, skips `already_graded` (judge output exists), `no_packet`
+(no judge prompt), and `no_grades` (no grades file), and exits 1 when any case
+fails. A `--judge-duration-ms` value applies to every import in batch mode.
+`complete --all` completes each running case that holds a terminal verdict,
+skips `not_graded` and `not_running`, releases the slots, and exits 1 on
+per-case errors. Keep `import-grades TRIAL --grades FILE` and
+`complete SUITE/CASE` as single-case fallbacks. The terminal gate remains
+`manual.py --sandbox PATH status --require-terminal`.
 
 **Execution diagnostics** links observed Spex helper exits, implausible
 host timing, and judge failures to their saved evidence. A successful
