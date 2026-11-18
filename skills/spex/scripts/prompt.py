@@ -15,6 +15,7 @@ from typing import Optional
 from cli import ArgumentParser, nonempty_spec_name
 from common import (
     find_template_path,
+    get_spec_description,
     get_spex_root,
     get_template,
     load_and_validate_todo_json,
@@ -111,7 +112,7 @@ def _format_item_concise(item, count):
     return f"- **{todo_step_label(item['id'], count)}**: {item.get('name', '')}"
 
 
-def _trim_spec_content(spec_content):
+def _trim_spec_content(spec_content, description=None):
     """Trim spec content for commit context using include/exclude strategy.
 
     Include (primary): if requirement or user-clarification sections exist,
@@ -123,7 +124,8 @@ def _trim_spec_content(spec_content):
 
     from common import parse_front_matter_description, strip_front_matter
 
-    description = parse_front_matter_description(spec_content)
+    if description is None:
+        description = parse_front_matter_description(spec_content)
 
     include_sections = {"requirement", "user-clarification"}
     exclude_sections = {"detailed-design", "test-plan", "constraints"}
@@ -477,7 +479,9 @@ def build_compact_review_context(
     # Spec summary only (never the full long document).
     spec_summary = metadata.get("spec_content_concise") or ""
     if not spec_summary:
-        spec_summary = _trim_spec_content(metadata.get("spec_content") or "")
+        spec_summary = _trim_spec_content(
+            metadata.get("spec_content") or "", metadata.get("description") or None,
+        )
 
     task_desc = _format_current_task_compact(
         metadata.get("current_task_description") or "",
@@ -691,7 +695,7 @@ def _build_task_context(spec_dir, verbose_items=20, *, include_scope=False):
         spec_content = spec_path.read_text(encoding="utf-8")
     else:
         spec_content = ""
-    spec_content_concise = _trim_spec_content(spec_content)
+    spec_content_concise = _trim_spec_content(spec_content, get_spec_description(spec_dir))
 
     todo = load_todo(spec_dir)
     count = len(todo or [])
