@@ -9,6 +9,7 @@ import common as spex_common
 import pytest
 import show as spex_show
 from config import ProjectContext
+from list import format_json_output, format_verbose_output
 
 
 def _make_topic(tmp_path, name="my-topic", spec_content=None, todo=None,
@@ -109,6 +110,32 @@ class TestFormatVerbose:
         spec_dir = _make_topic(tmp_path, spec_content=spec)
         output = spex_show._format_verbose(spec_dir)
         assert "(no tasks)" in output
+        assert "Next: No tasks" in output
+        assert "[software]" in output
+
+    def test_completed_spec_has_no_next_step(self, tmp_path):
+        spec_dir = _make_topic(
+            tmp_path,
+            spec_content="# Done",
+            todo=[
+                {"id": "step-1", "name": "Only", "details": "",
+                 "completed_at": "2026-05-20", "commit_title": "abc"},
+            ],
+        )
+        output = spex_show._format_verbose(spec_dir)
+        assert "Next: Completed" in output
+
+        spec = spex_common.Spec.from_dir(spec_dir)
+        todo = spec.todo_data
+        summary = spec.summary(todo)
+        assert summary["next_step"] is None
+        assert summary["completed_steps"] == summary["total_steps"] == 1
+
+    def test_archived_header_mode(self, tmp_path):
+        spec_dir = _make_topic(tmp_path, spec_content="# Spec")
+        output = spex_show._format_verbose(spec_dir, archived=True)
+        assert "[software]" in output.splitlines()[0]
+        assert "Lifecycle: Archived" in output
 
     def test_missing_meta_returns_error(self, tmp_path):
         spec_dir = tmp_path / "specs" / "bad-topic"
@@ -147,6 +174,110 @@ class TestMain:
         with pytest.raises(SystemExit) as exc_info:
             spex_show.main(["nonexistent"])
         assert exc_info.value.code == 1
+
+    def test_json_and_list_are_mutually_exclusive(self):
+        with pytest.raises(SystemExit) as exc_info:
+            spex_show.main(["--json", "--list"])
+        assert exc_info.value.code == 2
+
+    def test_json_unloadable_spec_errors(self, monkeypatch, capsys, tmp_path):
+        """--json exits 2 when the resolved spec cannot be loaded."""
+        specs = tmp_path / "specs"
+        bad = specs / "bad-topic"
+        bad.mkdir(parents=True)
+        ctx = _make_ctx(tmp_path)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: specs)
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
+
+        with pytest.raises(SystemExit) as exc_info:
+            spex_show.main(["bad-topic", "--json"])
+        assert exc_info.value.code == 2
+        assert "unable to load spec" in capsys.readouterr().err
+
+    def test_json_active_spec_archived_false(self, monkeypatch, capsys, tmp_path):
+        """--json reports archived=False for a spec under specs/."""
+        spec_dir = _make_topic(
+            tmp_path,
+            todo=[
+                {"id": "step-1", "name": "Draft", "details": "",
+                 "completed_at": "", "commit_title": ""},
+            ],
+        )
+        assert spec_dir.parent.name == "specs"
+        ctx = _make_ctx(tmp_path)
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: tmp_path / "specs")
+        monkeypatch.setattr("common.get_project_storage", lambda _w=None: ctx)
+
+        spex_show.main(["my-topic", "--json"])
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["archived"] is False
+        assert "steps" in payload
+        assert [step["id"] for step in payload["steps"]] == [1]
+
+    def test_json_and_text_share_saved_archive_status(
+        self, monkeypatch, capsys, tmp_path,
+    ):
+        spec_dir = _make_topic(
+            tmp_path,
+            subdir="archives",
+            spec_content="# Report",
+            todo=[
+                {"id": "step-1", "name": "Draft", "completed_at": "2026-05-20"},
+                {"id": "step-2", "name": "Verify",
+                 "commit_title": "abc: Verify report"},
+                {"id": "step-3", "name": "Finish",
+                 "details": "Check the final report"},
+            ],
+        )
+        (spec_dir / "meta.json").write_text(json.dumps({
+            "created_at": "2026-05-20T10:00:00+08:00",
+            "task_mode": "general",
+            "branch": "main",
+            "spex_branch": "spex/report",
+            "use_git_worktree": True,
+            "spex_worktree": "/work/report",
+            "user_email": "private@example.com",
+            "prompts": ["Private request"],
+        }), encoding="utf-8")
+        (tmp_path / "specs").mkdir()
+
+        monkeypatch.setattr("common.get_specs_dir", lambda _w=None: tmp_path / "specs")
+        monkeypatch.setattr(
+            "common.get_archives_dir", lambda _w=None: spec_dir.parent,
+        )
+        monkeypatch.setattr("show.get_archives_dir", lambda _w=None: spec_dir.parent)
+
+        with patch("show._paged_output") as mock_paged:
+            spex_show.main(["--json", "--archives", "my-topic"])
+        mock_paged.assert_not_called()
+
+        payload = json.loads(capsys.readouterr().out)
+        steps = payload.pop("steps")
+        assert [step["status"] for step in steps] == [
+            "completed", "review_pending", "pending",
+        ]
+        assert payload["next_step"] == {
+            "id": 2, "name": "Verify", "status": "review_pending",
+        }
+        assert payload["archived"] is True
+        assert payload["task_mode"] == "general"
+        assert payload["spex_worktree"] == "/work/report"
+        assert payload["created_at"] == "2026-05-20T10:00:00+08:00"
+        assert {"user_email", "prompts", "remote_url"}.isdisjoint(payload)
+
+        spec = spex_common.Spec.from_dir(spec_dir, archived=True)
+        assert json.loads(format_json_output([spec], details=True)) == [payload]
+
+        listing = format_verbose_output([spec], verbosity=2, metadata=True)
+        assert "Next: step-2/3: Verify [Review pending]" in listing
+        assert "abc: Verify report" in listing
+
+        shown = spex_show._format_verbose(spec_dir, archived=True)
+        assert "Lifecycle: Archived" in shown
+        assert "Next: step-2/3: Verify [Review pending]" in shown
+        assert "# Report" in shown
+        assert "Check the final report" in shown
 
 
 class TestResolveSpec:
