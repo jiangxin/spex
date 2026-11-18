@@ -642,6 +642,214 @@ class TestAppendCompletedAtNow:
 
 
 # -----------------------------------------------------------------------
+# insert
+# -----------------------------------------------------------------------
+class TestInsert:
+    @pytest.mark.parametrize(
+        ("anchor", "position", "index"),
+        [("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3)],
+    )
+    def test_insert_by_spec_name(self, todo_file, monkeypatch, anchor, position, index):
+        monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
+        _write(todo_file, SAMPLE_DATA)
+
+        todo_helper.main([
+            "insert", "my-topic", anchor, position,
+            "--step-name", "Inserted", "--details", "Details",
+        ])
+
+        entry = {"name": "Inserted", "details": "Details", "completed_at": "", "commit_title": ""}
+        expected = [*SAMPLE_DATA[:index], entry, *SAMPLE_DATA[index:]]
+        assert _read(todo_file) == [
+            dict(item, id=number) for number, item in enumerate(expected, 1)
+        ]
+
+    @pytest.mark.parametrize(
+        ("anchors", "items", "exit_code"),
+        [
+            ([], SAMPLE_DATA, 2),
+            (["--before", "1", "--after", "2"], SAMPLE_DATA, 2),
+            (["--before", "0"], SAMPLE_DATA, 2),
+            (["--after", "4"], SAMPLE_DATA, 1),
+            (["--before", "1"], [], 1),
+        ],
+    )
+    def test_invalid_anchor_keeps_file(self, todo_file, anchors, items, exit_code):
+        _write(todo_file, items)
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "insert", *anchors,
+                "--step-name", "Inserted", "--details", "Details",
+            ])
+        assert exc.value.code == exit_code
+        assert todo_file.read_bytes() == original
+
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_insert_inside_transaction(self, todo_file, monkeypatch, action):
+        import io
+
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        details = "First line\nSecond line\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(details))
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main([
+            "insert", "--before", "2", "--step-name", "Inserted",
+            "--details-from-stdin", "--skip-commit", "auto",
+            "--completed-at", "2026-01-03", "--commit-title", "feat: inserted",
+            *locator,
+        ])
+
+        entry = {
+            "name": "Inserted", "details": details, "completed_at": "2026-01-03",
+            "commit_title": "feat: inserted", "skip_commit": "auto",
+        }
+        expected = [SAMPLE_DATA[0], entry, *SAMPLE_DATA[1:]]
+        assert _read(todo_file) == expected
+        todo_helper.main(["transaction", action, *locator])
+
+        if action == "rollback":
+            assert todo_file.read_bytes() == original
+        else:
+            assert _read(todo_file) == [
+                dict(item, id=number) for number, item in enumerate(expected, 1)
+            ]
+        assert not todo_file.with_suffix(".json.lock").exists()
+
+
+# -----------------------------------------------------------------------
+# move
+# -----------------------------------------------------------------------
+class TestMove:
+    def test_swap_by_spec_name_preserves_full_entries(self, todo_file, monkeypatch, capsys):
+        monkeypatch.setattr(
+            todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
+        )
+        _write(todo_file, SAMPLE_DATA)
+
+        todo_helper.main(["move", "my-topic", "--from", "1", "--to", "3"])
+
+        swapped = [SAMPLE_DATA[2], SAMPLE_DATA[1], SAMPLE_DATA[0]]
+        assert _read(todo_file) == swapped
+        todo_helper.main(["show", "my-topic"])
+        assert json.loads(capsys.readouterr().out) == [
+            dict(item, id=index) for index, item in enumerate(swapped, 1)
+        ]
+
+    @pytest.mark.parametrize(
+        ("source", "target", "exit_code"),
+        [("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2)],
+    )
+    def test_invalid_or_same_position_keeps_file(self, todo_file, source, target, exit_code):
+        todo_file.write_text(json.dumps(SAMPLE_DATA), encoding="utf-8")
+        original = todo_file.read_bytes()
+        arguments = ["move", "--from", source, "--to", target, "--todo-file", str(todo_file)]
+
+        if exit_code is None:
+            todo_helper.main(arguments)
+        else:
+            with pytest.raises(SystemExit) as exc:
+                todo_helper.main(arguments)
+            assert exc.value.code == exit_code
+
+        assert todo_file.read_bytes() == original
+
+    @pytest.mark.parametrize("action", ["commit", "rollback"])
+    def test_transaction_completion(self, todo_file, action):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main([*locator, "move", "--from", "3", "--to", "1"])
+
+        swapped = [SAMPLE_DATA[2], SAMPLE_DATA[1], SAMPLE_DATA[0]]
+        assert _read(todo_file) == swapped
+        todo_helper.main(["transaction", action, *locator])
+
+        if action == "rollback":
+            assert todo_file.read_bytes() == original
+        else:
+            assert _read(todo_file) == [
+                dict(item, id=index) for index, item in enumerate(swapped, 1)
+            ]
+        assert not todo_file.with_suffix(".json.lock").exists()
+
+
+# -----------------------------------------------------------------------
+# renumber
+# -----------------------------------------------------------------------
+class TestRenumber:
+    @pytest.mark.parametrize("by_spec_name", [True, False])
+    def test_repair_ids_and_preserve_payload(self, todo_file, monkeypatch, by_spec_name):
+        monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
+        missing_id = {key: value for key, value in SAMPLE_DATA[0].items() if key != "id"}
+        items = [
+            missing_id,
+            dict(SAMPLE_DATA[1], id=None, skip_commit="auto", extra={"labels": ["new"]}),
+            dict(SAMPLE_DATA[2], id="legacy"),
+            dict(SAMPLE_DATA[1], id="legacy"),
+        ]
+        _write(todo_file, items)
+        argv = ["renumber", "topic"] if by_spec_name else [
+            "--todo-file", str(todo_file), "renumber",
+        ]
+
+        todo_helper.main(argv)
+
+        assert _read(todo_file) == [
+            dict(item, id=index) for index, item in enumerate(items, 1)
+        ]
+        numbered = todo_file.read_bytes()
+        todo_helper.main(argv)
+        assert todo_file.read_bytes() == numbered
+
+    def test_empty_array(self, todo_file):
+        _write(todo_file, [])
+        todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert _read(todo_file) == []
+
+    @pytest.mark.parametrize("contents", ["", "{", "{}", "[null]", "[{}]"])
+    def test_reject_invalid_contents(self, todo_file, contents):
+        todo_file.write_text(contents, encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert todo_file.read_text(encoding="utf-8") == contents
+
+    def test_reject_invalid_skip_commit(self, todo_file):
+        _write(todo_file, [dict(SAMPLE_DATA[0], skip_commit="invalid")])
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert todo_file.read_bytes() == original
+
+    def test_reject_missing_file(self, todo_file):
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", "--todo-file", str(todo_file)])
+        assert exc.value.code == 1
+        assert not todo_file.exists()
+
+    def test_reject_open_transaction(self, todo_file, caplog):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        locator = ["--todo-file", str(todo_file)]
+        todo_helper.main(["transaction", "start", *locator])
+        todo_helper.main(["move", "--from", "3", "--to", "1", *locator])
+        pending = todo_file.read_bytes()
+
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main(["renumber", *locator])
+
+        assert exc.value.code == 1
+        assert "transaction commit" in caplog.text
+        assert todo_file.read_bytes() == pending
+        assert todo_file.with_suffix(".json.lock").read_bytes() == original
+
+
+# -----------------------------------------------------------------------
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:

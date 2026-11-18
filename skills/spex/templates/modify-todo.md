@@ -1,5 +1,5 @@
 ---
-version: "0.1.1"
+version: "0.1.2"
 required:
   - spec_content
   - spec_name
@@ -9,12 +9,11 @@ optional:
 ---
 
 Act as a senior software architect focused on incremental specification
-evolution. Your task is to redesign the development steps for a
+evolution. Your task is to update the development steps for a
 specification that has been modified.
 
 Analyze the updated specification below, consider any already-completed
-work, and produce a new set of implementation steps that will bring the
-codebase in line with the revised requirements.
+work, and revise the remaining implementation steps as needed.
 
 ## Specification
 
@@ -66,14 +65,19 @@ Do NOT regenerate or duplicate them. Use them to:
 
 ## Instructions
 
-Using the updated specification and completed steps above, design the remaining
-implementation steps and add them using `spex todo-helper`.
+Run `show` for the full current list. Compare it with the updated
+specification and follow the modify SOP to choose no change, targeted
+edits, or a rebuild of the remaining plan. Keep unaffected steps and
+their relative order for targeted edits. Reserve `remove-undone` for a
+rebuild. Keep the contents and positions of completed steps and steps
+with a commit awaiting review. Insert new steps after the completed
+prefix and follow the modify SOP if a change would shift a protected
+step.
 
-Before appending steps, run `show` to see the current state of the
-todo list. After adding all steps, run `show` again to verify the
-final plan is coherent and complete. The transaction commit assigns
-numeric IDs in list order. For edits and removals, take the current
-number from the `step-<num>/<count>` label and pass it as `--id`.
+Refresh the displayed positions after each insertion, removal, or
+swap before using another positional argument. Verify the final
+plan with `show` before post-action validation. The transaction commit
+assigns stored IDs in list order.
 
 ### Using spex todo-helper
 
@@ -110,11 +114,23 @@ Do **not** put `--skip-commit true` on coding steps. Values:
 `true` | `auto` | `false` (default omit / `false`). JSON bool
 `true`/`false` and lowercase strings only — not `"True"` / `"AUTO"`.
 
-**Show** current steps (to review before adding more):
+**Show** the full list with current IDs and completion state:
 
 ```bash
-{{ spex_skill_dir }}/scripts/spex todo-helper show "{{ spec_name }}" \
-  --format markdown
+{{ spex_skill_dir }}/scripts/spex todo-helper show "{{ spec_name }}"
+```
+
+**Insert** before an existing step (use `--after` to insert after it):
+
+```bash
+{{ spex_skill_dir }}/scripts/spex todo-helper insert "{{ spec_name }}" \
+  --before 2 --step-name "New step" --details "Describe the new step"
+```
+
+**Move** by swapping two unfinished steps:
+
+```bash
+{{ spex_skill_dir }}/scripts/spex todo-helper move "{{ spec_name }}" --from 2 --to 4
 ```
 
 **Edit** a step (only specified fields are updated):

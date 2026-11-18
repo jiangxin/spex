@@ -1,4 +1,4 @@
-"""Seed a committed prefix task that is waiting for Spex review."""
+"""Seed case-specific greeting plans and review state."""
 
 import argparse
 import json
@@ -8,6 +8,32 @@ from pathlib import Path
 
 SPEC = Path(".spex/specs/2000-01-01-00-01-greeting-decoration")
 BRANCH = "spex/greeting-decoration"
+MODIFY_SPEC = Path(".spex/specs/2000-01-01-00-00-greeting-format")
+MODIFY_CASES = ("modify-rebuild", "modify-targeted")
+
+
+def seed_modify(repo, scenario):
+    plans = json.loads((repo / ".spex/modify-plans.json").read_text(encoding="utf-8"))
+    spec = repo / MODIFY_SPEC
+    todo = spec / "todo.json"
+    upper = json.loads(todo.read_text(encoding="utf-8"))[0]
+    tasks = [{**upper, "id": 1}]
+    for number, flag in enumerate(plans[scenario], 2):
+        tasks.append({
+            "id": number, "name": f"Add {flag}", "details": plans["details"][flag],
+            "completed_at": "", "commit_title": "",
+        })
+    todo.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
+    requirements = "\n".join(f"- {task['details']}" for task in tasks)
+    (spec / "spec.md").write_text(
+        "<!-- spex:begin:requirement -->\n# Greeting format\n\n"
+        f"{requirements}\n\n"
+        "<!-- spex:begin:detailed-design -->\n# Design\n\n"
+        "Use argparse and preserve the default greeting.\n\n"
+        "<!-- spex:begin:test-plan -->\n# Tests\n\n"
+        "Pair each option with its tests and keep the existing uppercase tests.\n",
+        encoding="utf-8",
+    )
 
 
 def seed_review(repo, fail_review):
@@ -57,6 +83,9 @@ def seed_review(repo, fail_review):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=Path)
-    parser.add_argument("scenario", choices=("review-resume", "review-failure"))
+    parser.add_argument("scenario", choices=("review-resume", "review-failure", *MODIFY_CASES))
     args = parser.parse_args()
-    seed_review(args.repo, args.scenario == "review-failure")
+    if args.scenario in MODIFY_CASES:
+        seed_modify(args.repo, args.scenario)
+    else:
+        seed_review(args.repo, args.scenario == "review-failure")

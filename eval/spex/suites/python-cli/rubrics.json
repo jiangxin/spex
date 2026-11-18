@@ -44,6 +44,32 @@
         ]
       }
     ],
+    "modify-rebuild": [
+      {
+        "id": "scope-correct",
+        "turn": 1,
+        "requires": ["state"],
+        "threshold": 2,
+        "anchors": [
+          "Keeps superseded options as active requirements or contradicts the new plan.",
+          "Replaces the old requirements but misses a new constraint or test.",
+          "Cancels the old options and covers the repeat bounds and default, optional line numbering, compatibility, and tests in order."
+        ]
+      }
+    ],
+    "modify-targeted": [
+      {
+        "id": "scope-correct",
+        "turn": 1,
+        "requires": ["state"],
+        "threshold": 2,
+        "anchors": [
+          "Keeps repeat as an active requirement or removes an unaffected option.",
+          "Adds punctuation and drops repeat but misses a choice, the default, or the requested order.",
+          "Drops repeat, covers both punctuation choices and the default, and keeps existing behaviors and the requested step order."
+        ]
+      }
+    ],
     "apply": [
       {
         "id": "accurate-summary",

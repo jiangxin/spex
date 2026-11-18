@@ -116,7 +116,16 @@ def validate_todo(todo_path, *, allow_empty=True):
     if not allow_empty and not data:
         logger.error("Error: empty array, nothing to process.")
         sys.exit(1)
+    _validate_todo_fields(data)
+    return data
+
+
+def _validate_todo_fields(data):
+    """Validate todo entries independently of their stored IDs."""
     for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            logger.error("Error: item[%d] is not an object.", i)
+            sys.exit(1)
         for field in REQUIRED_FIELDS:
             if field not in item:
                 logger.error(
@@ -126,7 +135,6 @@ def validate_todo(todo_path, *, allow_empty=True):
                 sys.exit(1)
         if "skip_commit" in item:
             normalize_skip_commit(item["skip_commit"])
-    return data
 
 
 def cmd_validate(todo_path):
@@ -135,8 +143,23 @@ def cmd_validate(todo_path):
     logger.info("OK")
 
 
-def cmd_append(todo_path, args):
-    """Append a new entry to the todo file."""
+def cmd_renumber(todo_path):
+    """Replace stored IDs according to the current list order."""
+    try:
+        if _backup_path(todo_path).exists():
+            logger.error("Error: todo transaction is open; use transaction commit to renumber.")
+            sys.exit(1)
+        data = load_and_validate_todo_json(todo_path, allow_empty=True)
+        _validate_todo_fields(data)
+        atomic_write_json(todo_path, number_todo_items(data))
+    except (OSError, UnicodeError) as exc:
+        logger.error("Error: cannot renumber todo file '%s': %s", todo_path, exc)
+        sys.exit(1)
+    logger.info("Renumbered %d step(s).", len(data))
+
+
+def _new_todo_entry(args):
+    """Build an entry from the append or insert options."""
     if args.details_from_stdin:
         details = sys.stdin.read()
     elif args.details is not None:
@@ -147,7 +170,6 @@ def cmd_append(todo_path, args):
         )
         sys.exit(1)
 
-    data = _read_todo(todo_path)
     entry = {
         "name": args.step_name,
         "details": details,
@@ -160,9 +182,28 @@ def cmd_append(todo_path, args):
         # Omit key for default false so files stay compact.
         if normalized != _SKIP_COMMIT_FALSE:
             entry["skip_commit"] = normalized
+    return entry
+
+
+def cmd_append(todo_path, args):
+    """Append a new entry to the todo file."""
+    entry = _new_todo_entry(args)
+    data = _read_todo(todo_path)
     data.append(entry)
     _write_todo(todo_path, data)
     logger.info("Appended %s.", todo_step_label(len(data), len(data)))
+
+
+def cmd_insert(todo_path, args):
+    """Insert a new entry before or after an existing position."""
+    data = _read_todo(todo_path)
+    if args.before is not None:
+        index = _step_index(data, args.before)
+    else:
+        index = _step_index(data, args.after) + 1
+    data.insert(index, _new_todo_entry(args))
+    _write_todo(todo_path, data)
+    logger.info("Inserted %s.", todo_step_label(index + 1, len(data)))
 
 
 def _short_head_sha() -> str:
@@ -233,6 +274,22 @@ def cmd_edit(todo_path, args):
     _write_todo(todo_path, data)
     logger.info("Updated %s.", todo_step_label(args.id, len(data)))
     _emit_todo_edit_apply_anchor(todo_path, args, item)
+
+
+def cmd_move(todo_path, args):
+    """Swap two entries without rewriting their stored IDs."""
+    data = _read_todo(todo_path)
+    first = _step_index(data, args.from_id)
+    second = _step_index(data, args.to_id)
+    if first == second:
+        return
+    data[first], data[second] = data[second], data[first]
+    atomic_write_json(todo_path, data)
+    logger.info(
+        "Swapped %s and %s.",
+        todo_step_label(args.from_id, len(data)),
+        todo_step_label(args.to_id, len(data)),
+    )
 
 
 def cmd_remove(todo_path, args):
@@ -419,6 +476,10 @@ _LOCATOR_FLAGS_WITH_VALUE = ("--todo-file",)
 # a flag (e.g. ``--commit-title --name``).
 _VALUE_TAKING_SUB_FLAGS = frozenset({
     "--id",
+    "--from",
+    "--to",
+    "--before",
+    "--after",
     "--step-name",
     "--details",
     "--completed-at",
@@ -496,13 +557,45 @@ def _parse_step_id(value):
     raise ArgumentTypeError(f"expected a positive step ID, got {value!r}")
 
 
+def _add_new_entry_options(parser):
+    """Register fields shared by append and insert."""
+    parser.add_argument(
+        "--step-name", required=True, help="Task name",
+    )
+    parser.add_argument(
+        "--details", default=None, help="Task details text",
+    )
+    parser.add_argument(
+        "--details-from-stdin", action="store_true",
+        help="Read details from stdin",
+    )
+    parser.add_argument(
+        "--completed-at", default="",
+        help="Completion timestamp (or 'now')",
+    )
+    parser.add_argument(
+        "--commit-title", default="",
+        help="Commit title for the task",
+    )
+    parser.add_argument(
+        "--skip-commit",
+        choices=list(_SKIP_COMMIT_VALUES),
+        default=None,
+        help=(
+            "Skip commit mode: false (default, omit key),"
+            " auto, or true (lowercase strings only)"
+        ),
+    )
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
-            " (validate, append, edit, remove, remove-undone, show, transaction)."
+            " (validate, append, insert, edit, move, remove, remove-undone,"
+            " renumber, show, transaction)."
         ),
     )
     parser.add_argument(
@@ -531,33 +624,24 @@ def _build_parser():
         description="Append a new entry to the todo file.",
         help="Append a new entry",
     )
-    p_append.add_argument(
-        "--step-name", required=True, help="Task name",
-    )
-    p_append.add_argument(
-        "--details", default=None, help="Task details text",
-    )
-    p_append.add_argument(
-        "--details-from-stdin", action="store_true",
-        help="Read details from stdin",
-    )
-    p_append.add_argument(
-        "--completed-at", default="",
-        help="Completion timestamp (or 'now')",
-    )
-    p_append.add_argument(
-        "--commit-title", default="",
-        help="Commit title for the task",
-    )
-    p_append.add_argument(
-        "--skip-commit",
-        choices=list(_SKIP_COMMIT_VALUES),
-        default=None,
-        help=(
-            "Skip commit mode: false (default, omit key),"
-            " auto, or true (lowercase strings only)"
+    _add_new_entry_options(p_append)
+
+    p_insert = subs.add_parser(
+        "insert",
+        description=(
+            "Insert a new entry before or after a current step position from show."
+            " Assign stored IDs on transaction commit or immediately outside a transaction."
         ),
+        help="Insert a new entry before or after an existing step",
     )
+    anchor = p_insert.add_mutually_exclusive_group(required=True)
+    anchor.add_argument(
+        "--before", type=_parse_step_id, help="Position of the step to insert before",
+    )
+    anchor.add_argument(
+        "--after", type=_parse_step_id, help="Position of the step to insert after",
+    )
+    _add_new_entry_options(p_insert)
 
     # edit
     p_edit = subs.add_parser(
@@ -596,6 +680,23 @@ def _build_parser():
         ),
     )
 
+    p_move = subs.add_parser(
+        "move",
+        description=(
+            "Swap two steps by their current positions from show, preserving stored IDs."
+            " Commit an open transaction to renumber the file."
+        ),
+        help="Swap two steps while preserving stored IDs",
+    )
+    p_move.add_argument(
+        "--from", dest="from_id", required=True, type=_parse_step_id,
+        help="Position of the first step",
+    )
+    p_move.add_argument(
+        "--to", dest="to_id", required=True, type=_parse_step_id,
+        help="Position of the second step",
+    )
+
     # remove
     p_remove = subs.add_parser(
         "remove",
@@ -609,6 +710,15 @@ def _build_parser():
     p_remove_undone = subs.add_parser(
         "remove-undone",
         help="Remove all unfinished steps",
+    )
+
+    p_renumber = subs.add_parser(
+        "renumber",
+        description=(
+            "Write consecutive integer IDs from 1 in current list order."
+            " Use transaction commit when a transaction is open."
+        ),
+        help="Regenerate stored IDs outside a transaction",
     )
 
     # show
@@ -661,7 +771,8 @@ def _build_parser():
     p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
 
     for subparser in (
-        p_validate, p_append, p_edit, p_remove, p_remove_undone, p_show, p_transaction,
+        p_validate, p_append, p_insert, p_edit, p_move, p_remove, p_remove_undone,
+        p_renumber, p_show, p_transaction,
     ):
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
@@ -698,12 +809,18 @@ def main(argv=None):
         cmd_validate(todo_path)
     elif args.subcmd == "append":
         cmd_append(todo_path, args)
+    elif args.subcmd == "insert":
+        cmd_insert(todo_path, args)
     elif args.subcmd == "edit":
         cmd_edit(todo_path, args)
+    elif args.subcmd == "move":
+        cmd_move(todo_path, args)
     elif args.subcmd == "remove":
         cmd_remove(todo_path, args)
     elif args.subcmd == "remove-undone":
         cmd_remove_undone(todo_path)
+    elif args.subcmd == "renumber":
+        cmd_renumber(todo_path)
     elif args.subcmd == "show":
         cmd_show(todo_path, args)
     elif args.subcmd == "transaction":

@@ -1,0 +1,10 @@
+{
+  "modify-rebuild": ["--prefix", "--suffix", "--separator"],
+  "modify-targeted": ["--prefix", "--suffix", "--separator", "--repeat"],
+  "details": {
+    "--prefix": "Add --prefix TEXT, default empty, and test a literal prefix before the greeting.",
+    "--suffix": "Add --suffix TEXT, default empty, and test a literal suffix after the greeting.",
+    "--separator": "Add --separator TEXT, default comma and space, and test replacing the delimiter after Hello.",
+    "--repeat": "Add --repeat COUNT (1 through 5, default 1) and test one greeting per output line."
+  }
+}

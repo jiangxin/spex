@@ -613,15 +613,40 @@ class TestModifyPlanOnlySop:
 
     def test_todo_transaction_wraps_modify(self):
         text = _read(MODIFY_MD)
-        phase4 = _h3_section(text, "Phase 4: Build Prompt")
-        assert _index(phase4, "transaction start") < _index(
-            phase4, "todo-helper remove-undone"
-        ) < _index(phase4, "prompt modify-spec")
+        phase7 = _h3_section(text, "Phase 7: Update Development Steps")
+        assert "todo-helper remove-undone" not in text.split(phase7, 1)[0]
+        assert _index(phase7, "todo-helper show") < _index(
+            phase7, "skip\n    the todo transaction"
+        ) < _index(phase7, "transaction start") < _index(
+            phase7, "For a rebuild only"
+        ) < _index(phase7, "todo-helper remove-undone")
         phase8 = _h3_section(text, "Phase 8: Post-Action")
         assert _index(phase8, "create-helper post-action") < _index(
             phase8, "transaction commit"
         )
         _index(phase8, "After post-action exits successfully")
+        _index(phase8, "if one was started in Phase 7")
+
+    def test_targeted_edits_use_current_positions_and_protect_review(self):
+        phase7 = _h3_section(_read(MODIFY_MD), "Phase 7: Update Development Steps")
+        targeted = phase7.split("**Targeted edits**", 1)[1].split("**Rebuild**", 1)[0]
+        for verb in ("edit", "insert", "move", "remove", "append"):
+            _index(targeted, f"`{verb}`")
+        _index(targeted, "Keep unaffected entries and their relative order")
+        _index(phase7, "Refresh positions with")
+        _index(phase7, "Preserve review recovery")
+        _index(phase7, "alter its contents or position")
+
+    def test_completed_review_slots_are_preserved(self):
+        phase7 = _h3_section(_read(MODIFY_MD), "Phase 7: Update Development Steps")
+        completed = phase7.split("Preserve completed work", 1)[1].split(
+            "Preserve review recovery", 1
+        )[0]
+        _index(completed, "keep each completed step's contents and")
+        _index(completed, "after the completed prefix")
+        _index(completed, "shifts a completed step")
+        _index(completed, "including a rebuild")
+        _index(_read(MODIFY_TODO), "Keep the contents and positions of completed steps")
 
     def test_phase5_readonly_updates_spec_md_only(self):
         phase5 = _h3_section(_read(MODIFY_MD), "Phase 5: Modify spec.md")
@@ -634,7 +659,7 @@ class TestModifyPlanOnlySop:
 
     def test_phase7_keeps_hard_planning_principles(self):
         phase7 = _h3_section(
-            _read(MODIFY_MD), "Phase 7: Regenerate Development Steps"
+            _read(MODIFY_MD), "Phase 7: Update Development Steps"
         )
         _index(phase7, "`$todo_prompt`")
         _index(phase7, "Preserve completed work")

@@ -71,6 +71,63 @@ def test_workflow_acceptance_preserves_task_id_order(ids, generated, valid):
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(("case_id", "before", "after"), [
+    ("modify-rebuild", ["--prefix", "--suffix", "--separator"],
+     ["--repeat", "--line-number"]),
+    ("modify-targeted", ["--prefix", "--suffix", "--separator", "--repeat"],
+     ["--punctuation", "--prefix", "--separator", "--suffix"]),
+])
+def test_modify_path_fixture_and_acceptance(tmp_path, case_id, before, after):
+    case = select_cases(EVAL / "suites", suite="python-cli", case_id=case_id)[0]
+    trial = prepare_trial(REPO, case, parent=tmp_path / "case")
+    spec_dir = trial.repo / ".spex/specs/2000-01-01-00-00-greeting-format"
+    todo = spec_dir / "todo.json"
+    initial = json.loads(todo.read_text(encoding="utf-8"))
+    assert [task["id"] for task in initial] == list(range(1, len(before) + 2))
+    assert initial[0]["completed_at"]
+    assert [task["name"] for task in initial[1:]] == [f"Add {flag}" for flag in before]
+    assert not acceptance(trial, case_id)["passed"]
+
+    prior = dict(zip(before, initial[1:]))
+    revised = [initial[0], *[
+        {**prior.get(flag, {
+            "name": "Implement option", "details": f"Implement and test {flag}.",
+            "completed_at": "", "commit_title": "",
+        }), "id": index}
+        for index, flag in enumerate(after, 2)
+    ]]
+    (spec_dir / "spec.md").write_text("Supported options: --upper " + " ".join(after))
+
+    def check(tasks):
+        todo.write_text(json.dumps(tasks), encoding="utf-8")
+        return acceptance(trial, case_id)
+
+    assert check(revised)["passed"]
+    requirements = "Supported options: --upper " + " ".join(after)
+    removed = [flag for flag in before if flag not in after]
+    spec_path = spec_dir / "spec.md"
+    spec_path.write_text(f"{requirements}\n- Add {removed[0]} too.\n", encoding="utf-8")
+    assert not check(revised)["checks"]["updated-requirements"]
+    spec_path.write_text(
+        f"<!-- spex:begin:requirement -->\n{requirements}\n"
+        f"- Cancel {', '.join(removed)}.\n"
+        "<!-- spex:begin:user-clarification -->\n"
+        f"Previous request mentioned {removed[0]}.\n",
+        encoding="utf-8",
+    )
+    assert check(revised)["passed"]
+    assert not check([revised[0], revised[2], revised[1], *revised[3:]])["checks"]["plan-order"]
+    assert not check([{**revised[0], "id": "step-1"}, *revised[1:]])["checks"][
+        "valid-task-identifiers"
+    ]
+    if case_id == "modify-targeted":
+        rewritten = {**revised[2], "details": "Rewrite --prefix details."}
+        assert not check([*revised[:2], rewritten, *revised[3:]])["checks"]["retained-payloads"]
+    (spec_dir / "todo.json.lock").touch()
+    assert not check(revised)["checks"]["transaction-closed"]
+
+
+@pytest.mark.slow
 def test_python_cli_seeded_fixture_and_acceptance(tmp_path):
     case = select_cases(EVAL / "suites", suite="python-cli", case_id="apply-one-step")[0]
     trial = prepare_trial(REPO, case, parent=tmp_path / "case")

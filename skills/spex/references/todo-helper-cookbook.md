@@ -70,6 +70,10 @@ start and can be committed or rolled back by its owning transaction.
 
 ## Remove unfinished steps
 
+Use this command in `/spex modify` when the remaining plan needs a
+rebuild. Check for unfinished steps with a recorded commit before
+clearing the list. Those steps must finish review first.
+
 ```bash
 $spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
 ```
@@ -112,15 +116,32 @@ Verify acceptance criteria without changing tracked files.
 DETAILS
 ```
 
-Optional on `append` / `edit`: `--skip-commit true|auto|false`
+Optional on `append`, `insert`, and `edit`: `--skip-commit true|auto|false`
 (default `false` / omit).
+
+## Insert
+
+Use exactly one of `--before` or `--after` with the current position
+displayed by `show`. Supply the same entry fields as for `append`.
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper insert "$spec_name" \
+  --before 2 --step-name "Add input validation" \
+  --details "Reject empty input."
+```
+
+An open transaction preserves existing stored IDs until commit, which
+numbers the full list. Outside a transaction, insertion numbers the
+list on write. Refresh `show` before selecting steps again.
 
 ## Show
 
-Review current steps before adding more or selecting an entry to edit
-or remove. Labels use `step-<num>/<count>`, where `<count>` is the
-total number of steps even after filtering. Use `<num>` for `--id`.
-Refresh the list after removing steps, since positions can change.
+Review the full current list before choosing targeted edits or a
+rebuild. JSON shows the current positional IDs and completion state.
+Markdown labels use `step-<num>/<count>`, where `<count>` is the total
+number of steps even after filtering. Use the current position for
+positional arguments. Refresh the list after inserting, removing, or
+swapping steps before selecting another entry by position.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper show "$spec_name" \
@@ -140,6 +161,33 @@ Updated multi-line details for this step.
 - Added error handling requirements
 DETAILS
 ```
+
+## Move
+
+Swap two steps by their current positions:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper move "$spec_name" --from 2 --to 5
+```
+
+Each step keeps its stored ID when swapped. The next `show` displays
+IDs based on the new order. Use those displayed IDs for subsequent edits.
+To persist consecutive IDs for the new order, start a transaction before
+moving the steps and commit it after the edits.
+
+## Renumber
+
+Persist the positional IDs shown by `show` after an edit outside a
+transaction:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper renumber "$spec_name"
+```
+
+`renumber` assigns consecutive integer IDs from 1 and preserves step order
+and other entry fields. It can repair missing, duplicate, or invalid IDs in
+an otherwise valid todo file. Use `transaction commit` to renumber when a
+transaction is open.
 
 ## Remove
 

@@ -75,9 +75,10 @@ def _create_topic(sandbox, name, *, done=False):
 
 @pytest.mark.e2e
 @pytest.mark.slow
-@pytest.mark.parametrize("event", ["create", "modify"])
+@pytest.mark.parametrize("mode", ["create", "rebuild", "targeted"])
 @pytest.mark.parametrize("finish", ["commit", "rollback"])
-def test_plan_todo_transaction(sandbox, event, finish):
+def test_plan_todo_transaction(sandbox, mode, finish):
+    event = "create" if mode == "create" else "modify"
     spec = _create_topic(sandbox, "plan-transaction")
     name = spec["spec_name"]
     todo = Path(spec["spec_path"]) / "todo.json"
@@ -95,19 +96,41 @@ def test_plan_todo_transaction(sandbox, event, finish):
     def spex(*args):
         result = run_spex(*args, sandbox=sandbox)
         assert result.returncode == 0, result.stderr
+        return result.stdout
 
+    if event == "modify":
+        spex("prompt", "modify-todo", name, "--json")
+        assert json.loads(spex("todo-helper", "show", name)) == [
+            dict(item, id=index) for index, item in enumerate(items, 1)
+        ]
+        assert todo.read_bytes() == original
     spex("todo-helper", "transaction", "start", name)
     assert backup.read_bytes() == original
-    if event == "modify":
+    if mode == "rebuild":
         spex("todo-helper", "remove-undone", name)
         assert [item["id"] for item in json.loads(todo.read_bytes())] == ["step-1"]
 
-    spex(
-        "todo-helper", "append", name,
-        "--step-name", "New step", "--details", "New details",
-    )
+    if mode == "targeted":
+        spex(
+            "todo-helper", "insert", name, "--before", "2",
+            "--step-name", "New step", "--details", "New details",
+        )
+        displayed = json.loads(spex("todo-helper", "show", name))
+        anchor = next(item["id"] for item in displayed if item["name"] == "Second step")
+        spex("todo-helper", "edit", name, "--id", str(anchor), "--details", "Updated")
+    else:
+        spex(
+            "todo-helper", "append", name,
+            "--step-name", "New step", "--details", "New details",
+        )
     updated = json.loads(todo.read_bytes())
-    assert "id" not in updated[-1]
+    new_step = updated[1] if mode == "targeted" else updated[-1]
+    assert new_step["name"] == "New step"
+    assert "id" not in new_step
+    if event == "modify":
+        assert updated[0] == items[0]
+    if mode == "targeted":
+        assert updated[2] == dict(items[1], details="Updated")
     if finish == "rollback":
         todo.write_text("[invalid", encoding="utf-8")
     post_action = run_spex(
