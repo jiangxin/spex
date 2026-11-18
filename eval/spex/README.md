@@ -156,7 +156,7 @@ these commands.
 | `advance` | Stop, collect, and export running turns with published replies |
 | `stop SUITE/CASE TURN [--reply-file PATH]` | Finish the current timer and atomically publish a staged reply first when supplied |
 | `collect SUITE/CASE TURN` | Collect the saved reply and timing sidecars, then return the next input |
-| `complete SUITE/CASE` | Read the saved outcome after grade import and release the slot; `complete --all` closes out a batch |
+| `complete SUITE/CASE` | Read the saved outcome after grade import and close the trial; `complete --all` closes out a batch |
 | `fail SUITE/CASE --reason launch_failed\|exited\|timeout` | Record a host failure on a claimed, pending trial and release its slot while preserving collected evidence |
 | `status --require-terminal` | Exit 1 until every queued case has a terminal verdict |
 
@@ -180,9 +180,10 @@ SOP. These rules prevent the recurring coordinator failures:
 - Dispatch only through `manual.py dispatch`, one call per turn; never copy
   `_dispatch.py` or any other helper from a previous sandbox.
 - Slot order is `advance → export-packet → judge → import-grades → complete
-  → claim`. Slots are released only by `complete`, or by `fail` for a
-  recorded host failure, so a collected but ungraded trial still holds its
-  slot.
+  → claim`. An execution slot is released once the final turn is collected
+  and exported, so a trial awaiting grades no longer blocks a new claim.
+  `complete` still closes the trial, as does `fail` for a recorded host
+  failure.
 - Read the schema of an unfamiliar host MCP tool before calling it; do not
   guess argument names.
 
@@ -264,8 +265,10 @@ precedence.
 ### Batch close-out
 
 `prepare` records the whole batch in `batch-index.json`, so saved judge
-grades can be imported and the slots released in two calls instead of one per
-case. Judges write each verdict to `_handoff/grades-<suite>-<case>.json`.
+grades can be imported and the trials closed in two calls instead of one per
+case; the execution slots were already released when the final turns were
+collected and exported. Judges write each verdict to
+`_handoff/grades-<suite>-<case>.json`.
 `--grades-dir` defaults to `<sandbox>/_handoff` and resolves a relative path
 against the sandbox.
 
@@ -280,7 +283,7 @@ each saved grade, skips `already_graded` (judge output exists), `no_packet`
 (no judge prompt), and `no_grades` (no grades file), and exits 1 when any case
 fails. A `--judge-duration-ms` value applies to every import in batch mode.
 `complete --all` completes each running case that holds a terminal verdict,
-skips `not_graded` and `not_running`, releases the slots, and exits 1 on
+skips `not_graded` and `not_running`, closes the trials, and exits 1 on
 per-case errors. Keep `import-grades TRIAL --grades FILE` and
 `complete SUITE/CASE` as single-case fallbacks. The terminal gate remains
 `manual.py --sandbox PATH status --require-terminal`.
@@ -347,7 +350,8 @@ report's **Performance** table has five columns:
 `Case | Host turns | Duration (s) | Source | Detail`. Duration sums
 measured host turns when all are available; otherwise it uses the full
 automatic trial duration when available or shows `unknown`, and the
-source column records which one was used. The detail column links
+source column records which one was used. Durations are shown in seconds with
+one decimal place. The detail column links
 `performance.json` and names any interrupted Spex steps. Repeated
 comparable samples show coverage, median, and max by duration source and
 configured execution.
@@ -359,7 +363,10 @@ one eight-column table per case under its own `### <suite>/<case>
 `Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit | Argv`.
 The Argv column joins the command's process arguments and truncates them
 at 80 characters. Elapsed time starts at the first host dispatch and can
-include waits between turns. A legacy debug log can supply a command's
+include waits between turns. The Started, Ended, and Logged cells show local
+times as `HH:MM:SS` without a date or zone; the report header carries the
+timeline date range (and mentions that the times are local) when any
+timestamps exist. A legacy debug log can supply a command's
 log timestamp without establishing its wall-clock start or end. JSON
 timeline entries also carry `is_spex_skill` and, for skill turns,
 `skill_input`; token usage, subagent starts, and review rounds stay in

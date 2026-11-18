@@ -181,7 +181,8 @@ Pass `--judge-duration-ms` when the adapter measured the judge session; batch
 mode attributes that single value to every import. Then `complete --all`
 completes each running case that holds a terminal verdict, skips
 `not_graded` and `not_running` cases, exits 1 on per-case errors, and
-releases the slot. The runner validates grades and the hard verdict takes
+closes the trial whose execution slot the final collect already released.
+The runner validates grades and the hard verdict takes
 precedence.
 
 Keep the single-case form as a fallback:
@@ -202,9 +203,9 @@ python3 eval/spex/manual.py --sandbox <sandbox> complete <suite/id>
   `cd <repo-root> && …` or use absolute paths. Never rely on the shell
   working directory inherited from an earlier call.
 - Slot order is `advance → export-packet → judge → import-grades → complete
-  → claim`. Slots are released only by `complete` (or by `fail` for a
-  recorded host failure), so a collected but ungraded trial still holds its
-  slot; close out finished trials before claiming new ones.
+  → claim`. The last collect and export release the execution slot, so a
+  trial awaiting grades no longer blocks a new claim; `complete` still closes
+  the trial, as does `fail` for a recorded host failure.
 - Read the schema of an unfamiliar MCP tool (`mcp_get`) before calling it;
   do not guess argument names.
 - The terminal gate `manual.py --sandbox <sandbox> status --require-terminal`
@@ -237,7 +238,9 @@ backlog; cite those ids in the batch summary.
   and any comparison settings that differ.
 - Report measured host latency, slow steps, review rounds, and diagnostics
   coverage. Link `performance.json` when available. Keep host turns,
-  review rounds, and model requests distinct.
+  review rounds, and model requests distinct. Durations are shown with one
+  decimal place, the timeline uses local `HH:MM:SS` cells, and the report
+  header carries the timeline date range.
 - Link the report, trial directories, and earliest failed check when
   available. Use `--write-improvements` when the user requests a backlog.
   Preserve the sandbox and include the runner's `cleanup_hint`.

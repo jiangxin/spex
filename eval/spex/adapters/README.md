@@ -17,7 +17,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Step | Requirement |
 | --- | --- |
 | Isolate | One tested session per trial; separate session for the judge |
-| Schedule | Treat `execution.jobs` as the worker ceiling and hold each claim through grading or terminal failure. Dispatch each turn with one `dispatch` call and never copy helpers from an old sandbox. |
+| Schedule | Treat `execution.jobs` as the worker ceiling and hold each claim while the trial executes. The execution slot is released when the final turn is collected and exported; `complete` still closes the trial. Dispatch each turn with one `dispatch` call and never copy helpers from an old sandbox. |
 | Env | Source the `env_script` that `prepare` wrote (`_handoff/env-<suite>-<case>.sh`) and `dispatch` returned; it applies `SPEX_LOG_DIR`. Never rebuild the exports by hand, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Dispatch each turn with `manual.py dispatch SUITE/CASE --session ID`, send its exact `next_input`, and preserve the session |
@@ -26,7 +26,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Timing | Stop the current turn timer once its final reply is ready |
 | Collect | Use `manual.py collect` before starting the next turn |
 | Host failure | Record a launch failure, host exit or timeout with `manual.py fail` so the next case can claim the slot |
-| Complete | Close out with `import-grades --all` then `complete --all`; require terminal status before summarizing |
+| Complete | Close out with `import-grades --all` then `complete --all`; the final collect already released the execution slot, but `complete` closes the trial and terminal status is still required before summarizing |
 
 ## Prepare a batch with structured arguments
 
@@ -138,8 +138,9 @@ session.
   (on Qoder, `mcp_get`); do not guess argument names.
 - Dispatch each trial with `manual.py dispatch` and never copy helpers from
   an old sandbox. Slot order is `advance → export-packet → judge →
-  import-grades → complete → claim`, and only `complete` (or `fail` for a
-  recorded host failure) releases a slot.
+  import-grades → complete → claim`, and the last collect releases the
+  execution slot while `complete` (or `fail` for a recorded host failure)
+  closes the trial.
 
 ### Account for host capacity
 
@@ -151,8 +152,10 @@ and one reserved session for nested work or grading, at most two trial
 sessions can be open, even with `execution.jobs` set to four.
 
 If the host refuses a launch due to capacity, pause new claims. Wait for a
-session to finish or another observable change that frees a slot. Continue
-at a lower concurrency when needed.
+session to finish or another observable change that frees a slot. A trial
+whose final turn was collected is already exported and awaits only grading,
+so it holds no execution slot: judge those trials while other cases claim
+the freed workers. Continue at a lower concurrency when needed.
 
 - If the refused operation did not start and the session can continue
   safely, retry only that operation. If `manual.py dispatch` already claimed
