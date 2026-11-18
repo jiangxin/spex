@@ -118,6 +118,7 @@ not evaluated as Spex template syntax.
 | `create-spec.md` | `general-create-spec.md` | Spec writing guidance using `prompt_context` and `spec_name` |
 | `spec-template.md` | `general-spec-template.md` | Spec document skeleton |
 | `create-todo.md` | `general-create-todo.md` | Task planning guidance using saved `spec_content` and `spec_name` |
+| `review-plan.md` | `general-review-plan.md` | Specification and development plan review |
 | `modify-spec.md` | `general-modify-spec.md` | Spec revision |
 | `modify-todo.md` | `general-modify-todo.md` | Task plan revision |
 | `apply-one-task.md` | `general-apply-one-task.md` | Current step execution |
@@ -128,5 +129,22 @@ not evaluated as Spex template syntax.
 Use the logical template name in workflow commands. Spex selects the
 filename for the persisted task mode, then looks in the selected
 `spex_root/templates/` and falls back to the built-in file of that name.
-The built-in examples sync to `templates/examples/`. Existing custom
-`spec-template.md` files continue to serve as software skeletons.
+Template rendering usually syncs built-in examples to
+`templates/examples/`. Plan review runs read-only, so copy its built-in
+files directly to customize them. Existing custom `spec-template.md`
+files continue to serve as software skeletons.
+
+## Plan review context
+
+The invoking project's effective `spex_root/templates/` supplies the
+override. The selected spec's exact path supplies the review data, even
+when it belongs to another storage root. The default mode for a legacy
+spec without `task_mode` is `software`.
+
+| Variable | Value |
+|----------|-------|
+| `spec_name` | Selected spec directory name |
+| `task_mode` | Persisted `software` or `general` mode |
+| `spec_content` | Full specification text |
+| `todo_json` | Full task list as JSON in stored order |
+| `prompt_context` | Redacted review focus, or an empty string |

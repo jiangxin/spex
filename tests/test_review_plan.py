@@ -31,6 +31,15 @@ def test_review_plan_requires_a_read_only_probe_and_manual_handoff():
     assert 'list --read-only --json -- "<probe>"' in sop
     assert "never falls\n  back to an unfiltered list" in sop
     assert "choose from the numbered matches" in sop
+    assert 'prompt review-plan --stdin -- "$spec_path" <<\'EOF\'' in sop
+    assert "from the exact absolute `$spec_path`" in sop
+    assert "Run from the invoking project" in sop
+    assert "Use a quoted heredoc delimiter that does not occur" in sop
+    assert "On a nonzero exit, report stderr and stop before reviewing" in sop
+    assert "After successful rendering, read `spec.md` and `todo.json` from" in sop
+    assert "the exact selected `$spec_path` as read-only review evidence" in sop
+    assert "even when the template omits that content" in sop
+    assert "Use the rendered prompt from stdout" in sop
     assert "unfinished steps with a recorded `commit_title`" in sop
     assert "`/spex modify <spec-name> <suggested changes>`" in sop
     assert "run it manually" in sop

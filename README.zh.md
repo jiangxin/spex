@@ -538,6 +538,13 @@ export SPEX_LOG_DIR=/path/to/trial-logs
 用 `spex config get spex_root` 查看选中的存储目录，将自定义模板放在该目录的
 `templates/` 下。Spex 会回退到内置模板，也可以从 `templates/examples/` 复制模板作为起点。
 
+定制 `/spex review-plan` 时，将软件规格的内置
+[`review-plan.md`](skills/spex/templates/review-plan.md) 或通用规格的内置
+[`general-review-plan.md`](skills/spex/templates/general-review-plan.md)
+复制到调用项目生效的模板目录。模板可使用 `spec_name`、`task_mode`、
+`spec_content`、`todo_json` 和 `prompt_context`（评审重点）。
+计划评审从选中的路径读取规格和任务，全程只读。
+
 ### 定制 hook
 
 Spex 支持 pre-action 和 post-action 两种 hook。它们是项目本地的，语义等同于 git hooks：Spex 执行的是 spex_root 中用户提供的脚本，而不是远程代码。
