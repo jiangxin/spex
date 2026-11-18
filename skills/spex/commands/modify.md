@@ -45,10 +45,10 @@ development plan.
 ### Phase 1: Resolve Spec
 
 - Load and follow `references/resolve-spec-name.md` exactly.
-  Caller CMD (no extra flags):
+  Use read-only lookup to resolve the spec:
 
   ```bash
-  $spex_skill_dir/scripts/spex list --json "<probe>"
+  $spex_skill_dir/scripts/spex list --read-only --json -- "<probe>"
   ```
 
   where `<probe>` is `$first_word` or empty per that reference.
@@ -82,6 +82,13 @@ development plan.
 ### Phase 3: Save Request
 
 - Redact secrets in `$request` before persist
+- Back up the current spec and todo and advance the version before any
+  request or document writes. On failure follow Failure Handling.
+
+```bash
+$spex_skill_dir/scripts/spex create-helper begin-modify "$spec_name"
+```
+
 - Record modification request in `meta.json`:
 
 ```bash
@@ -252,6 +259,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 - Writes: `spec.md`, `todo.json`, its temporary backup, and `meta.json`
   (plus optional `assets/`) under `$spec_path` per the shared whitelist.
+  The modify helper also manages snapshots and recovery state.
 - Phase 9: human summary + trailing fenced `json spex-result`
   (`spec_name`, `spec_path`); callers MUST parse the last fenced
   `json spex-result` block

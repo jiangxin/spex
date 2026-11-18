@@ -371,6 +371,7 @@ class TestWriteMeta:
         assert meta["user_name"] == "Alice"
         assert meta["user_email"] == "alice@example.com"
         assert meta["created_at"] == "2026-05-24T20:00:00+08:00"
+        assert meta["version"] == 1
         assert meta["prompts"] == [
             {"text": "fix the login bug",
              "timestamp": "2026-05-24T20:00:00+08:00"},
@@ -437,7 +438,7 @@ class TestWriteMeta:
         assert meta["main_worktree"] == ""
 
     def test_json_field_order_without_description(self, tmp_path):
-        """Verify task mode is appended to the legacy metadata fields."""
+        """Verify task mode and version follow the legacy metadata fields."""
         spec_dir = tmp_path / "2026-01-01-10-00-order-test"
         spec_dir.mkdir()
 
@@ -459,7 +460,7 @@ class TestWriteMeta:
         expected_keys = [
             "name", "workdir", "main_worktree", "remote_url",
             "branch", "user_name", "user_email", "created_at",
-            "prompts", "use_git_worktree", "task_mode",
+            "prompts", "use_git_worktree", "task_mode", "version",
         ]
         assert keys == expected_keys
         assert meta["use_git_worktree"] is False

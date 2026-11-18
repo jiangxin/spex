@@ -11,11 +11,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from cli import ArgumentParser
+from cli import ArgumentParser, nonempty_spec_name
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     SpecMeta,
     atomic_write_json,
+    get_spex_root,
     logger,
     resolve_spec_dir,
     strip_date_prefix,
@@ -29,6 +30,17 @@ DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
 CREATE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MAX_CREATE_NAME_BYTES = 31
 MAX_SPEC_NAME_BYTES = 64
+
+
+def _do_modify_session(args):
+    import modify_session
+
+    try:
+        specs_dir = Path(get_spex_root(auto_init=False)) / "specs"
+        spec_dir = resolve_spec_dir(args.name, specs_dir=specs_dir)
+        modify_session.begin(spec_dir)
+    except (OSError, RuntimeError, ValueError) as exc:
+        sys.exit(str(exc))
 
 
 def validate_create_name(name: str, description: str) -> dict:
@@ -783,6 +795,9 @@ def _build_parser():
         help="Hook event type (default: create)",
     )
 
+    snapshot = subs.add_parser("begin-modify", help="Snapshot and increment the spec version")
+    snapshot.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
+
     return parser
 
 
@@ -810,3 +825,5 @@ def main(argv=None):
         _do_discard_incomplete(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)
+    elif args.subcmd == "begin-modify":
+        _do_modify_session(args)

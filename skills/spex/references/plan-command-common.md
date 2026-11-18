@@ -11,6 +11,9 @@ PLAN-only guards.
 - Write **only** under `$spec_path` (`spec.md`, `todo.json`,
   `meta.json`, the `todo.json.lock` backup and its temporary file
   managed by todo-helper, optional `assets/`).
+- The modify helper also manages `versions/`,
+  and `modify-pending.json` under `$spec_path`, including temporary
+  files used for atomic writes.
 - NO application code. NO existing project file modifications
   outside `$spec_path`.
 - Implementation later via `/spex apply` or `/spex apply-one-step`.

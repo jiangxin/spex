@@ -671,6 +671,12 @@ class TestModifyPlanOnlySop:
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         _index(phase3, "Load and follow `references/spec-assets.md`")
 
+    def test_modify_snapshots_before_saving_request(self):
+        text = _read(MODIFY_MD)
+        snapshot = _index(text, 'create-helper begin-modify "$spec_name"')
+        persist = _index(text, 'meta-helper "$spec_name" prompts')
+        assert snapshot < persist
+
     def test_todo_transaction_wraps_modify(self):
         text = _read(MODIFY_MD)
         phase7 = _h3_section(text, "Phase 7: Update Development Steps")
