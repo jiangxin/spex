@@ -594,7 +594,83 @@ def head_sha_fallback(cwd: Optional[str] = None) -> str:
     return review_helper.get_head_sha(cwd=cwd)
 
 
-def _build_task_context(spec_dir, verbose_items=20):
+def _task_hint(details, label):
+    """Read an explicitly labeled line from the current task details."""
+    match = re.search(
+        rf"^[ \t]*(?:{label})[ \t]*[:：][ \t]*([^\r\n]+)",
+        details, re.IGNORECASE | re.MULTILINE,
+    )
+    return match[1].strip() if match else ""
+
+
+def _comment_continues(line, in_comment):
+    """Track HTML comments while ignoring delimiters in inline code."""
+    while line:
+        if in_comment:
+            _, closed, line = line.partition("-->")
+            if not closed:
+                return True
+            in_comment = False
+            continue
+        token = re.search(r"<!--|`+", line)
+        if not token:
+            break
+        if token[0] == "<!--":
+            in_comment = True
+            line = line[token.end():]
+            continue
+        span = re.match(r"(`+)(?!`).*?(?<!`)\1(?!`)", line[token.start():])
+        line = line[token.start() + span.end():] if span else line[token.end():]
+    return in_comment
+
+
+def _spec_headings(lines):
+    """Yield line offsets, levels, and titles of top-level ATX headings."""
+    fence = ""
+    in_comment = False
+    for index, line in enumerate(lines):
+        if not in_comment:
+            marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if fence:
+                if marker and marker[1].startswith(fence) and not marker[2].strip():
+                    fence = ""
+                continue
+            if marker and (marker[1][0] == "~" or "`" not in marker[2]):
+                fence = marker[1]
+                continue
+            if line.expandtabs(4).startswith("    "):
+                continue
+            heading = re.match(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?$", line)
+            if heading:
+                title = re.sub(r"(?:^|[ \t]+)#+[ \t]*$", "", heading[2] or "").strip()
+                yield index, len(heading[1]), title
+        in_comment = _comment_continues(line, in_comment)
+
+
+def _spec_excerpt(content, references):
+    """Return explicitly selected sections if every reference is unambiguous."""
+    if not references:
+        return ""
+    lines = content.splitlines()
+    headings = list(_spec_headings(lines))
+    names = dict.fromkeys(name.strip() for name in re.split(r"[,;，；]", references))
+    sections = []
+    for name in names:
+        if not name:
+            return ""
+        matches = [(index, level) for index, level, title in headings if title == name]
+        if len(matches) != 1:
+            return ""
+        start, level = matches[0]
+        end = next(
+            (index for index, depth, _ in headings if index > start and depth <= level),
+            len(lines),
+        )
+        sections.append("\n".join(lines[start:end]).rstrip())
+    return "\n\n".join(sections)
+
+
+def _build_task_context(spec_dir, verbose_items=20, *, include_scope=False):
     """Extract task context from a spec directory.
 
     Reads spec.md and todo.json, computes completed/current/future task info.
@@ -603,6 +679,7 @@ def _build_task_context(spec_dir, verbose_items=20):
         spec_dir: Path to the spec directory.
         verbose_items: Max number of items to show with full details.
             Items beyond this limit are shown in brief format.
+        include_scope: Add the current task's hints and specification excerpt.
 
     Returns:
         Dict with keys: spec_content, completed_tasks, current_task_id,
@@ -618,6 +695,7 @@ def _build_task_context(spec_dir, verbose_items=20):
 
     todo = load_todo(spec_dir)
     count = len(todo or [])
+    current_details = ""
     if todo:
         done = [item for item in todo if item.get("completed_at")]
         if len(done) <= verbose_items:
@@ -637,6 +715,7 @@ def _build_task_context(spec_dir, verbose_items=20):
         undone = [item for item in todo if not item.get("completed_at")]
         if undone:
             current = undone[0]
+            current_details = current.get("details") or ""
             task_id = current.get("id", "")
             current_task_id = task_id
             current_task_description = _format_item_verbose(current, count)
@@ -688,7 +767,7 @@ def _build_task_context(spec_dir, verbose_items=20):
         future_tasks = ""
         future_tasks_concise = ""
 
-    return {
+    context = {
         "spec_content": spec_content,
         "spec_content_concise": spec_content_concise,
         "completed_tasks": completed_tasks,
@@ -704,6 +783,16 @@ def _build_task_context(spec_dir, verbose_items=20):
         "future_tasks": future_tasks,
         "future_tasks_concise": future_tasks_concise,
     }
+    if include_scope and current_task_id:
+        references = _task_hint(current_details, "Spec sections|规格章节")
+        context.update(
+            implementation_spec_path=str(spec_path.resolve()),
+            implementation_spec_excerpt=_spec_excerpt(spec_content, references),
+            acceptance_commands=_task_hint(current_details, "Acceptance commands|验收命令"),
+            known_files=_task_hint(current_details, "Known files|已知文件"),
+            dependencies=_task_hint(current_details, "Dependencies|依赖"),
+        )
+    return context
 
 
 
@@ -754,7 +843,9 @@ def _build_metadata(template_name, spec_name=None):
         spec_path = spec_dir / "spec.md"
         metadata["spec_content"] = spec_path.read_bytes().decode("utf-8")
     elif template_name != "spec-template" and spec_name:
-        metadata.update(_build_task_context(spec_dir))
+        metadata.update(_build_task_context(
+            spec_dir, include_scope=template_name == "apply-one-task",
+        ))
 
     metadata["spex_skill_dir"] = str(Path(__file__).resolve().parent.parent)
     return metadata
