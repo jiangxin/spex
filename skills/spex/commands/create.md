@@ -15,8 +15,8 @@ and test plan.
 ## Inputs
 
 - OPT: `$input` — requirement description
-- Role: senior software architect; focus on requirement completeness,
-  edge cases, testability
+- Role: plan for the final deliverable. Check requirement completeness,
+  edge cases, and verifiable acceptance in either mode.
 
 ## Preconditions
 
@@ -85,6 +85,12 @@ $spex_skill_dir/scripts/spex create-helper begin-session
   -> STOP (Failure Handling: any termination before `prepare-spec`)
 - After clarification (or none needed) -> `$requirement` ← complete
   unambiguous requirement (including source requirements and replies)
+- Bind `$task_mode` from the final deliverable. Use `software` for
+  changes to software behavior or maintainable code, including their
+  accompanying documentation. Use `general` for independent reports,
+  documentation, or other content. Temporary analysis scripts do not
+  change the mode. If the deliverable is ambiguous and the choice affects
+  execution or acceptance, clarify before preparing the spec.
 - Redact secrets in `$requirement` before persist -> Phase 3
 
 ### Phase 3: Generate Name and Description
@@ -127,7 +133,7 @@ $spex_skill_dir/scripts/spex create-helper validate-name \
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name "$name" <<'EOF'
+$spex_skill_dir/scripts/spex create-helper prepare-spec --description "$description" --name "$name" --mode "$task_mode" <<'EOF'
 $requirement
 EOF
 ```
@@ -150,6 +156,7 @@ EOF
   - `$spec_path` ← `spec_path`
   - `$spec_template` ← `spec_template`
   - `$spec_prompt` ← `spec_prompt`
+  - `$task_mode` ← `task_mode` (persisted mode)
 - Example JSON output:
 
 ```json
@@ -157,7 +164,8 @@ EOF
   "spec_name": "2026-05-24-10-30-add-login-api",
   "spec_path": "/path/to/.spex/specs/2026-05-24-10-30-add-login-api",
   "spec_template": "# [Title]\n...",
-  "spec_prompt": "Analyze the requirement..."
+  "spec_prompt": "Analyze the requirement...",
+  "task_mode": "software"
 }
 ```
 
@@ -196,6 +204,16 @@ $spex_skill_dir/scripts/spex prompt create-todo "$spec_name"
   tasks, or run post-action.
 - Use the rendered prompt to plan incremental steps. Link each step
   to the relevant spec section and give observable acceptance criteria.
+- For `general`, readers may draft tasks while designing the spec, then
+  check the draft against the prompt rendered from the saved spec.
+  Always use the same rendering command for built-ins and project
+  overrides so both use the selected mode and storage root.
+- For `general`, record the audience, sources and missing-source behavior,
+  output formats and paths in the spec. Give each task durable outputs,
+  source references, observable acceptance criteria and the next step's
+  use of the outputs. Resolve repository-relative paths from the bound
+  workspace. Use absolute paths or an explicit base for other outputs.
+  Default read-only and out-of-repository tasks to `skip_commit: true`.
 
 - Start the todo transaction before writing any steps:
 
@@ -207,7 +225,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
   `references/plan-command-common.md` and STOP.
 - Hard principles (keep in-command; examples in cookbook only):
   - Small batches, each independently committable and verifiable
-  - Self-contained (code + tests same step)
+  - Self-contained (code + tests same step for software changes)
   - Ordered by dependency; no forward refs
   - Coding steps: omit `--skip-commit` (default `false`). Non-coding /
     expected no-repo-change: `--skip-commit true` (or `auto`)
@@ -255,6 +273,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 - Follow `references/plan-command-common.md` output format (human
   summary + trailing `json spex-result`)
+- Include the persisted task mode in the human summary.
 - Distinct from Phase 3's optional `text` name/description preview
 - `spec_name` MUST include the `YYYY-MM-DD-HH-MM-` prefix (Phase 4
   directory name)

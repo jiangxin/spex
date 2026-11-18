@@ -1,0 +1,53 @@
+[
+  {
+    "id": "operator-guide",
+    "fixture": "event-summary",
+    "tags": [
+      "classification"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Plan an operator guide at OPERATIONS.md that explains how to run summarize.py on events.csv and verify the total. Use the current behavior as a source and preserve it.",
+        "checks": [
+          "no-code-change",
+          "no-progress"
+        ],
+        "acceptance": "general"
+      }
+    ]
+  },
+  {
+    "id": "negative-amounts",
+    "fixture": "event-summary",
+    "tags": [
+      "classification"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Plan a change to summarize.py that rejects negative event amounts with exit code 2. Add regression tests and update the operator instructions to explain the new error.",
+        "checks": [
+          "no-code-change",
+          "no-progress"
+        ],
+        "acceptance": "software"
+      }
+    ]
+  },
+  {
+    "id": "event-analysis",
+    "fixture": "event-summary",
+    "tags": [
+      "classification"
+    ],
+    "turns": [
+      {
+        "input": "/spex create Plan a Markdown analysis of the totals and anomalies in events.csv for the operations team. A temporary Python script may help verify the calculations. The analysis with cited rows is the only deliverable.",
+        "checks": [
+          "no-code-change",
+          "no-progress"
+        ],
+        "acceptance": "general"
+      }
+    ]
+  }
+]

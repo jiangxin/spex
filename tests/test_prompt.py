@@ -1096,6 +1096,35 @@ class TestApplyCommitUserIdentity:
 class TestModifySpecTemplate:
     """Test modify-spec template and prompt logging behavior."""
 
+    def test_general_modify_prompts_preserve_mode_and_progress(self, tmp_path, monkeypatch):
+        task = _make_task("step-1", name="Deliver report", completed=True)
+        task["acceptance_evidence"] = [{"kind": "inspection", "observation": "Passed"}]
+        repo, spec_dir = _setup_topic(tmp_path, "test-topic", [task])
+        monkeypatch.chdir(repo)
+        meta_path = spec_dir / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["task_mode"] = "general"
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        todo_path = spec_dir / "todo.json"
+        before = todo_path.read_bytes()
+        templates = repo / ".spex/templates"
+        templates.mkdir()
+        (templates / "modify-todo.md").write_text("Software override", encoding="utf-8")
+
+        from prompt import render_prompt
+
+        spec_prompt = render_prompt(
+            "modify-spec", "test-topic",
+            extra_vars={"prompt_context": "Revise report", "task_mode": "software"},
+        )
+        assert "Update the delivery specification" in spec_prompt
+        assert "Revise report" in spec_prompt
+        assert "Deliver report" in spec_prompt
+        assert "Software override" not in render_prompt("modify-todo", "test-topic")
+        (templates / "general-modify-todo.md").write_text("General override", encoding="utf-8")
+        assert render_prompt("modify-todo", "test-topic") == "General override"
+        assert todo_path.read_bytes() == before
+
     def test_modify_spec_renders_with_prompt_context(self, tmp_path, monkeypatch):
         """modify-spec template renders spec_content and prompt_context."""
         tasks = [

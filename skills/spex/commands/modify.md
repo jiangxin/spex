@@ -70,6 +70,10 @@ development plan.
   in the spec (plan-command-common explore whitelist). Do NOT dig
   into full implementation details or modify files.
 - `$request` is a modification/addition to the existing specification.
+- Read the persisted `task_mode` in `$spec_path/meta.json`. A missing
+  field means `software`; report an invalid explicit value and stop.
+  Keep this mode. If the request changes the primary deliverable enough
+  to require a different mode, direct it to a new spec before saving.
   Clarification gate / how to clarify: follow
   `references/plan-command-common.md` exactly (no partial restatement)
 - After clarification (or none needed) -> finalized `$request` is the
@@ -160,6 +164,9 @@ $spex_skill_dir/scripts/spex prompt modify-todo --json "$spec_name"
     `/spex apply-one-step`, then retry the plan update.
   - Small batches: minimal working increment per new step
   - Self-contained: production code + tests in same step — never split
+  - General tasks: preserve recorded acceptance evidence and give
+    each pending step sources, output paths, verifiable acceptance,
+    and a description of how to resume or consume its outputs.
   - Ordered by dependency: each builds on previous; no forward refs
   - `skip_commit`: coding steps keep default (`false`, omit the
     flag). Non-coding / expected no-repo-change steps should use
