@@ -764,6 +764,22 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
     hook.assert_not_called()
 
 
+@pytest.mark.parametrize("failure", [PermissionError("meta denied"), SystemExit(1)])
+def test_prepare_unexpected_failure_does_not_retry_name(
+    create_template_root, capsys, caplog, failure,
+):
+    with (
+        patch.object(create_helper, "_write_meta", side_effect=failure),
+        pytest.raises(SystemExit) as result,
+    ):
+        cli_prepare_spec(["--name", "template-demo", "--description", "Test failure"])
+
+    assert result.value.code == 3
+    assert "Error preparing spec" in caplog.text
+    assert not capsys.readouterr().out
+    assert not list((create_template_root / "specs").iterdir())
+
+
 @pytest.fixture
 def create_todo_spec(create_template_root, monkeypatch):
     spec_dir = create_template_root / "specs" / "2026-05-20-14-30-todo"
@@ -1812,7 +1828,7 @@ class TestPreparePostActionSession:
             )
 
     def test_prepare_anchor_write_failure_keeps_pointer(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, monkeypatch, capsys, caplog,
     ):
         """CREATE anchor write must raise so handoff does not clear session."""
         ctx = self._ctx(tmp_path, debug=True)
@@ -1835,10 +1851,12 @@ class TestPreparePostActionSession:
                 "_append_create_debug_anchor",
                 side_effect=OSError("permission denied"),
             ):
-                with pytest.raises(OSError, match="permission denied"):
+                with pytest.raises(SystemExit) as failure:
                     self._run_prepare(
                         tmp_path, ctx, monkeypatch, capsys, name,
                     )
+                assert failure.value.code == 3
+                assert "permission denied" in caplog.text
 
         assert get_active_session_id(ctx.spex_root) == session_id
 

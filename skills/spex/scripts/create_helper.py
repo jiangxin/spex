@@ -498,6 +498,16 @@ def cli_create_validate() -> None:
 
 
 def _do_prepare_spec(args):
+    try:
+        exit_code = _prepare_spec(args)
+    except (Exception, SystemExit) as err:
+        logger.error("Error preparing spec: %s", err)
+        sys.exit(3)
+    if exit_code:
+        sys.exit(exit_code)
+
+
+def _prepare_spec(args):
     """Create spec directory and return JSON with metadata."""
     import config as cfg
     import hooks
@@ -512,13 +522,13 @@ def _do_prepare_spec(args):
         validated = validate_create_name(args.name, args.description)
     except ValueError as e:
         logger.error("Error: %s", e)
-        sys.exit(1)
+        return 1
 
     try:
         spec_name, spec_dir = create_spec(validated["name"], specs_dir)
     except (ValueError, FileExistsError) as e:
         logger.error(f"Error: {e}")
-        sys.exit(1)
+        return 1
 
     try:
         ctx = cfg.get_project_context()
@@ -527,6 +537,7 @@ def _do_prepare_spec(args):
             spec_dir, ctx, prompt, timestamp, validated["description"],
         )
 
+        template_error = False
         try:
             spec_prompt = prompt_mod.render_prompt(
                 "create-spec",
@@ -537,10 +548,14 @@ def _do_prepare_spec(args):
         except SystemExit:
             # Required metadata validation already reports the missing fields.
             logger.error("Invalid metadata for create-spec.md.")
-            sys.exit(2)
+            template_error = True
         except (OSError, UnicodeError, TemplateError) as err:
             logger.error("Error rendering create-spec.md: %s", err)
-            sys.exit(2)
+            template_error = True
+
+        if template_error:
+            discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+            return 2
 
         if ctx.spex_root:
             _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
