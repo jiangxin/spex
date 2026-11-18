@@ -1252,6 +1252,92 @@ def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
     assert run.acceptance(trial, "example", "canary") == {"passed": True}
 
 
+def _start_rewritten_timer(tmp_path, *, started_at, monotonic):
+    """Start a timer then rewrite its pending payload like a second process would."""
+    timer = manual.host_turn_timer
+    timer.start_timer(tmp_path, "docs", "guide", 1)
+    reply = collect_handoff.handoff_reply(tmp_path, "docs", "guide", 1)
+    pending = timer.pending_path(reply)
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    payload.update(started_at=started_at, monotonic=monotonic)
+    pending.write_text(json.dumps(payload), encoding="utf-8")
+    return timer, reply, pending, payload
+
+
+def test_wall_clock_duration_ms_parses_stamps():
+    timer = manual.host_turn_timer
+    ended_at = "2026-11-18T10:01:30+00:00"
+    assert timer.wall_clock_duration_ms("2026-11-18T10:00:00Z", ended_at) == 90000
+    assert timer.wall_clock_duration_ms("not-a-timestamp", ended_at) is None
+    assert (
+        timer.wall_clock_duration_ms("2026-11-18T10:02:00+00:00", ended_at) is None
+    )
+
+
+def test_host_turn_timer_prefers_wall_clock_over_fresh_monotonic(tmp_path, monkeypatch):
+    timer, reply, pending, payload = _start_rewritten_timer(
+        tmp_path,
+        started_at="2026-11-18T10:00:00+00:00", monotonic=1e30,
+    )
+    ended_at = "2026-11-18T10:01:30+00:00"
+    monkeypatch.setattr(timer.performance, "wall_clock_iso", lambda: ended_at)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 90000
+    assert result["started_at"] == payload["started_at"]
+    assert result["ended_at"] == ended_at
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "90000"
+    assert not pending.exists()
+
+
+def test_host_turn_timer_falls_back_when_wall_clock_steps_back(tmp_path, monkeypatch):
+    timer, reply, _pending, _payload = _start_rewritten_timer(
+        tmp_path, started_at="2026-11-18T10:02:00+00:00", monotonic=1000.0,
+    )
+    monkeypatch.setattr(
+        timer.performance, "wall_clock_iso", lambda: "2026-11-18T10:01:00+00:00",
+    )
+    monkeypatch.setattr(timer.time, "monotonic", lambda: 1004.0)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 4000
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "4000"
+
+
+def test_host_turn_timer_falls_back_to_monotonic_delta(tmp_path, monkeypatch):
+    timer, reply, _pending, _payload = _start_rewritten_timer(
+        tmp_path, started_at="not-a-timestamp", monotonic=1000.0,
+    )
+    monkeypatch.setattr(timer.time, "monotonic", lambda: 1005.0)
+    result = timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert result["duration_ms"] == 5000
+    sidecar = collect_handoff.host_duration_sidecar(reply)
+    assert sidecar.read_text(encoding="utf-8").strip() == "5000"
+
+
+@pytest.mark.parametrize(
+    "sidecar_of, other_of",
+    [
+        (collect_handoff.host_duration_sidecar, collect_handoff.host_wall_clock_sidecar),
+        (collect_handoff.host_wall_clock_sidecar, collect_handoff.host_duration_sidecar),
+    ],
+    ids=["duration", "wall-clock"],
+)
+def test_host_turn_timer_refuses_symlinked_sidecars(tmp_path, sidecar_of, other_of):
+    timer = manual.host_turn_timer
+    timer.start_timer(tmp_path, "docs", "guide", 1)
+    reply = collect_handoff.handoff_reply(tmp_path, "docs", "guide", 1)
+    pending = timer.pending_path(reply)
+    target = tmp_path / "outside-sidecar"
+    target.write_text("untouched\n", encoding="utf-8")
+    sidecar_of(reply).symlink_to(target)
+    with pytest.raises(SystemExit, match="unsafe timing sidecar"):
+        timer.stop_timer(tmp_path, "docs", "guide", 1)
+    assert target.read_text(encoding="utf-8") == "untouched\n"
+    assert not other_of(reply).exists()
+    assert pending.is_file()
+
+
 @pytest.mark.slow
 def test_host_turn_timer_uses_wall_clock_across_processes(tmp_path):
     timer = REPO / "eval" / "spex" / "host_turn_timer.py"

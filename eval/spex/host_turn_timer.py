@@ -48,6 +48,13 @@ def pending_path(reply: Path) -> Path:
     return reply.with_suffix(".host-turn-timer.json")
 
 
+def wall_clock_duration_ms(started_at: str, ended_at: str) -> int | None:
+    """Wall-clock duration, or None when a stamp is unusable."""
+    return performance.delta_ms(
+        performance.timestamp(started_at), performance.timestamp(ended_at),
+    )
+
+
 def validate_identity(suite: str, case_id: str, turn: int) -> None:
     if not IDENTIFIER.fullmatch(suite):
         raise SystemExit(f"Invalid suite: {suite!r}")
@@ -124,9 +131,7 @@ def stop_timer(sandbox: Path, suite: str, case_id: str, turn: int) -> dict:
     ):
         raise SystemExit("Pending timer does not match this suite/case/turn")
     ended_at = performance.wall_clock_iso()
-    duration_ms = performance.delta_ms(
-        performance.timestamp(data["started_at"]), performance.timestamp(ended_at),
-    )
+    duration_ms = wall_clock_duration_ms(data["started_at"], ended_at)
     if duration_ms is None:
         duration_ms = max(0, round((time.monotonic() - data["monotonic"]) * 1000))
     wall = {
