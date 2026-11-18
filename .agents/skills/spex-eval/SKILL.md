@@ -219,6 +219,12 @@ Run `summary <sandbox>` after the batch. Use the runner JSON and
 `report.md` as the source of truth for deterministic results. If no
 sandbox was allocated, report the runner errors.
 
+Before summarizing, save adapter observations that trial evidence cannot
+show, such as host capacity refusals or session startup failures, with
+`run.py record-issue`. The report references every issue by a stable
+`I001…` id shared by `report.md`, `report.json`, and the improvements
+backlog; cite those ids in the batch summary.
+
 - Report scope, pinned Spex ref, sample counts, scores, and each trial's
   Agent and model alongside the judge Agent and model. Use `unknown`
   for unavailable identities and `ungraded` when no grading ran.

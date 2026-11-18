@@ -252,10 +252,14 @@ timestamp directory manually when finished. Both reports list the trial and
 judge Agent hosts and model IDs for each case. Use `import-grades --host`
 and `--model` for the judge's identity. Missing identities appear as
 `unknown`, and trials without a judge record show `ungraded`.
-The **Score summary** shows one verdict per trial, with the hard verdict
-in parentheses when it differs. Scores show how many rubric criteria
-were graded. An asterisk beside full marks on a non-passing trial links
-the score coverage to the verdict reason. Hard failures take precedence.
+The **Score summary** has one row per trial with four columns:
+`Case | Verdict | Score | Criteria`. The verdict cell shows the hard
+verdict in parentheses when it differs from the final verdict. The score
+cell states how many rubric criteria were graded, and the criteria cell
+lists each criterion's score (`ungraded` when none was judged). An
+asterisk beside full marks on a non-passing trial links the score
+coverage to the verdict reason below the table. Hard failures take
+precedence.
 
 ### Batch close-out
 
@@ -281,14 +285,57 @@ per-case errors. Keep `import-grades TRIAL --grades FILE` and
 `complete SUITE/CASE` as single-case fallbacks. The terminal gate remains
 `manual.py --sandbox PATH status --require-terminal`.
 
-**Execution diagnostics** links observed Spex helper exits, implausible
-host timing, and judge failures to their saved evidence. A successful
-retry of the same helper operation in the same collected turn keeps the
-failed exit visible but excludes it from **Spex skill improvements**.
-The JSON report keeps the verdicts and scores as separate fields and
-includes the diagnostics under each trial. Pass `--write-improvements` (optional path;
-default `eval/spex/IMPROVEMENTS.md`) to also write a backlog markdown
-file from the same items.
+**Execution diagnostics** reports observed issues under two headings.
+**Observed issues** assigns each one a stable `I001…` id and lists its
+case and trial scope, stage and kind, whether a retry recovered it, its
+message, and links to the saved evidence. **Proposed improvements**
+reuse the same ids, so `report.md`, `report.json`, and the
+`--write-improvements` backlog (optional path; default
+`eval/spex/IMPROVEMENTS.md`) all point at the same item. Issues are
+derived from trial evidence and merged with adapter records kept under
+`<sandbox>/_issues/`. Most ids in a normal batch are derived: a hard
+`run_error` trial, every failed acceptance check (`check_failure`, P0),
+non-trace evidence gaps (`evidence_gap`, P1), trace gaps (`trace_gap`,
+P2), and unrecovered host, script, or judge issues (`script_exit`,
+`host_error`, `judge_error`, `judge_attempt`,
+`implausible_host_duration`, `command_failures`, `subagent_*`). Ids are
+assigned after the merge, so they are positional within one summary run
+and can shift when a rerun derives a different set. A successful retry
+of the same helper operation in the same collected turn keeps the failed
+exit visible but marks it recovered and excludes it from the proposed
+improvements. The JSON report keeps verdicts and scores as separate
+fields and includes the diagnostics under each trial.
+
+Adapters record observations that are not visible in trial evidence,
+such as host capacity refusals or session startup failures, with
+`record-issue` before summarizing:
+
+```sh
+python3 eval/spex/run.py record-issue "$sandbox" --suite docs \
+  --case analyze-incident --stage host --kind capacity \
+  --message "host refused a new session" --trial docs/analyze-incident \
+  --turn 2 --unrecovered
+```
+
+Each record is a JSON file under `<sandbox>/_issues/` named
+`<time_ns>-<uuid>.json` with `suite`, `case_id`, `case`, `trial`,
+`stage` (one of `prepare`, `host`, `collect`, `judge`, `script`,
+`unknown`), `kind`, `message`, `turn`, and `recovered` (`true`, `false`,
+or `null`). Records larger than 64 KiB are ignored when the summary
+reads `_issues/`, and a symlinked `_issues/` directory is ignored too.
+The summary reads every accepted record and merges it with observed
+issues; use `--recovered` or `--unrecovered` only when you know whether
+a retry fixed the condition.
+
+`record-issue` enforces these constraints, so a rejected record fails the
+command instead of being saved:
+
+- `--suite`, `--case`, and `--kind` must match `[a-z0-9][a-z0-9_-]{0,63}`
+  (lowercase letters, digits, `_`, and `-`, never leading with a separator).
+- `--message` is stripped and must be 1-500 characters.
+- `--turn`, when given, must be at least 1.
+- `--trial` is optional (default `null`), must stay sandbox-relative with
+  no `..`, and must not contain a `workspace` path part.
 
 Host adapter notes for Cursor / Codex / pure manual live under
 [`adapters/README.md`](adapters/README.md).
@@ -296,19 +343,27 @@ Host adapter notes for Cursor / Codex / pure manual live under
 ## Performance diagnostics
 
 Each trial records timing and activity in `performance.json`. The batch
-report links to the details and summarizes case duration, the slowest Spex
-step, full and delta reviews, observed subagent starts, and parent-session
-token usage. Case duration sums measured host turns when all are available.
-Otherwise it uses the full automatic trial duration when available or shows
-`unknown`. JSON reports include the selected duration in milliseconds and
-seconds and its source. Repeated comparable samples show coverage, median,
-and max by duration source and configured execution.
+report's **Performance** table has five columns:
+`Case | Host turns | Duration (s) | Source | Detail`. Duration sums
+measured host turns when all are available; otherwise it uses the full
+automatic trial duration when available or shows `unknown`, and the
+source column records which one was used. The detail column links
+`performance.json` and names any interrupted Spex steps. Repeated
+comparable samples show coverage, median, and max by duration source and
+configured execution.
 
-The execution timeline shows the case boundaries, host turns and recorded
-Spex CLI commands with their available timestamps, durations and exit codes.
-Elapsed time starts at the first host dispatch and can include waits between
-turns. A legacy debug log can supply a command's log timestamp without
-establishing its wall-clock start or end.
+The **Execution timeline** section shows the case boundaries, host turns,
+Spex skill start and end markers, and recorded Spex CLI commands. It emits
+one eight-column table per case under its own `### <suite>/<case>
+(<trial>)` heading, after a single section header and intro paragraph:
+`Event | Started | Ended | Logged | Duration (s) | Elapsed (s) | Exit | Argv`.
+The Argv column joins the command's process arguments and truncates them
+at 80 characters. Elapsed time starts at the first host dispatch and can
+include waits between turns. A legacy debug log can supply a command's
+log timestamp without establishing its wall-clock start or end. JSON
+timeline entries also carry `is_spex_skill` and, for skill turns,
+`skill_input`; token usage, subagent starts, and review rounds stay in
+`performance.json`.
 
 - For manual collection, pass `collect --host-duration-ms N` if the host
   measured elapsed time from sending input through receiving the final

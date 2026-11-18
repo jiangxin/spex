@@ -171,6 +171,21 @@ Report the phase of the capacity refusal, configured worker limit, and
 observed concurrency. Link the original and rerun trial directories and
 give each outcome when a separate rerun was needed.
 
+Record host-side observations that trial evidence cannot show, such as a
+capacity refusal or a session startup failure, before summarizing:
+
+```sh
+python3 eval/spex/run.py record-issue "$sandbox" --suite docs \
+  --case analyze-incident --stage host --kind capacity \
+  --message "host refused a new session" --trial docs/analyze-incident \
+  --turn 2 --unrecovered
+```
+
+The summary merges each record from `<sandbox>/_issues/` with the issues
+it derives from trial evidence, and every item keeps a stable `I001…` id
+across `report.md`, `report.json`, and the improvements backlog. Record
+these observations instead of describing them only in prose.
+
 ## Cursor (manual / Task)
 
 - Prefer one Task (or chat) per trial workspace; do not share state across cases.

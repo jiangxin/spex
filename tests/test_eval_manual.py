@@ -19,6 +19,20 @@ SOP_SKILL = (
     Path(__file__).resolve().parent.parent
     / ".agents" / "skills" / "spex-eval" / "SKILL.md"
 )
+EVAL_README = (
+    Path(__file__).resolve().parent.parent / "eval" / "spex" / "README.md"
+)
+ADAPTERS_README = (
+    Path(__file__).resolve().parent.parent
+    / "eval" / "spex" / "adapters" / "README.md"
+)
+# Fenced eval docs and the minimum number of runner invocations each must
+# keep, so trimming examples cannot silently empty the assertions.
+DOC_FENCES = [
+    pytest.param(SOP_SKILL, 6, id="skill"),
+    pytest.param(EVAL_README, 8, id="eval-readme"),
+    pytest.param(ADAPTERS_README, 1, id="adapters-readme"),
+]
 SOP_FENCE_RE = re.compile(r"^[ \t]*```[^\n]*\n(.*?)^[ \t]*```", re.DOTALL | re.MULTILINE)
 SOP_ALTERNATION_RE = re.compile(r"\[[^\]\n]*\|[^\]\n]*\]")
 
@@ -894,29 +908,31 @@ def _parser_option_strings(parser: argparse.ArgumentParser) -> set[str]:
     return options
 
 
-def _sop_fences() -> list[str]:
-    return SOP_FENCE_RE.findall(SOP_SKILL.read_text(encoding="utf-8"))
+def _sop_fences(doc: Path) -> list[str]:
+    return SOP_FENCE_RE.findall(doc.read_text(encoding="utf-8"))
 
 
-def test_sop_fences_have_no_alternation_pseudo_syntax():
+@pytest.mark.parametrize(("doc", "min_invocations"), DOC_FENCES)
+def test_sop_fences_have_no_alternation_pseudo_syntax(doc, min_invocations):
     """Fenced eval commands must stay runnable: no ``[a|b]`` placeholders."""
-    blocks = _sop_fences()
-    assert blocks, "expected fenced blocks in the eval SOP"
+    blocks = _sop_fences(doc)
+    assert blocks, f"expected fenced blocks in {doc.name}"
     offenders = SOP_ALTERNATION_RE.findall("\n".join(blocks))
     assert not offenders, (
-        "replace [a|b] pseudo-syntax with one real form: "
+        f"{doc.name}: replace [a|b] pseudo-syntax with one real form: "
         + ", ".join(sorted(set(offenders)))
     )
 
 
-def test_sop_fences_use_only_real_runner_and_manual_flags():
+@pytest.mark.parametrize(("doc", "min_invocations"), DOC_FENCES)
+def test_sop_fences_use_only_real_runner_and_manual_flags(doc, min_invocations):
     """Every ``--flag`` in a fenced run.py/manual.py call exists on its parser."""
     scripts = {"run.py": run.parser(), "manual.py": manual.parser()}
     known = {
         name: _parser_option_strings(parser) for name, parser in scripts.items()
     }
     invocations = 0
-    for block in _sop_fences():
+    for block in _sop_fences(doc):
         collapsed = re.sub(r"\\\n\s*", " ", block)
         for line in collapsed.splitlines():
             line = line.split("#", 1)[0]
@@ -931,6 +947,10 @@ def test_sop_fences_use_only_real_runner_and_manual_flags():
             for token in tokens:
                 if token.startswith("--"):
                     assert token in known[script], (
-                        f"{script} has no option {token!r} in: {line.strip()!r}"
+                        f"{doc.name}: {script} has no option {token!r} "
+                        f"in: {line.strip()!r}"
                     )
-    assert invocations >= 6, f"expected ≥6 fenced eval calls, got {invocations}"
+    assert invocations >= min_invocations, (
+        f"{doc.name}: expected ≥{min_invocations} fenced eval calls, "
+        f"got {invocations}"
+    )
