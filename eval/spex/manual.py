@@ -171,6 +171,23 @@ def complete_trial(args, output: Path, metadata: dict, row: dict) -> dict:
     return {"case": args.case, **row}
 
 
+def running_keys(queue: dict) -> list[str]:
+    """Return claimed case keys in queue insertion order."""
+    return [key for key, row in queue.items() if row["status"] == "running"]
+
+
+def claim_row(queue: dict, key: str, jobs: int) -> None:
+    """Refuse a claim that conflicts with the row state or the slot limit."""
+    row = queue[key]
+    if row["status"] != "pending":
+        raise ValueError(f"Case is already {row['status']}: {key}")
+    active = running_keys(queue)
+    if len(active) >= jobs:
+        raise ValueError(
+            f"All configured trial slots are occupied (jobs={jobs}): {', '.join(active)}"
+        )
+
+
 def dispatch(args, sandbox: Path) -> tuple[dict, int]:
     with manual_batch.locked(sandbox):
         queue_file = sandbox / "queue.json"
@@ -187,11 +204,7 @@ def dispatch(args, sandbox: Path) -> tuple[dict, int]:
         output, trial, metadata = load_trial(sandbox, key, entries)
         row = queue[key]
         if args.command == "claim":
-            if row["status"] != "pending":
-                raise ValueError(f"Case is already {row['status']}: {key}")
-            active = sum(row["status"] == "running" for row in queue.values())
-            if active >= metadata["execution"]["jobs"]:
-                raise ValueError("All configured trial slots are occupied")
+            claim_row(queue, key, metadata["execution"]["jobs"])
             row["status"] = "running"
             result = {"case": key, "trial": str(output)}
         elif row["status"] != "running":
@@ -260,7 +273,7 @@ def queue_progress(sandbox: Path, queue: dict) -> dict:
             ready.append(item)
     return {
         "ready": ready,
-        "running": sum(row["status"] == "running" for row in queue.values()),
+        "running": len(running_keys(queue)),
         "pending": sum(row["status"] == "pending" for row in queue.values()),
     }
 

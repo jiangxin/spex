@@ -9,18 +9,16 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
+import collect_handoff
+import manual
 import pytest
+import run
+import transport
+import workspace
+
+from tests.conftest import manual_action
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "eval" / "spex"))
-try:
-    import collect_handoff
-    import manual
-    import run
-    import transport
-    import workspace
-finally:
-    sys.path.pop(0)
 
 
 @pytest.fixture
@@ -656,12 +654,6 @@ def test_prepare_reuses_sandbox_across_cases(runner):
     ]))
     assert first["sandbox"] == second["sandbox"]
     assert Path(second["trial"]) == Path(first["sandbox"]) / "example" / "follow-up"
-
-
-def manual_action(sandbox, *arguments):
-    return manual.dispatch(manual.parser().parse_args([
-        "--sandbox", str(sandbox), *arguments,
-    ]), sandbox)
 
 
 @pytest.mark.slow
