@@ -514,6 +514,29 @@ def cli_create_validate() -> None:
         logger.info(f"Valid: currently on branch '{current}'")
 
 
+def _do_precheck(args) -> None:
+    """Validate create branch state, then optionally start a debug session."""
+    cli_create_validate()
+    if not args.begin_session:
+        return
+
+    try:
+        _do_begin_session(args)
+    except SystemExit:
+        logger.error(
+            "If session startup left an active session, clean it up with: "
+            "spex create-helper end-session"
+        )
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.error("Error starting create session: %s", exc)
+        logger.error(
+            "If session startup left an active session, clean it up with: "
+            "spex create-helper end-session"
+        )
+        sys.exit(1)
+
+
 def _do_prepare_spec(args):
     try:
         exit_code = _prepare_spec(args)
@@ -840,10 +863,14 @@ def _build_parser():
     )
     subs = parser.add_subparsers(dest="subcmd", title="Subcommands")
 
-    subs.add_parser(
+    p_precheck = subs.add_parser(
         "precheck",
         description="Validate branch creation feasibility.",
         help="Validate branch creation feasibility",
+    )
+    p_precheck.add_argument(
+        "--begin-session", action="store_true",
+        help="Start or reuse a create debug session after validation",
     )
 
     subs.add_parser(
@@ -958,7 +985,7 @@ def main(argv=None):
         sys.exit(2)
 
     if args.subcmd == "precheck":
-        cli_create_validate()
+        _do_precheck(args)
     elif args.subcmd == "begin-session":
         _do_begin_session(args)
     elif args.subcmd == "end-session":

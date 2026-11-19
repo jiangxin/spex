@@ -1713,20 +1713,24 @@ class TestBeginEndSession:
         assert content.count("===== CREATE session begin") == 1
         assert f"id={first['session_id']}" in content
 
-    def test_begin_session_writes_anchor_when_debug_enabled(
+    def test_precheck_begin_session_writes_anchor_when_debug_enabled(
         self, tmp_path, monkeypatch, capsys,
     ):
         ctx = self._ctx(tmp_path, debug=True)
         monkeypatch.chdir(tmp_path)
         with (
             patch.object(cfg, "get_project_context", return_value=ctx),
+            patch(
+                "create_helper.validate_create_branch",
+                return_value="main",
+            ),
             patch("debug_log.debug_enabled", return_value=True),
             patch(
                 "common.local_iso_timestamp",
                 return_value="2026-08-04T15:50:00+08:00",
             ),
         ):
-            create_helper.main(["begin-session"])
+            create_helper.main(["precheck", "--begin-session"])
 
         out = json.loads(capsys.readouterr().out.strip())
         content = Path(out["log_path"]).read_text(encoding="utf-8")
@@ -1957,6 +1961,97 @@ class TestBeginEndSession:
                 create_helper.main(["begin-session"])
         assert exc_info.value.code == 1
 
+    def test_precheck_without_flag_preserves_legacy_behavior(self):
+        with (
+            patch.object(create_helper, "cli_create_validate") as precheck,
+            patch.object(create_helper, "_do_begin_session") as begin_session,
+        ):
+            create_helper.main(["precheck"])
+
+        precheck.assert_called_once_with()
+        begin_session.assert_not_called()
+
+    def test_precheck_failure_does_not_start_session(self):
+        with (
+            patch.object(
+                create_helper, "cli_create_validate",
+                side_effect=SystemExit(1),
+            ),
+            patch.object(create_helper, "_do_begin_session") as begin_session,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_helper.main(["precheck", "--begin-session"])
+
+        assert exc_info.value.code == 1
+        begin_session.assert_not_called()
+
+    def test_precheck_session_start_failure_reports_recovery(
+        self, capsys, caplog,
+    ):
+        with (
+            patch.object(create_helper, "cli_create_validate"),
+            patch.object(
+                create_helper, "_do_begin_session",
+                side_effect=OSError("session storage unavailable"),
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                create_helper.main(["precheck", "--begin-session"])
+
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 1
+        assert captured.out == ""
+        assert "session storage unavailable" in caplog.text
+        assert "spex create-helper end-session" in caplog.text
+
+    def test_precheck_begin_session_outputs_session_json_after_precheck(
+        self, tmp_path, monkeypatch, capsys, caplog,
+    ):
+        ctx = self._ctx(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch(
+                "create_helper.validate_create_branch",
+                return_value="main",
+            ),
+            patch("debug_log.debug_enabled", return_value=False),
+        ):
+            create_helper.main(["precheck", "--begin-session"])
+
+        captured = capsys.readouterr()
+        result = json.loads(captured.out.strip())
+        assert result["active"] is True
+        assert result["session_id"] == get_active_session_id(ctx.spex_root)
+        assert "Valid: currently on branch 'main'" in caplog.text
+
+    def test_precheck_begin_session_reuses_existing_debug_session(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        ctx = self._ctx(tmp_path, debug=True)
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(cfg, "get_project_context", return_value=ctx),
+            patch(
+                "create_helper.validate_create_branch",
+                return_value="main",
+            ),
+            patch("debug_log.debug_enabled", return_value=True),
+            patch(
+                "common.local_iso_timestamp",
+                return_value="2026-11-19T10:00:00+08:00",
+            ),
+        ):
+            create_helper.main(["begin-session"])
+            first = json.loads(capsys.readouterr().out.strip())
+            create_helper.main(["precheck", "--begin-session"])
+            second_capture = capsys.readouterr()
+
+        second = json.loads(second_capture.out.strip())
+        assert second == first
+        log_content = Path(second["log_path"]).read_text(encoding="utf-8")
+        assert log_content.count("===== CREATE session begin") == 1
+
 
 class TestPreparePostActionSession:
     """Tests for prepare-spec handoff and post-action debug anchors."""
@@ -2013,9 +2108,13 @@ class TestPreparePostActionSession:
 
         with (
             patch.object(cfg, "get_project_context", return_value=ctx),
+            patch(
+                "create_helper.validate_create_branch",
+                return_value="main",
+            ),
             patch("debug_log.debug_enabled", return_value=True),
         ):
-            create_helper.main(["begin-session"])
+            create_helper.main(["precheck", "--begin-session"])
             begin = json.loads(capsys.readouterr().out.strip())
             session_log = Path(begin["log_path"])
             session_log.write_text(

@@ -400,16 +400,19 @@ class TestCreatePlanOnlySop:
         _index(phase9, "outside `$spec_path`")
         _index(phase9, "plan-command-common.md")
 
-    def test_phase1_precheck_before_begin_session(self):
+    def test_phase1_precheck_begins_session_in_same_call(self):
         text = _read(CREATE_MD)
         phase1 = _h3_section(text, "Phase 1: Precheck + Begin Session")
-        pre_i = _index(phase1, "create-helper precheck")
-        begin_i = _index(phase1, "create-helper begin-session")
-        assert pre_i < begin_i
+        _index(
+            phase1,
+            "create-helper precheck --begin-session",
+        )
+        assert "create-helper begin-session" not in phase1
+        _index(phase1, "only after the branch precheck succeeds")
         assert "### Phase 1: Begin Session + Precheck" not in text
         assert "### Phase 1: Validate Branch" not in text
         pre = _h2_section(text, "Preconditions")
-        _index(pre, "begin-session` **after** Phase 1")
+        _index(pre, "precheck --begin-session")
         _index(pre, "precheck")
 
     def test_phase1_precheck_side_effect_annotation(self):
