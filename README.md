@@ -65,7 +65,8 @@ In your coding agent, type:
 /spex merge
 ```
 
-Spex merges the completed development branch into the main branch and archives the spec.
+Spex merges the completed development branch into the spec's target branch
+and archives the spec by default.
 
 That's the core workflow: **create → apply → merge**.
 
@@ -138,7 +139,7 @@ disable-model-invocation: true
 
 - **`/spex create [requirement]`** — Convert your requirement into a spec document. Spex analyzes the requirement and generates `spec.md` (spec document) and `todo.json` (development step list). Use `spex show` to review after creation.
 
-- **`/spex modify [spec-name] [changes]`** — Modify an existing spec. Updates the `todo.json` development steps, preserving completed steps while regenerating unfinished tasks.
+- **`/spex modify [spec-name] [changes]`** — Update an existing spec and adjust its remaining plan as needed.
 
 - **`/spex review-plan [spec-name] [focus]`** — Review the spec and its development plan for gaps in coverage, dependency order, step size, and acceptance criteria. The review is read-only. Run the suggested `/spex modify` command manually to adopt the findings.
 
@@ -146,11 +147,9 @@ disable-model-invocation: true
 
 - **`/spex apply-one-step [spec-name]`** — Same as `/spex apply`, but executes only one step at a time. Useful when you want fine-grained control over each step.
 
-- **`/spex merge [spec-name]`** — Merge the completed spec into the main branch and auto-archive.
+- **`/spex merge [spec-name] [--dry-run | -n] [--no-archive]`** — Select a completed spec and merge its development branch into the target. Archive by default.
 
-- **`/spex create`** refuses to switch away from a dirty working tree. If you are not on the recorded base branch and have uncommitted changes, Spex reports the dirty paths and stops instead of silently leaving work behind.
-
-- **`/spex merge`** prints failure reasons to stderr as well as the JSON stdout, so the agent can report the cause without parsing machine output.
+- With branch management enabled, **`/spex create`** switches to the configured `main_branch_name` when needed. If the working tree is dirty, it reports the affected paths and stops before switching.
 
 ---
 
@@ -198,7 +197,10 @@ Config files are listed from highest to lowest priority. Spex uses one storage r
 
 ### spex list
 
-Show in-progress specs. When run inside a repository, it shows specs for that repository; when run outside or with `--all-projects`, it shows specs from all projects.
+By default, list active specs, including completed specs that have yet to
+be archived. Inside a repository, the list is scoped to that repository.
+Outside a repository or with `--all-projects`, it includes all projects
+in the selected storage root.
 
 ```bash
 spex list                    # Specs for the current repository
@@ -206,6 +208,7 @@ spex list -v                 # Add spec metadata and the next step
 spex list -vv                # Add worktree info and per-step status
 spex list --archives         # Archived specs
 spex list --all-projects     # Specs from all projects
+spex list --must-undone      # Specs that are not complete
 spex list --json             # JSON array of {spec_name, spec_path} (no matches → [] + exit 0)
 spex list --json --details   # JSON array with metadata, progress, and next step
 ```
@@ -256,7 +259,16 @@ spex archive <spec> --json --restore
 
 ### spex merge
 
-Merge a spec into the main branch and archive it. Same functionality as the `/spex merge` skill command. Merge runs in the worktree that already has the target trunk checked out, so a feature locked in a linked spex worktree does not block the trunk branch.
+Merge a spec's development branch into `meta.branch`, or use the
+repository's default branch if the spec has no recorded base.
+The slash command selects from completed specs. The CLI resolves a
+supplied name directly, giving an exact name priority over substring
+matches. With no name, the CLI selects from completed specs with a
+recorded development branch.
+
+Use `--dry-run` (or `-n`) to preview the merge and `--no-archive` to
+skip automatic archiving. The CLI reports errors on stderr and
+returns JSON for the preview or merge result.
 
 ---
 
@@ -300,8 +312,11 @@ Pass spec names positionally after the command for direct CLI entries, after
 the subcommand for `todo-helper`, `review-helper`, and `prompt`, or after
 the template name for generic prompt rendering. For `run-hook`, pass the
 optional spec name after the hook name. `todo-helper` accepts exactly one
-locator, either a spec name or `--todo-file <path>`. The `create-helper`
-and `apply-helper` lifecycle commands use `--name` for spec selection.
+locator, either a spec name or `--todo-file <path>`. Apply lifecycle
+commands such as `apply-helper precheck` and `complete-step` take
+`--name`. For `create-helper prepare-spec`, `--name` is the new spec's
+short name. `begin-modify`, `finalize`, and `finalize-modify` take an
+existing spec name as a positional argument.
 
 ### 2. Atomic Commits: Small Steps, Fast Progress
 
@@ -390,7 +405,12 @@ Example `todo.json` content:
 
 ### 3. Continuous Modification
 
-Requirements change, and models may drift during requirements analysis, requiring human correction. For specs that have already been generated or are partially completed, Spex supports iterative modification via `/spex modify`. Each modification updates the `spec.md` design document while preserving completed steps in `todo.json`, regenerating only the unfinished portion.
+Use `/spex modify` to revise `spec.md` and adapt the remaining plan.
+Spex keeps the plan when it still fits, makes targeted edits when possible,
+and rebuilds the remaining plan when its structure or dependencies need
+to change. Completed steps keep their contents and positions. If a
+change would affect the contents or position of an unfinished step
+with a recorded `commit_title`, finish reviewing that step first.
 
 ### 4. Template Customization
 
@@ -479,7 +499,7 @@ Behavior:
 | Path | `~/.spex/worktree/<repo_basename>/<spec_name>/` (under the user home; directory name `worktree` is singular). Independent of project `spex_root`. |
 | Meta | `use_git_worktree` (bool, always written on create; missing key on old specs → `false`). `spex_worktree` (absolute path) is filled on first apply precheck when enabled; omitted when unused. |
 | Apply | Creates or reuses the worktree; agents use `$spex_worktree` as coding `working_directory`. Does **not** switch the user's IDE root or create a multi-root workspace. |
-| Merge | Merges in the worktree that already has the target trunk checked out — never switches into a trunk branch locked by the feature worktree. |
+| Merge | Uses the worktree that has the target branch checked out, or the calling worktree if the target is free. In the latter case, with multiple worktrees, the caller must be on a local branch, which Spex restores after a successful merge. |
 | Archive | Removes the linked worktree when `meta.spex_worktree` is set; still does not delete the `spex/*` branch. |
 | Requires | `branch_management = true`. With branch management off, no feature branch and no spex worktree path. |
 

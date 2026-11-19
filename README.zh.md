@@ -65,7 +65,7 @@ Spex 会：
 /spex merge
 ```
 
-Spex 会将已经完成的开发分支合并到主干，并归档该规格。
+Spex 会将已完成的开发分支合并到该 spec 的目标分支，并默认归档 spec。
 
 这就是 Spex 的核心流程：**create → apply → merge**。
 
@@ -138,7 +138,7 @@ disable-model-invocation: true
 
 - **`/spex create [需求]`** - 将你的需求转换为 spec 文档。Spex 会分析需求，生成 `spec.md`（规格文档）和 `todo.json`（开发步骤列表）。创建完成后可以用 `spex show` 查看。
 
-- **`/spex modify [spec-name] [变更]`** - 修改已创建的 spec。更新 `todo.json` 开发步骤，保留已完成步骤，重新生成未完成的任务。
+- **`/spex modify [spec-name] [变更]`** - 修改已有 spec，并按需调整剩余计划。
 
 - **`/spex review-plan [spec-name] [评审重点]`** - 评审规格和开发计划，检查需求覆盖、依赖顺序、步骤大小和验收条件。评审全程只读，采纳意见时可手动执行建议的 `/spex modify` 命令。
 
@@ -146,11 +146,9 @@ disable-model-invocation: true
 
 - **`/spex apply-one-step [spec-name]`** - 与 `/spex apply` 相同，但每次只执行一个步骤。适合需要逐步精细控制的场景。
 
-- **`/spex merge [spec-name]`** - 将开发完成的 spec 合并到主干分支，并自动归档。
+- **`/spex merge [spec-name] [--dry-run | -n] [--no-archive]`** - 选择已完成的 spec，将其开发分支合并到目标分支。默认归档。
 
-- **`/spex create`** 不会在脏工作区上切换分支。如果你不在创建 spec 时记录的主干分支上，且存在未提交的修改，Spex 会列出脏路径并停止，避免未提交的工作在不知不觉中被遗落。
-
-- **`/spex merge`** 失败时会将原因同时输出到 stderr 和 JSON stdout，agent 无需解析机器输出即可报告失败原因。
+- 启用分支管理后，**`/spex create`** 会在需要时切换到配置的 `main_branch_name`。如果工作树有未提交的变更，就会报告受影响的路径，并在切换前停止。
 
 ---
 
@@ -198,7 +196,9 @@ Skill 安装完毕后，在 Coding Agent 中执行 `/spex init` 即可完成配�
 
 ### spex list
 
-显示开发中的 spec 列表。在仓库中执行时显示本仓库关联的 specs，在仓库外或使用 `--all-projects` 时显示所有项目的 specs。
+默认列出活动 spec，包括已完成但尚未归档的条目。在仓库内执行时只显示
+关联到该仓库的 spec。在仓库外或使用 `--all-projects` 时，显示所选存储根中
+所有项目的 spec。
 
 ```bash
 spex list                    # 当前仓库的 specs
@@ -206,6 +206,7 @@ spex list -v                 # 增加元信息与下一步
 spex list -vv                # 增加 worktree 信息与各步骤状态
 spex list --archives         # 已归档的 specs
 spex list --all-projects     # 所有项目的 specs
+spex list --must-undone      # 尚未完成的 specs
 spex list --json             # stdout 输出 {spec_name, spec_path} 数组（无匹配 → [] 且 exit 0）
 spex list --json --details   # JSON 数组中加入元信息、进度与下一步
 ```
@@ -255,7 +256,13 @@ spex archive <spec> --json --restore
 
 ### spex merge
 
-合并 spec 到主干并归档。功能和 `/spex merge` 技能命令相同。merge 在已 checkout 目标主干的 worktree 中执行，因此 feature 被 locked 在 linked spex worktree 中时也不会阻塞主干分支。
+将 spec 的开发分支合并到 `meta.branch`。如果 spec 没有记录基线分支，
+则使用仓库的默认分支。Slash 命令从已完成的 spec 中选择。CLI 直接解析
+传入的名称，优先使用精确匹配，其次使用子串匹配。省略名称时，CLI 从
+已完成且已记录开发分支的 spec 中选择。
+
+用 `--dry-run`（或 `-n`）预览合并，用 `--no-archive` 跳过自动归档。
+CLI 将错误输出到 stderr，预览或合并结果以 JSON 返回。
 
 ---
 
@@ -299,7 +306,9 @@ DETAILS
 和 `prompt` 的 spec 名称放在子命令后，通用 prompt 渲染则放在模板名后。
 `run-hook` 的可选 spec 名称放在 hook 名称后。`todo-helper` 接受一种
 定位方式，可以使用 spec 名称或 `--todo-file <path>`。
-`create-helper` 和 `apply-helper` 的生命周期命令通过 `--name` 选择 spec。
+`apply-helper precheck` 和 `complete-step` 等实施命令用 `--name` 选择
+spec。`create-helper prepare-spec` 的 `--name` 是新 spec 的短名。
+`begin-modify`、`finalize` 和 `finalize-modify` 以位置参数接收已有 spec 的名称。
 
 ### 2. 原子化提交：小步快跑
 
@@ -383,7 +392,10 @@ Phase 6 review 循环：
 
 ### 3. 持续修改
 
-需求会变，大模型也可能在需求分析中跑偏，需要人工纠正。对于已经生成或部分完成的 spec，Spex 支持迭代修改（`/spex modify`）。每次修改会更新 `spec.md` 的设计文档，同时保留 `todo.json` 中已完成的步骤，只重新生成未完成的部分。
+用 `/spex modify` 修改 `spec.md` 并调整剩余计划。现有计划仍适用时保留，
+可以局部调整时定向编辑，结构或依赖需要变化时重建剩余计划。已完成步骤
+保留内容和位置。如果变更会影响已记录 `commit_title` 的未完成步骤的内容
+或位置，需先完成该步骤的评审。
 
 ### 4. 模板定制
 
@@ -464,7 +476,7 @@ use_git_worktree = true
 | 路径 | `~/.spex/worktree/<仓库 basename>/<spec_name>/`（用户主目录下；目录名 `worktree` 为单数）。与项目 `spex_root` 无关。 |
 | Meta | `use_git_worktree`（bool，create 时始终写出；旧 spec 缺省视为 `false`）。`spex_worktree`（绝对路径）在启用时于首次 apply precheck 填充；未使用则省略。 |
 | Apply | 创建或复用 worktree；Agent 以 `$spex_worktree` 为编码 `working_directory`。**不**切换用户 IDE 根目录，也不生成多根 workspace。 |
-| Merge | 在已 checkout 目标主干的 worktree 中执行 merge——不会切到被 feature worktree 占用的主干分支。 |
+| Merge | 使用已检出目标分支的 worktree。如果目标分支未检出，则使用调用方的 worktree。在后一种情况下，如果有多个 worktree，调用方必须在本地分支上，Spex 会在合并成功后切回该分支。 |
 | Archive | 若 `meta.spex_worktree` 非空则删除对应 worktree；仍不自动删除 `spex/*` 分支。 |
 | 前提 | 需要 `branch_management = true`。关闭分支管理时不会建 feature 分支，也不会走 spex worktree 路径。 |
 
