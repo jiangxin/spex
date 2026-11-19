@@ -15,6 +15,38 @@ This project is a **coding agent skill** (invoked via `/spex`). All changes
 to `SKILL.md`, commands, scripts, and references MUST conform to the Skills
 Specification documented in `references/SKILLS-SPEC.md`.
 
+## Spex SOP and Reference Authoring
+
+- Put command-specific orchestration in `commands/`: phase order,
+  required calls, inputs and outputs, branch conditions, and recovery
+  or stop rules. State the conditions under which each phase may proceed.
+- Put shared contracts, procedures, and examples in `references/`.
+  Give each rule one authoritative location. Link to the relevant
+  section at the point of use. Load optional material only when its
+  condition applies.
+- Use `templates/` for domain guidance and document structure. State
+  mandatory quality requirements in the SOP or its authoritative
+  reference so they apply to built-in and custom templates. Follow the
+  instruction precedence in `SKILL.md`.
+- State cross-mode requirements in terms of deliverables and verifiable
+  acceptance. Name software-specific and general-task requirements
+  explicitly. For example, require every task to be independently
+  verifiable and require independent commits for tasks that produce
+  Git commits.
+- Write concise, imperative instructions. Keep phase text focused on the
+  action, the condition that controls it, and the result needed next.
+  Name the exact command, field, or exit code when it controls a decision.
+  Remove repeated explanations and examples that add no operational
+  detail. Link to the smallest relevant reference section and state when
+  to read it. Keep examples that clarify syntax or prevent a likely mistake.
+  Review the total material loaded on the normal path, including references,
+  and preserve every detail needed to make the correct decision.
+- When shortening instructions, trace each removed requirement to its
+  retained location. Preserve command order, failure and recovery
+  semantics, and the quality checks for generated artifacts. Verify
+  CLI claims against the implementation, and update tests to assert
+  behavior and required content. Run `make check` before committing.
+
 ## Language
 
 - All code, comments, and commit messages MUST be written in English.
