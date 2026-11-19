@@ -253,26 +253,29 @@ $spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
+$spex_skill_dir/scripts/spex create-helper finalize "$spec_name"
 ```
 
-- With debug enabled, appends a post-action anchor to
+- The helper validates the todo plan, synchronizes the description,
+  writes the debug anchor when enabled, runs the create post-action hook,
+  and commits the todo transaction in that order. It requires the open
+  `todo.json.lock` backup before performing any of these side effects.
+- ON_FAIL before the hook runs: correct recoverable errors and retry
+  finalize, or follow Failure Handling if giving up.
+- If the todo commit fails after the hook ran, the backup remains. Report
+  only the recovery command
+  `$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"`.
+  Recovery runs that command alone; do not rerun finalize, which would
+  replay the hook.
+- With debug enabled, the helper appends a post-action anchor to
   `$spec_path/logs/debug.log` automatically; the agent does not need to
   intervene.
-- ON_FAIL: correct recoverable errors within the open transaction and
-  re-run post-action. If giving up, follow Failure Handling.
-- After post-action exits successfully, commit the todo transaction:
-
-```bash
-$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
-```
-
-- IF non-zero exit -> follow the commit failure rule in
-  `references/plan-command-common.md` and STOP before output.
+- IF finalize exits non-zero -> follow the applicable failure recovery and
+  STOP before output.
 
 ### Phase 8: Output
 
-- Enter only after post-action and todo transaction commit succeed.
+- Enter only after finalize and its todo transaction commit succeed.
 - Follow `references/plan-command-common.md` output format (human
   summary + trailing `json spex-result`)
 - Include the persisted task mode in the human summary.

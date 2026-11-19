@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -715,7 +716,7 @@ def _sync_modified_description(meta_path: Path, meta: SpecMeta, description: str
         raise
 
 
-def _do_post_action(args):
+def _do_post_action(args, *, spec_dir=None):
     """Validate todo.json and trigger post-action hook."""
     from common import (
         SpecMeta,
@@ -725,7 +726,7 @@ def _do_post_action(args):
     from config import get_project_context
     from todo_helper import validate_todo
 
-    spec_dir = resolve_spec_dir(args.name)
+    spec_dir = spec_dir or resolve_spec_dir(args.name)
     json_path = spec_dir / "todo.json"
 
     if not json_path.is_file():
@@ -795,6 +796,40 @@ def cli_post_action(argv=None):
 
     args = _build_parser().parse(["post-action"] + (argv or []))
     _do_post_action(args)
+
+
+def _do_finalize(args):
+    """Run create post-actions, then commit the open todo transaction."""
+    import todo_helper
+
+    spec_dir = resolve_spec_dir(args.name)
+    todo_path = spec_dir / "todo.json"
+    backup_path = todo_path.with_name(f"{todo_path.name}.lock")
+    if not backup_path.is_file():
+        logger.error(
+            "Error: todo transaction backup '%s' not found; "
+            "finalize requires an open transaction.",
+            backup_path,
+        )
+        sys.exit(1)
+
+    args.event_type = "create"
+    _do_post_action(args, spec_dir=spec_dir)
+
+    try:
+        todo_helper.cmd_transaction(todo_path, "commit")
+    except SystemExit:
+        logger.error(
+            "Recovery command: spex todo-helper transaction commit %s",
+            shlex.quote(args.name),
+        )
+        raise
+
+
+def cli_finalize(argv=None):
+    """CLI: finish create post-actions and commit its todo transaction."""
+    args = _build_parser().parse(["finalize"] + (argv or []))
+    _do_finalize(args)
 
 
 def _build_parser():
@@ -894,6 +929,18 @@ def _build_parser():
         help="Hook event type (default: create)",
     )
 
+    p_finalize = subs.add_parser(
+        "finalize",
+        description=(
+            "Validate the todo plan, run create post-action, and "
+            "commit its transaction."
+        ),
+        help="Finalize create and commit its todo transaction",
+    )
+    p_finalize.add_argument(
+        "name", type=nonempty_spec_name, metavar="<spec-name>",
+    )
+
     snapshot = subs.add_parser("begin-modify", help="Snapshot and increment the spec version")
     snapshot.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
 
@@ -924,5 +971,7 @@ def main(argv=None):
         _do_discard_incomplete(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)
+    elif args.subcmd == "finalize":
+        _do_finalize(args)
     elif args.subcmd == "begin-modify":
         _do_modify_session(args)

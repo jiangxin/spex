@@ -46,7 +46,7 @@ Internal commands (used by skill):
                 (precheck, ensure-branch, post-action)
   create-helper <subcommand> [--name <spec-name>]
                 Helper utilities for spec creation
-                (precheck, prepare-spec)
+                (precheck, prepare-spec, finalize)
   meta-helper <spec-name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <template> [<spec-name>] [-o <file>]

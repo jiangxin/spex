@@ -66,6 +66,13 @@ PLAN-only guards.
 
 ## Todo transaction failure handling
 
+- For create, `create-helper finalize` owns the post-action and final
+  todo commit. If that commit fails after the hook ran, preserve the
+  backup and recover by running only
+  `spex todo-helper transaction commit <spec-name>`; do not rerun
+  finalize. Modify keeps its separate post-action and transaction commit
+  calls.
+
 - Start failure: report stderr and stop before any todo writes.
   If `$spec_path/todo.json.lock` exists, report its path and the
   `transaction commit` and `transaction rollback` recovery commands.

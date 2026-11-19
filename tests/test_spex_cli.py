@@ -653,6 +653,8 @@ class TestMainEntrypoint:
         ("apply_helper", "apply_helper", ["dirty", "--name", "topic_name", "--json"]),
         ("create-helper", "create_helper", ["post-action", "--name", "topic_name"]),
         ("create_helper", "create_helper", ["post-action", "--name", "topic_name"]),
+        ("create-helper", "create_helper", ["finalize", "topic_name"]),
+        ("create_helper", "create_helper", ["finalize", "topic_name"]),
         ("todo-helper", "todo_helper", ["show", "topic_name"]),
         ("todo_helper", "todo_helper", ["show", "topic_name"]),
         ("review-helper", "review_helper", ["status", "topic_name", "--step", "s1"]),

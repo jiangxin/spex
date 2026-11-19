@@ -1301,6 +1301,202 @@ class TestCliPostAction:
             assert mock_hook.call_args[0][0] == "create"
 
 
+class TestCliFinalize:
+    def _setup_finalize(self, tmp_path, name, todo_data=None):
+        spec_dir = tmp_path / name
+        spec_dir.mkdir()
+        if todo_data is None:
+            todo_data = [{
+                "id": "s1", "name": "Step 1", "details": "D",
+                "completed_at": "", "commit_title": "",
+            }]
+        todo_path = spec_dir / "todo.json"
+        todo_path.write_text(json.dumps(todo_data), encoding="utf-8")
+        (todo_path.with_name("todo.json.lock")).write_text(
+            json.dumps(todo_data), encoding="utf-8",
+        )
+        (spec_dir / "meta.json").write_text(json.dumps({
+            "name": name,
+            "workdir": str(tmp_path),
+            "description": "Before",
+        }), encoding="utf-8")
+        return spec_dir
+
+    def _patch_spec_resolution(self, monkeypatch, spec_dir):
+        monkeypatch.setattr(
+            "create_helper.resolve_spec_dir", lambda _name: spec_dir,
+        )
+
+    def test_requires_name(self):
+        with pytest.raises(SystemExit) as exc:
+            create_helper.cli_finalize([])
+        assert exc.value.code == 2
+
+    def test_missing_backup_fails_before_post_action(
+        self, tmp_path, monkeypatch,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "missing-backup")
+        (spec_dir / "todo.json.lock").unlink()
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+
+        with patch("hooks.run_post_action") as hook, pytest.raises(SystemExit):
+            create_helper.cli_finalize(["missing-backup"])
+
+        hook.assert_not_called()
+
+    def test_invalid_todo_fails_before_post_action(
+        self, tmp_path, monkeypatch,
+    ):
+        invalid = [{"id": "s1", "name": "Step 1"}]
+        spec_dir = self._setup_finalize(tmp_path, "invalid-todo", invalid)
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+
+        with patch("hooks.run_post_action") as hook, pytest.raises(SystemExit):
+            create_helper.cli_finalize(["invalid-todo"])
+
+        hook.assert_not_called()
+        assert (spec_dir / "todo.json.lock").is_file()
+
+    def test_description_write_failure_prevents_hook_and_commit(
+        self, tmp_path, monkeypatch,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "description-failure")
+        (spec_dir / "spec.md").write_text(
+            "---\ndescription: Updated description\n---\n\n# Spec\n",
+            encoding="utf-8",
+        )
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+        monkeypatch.setattr(
+            create_helper, "atomic_write_json",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read-only")),
+        )
+
+        with patch("hooks.run_post_action") as hook, pytest.raises(OSError):
+            create_helper.cli_finalize(["description-failure"])
+
+        hook.assert_not_called()
+        assert (spec_dir / "todo.json.lock").is_file()
+
+    def test_missing_hook_still_commits_transaction(
+        self, tmp_path, monkeypatch,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "no-hook")
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+
+        with patch("hooks.find_hook", return_value=None), patch(
+            "hooks.get_project_context", return_value=_fake_project_context(),
+        ):
+            create_helper.cli_finalize(["no-hook"])
+
+        assert not (spec_dir / "todo.json.lock").exists()
+
+    def test_runs_post_action_before_transaction_commit(
+        self, tmp_path, monkeypatch,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "ordered-finalize")
+        (spec_dir / "spec.md").write_text(
+            "---\ndescription: Updated description\n---\n\n# Spec\n",
+            encoding="utf-8",
+        )
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+
+        import todo_helper
+
+        events = []
+        original_validate = todo_helper.validate_todo
+        original_atomic_write = create_helper.atomic_write_json
+        original_transaction = todo_helper.cmd_transaction
+
+        def record_validate(path, **kwargs):
+            events.append("validate")
+            return original_validate(path, **kwargs)
+
+        def record_metadata_write(path, data):
+            events.append("description")
+            return original_atomic_write(path, data)
+
+        def record_anchor(_path, _line):
+            events.append("anchor")
+
+        def record_hook(*args):
+            events.append("hook")
+
+        def record_transaction(path, action):
+            events.append("commit")
+            return original_transaction(path, action)
+
+        monkeypatch.setattr(todo_helper, "validate_todo", record_validate)
+        monkeypatch.setattr(create_helper, "atomic_write_json", record_metadata_write)
+        monkeypatch.setattr(create_helper, "_append_create_debug_anchor", record_anchor)
+        monkeypatch.setattr("debug_log.debug_enabled", lambda _argv: True)
+        monkeypatch.setattr("debug_log.prepare_spec_log_parent", lambda _path: True)
+        monkeypatch.setattr(todo_helper, "cmd_transaction", record_transaction)
+        with patch("hooks.run_post_action", side_effect=record_hook) as hook:
+            create_helper.cli_finalize(["ordered-finalize"])
+
+        assert events == [
+            "validate", "description", "anchor", "hook", "commit", "validate",
+        ]
+        hook.assert_called_once_with(
+            "create",
+            {"spex_branch": "", "done": 0, "undone": 1},
+            str(tmp_path),
+            "ordered-finalize",
+        )
+        meta = json.loads((spec_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta["description"] == "Updated description"
+        assert not (spec_dir / "todo.json.lock").exists()
+
+    def test_commit_failure_reports_commit_only_recovery_and_hook_runs_once(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "commit-recovery")
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+        import todo_helper
+
+        hook_calls = []
+        real_atomic_write = todo_helper.atomic_write_json
+        with patch("hooks.run_post_action", side_effect=lambda *args: hook_calls.append(args)):
+            monkeypatch.setattr(
+                todo_helper, "atomic_write_json",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+            )
+            with pytest.raises(SystemExit) as exc:
+                create_helper.cli_finalize(["commit-recovery"])
+            assert exc.value.code == 1
+            assert (spec_dir / "todo.json.lock").is_file()
+            assert "spex todo-helper transaction commit commit-recovery" in caplog.text
+            assert "create-helper finalize" not in caplog.text
+
+            monkeypatch.setattr(todo_helper, "atomic_write_json", real_atomic_write)
+            todo_helper.cmd_transaction(spec_dir / "todo.json", "commit")
+
+        assert len(hook_calls) == 1
+        assert not (spec_dir / "todo.json.lock").exists()
+
+    def test_nonzero_hook_does_not_prevent_transaction_commit(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        spec_dir = self._setup_finalize(tmp_path, "hook-failure")
+        self._patch_spec_resolution(monkeypatch, spec_dir)
+
+        monkeypatch.setattr(
+            "hooks._build_event_data", lambda *_args: {"event_type": "create"},
+        )
+
+        def failed_hook(*_args):
+            create_helper.logger.warning("Hook 'post-action' exited with code 1")
+            return subprocess.CompletedProcess(["post-action"], 1)
+
+        monkeypatch.setattr(
+            "hooks.run_hook", failed_hook,
+        )
+        create_helper.cli_finalize(["hook-failure"])
+
+        assert "exited with code 1" in caplog.text
+        assert not (spec_dir / "todo.json.lock").exists()
+
+
 class TestCliCreateValidate:
     @patch("branch.get_current_branch", return_value="develop")
     @patch("config.get_project_context", return_value=_fake_project_context(

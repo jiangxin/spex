@@ -467,11 +467,13 @@ class TestCreatePlanOnlySop:
     def test_create_success_offers_manual_plan_review(self):
         text = _read(CREATE_MD)
         phase7 = _h3_section(text, "Phase 7: Post-Action")
-        commit = _index(phase7, 'todo-helper transaction commit "$spec_name"')
-        assert commit < _index(phase7, "STOP before output")
+        finalize = _index(phase7, 'create-helper finalize "$spec_name"')
+        assert finalize < _index(phase7, "STOP before output")
+        _index(phase7, "Recovery runs that command alone")
+        _index(phase7, "do not rerun finalize")
 
         phase8 = _h3_section(text, "Phase 8: Output")
-        gate = _index(phase8, "Enter only after post-action and todo transaction commit succeed")
+        gate = _index(phase8, "Enter only after finalize and its todo transaction commit succeed")
         review = _index(phase8, "`/spex review-plan $spec_name`")
         assert gate < review
         assert text.count("/spex review-plan") == 1
@@ -499,10 +501,15 @@ class TestCreatePlanOnlySop:
         _index(phase6, "examples in cookbook")
         assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
         phase7 = _h3_section(text, "Phase 7: Post-Action")
-        assert _index(phase7, "create-helper post-action") < _index(
-            phase7, "transaction commit"
-        )
-        _index(phase7, "After post-action exits successfully")
+        _index(phase7, "create-helper finalize")
+        _index(phase7, "requires the open")
+        _index(phase7, "todo.json.lock")
+        _index(phase7, "todo-helper transaction commit")
+        _index(phase7, "do not rerun finalize")
+
+        shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Todo transaction failure handling")
+        _index(shared, "create-helper finalize")
+        _index(shared, "Modify keeps its separate post-action")
 
     def test_create_reads_named_sources_before_preparation(self):
         text = _read(CREATE_MD)
@@ -523,7 +530,7 @@ class TestCreatePlanOnlySop:
         _index(gate, "Wait until the source issue is resolved before preparing")
         post = _h3_section(text, "Phase 7: Post-Action")
         assert _index(post, "Apply these checks with custom templates too") < _index(
-            post, "create-helper post-action"
+            post, "create-helper finalize"
         )
 
     def test_create_template_failure_gates_precede_side_effects(self):
