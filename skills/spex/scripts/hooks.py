@@ -9,7 +9,9 @@ import stat
 import subprocess
 import sys
 from datetime import datetime
+from functools import partial
 from pathlib import Path
+from typing import Callable
 
 from common import _resolve_hook_roots, logger
 from config import get_project_context
@@ -107,7 +109,7 @@ def _is_safe_to_execute(hook_path: Path, hook_name: str, workdir=None) -> bool:
 
 
 def run_hook(
-    hook_name: str, event_data: dict, workdir=None,
+    hook_name: str, event_data: dict | Callable[[], dict], workdir=None,
 ) -> subprocess.CompletedProcess | None:
     """Find and execute a hook, piping JSON event data to stdin.
 
@@ -118,7 +120,8 @@ def run_hook(
 
     Args:
         hook_name: Hook filename to search for.
-        event_data: JSON-serializable event envelope.
+        event_data: JSON-serializable event envelope, or a factory called
+            only after an executable hook passes the safety checks.
         workdir: Working directory for hook execution.
 
     Returns:
@@ -131,7 +134,7 @@ def run_hook(
     if not _is_safe_to_execute(hook_path, hook_name, workdir):
         return None
 
-    payload = json.dumps(event_data)
+    payload = json.dumps(event_data() if callable(event_data) else event_data)
     result = subprocess.run(
         [str(hook_path)],
         input=payload,
@@ -159,7 +162,7 @@ def run_post_action(event_type: str, payload: dict, workdir=None,
     """
     if spec_name:
         payload = {**payload, "spec_name": spec_name}
-    data = _build_event_data(event_type, payload, workdir)
+    data = partial(_build_event_data, event_type, payload, workdir)
     run_hook("post-action", data, workdir)
 
 
@@ -178,7 +181,7 @@ def run_pre_action(event_type: str, payload: dict, workdir=None,
     """
     if spec_name:
         payload = {**payload, "spec_name": spec_name}
-    data = _build_event_data(event_type, payload, workdir)
+    data = partial(_build_event_data, event_type, payload, workdir)
     result = run_hook("pre-action", data, workdir)
     if result is not None and result.returncode != 0:
         sys.exit(1)
