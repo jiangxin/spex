@@ -1,26 +1,15 @@
 # Apply Task Phases (Phase 2–7)
 
-Shared orchestration core for `/spex apply` and
-`/spex apply-one-step`. Load and follow this document for Phases
-2–7 unless the command wraps a phase (e.g. apply Phase 3
-sub-agent handoff — see `apply-subagent-handoff.md`).
-
-Load and follow `references/cli-contract.md` exactly for helper
-exit codes, stdout/stderr, quoting, and one-helper-per-shell.
-
-**Semantic conservation:** preserve full `skip_commit` /
-`$did_commit` / `outcome=` behavior. Do not weaken intentional
-FAIL/STOP, residual-dirty STOP, or `commit_title` before
-`completed_at`.
-
-Command-specific wrappers (not duplicated here): Phase 1 resolve,
-`--all` / multi-task loops, apply Phases 4–5 sub-agent launch,
-apply-one-step single-step STOP.
+Shared Phases 2–7 for both apply commands. Follow the caller's routing.
+Load and follow `references/cli-contract.md` exactly.
 
 ## Phase 2: Validate Branch
 
 - Apply the Todo status recovery gate below before running precheck.
-- CMD:
+- Side effects: with branch management enabled, prepares
+  `spex/<name>` based on `meta.branch`, recording `spex_branch` in
+  `meta.json` and setting the branch description as needed. After
+  successful setup, runs the apply pre-action hook when configured.
 
 ```bash
 $spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name" --json
@@ -33,17 +22,14 @@ $spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name" --json
   If the result is invalid or the path is missing or relative, report
   the error and STOP.
 - Bind `$spex_worktree` from JSON `spex_worktree` (alias `coding_path`).
-  An empty value means in-place apply.
-  - When `$spex_worktree` is non-empty: implement / commit /
-    review / fix agents MUST use it as `working_directory`
-    (coding cwd). Do **not** switch the user's IDE root or
-    create a multi-root workspace — Agent cwd only
-  - Precheck creates or reuses a linked worktree when
-    `meta.use_git_worktree` is true; otherwise it may switch
-    the main checkout in place (legacy)
-- Reuse for dirty filter + commit staging exclude; apply
-  passes `$spex_root` and `$spex_worktree` to Phases 4–5
-  sub-agent
+  With branch management enabled, precheck creates or reuses a linked
+  worktree when `meta.use_git_worktree` is true. Otherwise it may
+  switch in place.
+  An empty path means in-place apply.
+  If non-empty, use that path for implementation, Git, review, and
+  fixes. Keep the IDE root and workspace unchanged.
+- Use `$spex_root` for dirty filtering and staging exclusions.
+  Pass both paths to the Phases 4–5 sub-agent in `apply`.
 
 ## Phase 3: Build Prompt / Resume Gate
 

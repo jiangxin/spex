@@ -29,28 +29,6 @@ file.
 
 ## Flow Overview
 
-```mermaid
-flowchart TD
-    entry[6-entry status gate] -->|needs_fix and skipped no major| phase7[Phase 7]
-    entry -->|needs_fix and skipped with major| stop[abnormal STOP]
-    entry -->|needs_fix| fix[6c batch fix]
-    entry -->|awaiting_delta| delta[6e delta review]
-    entry -->|else| full[6a full review]
-    full -->|skipped| phase7
-    full --> routeB[6b after full]
-    routeB -->|no open findings| phase7
-    routeB -->|needs_fix| fix
-    fix --> routeD[6d after batch]
-    routeD -->|awaiting_delta false| phase7
-    routeD -->|awaiting_delta true| delta
-    delta --> routeF[6f after delta]
-    routeF -->|no new major| phase7
-    routeF -->|new major and round lt max| bump[bump-round then 6a]
-    bump --> full
-    routeF -->|new major and round ge max| fixCap[6c hard-cap batch]
-    fixCap --> phase7
-```
-
 **Route table (severity × resume):**
 
 | State | Route |
@@ -60,7 +38,7 @@ flowchart TD
 | Full review, any major open | **6c** → verify → **6e** delta |
 | Delta, no new major | Phase 7 |
 | Delta, new major, round < max | bump-round → **6a** full |
-| Delta, new major, round = max | **6c** (fix majors) → Phase 7 (no 4th full, **no** further delta) |
+| Delta, new major, round = max | **6c** (hard-cap batch) → Phase 7 (no fourth full review or further delta) |
 | Resume `needs_fix` | **6c** (rebuild batch from open findings) |
 | Resume `awaiting_delta` (major batch completed, delta not run) | **6e** |
 | `step_review=false`, open major | abnormal STOP |

@@ -1012,16 +1012,11 @@ class TestApplyStepReviewSop:
         assert "Load and follow" in phase3_apply
         assert "apply-subagent-handoff.md" in phase3_apply
         control = _h2_section(apply, "Control flow")
-        _index(control, "```mermaid")
-        _index(control, "ALL -->|yes| P2")
-        _index(control, "never")
-        _index(control, "re-run `list`")
-        _index(control, "apply-task-phases.md")
-        _index(control, "apply-subagent-handoff.md")
-        _index(control, "meta.branch")
-        _index(control, "must **not** switch branches by hand")
+        _index(control, "Run Phase 2 per spec and Phases 3–8 per task")
+        _index(control, "after confirmed")
+        _index(control, "A STOP ends the entire invocation")
         phase1_apply = _h3_section(apply, "Phase 1: Resolve Spec")
-        _index(phase1_apply, "--all")
+        _index(phase1_apply, "IF the `--all` flag was bound")
         _index(phase1_apply, "do **not** re-run `list`")
         _index(phase1_apply, "next `$specs` item at Phase 2")
         _index(phase1_apply, "meta.branch")
@@ -1032,23 +1027,16 @@ class TestApplyStepReviewSop:
         phase8_apply = _h3_section(apply, "Phase 8: Next Task")
         _index(phase8_apply, "return to Phase 3")
         _index(phase8_apply, "Phase 7 confirmed finalization")
-        phase9 = _h3_section(apply, "Phase 9: Post Action")
+        phase9 = _h3_section(apply, "Phase 9: Summary")
         assert "apply-helper post-action" not in phase9
         assert "prompt apply-one-task" not in phase9
         _index(phase9, "next `$specs` item at Phase 2")
         assert "Phase 1 outer" not in apply
         assert "apply-subagent-handoff" not in one
 
-        # apply-one-step: differences table; HARD STOP; ignore outcome=
-        diffs = _h2_section(one, "Differences from `/spex apply`")
-        _index(diffs, "HARD STOP")
-        _index(diffs, "ignore `outcome=`")
-        _index(diffs, "Never return to Phase 3")
-        _index(diffs, "`$remaining` == 0")
-        _index(diffs, "Not supported")
         pre_one = _h2_section(one, "Preconditions")
-        _index(pre_one, "Differences table")
-        _index(pre_one, "apply-helper dirty --json")
+        _index(pre_one, "Phases 4–5 in-session")
+        _index(pre_one, "`--all` is unsupported")
         _index(pre_one, "apply-task-phases.md")
         _index(pre_one, "cli-contract.md")
         phase1_one = _h3_section(one, "Phase 1: Resolve Spec")
@@ -1057,14 +1045,17 @@ class TestApplyStepReviewSop:
         _index(phase1_one, "post-action")
         phase4 = _h3_section(one, "Phase 4: Execute Task")
         _index(phase4, "**Only** `$current_task_id`")
-        phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
+        phase8 = _h3_section(one, "Phase 8: Summary and Stop")
         _index(phase8, "HARD STOP")
         _index(phase8, "`$remaining` from Phase 7")
         assert "todo-helper" not in phase8
         assert "todo.json" not in phase8
         assert "null" not in phase8.lower()
         phase3_one = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
-        _index(phase3_one, "unreachable")
+        _index(phase3_one, "the spec can finish after selection")
+        _index(phase3_one, "todo is already complete")
+        _index(phase3_one, "this invocation ran neither a step nor finalization")
+        _index(phase3_one, "without running post-action")
         assert "Phase 8 interrupted" not in phase3_one
         assert "idempotent" not in phase3_one
 
@@ -1661,21 +1652,10 @@ class TestApplyOneStepCompletedSpecAndDedupe:
                 phase3, "prompt apply-one-task"
             )
 
-    def test_apply_one_step_differences_table_and_helper_remaining(self):
+    def test_apply_one_step_stops_after_reporting_remaining(self):
         one = _read(APPLY_ONE_STEP_MD)
-        diffs = _h2_section(one, "Differences from `/spex apply`")
-        for needle in (
-            "HARD STOP",
-            "ignore `outcome=`",
-            "Never return to Phase 3",
-            "`$remaining` == 0",
-            "Not supported",
-            "Sub-agent",
-            "In-session",
-        ):
-            _index(diffs, needle)
         phase8 = _h3_section(
-            one, "Phase 8: Summary and Conditional Post Action"
+            one, "Phase 8: Summary and Stop"
         )
         _index(phase8, "`$remaining` from Phase 7")
         assert "todo-helper show" not in phase8
@@ -1686,15 +1666,14 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         phase3 = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
         assert "Phase 8 interrupted" not in phase3
         assert "idempotent" not in phase3
-        stop = _h2_section(one, "STOP / Outputs")
-        assert "all_done" not in stop
-        _index(stop, "`$remaining` == 0")
+        _index(phase8, "`$remaining` == 0")
+        _index(phase8, "HARD STOP")
+        _index(phase8, "Never return to Phase 3")
 
     def test_apply_all_branch_base_note_and_list_once(self):
         apply = _read(APPLY_MD)
         control = _h2_section(apply, "Control flow")
-        _index(control, "`list` **once**")
-        _index(control, "meta.branch")
+        _index(control, "A STOP ends the entire invocation")
         phase1 = _h3_section(apply, "Phase 1: Resolve Spec")
         _index(phase1, "do **not** re-run `list`")
         _index(phase1, "meta.branch")
@@ -1775,15 +1754,16 @@ class TestApplyPrecheckSideEffectsAndAllDependency:
     """R4-F5 / R4-F7 / R4-F19 (P1-5 / P1-7 / P2-19): side effects + retry + []."""
 
     def test_phase2_side_effect_note_in_both_apply_commands(self):
+        phase2 = _h2_section(_read(APPLY_TASK_PHASES), "Phase 2: Validate Branch")
+        for needle in (
+            "Side effects", "spex/<name>", "meta.branch", "spex_branch",
+            "meta.json", "branch description", "pre-action hook",
+            "meta.use_git_worktree", "coding_path",
+        ):
+            _index(phase2, needle)
         for path in (APPLY_MD, APPLY_ONE_STEP_MD):
-            phase2 = _h3_section(_read(path), "Phase 2: Validate Branch")
-            _index(phase2, "Side effects")
-            _index(phase2, "spex/<name>")
-            _index(phase2, "meta.branch")
-            _index(phase2, "spex_branch")
-            _index(phase2, "meta.json")
-            _index(phase2, "branch description")
-            _index(phase2, "pre-action hook")
+            caller = _h3_section(_read(path), "Phase 2: Validate Branch")
+            _index(caller, "apply-task-phases.md")
 
     def test_apply_all_dependency_warning(self):
         phase1 = _h3_section(_read(APPLY_MD), "Phase 1: Resolve Spec")
@@ -2121,9 +2101,8 @@ class TestRound3RegressionGate:
         _index(apply, "meta.branch")
         _index(_h3_section(apply, "Phase 1: Resolve Spec"), "--must-done")
         one = _read(APPLY_ONE_STEP_MD)
-        _index(_h2_section(one, "Differences from `/spex apply`"), "HARD STOP")
         _index(
-            _h3_section(one, "Phase 8: Summary and Conditional Post Action"),
+            _h3_section(one, "Phase 8: Summary and Stop"),
             "`$remaining` from Phase 7",
         )
         loop = _read(APPLY_REVIEW_LOOP)

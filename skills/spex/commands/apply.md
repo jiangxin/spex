@@ -8,10 +8,6 @@ Apply a specification to implement code step by step.
 /spex apply [spec_name | --all]
 ```
 
-## Inputs
-
-- OPT: `$spec_name` or `--all`
-
 ## Preconditions
 
 - Load and follow `references/cli-contract.md` exactly
@@ -20,12 +16,8 @@ Apply a specification to implement code step by step.
   conditional skip-confirm on S1/S2/S3 — no always-wait after lock)
 - Do not rename `$user_prompt` / `$task_prompt` / `$spex_skill_dir`
   (never call the task prompt `$prompt`)
-- Bind `--all` from `$user_prompt` when present (Usage flag
-  anywhere). `$user_prompt` is already the redacted remainder after
-  the router strips the recognized command/alias token (see
-  SKILL.md Routing Discipline) — it is never the bare command word
-  `apply` / `run` / `do` / `go`. Without `--all`, Phase 1 follows
-  `resolve-spec-name.md`
+- Bind `--all` anywhere in the redacted router remainder `$user_prompt`
+  before resolving a spec name.
 - SCOPE: may edit project code/tests outside `$spex_root`. Do **not**
   stage/commit paths under `$spex_root/`. Phases 4–5 sub-agent may
   split the current todo under the shared split rules and persist
@@ -45,62 +37,15 @@ Apply a specification to implement code step by step.
 
 ## Control flow
 
-Abort all loops when Phase 6 or Phase 7 stops.
-`--all`: `list` **once** in Phase 1; iterate `$specs` only — never
-re-run `list` inside the loop. Next `$specs` item always resumes at
-Phase 2. Branch base is guaranteed by Phase 2 precheck
-(`meta.branch`); the loop must **not** switch branches by hand.
-
-```text
-Phase 1: resolve once (--all -> $specs list | single resolve)
-for each spec in $specs (or the one resolved spec):
-  Phase 2 validate + bind $spex_root / $spex_worktree
-  loop:                                                  # Phase 8 tasks
-    Phase 3 prompt / resume
-    IF all_done -> report completion and unknown finalization -> STOP
-    IF resume=review -> Phase 6
-    ELSE -> Phases 4–5 sub-agent -> handoff check
-            -> Phase 6 (committed) or Phase 7 (skip)
-    IF Phase 6 abnormal STOP -> end /spex apply (no 7/8/9, no next)
-    Phase 7 complete step and handle finalization
-    IF Phase 7 STOP -> end /spex apply
-    IF remaining > 0 -> next undone task (Phase 3)
-    ELSE -> Phase 9 summary -> break
--> next $specs item at Phase 2, or STOP
-```
-
-```mermaid
-flowchart TD
-  P1[Phase 1 resolve / --all] --> P2[Phase 2 validate]
-  P2 --> P3[Phase 3 prompt / resume]
-  P3 -->|all_done, finalization unknown| STOP
-  P3 -->|review| P6[Phase 6 review]
-  P3 -->|implement| SA[Phases 4-5 sub-agent]
-  SA --> HO[handoff checklist]
-  HO -->|committed| P6
-  HO -->|skip_commit| P7[Phase 7 complete]
-  HO -->|FAIL / unexpected| STOP[STOP]
-  P6 -->|abnormal STOP| STOP
-  P6 -->|OK| P7
-  P7 --> P8{more tasks?}
-  P8 -->|yes| P3
-  P7 -->|failure / duplicate| STOP
-  P8 -->|no, finalized| P9[Phase 9 summary]
-  P9 --> ALL{--all more?}
-  ALL -->|yes| P2
-  ALL -->|no| END[STOP]
-```
-
-Shared Phases 2–7 semantics: Load
-`references/apply-task-phases.md`. Apply-only Phases 4–5 handoff:
-Load `references/apply-subagent-handoff.md`. See Control flow above
-for outer loops; Phase bodies below do not restate the diagram.
+Run Phase 2 per spec and Phases 3–8 per task. Phase 8 loops to
+Phase 3 for unfinished work or advances to Phase 9 after confirmed
+finalization. A STOP ends the entire invocation, including `--all`.
 
 ## Execution
 
 ### Phase 1: Resolve Spec
 
-- IF `$spec_name` is `--all`:
+- IF the `--all` flag was bound:
   - CMD: `$spex_skill_dir/scripts/spex list --json --must-undone-or-locked`
   - Parse stdout as JSON array `$specs` of objects (`spec_name`,
     `spec_path`). A spec with an open todo transaction reaches the
@@ -152,13 +97,6 @@ for outer loops; Phase bodies below do not restate the diagram.
 ### Phase 2: Validate Branch
 
 - Load and follow `references/apply-task-phases.md` Phase 2 exactly
-- Side effects: creates or reuses `spex/<name>` (base: `meta.branch`),
-  writes `spex_branch` to `meta.json`, sets the git branch description,
-  and fires the `apply` pre-action hook. When `meta.use_git_worktree`
-  is true, precheck also creates/reuses a linked worktree and prints
-  JSON with `spex_worktree` / `coding_path` (bind `$spex_worktree`);
-  otherwise may switch the main checkout in place. Do **not** switch
-  the user's IDE root
 - Pass `$spex_root` and `$spex_worktree` to Phases 4–5 sub-agent
 - Read `$spec_path/todo.json` once before starting this spec's tasks.
   Record the list positions and titles of steps with a populated
@@ -218,7 +156,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 - If `$remaining` == 0 and Phase 7 confirmed finalization, go directly
   to Phase 9. Phase 7 already ran post-action.
 
-### Phase 9: Post Action
+### Phase 9: Summary
 
 - Summarize the current spec's delivered behavior, covering preserved work
   from earlier steps and changes completed in this run. Use the Phase 2
@@ -236,8 +174,7 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
   summary before advancing to the next spec.
 - IF `--all` mode -> continue to next `$specs` item at Phase 2, or
   **STOP** if none remain
-- ELSE -> **STOP.** Do NOT implement additional steps or modify
-  project files beyond what was already committed
+- ELSE -> **STOP**.
 
 ## Failure Handling
 
@@ -256,9 +193,3 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
   `apply-review-loop.md` (no 7/8/9 / next task / next `$specs`)
 - After a Git commit, follow Phase 5 persistence recovery on failure.
 - ON_FAIL Phase 7 todo transaction -> follow Phase 7 recovery and STOP
-
-## STOP / Outputs
-
-- Phases 1–9 including `--all` `$specs` loop (list once), Phase 8
-  next-task loop, Phase 9 summary
-- Abnormal Phase 6 STOP leaves step incomplete for resume

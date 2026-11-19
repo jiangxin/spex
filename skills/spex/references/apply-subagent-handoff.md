@@ -4,9 +4,9 @@ Load from `/spex apply` only (not `apply-one-step`). Covers Phase 3
 `resume_phase=implement` wrapping: launch a Phases 4–5 sub-agent,
 then validate the return in **main** before Phase 6 or Phase 7.
 
-Shared Phase 2–7 semantics live in `apply-task-phases.md`. This
-file owns the decision table and main-session checklist so
-`skip_commit` / `$did_commit` / `outcome=` cannot drift.
+Shared Phases 2–7 live in `apply-task-phases.md`. Use the
+[main-session checklist](#main-session-checklist-after-phases-45)
+to verify the reported outcome, persisted todo fields, and worktree state.
 
 ## Sub-agent launch (implement path)
 
@@ -58,22 +58,6 @@ Phase 4 intentional STOP (`false`+clean, `true`+dirty) is
 **STOP** — do **not** enter Phase 7. Do **not** retry
 intentional STOP as a success path.
 
-## Decision table (main session)
-
-After OK return (or on `resume_phase=review` without a
-sub-agent), main binds state from **todo + dirty CLI**, not
-sub-agent shell vars.
-
-| Input | Main action |
-|-------|-------------|
-| `$resume_phase=review` (durable non-empty `commit_title`, empty `completed_at`) | `$did_commit` ← `true` → Phase 6. Do NOT set `$commit_sha` from `HEAD` — Phase 6 **6-entry** resolves it |
-| `outcome=committed` and todo non-empty `commit_title`, empty `completed_at` | `$did_commit` ← `true`; `$commit_title` ← task's `commit_title` → Phase 6 |
-| `outcome=skip_commit`, empty `commit_title`/`completed_at`, main dirty=false | `$did_commit` ← `false` → Phase 7 |
-| `outcome=skip_commit` claimed but main dirty CLI `dirty=true` | unexpected handoff → **STOP** (no Phase 7) |
-| Intentional STOP / FAIL from Phase 4 | **STOP**; no Phase 7; do not mark complete |
-| Empty `commit_title` alone (no verified skip + clean dirty) | **not** skip OK → unexpected handoff → **STOP** |
-| Any other combination | unexpected handoff → **STOP** (no Phase 7) |
-
 ## Main-session checklist (after Phases 4–5)
 
 Numbered steps — follow in order; do not skip:
@@ -83,8 +67,8 @@ Numbered steps — follow in order; do not skip:
 2. IF non-empty `commit_title` AND empty `completed_at`
    AND (sub-agent reported `outcome=committed` OR this is the
    `resume_phase=review` path with no sub-agent) ->
-   `$did_commit` ← `true`; `$commit_title` ← task's
-   `commit_title` -> Phase 6. **Done.**
+   `$did_commit` ← `true`; `$commit_title` ← task's `commit_title`
+   -> Phase 6. Let 6-entry resolve the review SHA.
    (Matching durable fields without `outcome=committed` and
    without the review path fall through — step 3 will not match
    either → step 4 unexpected handoff STOP.)

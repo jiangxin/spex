@@ -76,11 +76,9 @@ def test_route_table_covers_severity_and_resume():
     ]
     for needle in required:
         assert needle in overview, f"missing route row: {needle}"
-    # Hard-cap must not re-enter delta via mermaid fix→routeD→delta.
-    assert "fixCap" in overview or "hard-cap" in overview.lower()
-    assert "round ge max| fixCap" in overview or (
-        "round ge max| fixCap" in overview.replace(" ", "")
-    ) or "fixCap --> phase7" in overview
+    cap = next(line for line in overview.splitlines() if "round = max" in line)
+    assert "**6c** (hard-cap batch) → Phase 7" in cap
+    assert "no fourth full review or further delta" in cap
 
 
 def test_minor_only_cannot_enter_another_review_round():
