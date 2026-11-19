@@ -724,10 +724,12 @@ def _build_parser():
     )
     anchor = p_insert.add_mutually_exclusive_group(required=True)
     anchor.add_argument(
-        "--before", type=_parse_step_id, help="Position of the step to insert before",
+        "--before", type=_parse_step_selector,
+        help=f"Insert before this step. {_STEP_SELECTOR_HELP}",
     )
     anchor.add_argument(
-        "--after", type=_parse_step_id, help="Position of the step to insert after",
+        "--after", type=_parse_step_selector,
+        help=f"Insert after this step. {_STEP_SELECTOR_HELP}",
     )
     _add_new_entry_options(p_insert)
 
@@ -777,12 +779,12 @@ def _build_parser():
         help="Swap two steps while preserving stored IDs",
     )
     p_move.add_argument(
-        "--from", dest="from_id", required=True, type=_parse_step_id,
-        help="Position of the first step",
+        "--from", dest="from_id", required=True, type=_parse_step_selector,
+        help=f"First step to swap. {_STEP_SELECTOR_HELP}",
     )
     p_move.add_argument(
-        "--to", dest="to_id", required=True, type=_parse_step_id,
-        help="Position of the second step",
+        "--to", dest="to_id", required=True, type=_parse_step_selector,
+        help=f"Second step to swap. {_STEP_SELECTOR_HELP}",
     )
 
     # remove

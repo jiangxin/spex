@@ -789,7 +789,13 @@ class TestAppendCompletedAtNow:
 class TestInsert:
     @pytest.mark.parametrize(
         ("anchor", "position", "index"),
-        [("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3)],
+        [
+            ("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3),
+            ("--before", "2", 1), ("--after", "2", 2),
+            ("--before", "Step-2/5", 1), ("--after", "Step-2/5", 2),
+            ("--before", "STEP 2/ignored", 1), ("--after", "STEP 2/ignored", 2),
+            ("--before", "STEP 2/5", 1), ("--after", "STEP 2/5", 2),
+        ],
     )
     def test_insert_by_spec_name(self, todo_file, monkeypatch, anchor, position, index):
         monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
@@ -813,6 +819,8 @@ class TestInsert:
             (["--before", "1", "--after", "2"], SAMPLE_DATA, 2),
             (["--before", "0"], SAMPLE_DATA, 2),
             (["--after", "4"], SAMPLE_DATA, 1),
+            (["--before", "Step-4/5"], SAMPLE_DATA, 1),
+            (["--after", "STEP 0/5"], SAMPLE_DATA, 2),
             (["--before", "1"], [], 1),
         ],
     )
@@ -865,6 +873,16 @@ class TestInsert:
 # move
 # -----------------------------------------------------------------------
 class TestMove:
+    @pytest.mark.parametrize("selector", ["2", "Step-2/5", "STEP 2/5", "STEP 2/ignored"])
+    @pytest.mark.parametrize("flag", ["--from", "--to"])
+    def test_swap_by_position(self, todo_file, selector, flag):
+        _write(todo_file, SAMPLE_DATA)
+        other_flag = "--to" if flag == "--from" else "--from"
+        todo_helper.main([
+            "move", "--todo-file", str(todo_file), flag, selector, other_flag, "1",
+        ])
+        assert _read(todo_file) == [SAMPLE_DATA[1], SAMPLE_DATA[0], SAMPLE_DATA[2]]
+
     def test_swap_by_spec_name_preserves_full_entries(self, todo_file, monkeypatch, capsys):
         monkeypatch.setattr(
             todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
@@ -882,7 +900,10 @@ class TestMove:
 
     @pytest.mark.parametrize(
         ("source", "target", "exit_code"),
-        [("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2)],
+        [
+            ("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2),
+            ("Step-4/5", "1", 1), ("1", "STEP 0/5", 2),
+        ],
     )
     def test_invalid_or_same_position_keeps_file(self, todo_file, source, target, exit_code):
         todo_file.write_text(json.dumps(SAMPLE_DATA), encoding="utf-8")
