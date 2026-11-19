@@ -43,11 +43,8 @@ keeps its existing text format.
 
 ## Read-only plan review prompt
 
-`spex prompt review-plan --stdin -- "$spec_path"` takes the exact
-absolute path returned by `list --read-only --json`. With `--stdin`,
-send the redacted review focus as plain text. Run from the invoking
-project to resolve its effective template override. On success,
-stdout contains the rendered prompt. On failure, stderr contains
-the diagnostic and stdout is empty. Blank rendering is a failure
-that identifies the template path. The helper performs no writes
-and accepts no output-file option.
+Run from the invoking project to use its template override. Pass the
+exact absolute `spec_path` from `list --read-only --json` and send focus
+as plain text with `--stdin`. The read-only helper outputs the prompt
+on stdout and accepts no output-file option. On failure it reports
+stderr with empty stdout. A blank render names the template in stderr.

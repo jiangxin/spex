@@ -29,20 +29,26 @@ def test_review_plan_routes_explicit_and_free_form_requests():
 def test_review_plan_requires_a_read_only_probe_and_manual_handoff():
     sop = (SPEX_DIR / "commands" / "review-plan.md").read_text(encoding="utf-8")
     assert 'list --read-only --json -- "<probe>"' in sop
-    assert "never falls\n  back to an unfiltered list" in sop
-    assert "choose from the numbered matches" in sop
+    assert sop.count("scripts/spex list ") == 1
+    assert "Run the lookup once. On `[]`, report no match and stop." in sop
+    assert "resolve-spec-list.md#candidate-selection" in sop
     assert 'prompt review-plan --stdin -- "$spec_path" <<\'EOF\'' in sop
-    assert "from the exact absolute `$spec_path`" in sop
-    assert "Run from the invoking project" in sop
-    assert "Use a quoted heredoc delimiter that does not occur" in sop
-    assert "On a nonzero exit, report stderr and stop before reviewing" in sop
-    assert "After successful rendering, read `spec.md` and `todo.json` from" in sop
-    assert "the exact selected `$spec_path` as read-only review evidence" in sop
-    assert "even when the template omits that content" in sop
-    assert "Use the rendered prompt from stdout" in sop
+    assert "cli-contract.md#read-only-plan-review-prompt" in sop
+    contract = (SPEX_DIR / "references" / "cli-contract.md").read_text(encoding="utf-8")
+    review_contract = contract.split("## Read-only plan review prompt", 1)[1]
+    assert "Run from the invoking project" in review_contract
+    assert 'exact absolute `spec_path` from `list --read-only --json`' in review_contract
+    assert "stderr with empty stdout" in review_contract
+    assert "Pass redacted `$review_focus` as the heredoc body, empty when absent." in sop
+    assert "Use a quoted delimiter that does not appear alone on a line in the focus." in sop
+    assert "After exit 0, read `spec.md` and `todo.json` directly" in sop
+    assert "`$spec_path` regardless of template content." in sop
+    assert "stop if either file is unreadable, the task list is malformed" in sop
+    assert "`todo.json.lock` exists." in sop
+    assert "Use the rendered prompt as guidance" in sop
     assert "unfinished steps with a recorded `commit_title`" in sop
     assert "`/spex modify <spec-name> <suggested changes>`" in sop
-    assert "run it manually" in sop
+    assert "for the user to run manually" in sop
 
 
 @pytest.mark.slow
