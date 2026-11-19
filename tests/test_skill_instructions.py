@@ -634,26 +634,17 @@ class TestModifyPlanOnlySop:
         # Conditional skip-confirm lives in the shared reference
         shared = _read(RESOLVE_SPEC_NAME)
         _index(shared, "spec=<X> / request=<Y>")
-        _index(shared, "Skip wait")
-        _index(shared, "proceed")
-        _index(shared, "exactly one")
-        _index(shared, "$first_word")
-        _index(shared, "adopt non-empty `$request`")
-        _index(shared, "pick = confirm")
-        _index(shared, "Wait/ask")
+        _index(shared, "Proceed")
+        _index(shared, "a multi-hit choice is pending")
 
     def test_resolve_spec_list_documents_substring_matching(self):
         """R3-F7 / P1-7: list patterns are substring, not exact."""
-        notes = _h2_section(_read(RESOLVE_SPEC_LIST), "Notes")
-        _index(notes, "**substring**")
-        _index(notes, "exact match")
+        notes = _h2_section(_read(RESOLVE_SPEC_LIST), "Candidate selection")
+        _index(notes, "match substrings")
+        _index(notes, "exact-name semantics")
         _index(notes, "compare `spec_name`")
         _index(notes, "regex")
         _index(notes, "glob")
-        # R4-F9: shared name resolver repeats the substring warning
-        name_ref = _read(RESOLVE_SPEC_NAME)
-        _index(name_ref, "**substrings**")
-        _index(name_ref, "exact match")
 
     def test_phase2_empty_request_still_asks_after_lock(self):
         """Empty $request after Phase 1 still asks; skip-confirm adopts non-empty."""
@@ -1393,12 +1384,13 @@ class TestSharedSopReferences:
         assert RESOLVE_SPEC_LIST.is_file()
         text = _read(RESOLVE_SPEC_LIST)
         _index(text, "list --json")
-        _index(text, "`[]` / zero elements")
-        _index(text, "not** a script error")
-        _index(text, "Single element")
-        _index(text, "Multiple")
-        _index(text, "True error")
-        _index(text, "**STOP**")
+        parse = _h2_section(text, "Parse")
+        _index(parse, "cli-contract.md")
+        _index(parse, "For `[]`, run the caller's")
+        _index(parse, "report no match and stop")
+        selection = _h2_section(text, "Candidate selection")
+        _index(selection, "Use the sole entry")
+        _index(selection, "wait for a pick")
 
     def test_resolve_spec_name_shared_across_commands(self):
         """R4-F9 / P1-9: one name-resolution rule for four commands."""
@@ -1406,32 +1398,25 @@ class TestSharedSopReferences:
         text = _read(RESOLVE_SPEC_NAME)
         assert len(text.splitlines()) <= 50
         _index(text, "$first_word")
-        _index(text, "unconditionally")
+        _index(text, "first whitespace-separated word")
         _index(text, "list --json")
         _index(text, "empty name")
         _index(text, "spec=<X> / request=<Y>")
-        _index(text, "**substrings**")
-        _index(text, "resolve-spec-list.md")
+        _index(text, "resolve-spec-list.md#parse")
         # Skip-vs-confirm contract (no unconditional always-wait after lock)
         assert "wait for confirmation" not in text
-        _index(text, "Skip wait")
-        _index(text, "proceed")
-        _index(text, "exactly one list hit")
-        _index(text, "empty-name probe exactly one hit")
-        _index(text, "pick = confirm")
-        _index(text, "no second confirm")
-        _index(text, "adopt non-empty `$request`")
-        _index(text, "Wait/ask only while multi-hit")
+        _index(text, "unique named hit (S1)")
+        _index(text, "unique empty-name hit (S2)")
+        _index(text, "numbered user pick (S3)")
+        _index(text, "Adopt a non-empty `$request`")
+        _index(text, "a multi-hit choice is pending")
         # Filtered [] must keep first word as recovery candidate so
         # apply/merge named completed/unfinished recovery stays reachable
         _index(text, "recovery candidate")
         _index(text, "--must-undone")
         _index(text, "--must-done")
-        _index(text, "**do not** clear")
-        _index(text, "completed-spec")
-        _index(text, "unfinished-spec")
         needle = "Load and follow `references/resolve-spec-name.md`"
-        for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD, MERGE_MD):
+        for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD):
             body = _read(path)
             _index(body, needle)
             pre = _h2_section(body, "Preconditions") if path != MODIFY_MD else body
@@ -1447,7 +1432,7 @@ class TestSharedSopReferences:
         resolve = _read(RESOLVE_SPEC_NAME)
         # Shared algorithm: preserve recovery candidate before empty-name re-list
         candidate = _index(resolve, "recovery candidate")
-        keep = _index(resolve, "**do not** clear")
+        keep = _index(resolve, "return `[]` to the caller")
         empty_relist = _index(resolve, "with an empty name")
         assert candidate < empty_relist, (
             "recovery candidate must be set before empty-name re-list"
@@ -1455,8 +1440,6 @@ class TestSharedSopReferences:
         assert keep < empty_relist, (
             "filtered [] must not clear the name before empty-name re-list"
         )
-        _index(resolve, "never wipe a filtered recovery candidate")
-        _index(resolve, "completed/unfinished recovery")
 
         # apply / apply-one-step: candidate remains for --must-done re-check
         for path in (APPLY_MD, APPLY_ONE_STEP_MD):
@@ -1468,16 +1451,6 @@ class TestSharedSopReferences:
                 f"{path.name}: recovery candidate must stay available "
                 "for --must-done before empty-name STOP"
             )
-
-        # merge: candidate remains for plain list re-check
-        merge_p1 = _h3_section(_read(MERGE_MD), "Phase 1: Resolve Spec")
-        cand = _index(merge_p1, "recovery candidate")
-        plain = _index(merge_p1, 'list --json "$spec_name"')
-        empty_stop = _index(merge_p1, "empty / missing `$spec_name`")
-        assert cand < plain < empty_stop, (
-            "merge: recovery candidate must stay available for plain "
-            "list re-check before empty-name STOP"
-        )
 
     def test_apply_task_phases_exists_with_core_anchors(self):
         assert APPLY_TASK_PHASES.is_file()
@@ -1834,6 +1807,8 @@ class TestCliContractReference:
         _index(text, "stderr")
         _index(text, "Route by exit code and")
         _index(text, "[]")
+        _index(text, "Expect an array")
+        _index(text, "resolve-spec-list.md#list-completion-lookup")
         _index(text, '"$spec_name"')
         _index(text, "json spex-result")
         _index(text, "last")
@@ -1855,48 +1830,53 @@ class TestCliContractReference:
         assert "```json spex-result" in shared
         assert "```json\n" not in shared.replace("```json spex-result", "")
 
-    def test_merge_documents_nonzero_exit_and_no_json_flag(self):
+    def test_merge_checks_exit_before_parsing_json(self):
         text = _read(MERGE_MD)
         assert "### Phase 2: Validate" not in text
         assert "Validate (optional)" not in text
         phase2 = _h3_section(text, "Phase 2: Submit")
-        _index(phase2, "non-zero")
-        _index(phase2, "not JSON")
-        _index(phase2, "**no** `--json`")
-        _index(phase2, "always JSON")
-        fail = _h2_section(text, "Failure Handling")
-        _index(fail, "trust the script")
-        _index(fail, "spex_branch")
-        _index(fail, "stderr")
+        assert _index(phase2, "On non-zero exit, report stderr and stop") < _index(
+            phase2, "a JSON object"
+        )
+        _index(phase2, "non-empty `errors` and stop")
 
 
 class TestMergeArchiveInitSop:
     """§6–8 polish: Inputs vs Phase 1, dry-run STOP, slim archive,
     init edges, Failure Handling / `$user_prompt` binding."""
 
-    def test_merge_inputs_flags_only_selection_in_phase1(self):
+    def test_completion_lookup_contract_stops_on_invalid_responses(self):
+        lookup = _h2_section(_read(RESOLVE_SPEC_LIST), "List completion lookup")
+        _index(lookup, "require a JSON object with a `status` from the table")
+        _index(lookup, "Report a protocol error and stop")
+        _index(lookup, "wrong types, unknown status, or invalid entry fields or counts")
+        _index(lookup, "`completed` | Non-empty array")
+        _index(lookup, "`unfinished` | Non-empty array")
+        _index(lookup, "`no_match` | Empty array")
+
+    def test_merge_resolves_once_before_submission(self):
         text = _read(MERGE_MD)
-        inputs = _h2_section(text, "Inputs")
-        _index(inputs, "`$spec_name`")
-        _index(inputs, "--dry-run")
-        assert "CLI searches" not in inputs
-        assert "auto-select" not in inputs
         phase1 = _h3_section(text, "Phase 1: Resolve Spec")
         _index(
             phase1,
-            "Load and follow `references/resolve-spec-name.md`",
+            "resolve-spec-name.md#probe-and-request",
         )
         _index(
             phase1,
-            "Load and follow `references/resolve-spec-list.md`",
+            "resolve-spec-list.md#candidate-selection",
         )
-        _index(phase1, "--must-done")
-        _index(phase1, "Unfinished-spec recovery")
-        _index(phase1, "recovery candidate")
-        _index(phase1, 'list --json "$spec_name"')
-        _index(phase1, "not finished")
-        _index(phase1, "x/y")
+        assert phase1.count("scripts/spex list ") == 1
+        _index(phase1, "list --json --must-done")
+        _index(phase1, '--include-unfinished-on-miss -- "$first_word"')
+        assert _index(phase1, "Report CLI or protocol errors and stop") < _index(
+            phase1, "`completed`: Pass only `specs`"
+        )
+        _index(phase1, "resolve-spec-name.md#after-selection")
+        _index(phase1, "`done/total`")
         _index(phase1, "/spex apply")
+        for status in ("unfinished", "no_match"):
+            branch = phase1.split(f"- `{status}`:", 1)[1].split("\n- ", 1)[0]
+            assert "and stop." in branch
         # Contiguous phases after dropping optional Validate
         assert "### Phase 2: Validate" not in text
         assert "Validate (optional)" not in text
@@ -1912,14 +1892,10 @@ class TestMergeArchiveInitSop:
         _index(pre, "`$user_prompt`")
         _index(pre, "untrusted")
         _index(pre, "anywhere")
-        _index(pre, "--dry-run")
-        _index(pre, "**STOP**")
-        fail = _h2_section(text, "Failure Handling")
-        _index(fail, "ON_FAIL")
-        _index(fail, "dry-run")
-        _index(fail, "trust the script")
-        _index(fail, "spex_branch")
-        assert "optional check" not in fail
+        submit = _h3_section(text, "Phase 2: Submit")
+        _index(submit, "--dry-run")
+        _index(submit, "Stop after the preview")
+        _index(submit, "A real submit requires a new invocation")
 
     def test_archive_preconditions_slim_cli_only(self):
         text = _read(ARCHIVE_MD)

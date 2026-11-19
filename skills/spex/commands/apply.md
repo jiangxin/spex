@@ -75,7 +75,7 @@ finalization. A STOP ends the entire invocation, including `--all`.
     Load and follow `references/resolve-spec-list.md`. ON_FAIL
     (true script error) -> STOP
   - **Empty `[]` handling:** IF resolve yields `[]` (including after
-    resolve-spec-name step 3), or a filtered first-word probe left a
+    an empty probe), or a filtered first-word probe left a
     non-empty `$spec_name` recovery candidate with no undone match:
     - IF `$spec_name` is non-empty → **Completed-spec recovery**,
       re-check:

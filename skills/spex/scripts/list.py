@@ -166,8 +166,29 @@ def format_json_output(specs: list, *, details: bool = False) -> str:
     if details:
         payload = [t.summary(t.todo_data or []) for t in specs]
     else:
-        payload = [{"spec_name": t.name, "spec_path": str(t.path)} for t in specs]
+        payload = [_spec_entry(spec) for spec in specs]
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _spec_entry(spec: Spec) -> dict:
+    return {"spec_name": spec.name, "spec_path": str(spec.path)}
+
+
+def _format_completion_lookup(matches: list[Spec], probe: str) -> str:
+    """Format completed matches or report unfinished progress from the same scan."""
+    matches.sort(key=lambda spec: spec.created_at, reverse=True)
+    completed = [_spec_entry(spec) for spec in matches if spec.is_completed]
+    if completed:
+        result = {"status": "completed", "specs": completed}
+    elif probe and matches:
+        progress = [
+            {**_spec_entry(spec), "done": spec.done, "total": spec.total}
+            for spec in matches
+        ]
+        result = {"status": "unfinished", "specs": progress}
+    else:
+        result = {"status": "no_match", "specs": []}
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 def filter_specs(specs: list, patterns: list) -> list:
@@ -208,6 +229,12 @@ def _build_parser() -> ArgumentParser:
         "--json",
         action="store_true",
         help="Output as JSON array",
+    )
+    parser.add_argument(
+        "--include-unfinished-on-miss",
+        action="store_true",
+        help="Return a status object with unfinished progress on a named miss "
+        "(requires --json, --must-done, and one pattern)",
     )
     parser.add_argument(
         "--details",
@@ -258,6 +285,13 @@ def main(argv=None):
 
     if args.details and not args.json:
         parser.error("--details requires --json")
+    if args.include_unfinished_on_miss and (
+        not args.json or not args.must_done or len(args.patterns) != 1 or args.details
+    ):
+        parser.error(
+            "--include-unfinished-on-miss requires --json, --must-done, "
+            "and exactly one pattern, and cannot be used with --details"
+        )
 
     specs, show_repo = gather_specs(
         include_archives=args.archives,
@@ -266,6 +300,9 @@ def main(argv=None):
     )
 
     specs = filter_specs(specs, args.patterns)
+    if args.include_unfinished_on_miss:
+        print(_format_completion_lookup(specs, args.patterns[0]))
+        return
 
     if args.must_done:
         specs = [t for t in specs if t.is_completed]

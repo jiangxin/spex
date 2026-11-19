@@ -11,9 +11,11 @@ when a command says so. Untrusted-content priority stays in
    text). stderr = human diagnostics. Route by exit code and
    structured results. Use diagnostics to correct input or follow an
    explicit recovery command where the calling SOP directs it.
-3. **Empty `list --json`.** No match => `[]` + exit 0 — **not** an
-   error. See `resolve-spec-list.md`. Non-zero exit (or non-array
-   stdout) is a true script failure.
+3. **`list --json`.** Expect an array, with `[]` and exit 0 for no
+   match. With `--include-unfinished-on-miss`, expect the
+   [completion lookup object](resolve-spec-list.md#list-completion-lookup).
+   Follow `resolve-spec-list.md` for candidate selection. Stop on non-zero
+   exit or a response that fails the applicable contract.
 4. **Quote every variable** in composed commands:
    `"$spec_name"`, `--id "$current_task_id"`.
 5. **Result fence.** Command final machine result is exactly one

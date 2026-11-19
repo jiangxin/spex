@@ -1249,6 +1249,68 @@ class TestDoneUndoneFilter:
         assert "done-topic" in names
         assert "undone-topic" not in names
 
+    @pytest.mark.parametrize("pattern", ["topic", "*topic", "^.*topic$", ""])
+    def test_completion_lookup_prefers_completed_in_list_order(
+        self, tmp_path, monkeypatch, capsys, pattern,
+    ):
+        self._setup(tmp_path, monkeypatch)
+        for name, project, date in [
+            ("new-topic", "project-a", "2026-05-21"),
+            ("foreign-topic", "project-b", "2026-05-22"),
+        ]:
+            spec = tmp_path / "specs" / name
+            _setup_topic(spec, str(tmp_path / project))
+            meta_path = spec / "meta.json"
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta["created_at"] = date
+            meta_path.write_text(json.dumps(meta), encoding="utf-8")
+            _make_todo(spec, [_task("1")])
+        args = ["--json", "--must-done"]
+        main([*args, "--", pattern])
+        ordinary = json.loads(capsys.readouterr().out)
+        assert [spec["spec_name"] for spec in ordinary] == ["new-topic", "done-topic"]
+
+        main([*args, "--include-unfinished-on-miss", "--", pattern])
+
+        assert json.loads(capsys.readouterr().out) == {
+            "status": "completed", "specs": ordinary,
+        }
+
+    @pytest.mark.parametrize("pattern", ["undone", "missing", ""])
+    def test_completion_lookup_on_miss(self, tmp_path, monkeypatch, capsys, pattern):
+        self._setup(tmp_path, monkeypatch)
+        specs = tmp_path / "specs"
+        _make_todo(specs / "done-topic", [])
+
+        main(["--json", "--must-done", "--include-unfinished-on-miss", "--", pattern])
+
+        expected = {"status": "no_match", "specs": []}
+        if pattern == "undone":
+            expected = {
+                "status": "unfinished",
+                "specs": [{
+                    "spec_name": "undone-topic",
+                    "spec_path": str(specs / "undone-topic"),
+                    "done": 1,
+                    "total": 2,
+                }],
+            }
+        assert json.loads(capsys.readouterr().out) == expected
+
+    @pytest.mark.parametrize("args", [
+        ["--must-done", "topic"],
+        ["--json", "topic"],
+        ["--json", "--must-done"],
+        ["--json", "--must-done", "a", "b"],
+        ["--json", "--must-done", "--details", "topic"],
+    ])
+    def test_completion_lookup_rejects_invalid_options(self, capsys, args):
+        with pytest.raises(SystemExit) as exc:
+            main(["--include-unfinished-on-miss", *args])
+
+        assert exc.value.code == 2
+        assert "--include-unfinished-on-miss requires" in capsys.readouterr().err
+
     def test_must_undone_or_locked_retains_pending_local_specs(
         self, tmp_path, monkeypatch, capsys,
     ):
