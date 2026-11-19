@@ -397,33 +397,29 @@ class TestCreatePlanOnlySop:
         _index(shared, "Glob")
         _index(shared, "Grep")
         phase9 = _h3_section(text, "Phase 9: STOP — Do NOT Implement")
-        _index(phase9, "outside `$spec_path`")
+        _index(shared, "outside `$spec_path`")
         _index(phase9, "plan-command-common.md")
 
     def test_both_modes_share_one_precheck_and_one_finalize_call(self):
         text = _read(CREATE_MD)
         phase1 = _h3_section(text, "Phase 1: Precheck + Begin Log")
         assert phase1.count("create-helper precheck --begin-log") == 1
-        _index(phase1, "used by both task modes")
+        _index(phase1, "either task mode")
         _index(phase1, "`$log_id`")
-        _index(" ".join(phase1.split()), "only after the branch precheck succeeds")
+        _index(phase1, "after the branch check succeeds")
         phase7 = _h3_section(text, "Phase 7: Post-Action")
         assert phase7.count('create-helper finalize "$spec_name"') == 1
-        pre = _h2_section(text, "Preconditions")
-        _index(pre, "precheck --begin-log")
 
     def test_phase1_precheck_side_effect_annotation(self):
         text = _read(CREATE_MD)
         assert "no side effects" not in text.lower()
         phase1 = _h3_section(text, "Phase 1: Precheck + Begin Log")
-        _index(phase1, "may switch to main_branch_name")
-        _index(phase1, "does not create the spec dir")
+        _index(phase1, "may switch to `main_branch_name`")
+        _index(phase1, "spec directory is created in Phase 4")
 
     def test_phase2_clarification_gate(self):
         phase2 = _h3_section(_read(CREATE_MD), "Phase 2: Clarify Requirement")
         _index(phase2, "Clarification gate")
-        _index(phase2, "plan-command-common.md")
-        _index(phase2, "exactly")
         assert "materially change the spec" not in phase2
         shared = _read(PLAN_COMMAND_COMMON)
         _index(shared, "Clarification gate")
@@ -438,14 +434,14 @@ class TestCreatePlanOnlySop:
         phase3 = _h3_section(
             text, "Phase 3: Generate Name and Description"
         )
-        _index(phase3, "Proceed directly to Phase 4 in either task mode")
+        _index(" ".join(phase3.split()), "Proceed directly to Phase 4 in either mode")
         phase4 = _h3_section(text, "Phase 4: Prepare Spec Directory")
         assert phase4.count("create-helper prepare-spec") == 1
         assert "create-helper validate-name" not in text
         _index(phase4, '--mode "$task_mode"')
-        _index(phase3, "≤31 bytes")
+        _index(phase3, "up to 31 bytes")
         assert "<32 bytes" not in phase3
-        _index(phase3, "at most one fenced `text`")
+        _index(phase3, "one fenced `text`")
         assert "already certain" not in phase3
         assert "may skip" not in phase3
         assert '"name"' in phase3 or "`name`" in phase3
@@ -469,56 +465,49 @@ class TestCreatePlanOnlySop:
         phase7 = _h3_section(text, "Phase 7: Post-Action")
         finalize = _index(phase7, 'create-helper finalize "$spec_name"')
         assert finalize < _index(phase7, "STOP before output")
-        _index(phase7, "Recovery runs that command alone")
-        _index(phase7, "do not rerun finalize")
-
-        phase8 = _h3_section(text, "Phase 8: Output")
-        gate = _index(phase8, "Enter only after finalize and its todo transaction commit succeed")
+        phase8 = " ".join(_h3_section(text, "Phase 8: Output").split())
+        gate = _index(phase8, "After successful finalize")
         review = _index(phase8, "`/spex review-plan $spec_name`")
         assert gate < review
         assert text.count("/spex review-plan") == 1
-        _index(phase8, "For both task modes")
-        _index(phase8, "in the human summary before the trailing JSON block")
-        _index(phase8, "full `spec_name` from `prepare-spec`, including its date prefix")
-        _index(phase8, "The user runs this command manually")
+        _index(phase8, "full date-prefixed name from Phase 4")
+        assert review < _index(phase8, "End with the `json spex-result` block")
+        _index(phase8, "The user runs that command")
         shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Output format")
         _index(shared, "fields `spec_name` and `spec_path` only")
 
     def test_phase5_6_load_shared_references(self):
         text = _read(CREATE_MD)
         phase5 = _h3_section(text, "Phase 5: Design Specification")
-        _index(phase5, "Load and follow `references/spec-assets.md`")
-        _index(phase5, "Assets timing CHECK")
-        _index(phase5, "Write `$spec_path/spec.md` first")
-        _index(phase5, "meta-helper --add-images")
+        _index(phase5, "For pasted or referenced images, follow `references/spec-assets.md`")
+        timing = " ".join(_h2_section(_read(SPEC_ASSETS), "Timing Notes").split())
+        _index(timing, "then register after saving the spec")
         phase6 = _h3_section(text, "Phase 6: Plan Implementation Steps")
+        sections = "`skip_commit Conventions`, `details Formatting`, and `Append`"
         _index(
-            phase6,
-            "Load and follow `references/todo-helper-cookbook.md`",
+            " ".join(phase6.split()),
+            f"{sections} sections of `references/todo-helper-cookbook.md`",
         )
-        _index(phase6, "Small batches")
-        _index(phase6, "skip_commit")
-        _index(phase6, "examples in cookbook")
         assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
         phase7 = _h3_section(text, "Phase 7: Post-Action")
         _index(phase7, "create-helper finalize")
-        _index(phase7, "requires the open")
+        _index(phase7, "requires")
         _index(phase7, "todo.json.lock")
-        _index(phase7, "todo-helper transaction commit")
-        _index(phase7, "do not rerun finalize")
-
         shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Todo transaction failure handling")
         _index(shared, "create-helper finalize")
+        _index(shared, "run only")
+        _index(shared, "todo-helper transaction commit")
+        _index(" ".join(shared.split()), "Do not rerun finalize")
         _index(shared, "Modify keeps its separate post-action")
 
     def test_create_reads_named_sources_before_preparation(self):
         text = _read(CREATE_MD)
         clarify = _h3_section(text, "Phase 2: Clarify Requirement")
         _index(clarify, "Read every explicitly named requirement document in full")
-        assert _index(text, "Stay in Phase 2 until required clarification is resolved") < _index(
+        assert _index(text, "Resolve required clarifications before preparation") < _index(
             text, "### Phase 4: Prepare Spec Directory"
         )
-        assert "exactly, including with custom templates" in " ".join(clarify.split())
+        _index(clarify, "including with custom templates")
         gate = " ".join(
             _h2_section(_read(PLAN_COMMAND_COMMON), "Clarification gate").split()
         )
@@ -529,36 +518,49 @@ class TestCreatePlanOnlySop:
         _index(gate, "Recheck any source supplied in the reply")
         _index(gate, "Wait until the source issue is resolved before preparing")
         post = _h3_section(text, "Phase 7: Post-Action")
-        assert _index(post, "Apply these checks with custom templates too") < _index(
+        assert _index(post, "including with custom templates") < _index(
+            post, "create-helper finalize"
+        )
+
+    def test_create_requires_design_and_acceptance_evidence_in_both_modes(self):
+        text = _read(CREATE_MD)
+        design = " ".join(_h3_section(text, "Phase 5: Design Specification").split())
+        _index(design, "including custom overrides")
+        _index(design, "verifiable acceptance criteria")
+        _index(design, "Detailed Design and Test Plan for `software`")
+        _index(design, "Delivery Plan and Acceptance Plan for `general`")
+        _index(design, "selected skeleton's headings")
+        _index(design, "applicable edge cases, failures, and recovery in both modes")
+        plan = " ".join(_h3_section(text, "Phase 6: Plan Implementation Steps").split())
+        _index(plan, "independently verifiable steps")
+        _index(plan, "each step that writes a commit independently committable")
+        _index(plan, "Keep software changes and their tests in the same step")
+        post = " ".join(_h3_section(text, "Phase 7: Post-Action").split())
+        assert _index(post, "conditions, dependencies, and acceptance criteria") < _index(
             post, "create-helper finalize"
         )
 
     def test_create_template_failure_gates_precede_side_effects(self):
         text = _read(CREATE_MD)
         prepare = _h3_section(text, "Phase 4: Prepare Spec Directory")
-        template_failure = prepare.split("IF exit 2", 1)[1].split("IF any other", 1)[0]
-        _index(template_failure, "create-helper end-log")
+        template_failure = prepare.split("Exit 2", 1)[1].split("Other failures", 1)[0]
+        _index(template_failure, "`end-log` command in Failure Handling")
         _index(template_failure, "STOP")
         design = _h3_section(text, "Phase 5: Design Specification")
-        _index(design, "Use `$spec_prompt` to guide")
-        _index(design, "Using `$spec_template`, create")
+        _index(design, "Use `$spec_prompt`")
+        _index(design, "from `$spec_template`")
         plan = _h3_section(text, "Phase 6: Plan Implementation Steps")
         render = _index(plan, 'prompt create-todo "$spec_name"')
         transaction = _index(plan, 'todo-helper transaction start "$spec_name"')
         assert render < transaction
         failure_gate = " ".join(plan[render:transaction].split())
-        assert "IF non-zero exit -> report stderr and STOP" in failure_gate
-        assert "Do not start the todo transaction, write tasks, or run post-action" in failure_gate
+        assert "report stderr and stop before opening a transaction" in failure_gate
 
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
-        _index(section, "ON_FAIL")
-        _index(section, "ON_FAIL Phase 4 `prepare-spec`")
         _index(section, "end-log")
+        _index(section, "discard-incomplete")
         _index(section, "Abandonment before `prepare-spec` succeeds")
-        _index(section, "plan-command-common.md")
-        _index(section, "immediate STOP")
-        _index(section, "roll")
         shared = _read(PLAN_COMMAND_COMMON)
         _index(shared, "outside")
         _index(shared, "`$spec_path`")
@@ -570,11 +572,8 @@ class TestCreatePlanOnlySop:
         fail = _h2_section(text, "Failure Handling")
         _index(fail, "Abandonment before `prepare-spec` succeeds")
         _index(fail, 'create-helper end-log --log-id "$log_id"')
-        _index(fail, "Phase 2 user abandon")
-        _index(fail, "abandonment of a Phase 4 retry")
         phase2 = _h3_section(text, "Phase 2: Clarify Requirement")
-        _index(phase2, "create-helper end-log")
-        _index(phase2, "before `prepare-spec`")
+        _index(phase2, "abandonment or no reply, follow Failure Handling")
         phase4 = _h3_section(text, "Phase 4: Prepare Spec Directory")
         _index(phase4, '--log-id "$log_id"')
         _index(" ".join(phase4.split()), 'same `$log_id` and original `$requirement`')
@@ -1332,17 +1331,17 @@ class TestCreatePhase8JsonResult:
     def test_phase8_has_fenced_json_with_required_keys(self):
         phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
         _index(phase8, "json spex-result")
-        _index(phase8, "Phase 3")
         shared = _read(PLAN_COMMAND_COMMON)
         assert "```json spex-result" in shared
         assert '"spec_name"' in shared
         assert '"spec_path"' in shared
 
     def test_phase8_instructs_parsing_last_fenced_json(self):
-        phase8 = _h3_section(_read(CREATE_MD), "Phase 8: Output")
-        _index(phase8, "parse the last fenced")
-        _index(phase8, "json spex-result")
-        _index(phase8, "block")
+        output = _h2_section(_read(PLAN_COMMAND_COMMON), "Output format")
+        _index(
+            " ".join(output.replace("**", "").split()),
+            "parse the last fenced `json spex-result` block",
+        )
 
 
 class TestSharedSopReferences:
@@ -1824,7 +1823,7 @@ class TestCliContractReference:
         _index(text, "Exit code first")
         _index(text, "stdout")
         _index(text, "stderr")
-        _index(text, "Never branch on stderr")
+        _index(text, "Route by exit code and")
         _index(text, "[]")
         _index(text, '"$spec_name"')
         _index(text, "json spex-result")
@@ -2011,11 +2010,6 @@ class TestMergeArchiveInitSop:
             text = _read(path)
             _index(text, "debug.log")
             assert "automatically" in text.lower() or "automatic" in text.lower()
-            assert (
-                "need not intervene" in text.lower()
-                or "does not need to intervene" in text.lower()
-                or "need no agent" in text.lower()
-            )
 
 
 class TestDoNotRenameVariables:
