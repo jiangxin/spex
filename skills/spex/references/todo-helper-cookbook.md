@@ -14,6 +14,15 @@ current operation.
 - No per-step review flag — review runs only when a step produces
   a commit (and global `step_review` allows it)
 
+## Selecting a Step with `--id`
+
+Use a positive step number (`2`) or a label with `show`, `edit`,
+`complete`, or `remove`. The `step` prefix is case-insensitive and
+accepts a hyphen or a space before the number. For example,
+`--id step-2`, `--id STEP-2/5`, and `--id "STEP 2/5"` all select the
+second entry in the current list. Only the step number before the
+first slash is parsed. Everything after that slash is ignored.
+
 ## skip_commit Conventions
 
 | Step type | Flag |

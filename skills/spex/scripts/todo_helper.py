@@ -631,6 +631,20 @@ def _parse_step_id(value):
     raise ArgumentTypeError(f"expected a positive step ID, got {value!r}")
 
 
+_STEP_SELECTOR_HELP = (
+    'Positive step number or label such as step-2, STEP-2/5, or "STEP 2/5" '
+    "(case-insensitive prefix, count ignored)"
+)
+
+
+def _parse_step_selector(value):
+    """Resolve an ID or display label to a step position."""
+    if value[:5].lower() in ("step-", "step "):
+        step, _, _ = value[5:].partition("/")
+        return _parse_step_id(step)
+    return _parse_step_id(value)
+
+
 def _add_new_entry_options(parser):
     """Register fields shared by append and insert."""
     parser.add_argument(
@@ -724,7 +738,7 @@ def _build_parser():
         help="Edit an existing entry by ID",
     )
     p_edit.add_argument(
-        "--id", required=True, type=_parse_step_id, help="Task number to edit",
+        "--id", required=True, type=_parse_step_selector, help=_STEP_SELECTOR_HELP,
     )
     p_edit.add_argument(
         "--step-name", default=None, help="New task name",
@@ -778,7 +792,7 @@ def _build_parser():
         help="Remove an entry by ID",
     )
     p_remove.add_argument(
-        "--id", required=True, type=_parse_step_id, help="Task number to remove",
+        "--id", required=True, type=_parse_step_selector, help=_STEP_SELECTOR_HELP,
     )
 
     p_remove_undone = subs.add_parser(
@@ -813,10 +827,9 @@ def _build_parser():
         help="Show only incomplete entries",
     )
     p_show.add_argument(
-        "--id", dest="step_id", type=_parse_step_id, default=None,
+        "--id", dest="step_id", type=_parse_step_selector, default=None,
         help=(
-            "Show a single entry by ID "
-            "(ignores --done/--undone if set)"
+            f"{_STEP_SELECTOR_HELP}. Selects one entry regardless of --done/--undone"
         ),
     )
     p_show.add_argument(
@@ -845,7 +858,9 @@ def _build_parser():
     p_transaction.add_argument("action", choices=["start", "commit", "rollback"])
 
     p_complete = subs.add_parser("complete", help="Complete a task with its acceptance evidence")
-    p_complete.add_argument("--id", required=True, type=_parse_step_id, help="Task number")
+    p_complete.add_argument(
+        "--id", required=True, type=_parse_step_selector, help=_STEP_SELECTOR_HELP,
+    )
     p_complete.add_argument("--commit-title", help="Final commit title for the task")
     p_complete.add_argument(
         "--acceptance-evidence-stdin", action="store_true",
