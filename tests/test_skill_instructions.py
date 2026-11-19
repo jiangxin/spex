@@ -433,18 +433,18 @@ class TestCreatePlanOnlySop:
         _index(shared, "2–4 questions")
         _index(shared, "materially change the spec")
 
-    def test_phase3_validate_name_cli_gate(self):
+    def test_both_modes_validate_fields_in_prepare_spec(self):
+        text = _read(CREATE_MD)
         phase3 = _h3_section(
-            _read(CREATE_MD), "Phase 3: Generate Name and Description"
+            text, "Phase 3: Generate Name and Description"
         )
-        _index(phase3, "create-helper validate-name")
-        _index(phase3, "not** the sole")
-        _index(phase3, "side-effect-free")
-        _index(phase3, "Always call it")
-        _index(phase3, "prepare-spec` re-validates")
+        _index(phase3, "Proceed directly to Phase 4 in either task mode")
+        phase4 = _h3_section(text, "Phase 4: Prepare Spec Directory")
+        assert phase4.count("create-helper prepare-spec") == 1
+        assert "create-helper validate-name" not in text
+        _index(phase4, '--mode "$task_mode"')
         _index(phase3, "≤31 bytes")
         assert "<32 bytes" not in phase3
-        _index(phase3, "Do **not** call `prepare-spec`")
         _index(phase3, "at most one fenced `text`")
         assert "already certain" not in phase3
         assert "may skip" not in phase3
@@ -553,7 +553,7 @@ class TestCreatePlanOnlySop:
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")
-        _index(section, "validate-name")
+        _index(section, "ON_FAIL Phase 4 `prepare-spec`")
         _index(section, "end-log")
         _index(section, "Abandonment before `prepare-spec` succeeds")
         _index(section, "plan-command-common.md")
@@ -571,19 +571,13 @@ class TestCreatePlanOnlySop:
         _index(fail, "Abandonment before `prepare-spec` succeeds")
         _index(fail, 'create-helper end-log --log-id "$log_id"')
         _index(fail, "Phase 2 user abandon")
-        _index(fail, "Phase 3")
+        _index(fail, "abandonment of a Phase 4 retry")
         phase2 = _h3_section(text, "Phase 2: Clarify Requirement")
         _index(phase2, "create-helper end-log")
         _index(phase2, "before `prepare-spec`")
-        phase3 = _h3_section(
-            text, "Phase 3: Generate Name and Description"
-        )
-        _index(phase3, "create-helper end-log")
-        _index(phase3, "before `prepare-spec`")
-        _index(phase3, '--log-id "$log_id"')
         phase4 = _h3_section(text, "Phase 4: Prepare Spec Directory")
         _index(phase4, '--log-id "$log_id"')
-        _index(phase4, 'keep the same `$log_id`')
+        _index(" ".join(phase4.split()), 'same `$log_id` and original `$requirement`')
         assert "already certain" not in text
         assert "may skip `validate-name`" not in text
         assert "may skip" not in text.lower()
@@ -2141,7 +2135,7 @@ class TestRound3RegressionGate:
         archive = _read(ARCHIVE_MD)
         _index(archive, "--json")
         create = _read(CREATE_MD)
-        _index(create, "validate-name")
+        _index(create, "create-helper prepare-spec")
         assert "mark-phase" not in create
         assert "mark-phase" not in _read(APPLY_MD)
         assert "mark-phase" not in loop

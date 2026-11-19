@@ -104,24 +104,9 @@ $spex_skill_dir/scripts/spex create-helper precheck --begin-log
   authentication`. Do not emit `json` fences here (Phase 8 owns the
   trailing `json spex-result`); do not treat chat fencing as
   sufficient without CLI success.
-- CMD (`validate-name` is a **side-effect-free** pre-check: no
-  directory, no pre-action hook on failure. Always call it —
-  `prepare-spec` re-validates internally, so this is not the only
-  gate):
-
-```bash
-$spex_skill_dir/scripts/spex create-helper validate-name \
-  --log-id "$log_id" --name "$name" --description "$description"
-```
-
-- IF exit 0 -> bind `$name` / `$description` from JSON stdout
-  (`name`, `description`); continue Phase 4
-- ON_FAIL (non-zero) -> stderr has reason; fix fields -> retry
-  `validate-name` until exit 0. Do **not** call `prepare-spec`
-  until validation succeeds.
-- IF giving up after repeated naming failures ->
-  `create-helper end-log` with `$log_id` -> STOP (Failure Handling: any
-  termination before `prepare-spec`)
+- Proceed directly to Phase 4 in either task mode. The `prepare-spec`
+  command validates and normalizes both fields before creating the spec
+  directory or running the pre-action hook.
 
 ### Phase 4: Prepare Spec Directory
 
@@ -137,9 +122,12 @@ EOF
 - Script creates spec directory + `meta.json` (`prompts` = requirement,
   `description` = description). It moves only the directory selected by
   `$log_id` and flushes this command's logs to the new location.
-- IF exit 1 -> report stderr; keep the same `$log_id` and return to Phase 3
-  with a different `$name`. This is the naming retry exception to
-  the generic CLI contract (no directory was kept on failure).
+- IF exit 1 -> report stderr and return to Phase 3. Correct the
+  diagnosed name or description, or choose a different name if the
+  target directory already exists. Retry Phase 4 with the same
+  `$log_id` and original `$requirement` on stdin. This is the naming
+  retry exception to the generic CLI contract. If giving up, follow
+  the pre-prepare abandonment rule below.
 - IF exit 2 -> report the template error, call
   `create-helper end-log` with `$log_id`, and STOP. Correct the template before
   retrying create.
@@ -298,16 +286,13 @@ $spex_skill_dir/scripts/spex create-helper finalize "$spec_name"
 - Out-of-scope writes: follow `references/plan-command-common.md`
   (immediate STOP + rollback when possible)
 - **Abandonment before `prepare-spec` succeeds** (Phase 2 user abandon
-  / no answer, Phase 3 give-up after repeated naming failures, or later
-  abandonment of a retry) -> clean up the allocated ID and STOP:
+  / no answer, Phase 3 abandonment, or abandonment of a Phase 4 retry)
+  -> clean up the allocated ID and STOP:
 
 ```bash
 $spex_skill_dir/scripts/spex create-helper end-log --log-id "$log_id"
 ```
 
-- ON_FAIL Phase 3 `validate-name` (still retrying) -> fix `$name` /
-  `$description` -> retry until exit 0; do not call `prepare-spec`
-  until OK
 - ON_FAIL Phase 4 `prepare-spec` -> follow the exit-code branches in
   Phase 4. Name and preparation retries reuse the same ID.
 - **Abandon / rename after a successful `prepare-spec` but before

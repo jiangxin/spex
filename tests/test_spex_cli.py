@@ -788,11 +788,11 @@ class TestTemporaryCreateLogs:
         monkeypatch.setattr("prompt.render_prompt", lambda *args, **kwargs: "# Template")
         monkeypatch.setattr("hooks.run_pre_action", lambda *args, **kwargs: None)
 
-        def run(log_id, name, *, flags=(), mode="software"):
+        def run(log_id, name, *, flags=(), mode="software", description="Log migration test"):
             options = [] if log_id is None else ["--log-id", log_id]
             argv = [
                 *flags, "create-helper", "prepare-spec", *options,
-                "--name", name, "--description", "Log migration test", "--mode", mode,
+                "--name", name, "--description", description, "--mode", mode,
             ]
             monkeypatch.setattr(sys, "stdin", io.StringIO("Preserve temporary logs."))
             monkeypatch.setattr(sys, "argv", ["spex", *argv])
@@ -828,6 +828,49 @@ class TestTemporaryCreateLogs:
         _spex_mod.main(["-d", "version", "--log-id", second_id])
         assert "version" in (second / "debug.log").read_text()
         assert "--name first" not in (second / "debug.log").read_text()
+
+    @pytest.mark.parametrize("mode", ["software", "general"])
+    @pytest.mark.parametrize(
+        ("name", "description", "diagnostic"),
+        [
+            ("Invalid name", "Valid description", "invalid name"),
+            ("candidate", "Two\nlines", "single line"),
+            ("existing", "Valid description", "already exists"),
+        ],
+    )
+    def test_prepare_validates_before_creating_and_retries_with_original_log(
+        self, storage, prepare, capsys, caplog, mode, name, description, diagnostic,
+    ):
+        log_id, source = self._begin(capsys, "-d")
+        specs = storage / "specs"
+        existing = specs / "2026-01-01-12-00-existing"
+        existing.mkdir()
+        marker = existing / "spec.md"
+        marker.write_text("Existing specification")
+        original_trace = (source / "trace.jsonl").read_text()
+        with (
+            patch("create_helper.datetime") as clock,
+            patch("hooks.run_pre_action") as hook,
+        ):
+            clock.now.return_value.strftime.return_value = "2026-01-01-12-00"
+            with pytest.raises(SystemExit) as failure:
+                prepare(log_id, name, flags=["-d"], mode=mode, description=description)
+            assert failure.value.code == 1
+            assert diagnostic in caplog.text
+            assert not capsys.readouterr().out
+            assert list(specs.iterdir()) == [existing]
+            assert (source / "trace.jsonl").read_text().startswith(original_trace)
+            hook.assert_not_called()
+
+            spec = prepare(log_id, "candidate", flags=["-d"], mode=mode)
+            hook.assert_called_once()
+
+        assert marker.read_text() == "Existing specification"
+        assert not source.exists()
+        assert (spec / "logs" / "trace.jsonl").read_text().startswith(original_trace)
+        meta = json.loads((spec / "meta.json").read_text())
+        assert meta["task_mode"] == mode
+        assert meta["prompts"][0]["text"] == "Preserve temporary logs."
 
     def test_trace_only_prepare_preserves_explicit_trace_destination_isolation(
         self, storage, prepare, capsys, monkeypatch,

@@ -323,8 +323,8 @@ class TestValidateCreateName:
         create_helper.main(
             [
                 "validate-name",
-                "--name", "add-login-api",
-                "--description", "Add login API",
+                "--name", " add-login-api ",
+                "--description", " Add login API ",
             ]
         )
         out = json.loads(capsys.readouterr().out)
