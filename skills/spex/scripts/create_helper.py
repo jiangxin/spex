@@ -42,6 +42,14 @@ def _do_modify_session(args):
         specs_dir = Path(get_spex_root(auto_init=False)) / "specs"
         spec_dir = resolve_spec_dir(args.name, specs_dir=specs_dir)
         modify_session.begin(spec_dir)
+        if args.stdin_flag:
+            from meta_helper import save_modify_request
+
+            save_modify_request(spec_dir)
+    except KeyboardInterrupt:
+        if not args.stdin_flag:
+            raise
+        sys.exit("Modify request save interrupted. Check the spec state before starting again.")
     except (OSError, RuntimeError, ValueError) as exc:
         sys.exit(str(exc))
 
@@ -888,6 +896,10 @@ def _build_parser():
 
     snapshot = subs.add_parser("begin-modify", help="Snapshot and increment the spec version")
     snapshot.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
+    snapshot.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Run pre-action and save the modification request from stdin",
+    )
 
     return parser
 
