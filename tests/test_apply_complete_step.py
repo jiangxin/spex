@@ -2,6 +2,8 @@
 
 import io
 import json
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import apply_helper
 import pytest
@@ -30,6 +32,7 @@ def complete(tmp_path, monkeypatch):
 def test_complete_reports_own_snapshot_after_next_commit(complete, monkeypatch, capsys):
     todo, run = complete
     transaction = todo_helper.cmd_transaction
+    finalized = []
 
     def interleave(path, action):
         transaction(path, action)
@@ -38,9 +41,10 @@ def test_complete_reports_own_snapshot_after_next_commit(complete, monkeypatch, 
             run(2)
 
     monkeypatch.setattr(todo_helper, "cmd_transaction", interleave)
+    monkeypatch.setattr(apply_helper, "_run_post_action", finalized.append)
     run(1, "--commit-title", "0123456: Recorded")
     final, first = map(json.loads, capsys.readouterr().out.splitlines())
-    assert final == {"completion": "completed", "remaining": 0, "finalization": "pending"}
+    assert final == {"completion": "completed", "remaining": 0, "finalization": "succeeded"}
     assert first == {"completion": "completed", "remaining": 1, "finalization": "not_needed"}
     assert json.loads(todo.read_text())[0]["commit_title"] == "0123456: Recorded"
     before = todo.read_bytes()
@@ -49,6 +53,112 @@ def test_complete_reports_own_snapshot_after_next_commit(complete, monkeypatch, 
         "completion": "already_completed", "remaining": 0, "finalization": "unknown",
     }
     assert todo.read_bytes() == before
+    assert finalized == [todo.parent]
+
+
+@pytest.mark.parametrize("error", [OSError("hook launch failed"), KeyboardInterrupt()])
+def test_finalization_error_preserves_completion(complete, monkeypatch, caplog, capsys, error):
+    todo, run = complete
+    run(1)
+    capsys.readouterr()
+
+    def interrupt(spec_dir):
+        assert spec_dir == todo.parent
+        assert not todo.with_suffix(".json.lock").exists()
+        assert all(task["completed_at"] for task in json.loads(todo.read_text()))
+        raise error
+
+    monkeypatch.setattr(apply_helper, "_run_post_action", interrupt)
+    with pytest.raises(SystemExit) as failure:
+        run(2)
+    assert failure.value.code == 5
+    assert capsys.readouterr().out == ""
+    assert "Todo completion for example is saved" in caplog.text
+    assert "spex apply-helper post-action --name example" in caplog.text
+    before = todo.read_bytes()
+    run(2)
+    assert json.loads(capsys.readouterr().out)["finalization"] == "unknown"
+    assert todo.read_bytes() == before
+
+
+def test_final_done_anchor_interrupt_reports_recovery(complete, monkeypatch, caplog, capsys):
+    todo, run = complete
+    run(1)
+    capsys.readouterr()
+
+    def interrupt(spec_dir, event, *, id):
+        assert (spec_dir, event, id) == (todo.parent, "done", 2)
+        assert not todo.with_suffix(".json.lock").exists()
+        assert all(task["completed_at"] for task in json.loads(todo.read_text()))
+        raise KeyboardInterrupt
+
+    post_action = Mock()
+    monkeypatch.setattr("debug_log.emit_apply_task", interrupt)
+    monkeypatch.setattr(apply_helper, "_run_post_action", post_action)
+    with pytest.raises(SystemExit) as failure:
+        run(2)
+
+    assert failure.value.code == 5
+    assert not capsys.readouterr().out
+    assert "Todo completion for example is saved" in caplog.text
+    assert "spex apply-helper post-action --name example" in caplog.text
+    post_action.assert_not_called()
+
+
+@pytest.mark.parametrize("hook_mode", [None, 0o777, 0o755])
+def test_finalization_preserves_hook_and_hint_behavior(
+    complete, tmp_path, monkeypatch, caplog, capsys, hook_mode,
+):
+    import hooks
+
+    todo, run = complete
+    cwd = str(tmp_path / "coding")
+    (todo.parent / "meta.json").write_text(json.dumps({
+        "spex_branch": "spex/example", "branch": "main", "spex_worktree": cwd,
+    }))
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
+    hook_path = hook_dir / "post-action"
+    if hook_mode is not None:
+        hook_path.touch()
+        hook_path.chmod(hook_mode)
+    context = SimpleNamespace(
+        top_workdir=tmp_path, user_name="Tester", user_email="test@example.com",
+    )
+    monkeypatch.setattr("config.get_project_context", lambda: context)
+    monkeypatch.setattr(hooks, "get_project_context", lambda _cwd: context)
+    monkeypatch.setattr(hooks, "_resolve_hook_roots", lambda _cwd: [hook_dir])
+    original_find = hooks.find_hook
+    lookups = []
+    invocations = []
+    anchors = []
+
+    def find(name, workdir):
+        lookups.append((name, workdir))
+        return original_find(name, workdir)
+
+    def execute(argv, *, input, cwd, **_kwargs):
+        event = json.loads(input)
+        assert event["event_type"] == "apply"
+        assert event["workdir"] == cwd
+        assert event["payload"] == {
+            "source_branch": "spex/example", "target_branch": "main", "spec_name": "example",
+        }
+        invocations.append((argv, cwd))
+        return hooks.subprocess.CompletedProcess(argv, 7, stderr="hook rejected")
+
+    monkeypatch.setattr(hooks, "find_hook", find)
+    monkeypatch.setattr(hooks.subprocess, "run", execute)
+    monkeypatch.setattr("debug_log.emit_apply_anchor", lambda _path, line: anchors.append(line))
+    run(1)
+    assert not lookups
+    run(2)
+    assert lookups == [("post-action", cwd)]
+    assert invocations == ([([str(hook_path)], cwd)] if hook_mode == 0o755 else [])
+    assert ("Development completed on spec branch" in caplog.text) == (hook_mode is None)
+    assert ("hook rejected" in caplog.text) == (hook_mode == 0o755)
+    assert anchors[-1] == "===== APPLY post-action ok ====="
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["finalization"] == "succeeded"
 
 
 def test_complete_persists_general_evidence(complete, monkeypatch):

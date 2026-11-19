@@ -589,13 +589,18 @@ def cli_ensure_branch(argv=None):
 
 
 def _do_post_action(args):
+    from common import resolve_spec_dir
+
+    _run_post_action(resolve_spec_dir(args.name))
+
+
+def _run_post_action(spec_dir):
     """Run post-action hook, and show hint."""
     import common
     import config as cfg
     import hooks
     from debug_log import emit_apply_anchor
 
-    spec_dir = common.resolve_spec_dir(args.name)
     spec_name = spec_dir.name
     meta = common.load_meta(spec_dir)
     spex_branch = meta.spex_branch if meta else ""
@@ -606,7 +611,7 @@ def _do_post_action(args):
     ctx = cfg.get_project_context()
     workdir = resolve_apply_git_cwd(meta, ctx.top_workdir)
 
-    hooks.run_post_action(
+    hook_found = hooks.run_post_action(
         "apply",
         {
             "source_branch": spex_branch,
@@ -618,7 +623,7 @@ def _do_post_action(args):
 
     emit_apply_anchor(spec_dir, "===== APPLY post-action ok =====")
 
-    if hooks.find_hook("post-action", workdir) is None:
+    if not hook_found:
         logger.info(
             f"Development completed on spec branch {spex_branch}.\n"
             f"After local code review, run /spex merge to merge into\n"
@@ -792,16 +797,37 @@ def _do_complete_step(args):
 
     spec_dir = resolve_spec_dir(args.name)
     changed, remaining = _complete_step_transaction(spec_dir, args)
-    if changed:
-        emit_apply_task(spec_dir, "done", id=args.id)
     finalization = "not_needed"
     if remaining == 0:
-        finalization = "pending" if changed else "unknown"
+        finalization = _finalize_completed_spec(spec_dir, args.id, changed)
+    elif changed:
+        emit_apply_task(spec_dir, "done", id=args.id)
     print(json.dumps({
         "completion": "completed" if changed else "already_completed",
         "remaining": remaining,
         "finalization": finalization,
     }))
+
+
+def _finalize_completed_spec(spec_dir, step_id, changed):
+    from debug_log import emit_apply_task
+
+    if changed:
+        try:
+            emit_apply_task(spec_dir, "done", id=step_id)
+            _run_post_action(spec_dir)
+        except (Exception, KeyboardInterrupt) as exc:
+            logger.error("Post-action failed for %s: %s", spec_dir.name, exc)
+        else:
+            return "succeeded"
+
+    logger.warning("Todo completion for %s is saved. Post-action outcome is unknown.",
+                   spec_dir.name)
+    logger.warning("Recovery command: spex apply-helper post-action --name %s",
+                   shlex.quote(spec_dir.name))
+    if changed:
+        sys.exit(5)
+    return "unknown"
 
 
 def _build_parser():
