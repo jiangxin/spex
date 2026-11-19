@@ -1,8 +1,10 @@
 """Tests for the spex config command."""
 
 import importlib.util
+import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Optional
@@ -722,6 +724,153 @@ class TestMainEntrypoint:
         monkeypatch.setattr("common.setup_logging", fake_setup)
         _spex_mod.main(["-d", "version"])
         assert called["v"] is True
+
+
+class TestTemporaryCreateLogs:
+    @pytest.fixture
+    def storage(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("SPEX_LOG_DIR", raising=False)
+        monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+        monkeypatch.setattr("common.setup_logging", lambda verbose: None)
+        ctx = _make_context(spex_root=str(tmp_path / ".spex"))
+        monkeypatch.setattr("config.get_project_context", lambda: ctx)
+        monkeypatch.setattr("config.get_project_storage", lambda: ctx)
+        monkeypatch.setattr("debug_log.get_project_storage", lambda: ctx)
+        monkeypatch.setattr("debug_log.load_config", lambda: ctx.config)
+        monkeypatch.setattr("create_helper.cli_create_validate", lambda: None)
+        return Path(ctx.spex_root)
+
+    def _begin(self, capsys, *flags):
+        _spex_mod.main([*flags, "create-helper", "precheck", "--begin-log"])
+        result = json.loads(capsys.readouterr().out)
+        return result["log_id"], Path(result["log_path"]).parent
+
+    def test_interleaved_create_logs_and_cleanup(self, storage, capsys):
+        from debug_log import set_active_session
+
+        set_active_session(storage, "legacy")
+        a, first = self._begin(capsys, "-d")
+        b, second = self._begin(capsys, "-d")
+        assert a != b
+        for log_id, marker in [(a, "alpha"), (b, "beta"), (a, "again-alpha")]:
+            _spex_mod.main([
+                "-d", "--log-id", log_id, "create-helper", "validate-name",
+                "--name", marker, "--description", "Creation log test",
+            ])
+
+        for directory, present, absent in [(first, "alpha", "beta"), (second, "beta", "alpha")]:
+            debug = (directory / "debug.log").read_text()
+            spans = [
+                json.loads(line) for line in (directory / "trace.jsonl").read_text().splitlines()
+            ]
+            args = [span["attributes"]["process.command_args"] for span in spans]
+            assert present in debug and absent not in debug
+            assert all(span["name"] == "create-helper" for span in spans)
+            assert any(present in command for command in args)
+            assert all(absent not in command for command in args)
+            assert (directory / "debug.log.prev_end").is_file()
+        for _ in range(2):
+            _spex_mod.main(["-d", "create-helper", "end-log", "--log-id", a])
+        _spex_mod.main(["-d", "version", f"--log-id={b}"])
+        assert not first.exists()
+        assert "argv: spex -d version" in (second / "debug.log").read_text()
+        assert (storage / "sessions" / "active").read_text().strip() == "legacy"
+        assert not (storage / "sessions" / "legacy").exists()
+
+    def test_trace_only_and_debug_off(self, storage, tmp_path, monkeypatch, capsys):
+        _, quiet = self._begin(capsys)
+        assert not list(quiet.iterdir())
+        shared = tmp_path / "shared.jsonl"
+        monkeypatch.setenv("SPEX_TRACE_FILE", str(shared))
+        log_id, traced = self._begin(capsys)
+        _spex_mod.main(["version", "--log-id", log_id])
+        assert {p.name for p in traced.iterdir()} == {"trace.jsonl"}
+        assert len((traced / "trace.jsonl").read_text().splitlines()) == 2
+        assert not shared.exists()
+        _spex_mod.main(["version"])
+        assert shared.is_file()
+        assert not (storage / "debug.log").exists()
+
+    def test_collision_retries_without_reusing_directory(self, storage, monkeypatch, capsys):
+        first, second = "a" * 32, "b" * 32
+        identifiers = iter([first, first, second])
+        monkeypatch.setattr("create_helper.secrets.token_hex", lambda size: next(identifiers))
+        _, old = self._begin(capsys)
+        (old / "debug.log").write_text("existing")
+        new_id, new = self._begin(capsys)
+        assert new_id == second and new != old
+        assert (old / "debug.log").read_text() == "existing"
+
+    @pytest.mark.parametrize("option", [
+        [], ["--log-id"], ["--log-id", ""], ["--log-id", "../other"],
+        ["--log-id", "a" * 33], ["--log-id", "a" * 32, "--log-id", "b" * 32],
+    ])
+    def test_end_log_rejects_missing_or_invalid_ids(self, storage, capsys, option):
+        _, directory = self._begin(capsys)
+        with pytest.raises(SystemExit):
+            _spex_mod.main(["-d", "create-helper", "end-log", *option])
+        assert directory.is_dir()
+        assert not list(directory.iterdir())
+
+    def test_rejects_symlink_routes(self, storage, capsys, tmp_path):
+        _, directory = self._begin(capsys)
+        target = tmp_path / "unrelated"
+        target.mkdir()
+        alias = directory.parent / ("log-" + "e" * 32)
+        alias.symlink_to(target, target_is_directory=True)
+        with pytest.raises(SystemExit):
+            _spex_mod.main(["-d", "version", "--log-id", "e" * 32])
+        with pytest.raises(SystemExit):
+            _spex_mod.main(["create-helper", "end-log", "--log-id", "e" * 32])
+        assert target.is_dir() and not list(target.iterdir())
+
+    def test_failed_precheck_creates_no_temporary_log(self, storage, monkeypatch):
+        def fail():
+            raise SystemExit(1)
+
+        monkeypatch.setattr("create_helper.cli_create_validate", fail)
+        with pytest.raises(SystemExit):
+            _spex_mod.main(["-d", "create-helper", "precheck", "--begin-log"])
+        assert not (storage / "tmp").exists()
+
+    @pytest.mark.slow
+    def test_concurrent_create_prechecks_in_one_git_checkout(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("SPEX_LOG_DIR", raising=False)
+        monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+        root = tmp_path / "log-storage"
+        config = tmp_path / ".spex.toml"
+        config.write_text(
+            f"[spex]\nspex_root = {json.dumps(str(root))}\nbranch_management = false\n"
+            "inherit_config = false\n"
+        )
+        monkeypatch.setenv("SPEX_CONFIG_FILE", str(config))
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+
+        def run(*args):
+            return subprocess.check_output(
+                [sys.executable, SPEX_SCRIPT, "-d", *args], cwd=tmp_path, text=True,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            pending = [
+                executor.submit(run, "create-helper", "precheck", "--begin-log") for _ in range(2)
+            ]
+            first, second = [json.loads(future.result()) for future in pending]
+            assert first["log_id"] != second["log_id"]
+            pending = [
+                executor.submit(run, "create-helper", "validate-name", "--log-id", record["log_id"],
+                                "--name", name, "--description", "Independent concurrent command")
+                for name, record in (("alpha", first), ("beta", second))
+            ]
+            for future in pending:
+                future.result()
+
+        for record, marker, other in [(first, "alpha", "beta"), (second, "beta", "alpha")]:
+            path = Path(record["log_path"])
+            assert path.parent.parent == root / "tmp"
+            assert marker in path.read_text() and other not in path.read_text()
+            assert marker in path.with_name("trace.jsonl").read_text()
 
 
 class TestConfigColorPaths:

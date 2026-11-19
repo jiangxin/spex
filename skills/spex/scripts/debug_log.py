@@ -6,9 +6,11 @@ import io
 import json
 import os
 import re
+import stat
 import sys
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -25,6 +27,50 @@ SPEC_LOG_FILES = frozenset({
     DEBUG_LOG_NAME, TRACE_JSONL_NAME,
     f"{DEBUG_LOG_NAME}.prev_end", f"{DEBUG_LOG_NAME}.apply_span",
 })
+_LOG_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def temporary_log_dir(spex_root: str | Path, log_id: str) -> Path:
+    """Resolve an allocated ID without crossing symlinks or storage roots."""
+    if not _LOG_ID_RE.fullmatch(log_id):
+        raise ValueError(f"invalid log ID: {log_id!r}")
+    parent = Path(spex_root) / "tmp"
+    directory = parent / f"log-{log_id}"
+    if parent.is_symlink() or directory.is_symlink():
+        raise ValueError(f"temporary log directory cannot be a symlink: {directory}")
+    return directory
+
+
+def _temporary_log_file(directory: Path | None, name: str) -> Path | None:
+    if directory is None or directory.parent.is_symlink() or directory.is_symlink():
+        return None
+    path = directory / name
+    if not directory.is_dir():
+        return None
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return path
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        return None
+    return path
+
+
+@dataclass
+class TemporaryLogRoute:
+    """A create command can allocate its route after precheck succeeds."""
+
+    directory: Path | None = None
+
+
+def trace_enabled() -> bool:
+    """Check whether an explicit trace sink enables trace without debug."""
+    return bool(
+        os.environ.get("SPEX_TRACE_FILE", "").strip()
+        or str(load_config().get("trace_file") or "").strip()
+    )
 
 
 def spec_debug_log_path(spec_dir: str | Path) -> Path:
@@ -418,15 +464,25 @@ def parse_flag_from_argv(argv: list[str], flag: str) -> str | None:
     return None
 
 
-def is_prompt_argv(argv: list[str]) -> bool:
-    """Return True if argv is a ``spex prompt ...`` invocation."""
-    for arg in argv:
+def _command_from_argv(argv: list[str]) -> str:
+    options = iter(argv)
+    for arg in options:
+        if arg == "--log-id":
+            next(options, None)
+            continue
+        if arg.startswith("--log-id="):
+            continue
         if arg in {"-d", "--debug", "-V", "--version", "-h", "--help"}:
             continue
         if arg == "spex" or arg.endswith("/spex"):
             continue
-        return arg == "prompt"
-    return False
+        return arg.replace("_", "-")
+    return ""
+
+
+def is_prompt_argv(argv: list[str]) -> bool:
+    """Return True if argv is a ``spex prompt ...`` invocation."""
+    return _command_from_argv(argv) == "prompt"
 
 
 def sessions_dir(spex_root: str | Path) -> Path:
@@ -739,12 +795,16 @@ def _is_spec_log_path(path: Path) -> bool:
     return parent.name == SPEC_LOG_DIR and parent.parent.parent.name in {"specs", "archives"}
 
 
-def _prepare_debug_log_parent(log_path: Path, *, explicit: bool = False) -> bool:
+def _prepare_debug_log_parent(
+    log_path: Path, *, explicit: bool = False, existing_only: bool = False,
+) -> bool:
     """Ensure ``log_path`` parent exists; never recreate vanished specs dirs.
 
     Returns False when the write should be skipped.
     """
     parent = log_path.parent
+    if existing_only:
+        return _temporary_log_file(parent, log_path.name) is not None
     if not explicit and _is_spec_log_path(log_path):
         return prepare_spec_log_parent(log_path)
     if parent.is_dir():
@@ -916,11 +976,13 @@ def _previous_end_instant(log_path: Path, *, explicit: bool = False) -> datetime
     return _parse_iso_timestamp(raw)
 
 
-def _remember_end_instant(log_path: Path, end: datetime, *, explicit: bool = False) -> None:
+def _remember_end_instant(
+    log_path: Path, end: datetime, *, explicit: bool = False, existing_only: bool = False,
+) -> None:
     """Persist last END stamp next to the log for the next gap_ms calculation."""
     state_path = _prev_end_state_path(log_path)
     try:
-        if _prepare_debug_log_parent(state_path, explicit=explicit):
+        if _prepare_debug_log_parent(state_path, explicit=explicit, existing_only=existing_only):
             state_path.write_text(end.isoformat() + "\n", encoding="utf-8")
     except OSError as exc:
         logger.debug("Failed to write gap prev_end to %s: %s", state_path, exc)
@@ -962,8 +1024,11 @@ def _append_trace(
     duration_ms: int,
     *,
     explicit: bool = False,
+    existing_only: bool = False,
 ) -> str | None:
-    if not _prepare_debug_log_parent(log_path, explicit=explicit):
+    if not _prepare_debug_log_parent(log_path, explicit=explicit, existing_only=existing_only):
+        return None
+    if existing_only and _temporary_log_file(log_path.parent, f"{DEBUG_LOG_NAME}.prev_end") is None:
         return None
     timestamp = local_iso_timestamp()
     now = _parse_iso_timestamp(timestamp) or datetime.now().astimezone()
@@ -980,7 +1045,7 @@ def _append_trace(
     try:
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(block)
-        _remember_end_instant(log_path, now, explicit=explicit)
+        _remember_end_instant(log_path, now, explicit=explicit, existing_only=existing_only)
     except OSError as exc:
         logger.debug("Failed to write debug log to %s: %s", log_path, exc)
         return None
@@ -1001,9 +1066,9 @@ def _normalize_exit_code(code) -> int:
 def _append_cli_span(
     path: Path, argv: list[str], start_ns: int, end_ns: int,
     duration_ms: int, exit_code: int, debug_logged_at: str | None,
-    *, explicit: bool = False,
+    *, explicit: bool = False, existing_only: bool = False,
 ) -> None:
-    command = next((arg.replace("_", "-") for arg in argv[1:] if not arg.startswith("-")), "")
+    command = _command_from_argv(argv)
     attributes = {
         "process.executable.name": "spex",
         "process.command_args": argv,
@@ -1029,13 +1094,19 @@ def _append_cli_span(
     }
     if debug_logged_at is not None:
         span["spex"]["debug_logged_at"] = debug_logged_at
-    if _prepare_debug_log_parent(path, explicit=explicit):
+    if _prepare_debug_log_parent(path, explicit=explicit, existing_only=existing_only):
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(span, separators=(",", ":")) + "\n")
 
 
 @contextmanager
-def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
+def trace_command(
+    log_path: Path | None,
+    argv: list[str],
+    *,
+    debug: bool = True,
+    temporary: TemporaryLogRoute | None = None,
+) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
     The flush path is chosen via ``safe_flush_debug_log_path`` after the
@@ -1076,9 +1147,14 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
         sys.stderr = old_stderr
         duration_ms = int((time.monotonic() - start) * 1000)
         end_ns = time.time_ns()
-        flush_path = safe_flush_debug_log_path(argv, log_path)
+        if temporary is not None:
+            flush_path = _temporary_log_file(temporary.directory, DEBUG_LOG_NAME)
+        elif debug:
+            flush_path = safe_flush_debug_log_path(argv, log_path)
+        else:
+            flush_path = None
         debug_logged_at = None
-        if flush_path is not None:
+        if debug and flush_path is not None:
             debug_logged_at = _append_trace(
                 flush_path,
                 argv,
@@ -1088,16 +1164,21 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
                 stderr_meta,
                 exit_code,
                 duration_ms,
-                explicit=_configured_log_dir() is not None,
+                explicit=temporary is not None or _configured_log_dir() is not None,
+                existing_only=temporary is not None,
             )
         try:
-            trace_path, explicit_trace = _resolve_trace_destination(flush_path)
+            if temporary is not None:
+                trace_path = _temporary_log_file(temporary.directory, TRACE_JSONL_NAME)
+                explicit_trace = True
+            else:
+                trace_path, explicit_trace = _resolve_trace_destination(flush_path)
             if trace_path is not None and (
                 flush_path is None or trace_path.resolve() != flush_path.resolve()
             ):
                 _append_cli_span(
                     trace_path, argv, start_ns, end_ns, duration_ms, exit_code, debug_logged_at,
-                    explicit=explicit_trace,
+                    explicit=explicit_trace, existing_only=temporary is not None,
                 )
         except (OSError, RuntimeError, ValueError) as exc:
             logger.debug("Failed to write CLI span: %s", exc)

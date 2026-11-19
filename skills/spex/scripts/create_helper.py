@@ -117,6 +117,47 @@ def _require_spex_root() -> str:
     return spex_root
 
 
+def _begin_temporary_log() -> tuple[str, Path]:
+    """Create a fresh directory, retrying an ID collision."""
+    from debug_log import temporary_log_dir
+
+    spex_root = _require_spex_root()
+    for _ in range(10):
+        log_id = secrets.token_hex(16)
+        directory = temporary_log_dir(spex_root, log_id)
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        return log_id, directory
+    raise OSError("could not allocate a unique temporary log ID")
+
+
+def _do_begin_log(log_route) -> None:
+    from debug_log import DEBUG_LOG_NAME
+
+    try:
+        log_id, directory = _begin_temporary_log()
+    except (OSError, ValueError) as exc:
+        sys.exit(f"Error starting create log: {exc}")
+    if log_route is not None:
+        log_route.directory = directory
+    print(json.dumps({"log_id": log_id, "log_path": str(directory / DEBUG_LOG_NAME)}))
+
+
+def _do_end_log(args) -> None:
+    from debug_log import temporary_log_dir
+
+    try:
+        directory = temporary_log_dir(_require_spex_root(), args.log_id)
+        shutil.rmtree(directory)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as exc:
+        sys.exit(f"Error ending create log: {exc}")
+
+
 def _do_begin_session(_args=None):
     """Create or reuse an active create session; print JSON to stdout."""
     from common import local_iso_timestamp
@@ -514,9 +555,12 @@ def cli_create_validate() -> None:
         logger.info(f"Valid: currently on branch '{current}'")
 
 
-def _do_precheck(args) -> None:
+def _do_precheck(args, log_route=None) -> None:
     """Validate create branch state, then optionally start a debug session."""
     cli_create_validate()
+    if args.begin_log:
+        _do_begin_log(log_route)
+        return
     if not args.begin_session:
         return
 
@@ -868,10 +912,18 @@ def _build_parser():
         description="Validate branch creation feasibility.",
         help="Validate branch creation feasibility",
     )
-    p_precheck.add_argument(
+    start = p_precheck.add_mutually_exclusive_group()
+    start.add_argument(
         "--begin-session", action="store_true",
         help="Start or reuse a create debug session after validation",
     )
+    start.add_argument(
+        "--begin-log", action="store_true",
+        help="Allocate an isolated create log after validation",
+    )
+
+    p_end_log = subs.add_parser("end-log", help="Remove an isolated create log")
+    p_end_log.add_argument("--log-id", required=True, help="Allocated temporary log ID")
 
     subs.add_parser(
         "begin-session",
@@ -974,7 +1026,7 @@ def _build_parser():
     return parser
 
 
-def main(argv=None):
+def main(argv=None, *, log_route=None):
     """Parse args, route to subcommand."""
 
     parser = _build_parser()
@@ -985,7 +1037,9 @@ def main(argv=None):
         sys.exit(2)
 
     if args.subcmd == "precheck":
-        _do_precheck(args)
+        _do_precheck(args, log_route)
+    elif args.subcmd == "end-log":
+        _do_end_log(args)
     elif args.subcmd == "begin-session":
         _do_begin_session(args)
     elif args.subcmd == "end-session":
