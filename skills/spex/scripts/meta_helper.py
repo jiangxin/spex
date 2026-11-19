@@ -81,7 +81,7 @@ def _add_images_only(meta, images, meta_path):
     print(content, end="")
 
 
-def _set_key(meta, key, value, meta_path, images=None):
+def _set_key(meta, key, value, meta_path, images=None, *, display=True):
     """Set a key in SpecMeta and write back."""
     if key == "prompts":
         from common import local_iso_timestamp
@@ -100,8 +100,8 @@ def _set_key(meta, key, value, meta_path, images=None):
 
     data = meta.to_dict()
     atomic_write_json(meta_path, data)
-    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    print(content, end="")
+    if display:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _build_parser() -> ArgumentParser:
@@ -149,20 +149,7 @@ def _build_parser() -> ArgumentParser:
     return parser
 
 
-def main(argv=None):
-    parser = _build_parser()
-    args = parser.parse(argv)
-
-    spec_name = args.spec_name
-    key = args.key
-    value = args.value
-    stdin_flag = args.stdin_flag
-    add_images = args.add_images
-    pre_action = args.pre_action
-
-    spec_dir = resolve_spec_dir(spec_name)
-    meta_path = spec_dir / "meta.json"
-
+def _read_meta(meta_path):
     if not meta_path.is_file():
         logger.error("Error: file not found: %s", meta_path)
         sys.exit(1)
@@ -173,36 +160,53 @@ def main(argv=None):
         logger.error("Error: invalid JSON: %s", e)
         sys.exit(1)
 
-    meta = SpecMeta.from_dict(data)
+    return SpecMeta.from_dict(data)
 
-    if pre_action:
-        import hooks
-        from config import get_project_context
 
-        ctx = get_project_context()
-        workdir = meta.workdir or (
-            str(ctx.top_workdir) if ctx.in_git_workdir() else None
-        )
-        hooks.run_pre_action(
-            pre_action,
-            {"spex_branch": meta.spex_branch or ""},
-            workdir=workdir,
-            spec_name=spec_dir.name,
-        )
+def _run_pre_action(spec_dir, meta, event_type):
+    import hooks
+    from config import get_project_context
+
+    ctx = get_project_context()
+    workdir = meta.workdir or (
+        str(ctx.top_workdir) if ctx.in_git_workdir() else None
+    )
+    hooks.run_pre_action(
+        event_type,
+        {"spex_branch": meta.spex_branch or ""},
+        workdir=workdir,
+        spec_name=spec_dir.name,
+    )
+
+
+def save_modify_request(spec_dir):
+    """Run the modify pre-action and atomically append the stdin request."""
+    meta_path = spec_dir / "meta.json"
+    meta = _read_meta(meta_path)
+    _run_pre_action(spec_dir, meta, "modify")
+    _set_key(meta, "prompts", sys.stdin.read(), meta_path, display=False)
+
+
+def main(argv=None):
+    parser = _build_parser()
+    args = parser.parse(argv)
+
+    spec_dir = resolve_spec_dir(args.spec_name)
+    meta_path = spec_dir / "meta.json"
+    meta = _read_meta(meta_path)
+    key = args.key
+    value = args.value
+    add_images = args.add_images
+
+    if args.pre_action:
+        _run_pre_action(spec_dir, meta, args.pre_action)
 
     if key is None:
         _display_all(meta.to_dict())
-    elif value is not None:
-        if key == "prompts" and add_images:
-            _set_key(meta, key, value, meta_path, images=add_images)
-        else:
-            _set_key(meta, key, value, meta_path)
-    elif stdin_flag:
-        value = sys.stdin.read()
-        if key == "prompts" and add_images:
-            _set_key(meta, key, value, meta_path, images=add_images)
-        else:
-            _set_key(meta, key, value, meta_path)
+    elif value is not None or args.stdin_flag:
+        if value is None:
+            value = sys.stdin.read()
+        _set_key(meta, key, value, meta_path, images=add_images)
     elif key == "prompts" and add_images:
         _add_images_only(meta, add_images, meta_path)
     else:

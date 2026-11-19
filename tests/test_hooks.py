@@ -1,5 +1,6 @@
 """Tests for hooks.py: hook resolution, execution, and event data."""
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -704,6 +705,81 @@ def _hook_project_ctx(tmp_path):
         spex_root=str(tmp_path),
         spex_roots=[str(tmp_path)],
     )
+
+
+@pytest.mark.parametrize("action", ["pre", "post"])
+@pytest.mark.parametrize(
+    "hook_state",
+    ["missing", "non-executable", "outside-root", "world-writable"],
+)
+def test_action_skips_event_construction(tmp_path, monkeypatch, action, hook_state):
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
+    hook = hook_dir / f"{action}-action"
+    if hook_state == "outside-root":
+        outside = tmp_path / "outside"
+        outside.touch(mode=0o755)
+        hook.symlink_to(outside)
+    elif hook_state != "missing":
+        hook.touch()
+        hook.chmod(0o777 if hook_state == "world-writable" else 0o644)
+
+    monkeypatch.setattr(hooks, "_resolve_hook_roots", lambda _cwd: [hook_dir])
+
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("Skipped hook must not build an event or start a process")
+
+    monkeypatch.setattr(hooks, "get_project_context", unexpected)
+    monkeypatch.setattr(hooks.subprocess, "run", unexpected)
+    getattr(hooks, f"run_{action}_action")("modify", {}, str(tmp_path))
+
+
+@pytest.mark.parametrize("action", ["pre", "post"])
+def test_action_preserves_event_and_nonzero_behavior(
+    tmp_path, monkeypatch, caplog, action,
+):
+    hook_dir = tmp_path / "hooks"
+    hook_dir.mkdir()
+    hook = hook_dir / f"{action}-action"
+    hook.touch(mode=0o755)
+    workdir = str(tmp_path)
+    ctx = _hook_project_ctx(tmp_path)
+    ctx.user_name = "Spex User"
+    ctx.user_email = "spex@example.org"
+    monkeypatch.setattr(hooks, "_resolve_hook_roots", lambda _cwd: [hook_dir])
+
+    def get_context(cwd):
+        assert cwd == workdir
+        return ctx
+
+    monkeypatch.setattr(hooks, "get_project_context", get_context)
+    payload = {"spex_branch": "spex/example"}
+
+    def run(argv, *, input, capture_output, text, cwd):
+        assert argv == [str(hook)]
+        assert capture_output and text
+        assert cwd == workdir
+        event = json.loads(input)
+        assert event.pop("time")
+        assert event == {
+            "user": "Spex User",
+            "email": "spex@example.org",
+            "workdir": workdir,
+            "event_type": "modify",
+            "payload": {**payload, "spec_name": "example"},
+        }
+        return hooks.subprocess.CompletedProcess(argv, 7, stderr="hook failure")
+
+    monkeypatch.setattr(hooks.subprocess, "run", run)
+    if action == "pre":
+        with pytest.raises(SystemExit) as exc_info:
+            hooks.run_pre_action("modify", payload, workdir, spec_name="example")
+        assert exc_info.value.code == 1
+    else:
+        hooks.run_post_action("modify", payload, workdir, spec_name="example")
+    assert "exited with code 7" in caplog.text
+    assert "hook failure" in caplog.text
+    assert payload == {"spex_branch": "spex/example"}
 
 
 class TestHookConfinement:

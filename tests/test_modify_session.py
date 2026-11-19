@@ -1,9 +1,12 @@
 """Verify recoverable revision snapshots."""
 
 import json
+from io import StringIO
 from pathlib import Path
 
 import create_helper
+import hooks
+import meta_helper
 import modify_session as session
 import pytest
 
@@ -153,3 +156,64 @@ def test_begin_requires_positional_name(spec_dir, args, monkeypatch):
     assert not (spec_dir / "versions").exists()
     create_helper.main(["begin-modify", "example"])
     assert _meta(spec_dir)["version"] == 2
+
+
+@pytest.fixture
+def begin_with_request(spec_dir, monkeypatch):
+    monkeypatch.setattr(create_helper, "get_spex_root", lambda **_: str(spec_dir.parent.parent))
+    monkeypatch.setattr("sys.stdin", StringIO("Revise the spec\n"))
+    return lambda: create_helper.main(["begin-modify", "example", "--stdin"])
+
+
+@pytest.mark.parametrize("rejected", [False, True])
+def test_begin_runs_pre_action_after_snapshot_before_append(
+    spec_dir, begin_with_request, monkeypatch, rejected,
+):
+    workdir = str(spec_dir.parent)
+    original = {"version": 1, "workdir": workdir, "spex_branch": "spex/example", "custom": True}
+    (spec_dir / "meta.json").write_text(json.dumps(original), encoding="utf-8")
+    calls = []
+
+    def pre_action(event, payload, **kwargs):
+        calls.append((event, payload, kwargs))
+        assert _meta(spec_dir) == {**original, "version": 2}
+        assert (spec_dir / "versions/1/spec.md").read_bytes() == b"# Original\r\n"
+        if rejected:
+            raise SystemExit(1)
+
+    monkeypatch.setattr(hooks, "run_pre_action", pre_action)
+    if rejected:
+        with pytest.raises(SystemExit) as exc:
+            begin_with_request()
+        assert exc.value.code == 1
+        assert "prompts" not in _meta(spec_dir)
+    else:
+        begin_with_request()
+        assert _meta(spec_dir)["prompts"][0]["text"] == "Revise the spec\n"
+    assert calls == [
+        ("modify", {"spex_branch": "spex/example"}, {"workdir": workdir, "spec_name": "example"})
+    ]
+    assert _meta(spec_dir)["custom"] is True
+
+
+@pytest.mark.parametrize("saved", [False, True])
+def test_begin_preserves_snapshot_when_request_save_fails(
+    spec_dir, begin_with_request, monkeypatch, saved,
+):
+    monkeypatch.setattr(hooks, "run_pre_action", lambda *_args, **_kwargs: None)
+    write = meta_helper.atomic_write_json
+
+    def fail(path, data):
+        if saved:
+            write(path, data)
+            raise KeyboardInterrupt
+        raise OSError("Cannot write request")
+
+    monkeypatch.setattr(meta_helper, "atomic_write_json", fail)
+    message = "Check the spec state" if saved else "Cannot write request"
+    with pytest.raises(SystemExit, match=message):
+        begin_with_request()
+    assert (spec_dir / "versions/1/spec.md").read_bytes() == b"# Original\r\n"
+    assert _meta(spec_dir)["version"] == 2
+    assert ("prompts" in _meta(spec_dir)) is saved
+    assert not (spec_dir / session.PENDING_NAME).exists()

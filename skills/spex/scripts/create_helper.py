@@ -42,6 +42,14 @@ def _do_modify_session(args):
         specs_dir = Path(get_spex_root(auto_init=False)) / "specs"
         spec_dir = resolve_spec_dir(args.name, specs_dir=specs_dir)
         modify_session.begin(spec_dir)
+        if args.stdin_flag:
+            from meta_helper import save_modify_request
+
+            save_modify_request(spec_dir)
+    except KeyboardInterrupt:
+        if not args.stdin_flag:
+            raise
+        sys.exit("Modify request save interrupted. Check the spec state before starting again.")
     except (OSError, RuntimeError, ValueError) as exc:
         sys.exit(str(exc))
 
@@ -740,32 +748,45 @@ def cli_post_action(argv=None):
     _do_post_action(args)
 
 
-def _do_finalize(args):
-    """Run create post-actions, then commit the open todo transaction."""
+def _commit_finalized_todo(spec_name, todo_path, backup_path, *, modify=False):
+    """Commit the todo transaction with a commit-only recovery diagnostic."""
     import todo_helper
 
+    attempts = 2 if modify else 1
+    for attempt in range(attempts):
+        try:
+            todo_helper.cmd_transaction(todo_path, "commit")
+            return
+        except (SystemExit, UnicodeError) as exc:
+            if isinstance(exc, UnicodeError):
+                logger.error("Could not read %s: %s", todo_path, exc)
+            if attempt + 1 < attempts:
+                logger.info("Retrying todo transaction commit for %s.", spec_name)
+                continue
+            if modify:
+                logger.error("Todo transaction backup: %s", backup_path)
+            logger.error(
+                "Recovery command: spex todo-helper transaction commit %s",
+                shlex.quote(spec_name),
+            )
+            if modify:
+                sys.exit(3)
+            raise
+
+
+def _do_finalize(args, *, modify=False):
+    """Run post-action work and commit any open todo transaction."""
     spec_dir = resolve_spec_dir(args.name)
     todo_path = spec_dir / "todo.json"
     backup_path = todo_path.with_name(f"{todo_path.name}.lock")
-    if not backup_path.is_file():
-        logger.error(
-            "Error: todo transaction backup '%s' not found; "
-            "finalize requires an open transaction.",
-            backup_path,
-        )
-        sys.exit(1)
+    has_transaction = backup_path.exists() or backup_path.is_symlink()
+    if not modify and not has_transaction:
+        logger.warning("Todo transaction backup '%s' not found; skipping commit.", backup_path)
 
-    args.event_type = "create"
+    args.event_type = "modify" if modify else "create"
     _do_post_action(args, spec_dir=spec_dir)
-
-    try:
-        todo_helper.cmd_transaction(todo_path, "commit")
-    except SystemExit:
-        logger.error(
-            "Recovery command: spex todo-helper transaction commit %s",
-            shlex.quote(args.name),
-        )
-        raise
+    if has_transaction:
+        _commit_finalized_todo(args.name, todo_path, backup_path, modify=modify)
 
 
 def cli_finalize(argv=None):
@@ -868,8 +889,17 @@ def _build_parser():
         "name", type=nonempty_spec_name, metavar="<spec-name>",
     )
 
+    p_finalize_modify = subs.add_parser(
+        "finalize-modify", help="Finalize modify and commit its todo transaction if open",
+    )
+    p_finalize_modify.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
+
     snapshot = subs.add_parser("begin-modify", help="Snapshot and increment the spec version")
     snapshot.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
+    snapshot.add_argument(
+        "--stdin", action="store_true", dest="stdin_flag",
+        help="Run pre-action and save the modification request from stdin",
+    )
 
     return parser
 
@@ -898,5 +928,7 @@ def main(argv=None, *, log_route=None):
         _do_post_action(args)
     elif args.subcmd == "finalize":
         _do_finalize(args)
+    elif args.subcmd == "finalize-modify":
+        _do_finalize(args, modify=True)
     elif args.subcmd == "begin-modify":
         _do_modify_session(args)

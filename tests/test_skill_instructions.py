@@ -363,12 +363,12 @@ class TestCommandPersistRedact:
             "create.md must redact $requirement before prepare-spec persist"
         )
 
-    def test_modify_redacts_request_in_phase_3_before_meta_helper(self):
+    def test_modify_redacts_request_in_phase_3_before_begin_modify(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         redact_at = _index(phase3, "redact secrets in `$request`")
-        helper_at = _index(phase3, "meta-helper")
+        helper_at = _index(phase3, "create-helper begin-modify")
         assert redact_at < helper_at, (
-            "modify.md Phase 3 must redact $request before meta-helper persist"
+            "modify.md Phase 3 must redact $request before begin-modify persists it"
         )
         first_bullet = next(
             (line for line in phase3.splitlines() if line.startswith("- ")),
@@ -491,14 +491,14 @@ class TestCreatePlanOnlySop:
         assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
         phase7 = _h3_section(text, "Phase 7: Post-Action")
         _index(phase7, "create-helper finalize")
-        _index(phase7, "requires")
+        _index(phase7, "missing, it warns and skips the commit")
         _index(phase7, "todo.json.lock")
         shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Todo transaction failure handling")
         _index(shared, "create-helper finalize")
         _index(shared, "run only")
         _index(shared, "todo-helper transaction commit")
         _index(" ".join(shared.split()), "Do not rerun finalize")
-        _index(shared, "Modify keeps its separate post-action")
+        _index(shared, "Phase 8 of modify")
 
     def test_create_reads_named_sources_before_preparation(self):
         text = _read(CREATE_MD)
@@ -593,11 +593,7 @@ class TestModifyPlanOnlySop:
         _index(pre, "`$spec_name`")
         _index(pre, "`$request`")
         _index(pre, "untrusted")
-        _index(pre, "Load and follow `references/resolve-spec-name.md`")
-        _index(pre, "skip-confirm")
-        _index(pre, "adopt non-empty")
-        _index(pre, "still empty")
-        _index(pre, "Phase 2 asks")
+        assert "resolve-spec-name.md" not in pre
         # Old never-confirms wording must stay gone
         assert "never confirms `$request`" not in pre
         assert "not** confirming" not in pre
@@ -664,9 +660,9 @@ class TestModifyPlanOnlySop:
         phase2 = _h3_section(
             _read(MODIFY_MD), "Phase 2: Understand Context and Clarify"
         )
-        _index(phase2, "missing/empty")
-        _index(phase2, "skip-confirm")
-        _index(phase2, "do not re-ask")
+        assert _index(phase2, "skip-confirm paths S1/S2/S3") < _index(
+            phase2, "adopt non-empty `$request` without"
+        ) < _index(phase2, "If empty after selection, ask")
         _index(phase2, "plan-command-common.md")
         # Old never-confirms wording must stay gone
         assert "never confirms `$request`" not in phase2
@@ -674,13 +670,23 @@ class TestModifyPlanOnlySop:
 
     def test_phase3_loads_spec_assets(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
-        _index(phase3, "Load and follow `references/spec-assets.md`")
+        _index(
+            " ".join(phase3.split()),
+            "For pasted or referenced images, load and follow `references/spec-assets.md`",
+        )
 
-    def test_modify_snapshots_before_saving_request(self):
+    def test_modify_save_precedes_assets_and_prompt_render(self):
         text = _read(MODIFY_MD)
-        snapshot = _index(text, 'create-helper begin-modify "$spec_name"')
-        persist = _index(text, 'meta-helper "$spec_name" prompts')
-        assert snapshot < persist
+        phase3 = _h3_section(text, "Phase 3: Save Request")
+        save = _index(phase3, """create-helper begin-modify "$spec_name" --stdin <<'EOF'""")
+        stop = _index(phase3, "STOP before asset registration")
+        assets = _index(phase3, "`references/spec-assets.md`")
+        assert save < stop < assets
+        _index(phase3, "On failure or interruption")
+        _index(phase3, "Do not automatically rerun")
+        assert "--pre-action modify" not in text
+        assert text.count("create-helper begin-modify") == 1
+        assert _index(text, "meta-helper --add-images") < _index(text, "prompt modify-spec")
 
     def test_todo_transaction_wraps_modify(self):
         text = _read(MODIFY_MD)
@@ -692,11 +698,14 @@ class TestModifyPlanOnlySop:
             phase7, "For a rebuild only"
         ) < _index(phase7, "todo-helper remove-undone")
         phase8 = _h3_section(text, "Phase 8: Post-Action")
-        assert _index(phase8, "create-helper post-action") < _index(
-            phase8, "transaction commit"
-        )
-        _index(phase8, "After post-action exits successfully")
-        _index(phase8, "if one was started in Phase 7")
+        _index(phase8, 'create-helper finalize-modify "$spec_name"')
+        _index(phase8, 'If `todo.json.lock` exists')
+        assert "--transaction" not in phase8
+        assert _index(phase8, "retries the commit once") < _index(
+            phase8, "Exit `3`"
+        ) < _index(phase8, "then STOP before output")
+        assert "todo-helper transaction commit" not in phase8
+        _index(phase8, "report unknown state")
 
     def test_targeted_edits_use_current_positions_and_protect_review(self):
         phase7 = _h3_section(_read(MODIFY_MD), "Phase 7: Update Development Steps")
@@ -736,25 +745,26 @@ class TestModifyPlanOnlySop:
         _index(phase7, "Preserve completed work")
         _index(phase7, "Small batches")
         _index(phase7, "Self-contained")
+        _index(phase7, "Do not add per-step review flags")
+        _index(phase7, "global `step_review`")
         _index(phase7, "skip_commit")
         _index(phase7, "ON_FAIL")
         _index(
             phase7,
-            "Load and follow `references/todo-helper-cookbook.md`",
+            "Load edit\n  examples only for the selected operations",
         )
 
     def test_has_failure_handling_section(self):
         section = _h2_section(_read(MODIFY_MD), "Failure Handling")
-        _index(section, "ON_FAIL")
         _index(section, "plan-command-common.md")
-        _index(section, "Phase 4")
-        _index(section, "Phase 5")
-        _index(section, "Phase 7")
         _index(section, "immediate STOP")
-        _index(section, "roll back and STOP")
+        _index(section, "Rollback restores the original todo list only")
         assert "git restore" not in section
         shared = _read(PLAN_COMMAND_COMMON)
         recovery = _h2_section(shared, "Todo transaction failure handling")
+        assert _index(recovery, "then stop. Only the transaction owner") < _index(
+            recovery, "Recovery options for the transaction owner"
+        )
         _index(recovery, "After a successful start, roll back")
         _index(recovery, "todo-helper transaction rollback")
         _index(recovery, "backup left in place")
@@ -1424,7 +1434,7 @@ class TestSharedSopReferences:
         for path in (MODIFY_MD, APPLY_MD, APPLY_ONE_STEP_MD, MERGE_MD):
             body = _read(path)
             _index(body, needle)
-            pre = _h2_section(body, "Preconditions")
+            pre = _h2_section(body, "Preconditions") if path != MODIFY_MD else body
             _index(pre, "skip-confirm")
             assert "echo-confirm" not in pre
             assert "wait for confirmation" not in pre

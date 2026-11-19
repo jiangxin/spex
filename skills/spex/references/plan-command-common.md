@@ -66,19 +66,29 @@ Shared PLAN-only rules for `/spex create` and `/spex modify`.
   Correct recoverable failures before the hook and retry finalize.
   If finalize reports a commit failure, keep the backup and run only
   `spex todo-helper transaction commit <spec-name>`. Do not rerun
-  finalize. Modify keeps its separate post-action and commit calls.
+  finalize. For modify, follow the exit-code branches in
+  [Phase 8 of modify](../commands/modify.md#phase-8-post-action).
 
-- Start failure: report stderr and stop before any todo writes.
-  If `$spec_path/todo.json.lock` exists, report its path and the
-  `transaction commit` and `transaction rollback` recovery commands.
-  Leave that backup for its owning transaction.
-- After a successful start, roll back if the batch fails or is
-  abandoned before attempting commit, including after an
-  out-of-whitelist write.
+- Existing backup at entry: report its path and both recovery commands,
+  then stop. Only the transaction owner chooses and runs a recovery command.
+- Start failure: report stderr, apply the existing-backup rule if
+  `$spec_path/todo.json.lock` exists, and stop before editing todo.
+
+Recovery options for the transaction owner. Commit keeps the current list:
+
+```bash
+$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
+```
+
+Rollback restores the backup:
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"
 ```
+
+- After a successful start, roll back if the batch fails or is
+  abandoned before attempting commit, including after an
+  out-of-whitelist write.
 
 - Commit or rollback failure: report stderr, the backup path, and the
   failed command for retry. Stop with the backup left in place.
