@@ -494,14 +494,20 @@ def _do_precheck(args):
         spec_name=spec_dir.name,
     )
 
-    if meta.spex_worktree:
-        coding_path = str(Path(meta.spex_worktree).resolve())
+    coding_path = str(Path(meta.spex_worktree).resolve()) if meta.spex_worktree else ""
+    if coding_path:
         logger.info("Coding path (spex worktree): %s", coding_path)
-        print(json.dumps({
+    if args.json or coding_path:
+        result = {
             "spex_worktree": coding_path,
             "spex_branch": meta.spex_branch or "",
             "coding_path": coding_path,
-        }))
+        }
+        if args.json:
+            # Match a fresh config process in the caller's checkout after branch setup and hooks.
+            cfg.clear_config_cache()
+            result["spex_root"] = cfg.get_project_context(ctx.cwd).spex_root
+        print(json.dumps(result))
 
 
 def cli_precheck(argv=None):
@@ -848,6 +854,7 @@ def _build_parser():
     p_precheck.add_argument(
         "--name", required=True, help="Spec name",
     )
+    p_precheck.add_argument("--json", action="store_true", help="Report apply paths as JSON")
 
     p_ensure = subs.add_parser(
         "ensure-branch",

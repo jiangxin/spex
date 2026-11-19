@@ -23,16 +23,17 @@ apply-one-step single-step STOP.
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name"
+$spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name" --json
 ```
 
 - IF non-zero exit -> STOP (cli-contract)
-- ELSE -> continue
-- **Coding worktree bind** (from precheck stdout when present):
-  - IF stdout is JSON with non-empty `"spex_worktree"` (alias
-    `"coding_path"`) → `$spex_worktree` ← that absolute path
-  - ELSE → `$spex_worktree` ← empty (legacy in-place apply on
-    the main checkout)
+- On success, bind `$spex_root` from JSON `spex_root`. This is the
+  absolute path from the caller's configuration after branch setup
+  and pre-action, equivalent to the former config Paths output.
+  If the result is invalid or the path is missing or relative, report
+  the error and STOP.
+- Bind `$spex_worktree` from JSON `spex_worktree` (alias `coding_path`).
+  An empty value means in-place apply.
   - When `$spex_worktree` is non-empty: implement / commit /
     review / fix agents MUST use it as `working_directory`
     (coding cwd). Do **not** switch the user's IDE root or
@@ -40,14 +41,6 @@ $spex_skill_dir/scripts/spex apply-helper precheck --name "$spec_name"
   - Precheck creates or reuses a linked worktree when
     `meta.use_git_worktree` is true; otherwise it may switch
     the main checkout in place (legacy)
-- Bind `$spex_root`:
-
-```bash
-$spex_skill_dir/scripts/spex config
-```
-
-- `$spex_root` ← **Paths** section `spex_root` (absolute path
-  only). Do **not** use Config section's relative `spex_root`
 - Reuse for dirty filter + commit staging exclude; apply
   passes `$spex_root` and `$spex_worktree` to Phases 4–5
   sub-agent

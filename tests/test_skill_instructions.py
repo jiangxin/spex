@@ -1093,9 +1093,10 @@ class TestApplyStepReviewSop:
 
         phase2 = _h2_section(phases, "Phase 2: Validate Branch")
         _index(phase2, "`$spex_root`")
-        _index(phase2, "spex config")
-        _index(phase2, "Paths")
-        _index(phase2, "Do **not** use Config")
+        _index(phase2, 'apply-helper precheck --name "$spec_name" --json')
+        _index(phase2, "absolute path from the caller's configuration")
+        _index(phase2, "after branch setup")
+        assert "scripts/spex config" not in phase2
 
         phase3 = _h2_section(phases, "Phase 3: Build Prompt / Resume Gate")
         _index(phase3, "`$task_prompt`")
