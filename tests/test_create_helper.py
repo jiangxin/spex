@@ -18,12 +18,6 @@ from create_helper import (
     validate_create_branch,
     validate_create_name,
 )
-from debug_log import (
-    get_active_session_id,
-    resolve_debug_log_path,
-    session_debug_log_path,
-    trace_command,
-)
 
 
 def _fake_project_context(**overrides):
@@ -785,6 +779,37 @@ def test_prepare_and_render_general_templates(
     assert not (spec_dir / "todo.json").exists()
 
 
+def test_prepare_anchor_failure_restores_logs_before_hook(
+    create_template_root, capsys, caplog,
+):
+    log_id = "a" * 32
+    logs = create_template_root / "tmp" / f"log-{log_id}"
+    logs.mkdir(parents=True)
+    debug_log = logs / "debug.log"
+    debug_log.write_text("Existing history\n", encoding="utf-8")
+
+    with (
+        patch("debug_log.debug_enabled", return_value=True),
+        patch(
+            "create_helper._append_create_debug_anchor", side_effect=OSError("Anchor write failed"),
+        ),
+        patch("hooks.run_pre_action") as hook,
+        pytest.raises(SystemExit) as failure,
+    ):
+        cli_prepare_spec([
+            "--name", "anchor-failure", "--description", "Test anchor rollback",
+            "--log-id", log_id,
+        ])
+
+    assert failure.value.code == 3
+    hook.assert_not_called()
+    assert capsys.readouterr().out == ""
+    assert "Anchor write failed" in caplog.text
+    assert f"--log-id {log_id}" in caplog.text
+    assert debug_log.read_text(encoding="utf-8") == "Existing history\n"
+    assert list((create_template_root / "specs").iterdir()) == []
+
+
 def test_prepare_rejects_invalid_mode_before_storage_or_hooks(capsys):
     with (
         patch("common.get_specs_dir") as storage,
@@ -827,6 +852,10 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
 ):
     import common
 
+    log_id = "a" * 32
+    logs = create_template_root / "tmp" / f"log-{log_id}"
+    logs.mkdir(parents=True)
+    (logs / "debug.log").write_text("Preserve log history.\n")
     filename = "general-create-spec.md" if mode == "general" else "create-spec.md"
     if template is None:
         monkeypatch.setattr(common, "_get_skill_path", lambda: create_template_root / "missing")
@@ -844,11 +873,12 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
             monkeypatch.setattr(Path, "read_text", read_template)
     with (
         patch("hooks.run_pre_action") as hook,
-        patch.object(create_helper, "_handoff_session_after_prepare") as handoff,
+        patch("debug_log.TemporaryLogRoute.handoff") as handoff,
         pytest.raises(SystemExit) as failure,
     ):
         cli_prepare_spec([
             "--name", "bad-template", "--description", "Test rollback", "--mode", mode,
+            "--log-id", log_id,
         ])
 
     assert failure.value.code == 2
@@ -857,6 +887,7 @@ def test_prepare_spec_prompt_failure_rolls_back_before_handoff(
     assert not capsys.readouterr().out
     assert not list((create_template_root / "specs").iterdir())
     handoff.assert_not_called()
+    assert (logs / "debug.log").read_text() == "Preserve log history.\n"
     hook.assert_not_called()
 
 
@@ -1641,420 +1672,8 @@ class TestDescriptionWrapping:
         assert updated_meta["description"] == "original description"
 
 
-class TestBeginEndSession:
-    """Tests for create-helper begin-session / end-session."""
-
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        clear_config_cache()
-        yield
-        clear_config_cache()
-
-    def _ctx(self, tmp_path, *, debug=False):
-        spex_root = tmp_path / ".spex"
-        (spex_root / "specs").mkdir(parents=True)
-        return ProjectContext(
-            cwd=tmp_path,
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
-            remote_url="",
-            branch="",
-            user_name="",
-            user_email="",
-            spex_tomls=[],
-            config={"debug": debug},
-            spex_root=str(spex_root),
-            spex_roots=[str(spex_root)],
-        )
-
-    def test_begin_session_creates_pointer_and_json(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-
-        out = json.loads(capsys.readouterr().out.strip())
-        assert out["active"] is True
-        assert out["session_id"]
-        assert out["log_path"] == str(
-            session_debug_log_path(ctx.spex_root, out["session_id"])
-        )
-        assert get_active_session_id(ctx.spex_root) == out["session_id"]
-        session_dir = Path(out["log_path"]).parent
-        assert session_dir.is_dir()
-        assert not Path(out["log_path"]).exists()
-
-    def test_begin_session_reuses_active_session(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path, debug=True)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=True),
-            patch(
-                "common.local_iso_timestamp",
-                return_value="2026-08-04T15:50:00+08:00",
-            ),
-        ):
-            create_helper.main(["begin-session"])
-            first = json.loads(capsys.readouterr().out.strip())
-            create_helper.main(["begin-session"])
-            second = json.loads(capsys.readouterr().out.strip())
-
-        assert first == second
-        log_path = Path(first["log_path"])
-        content = log_path.read_text(encoding="utf-8")
-        assert content.count("===== CREATE session begin") == 1
-        assert f"id={first['session_id']}" in content
-
-    def test_precheck_begin_session_writes_anchor_when_debug_enabled(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path, debug=True)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch(
-                "create_helper.validate_create_branch",
-                return_value="main",
-            ),
-            patch("debug_log.debug_enabled", return_value=True),
-            patch(
-                "common.local_iso_timestamp",
-                return_value="2026-08-04T15:50:00+08:00",
-            ),
-        ):
-            create_helper.main(["precheck", "--begin-session"])
-
-        out = json.loads(capsys.readouterr().out.strip())
-        content = Path(out["log_path"]).read_text(encoding="utf-8")
-        assert (
-            f"===== CREATE session begin id={out['session_id']} "
-            "ts=2026-08-04T15:50:00+08:00 =====\n"
-        ) == content
-
-    def test_end_session_without_name_keeps_session_files(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            log_path = Path(begin["log_path"])
-            log_path.write_text("session history\n", encoding="utf-8")
-            create_helper.main(["end-session"])
-            end = json.loads(capsys.readouterr().out.strip())
-
-        assert end == {
-            "ended": True,
-            "merged_into": None,
-            "deleted": False,
-        }
-        assert get_active_session_id(ctx.spex_root) is None
-        assert log_path.is_file()
-        assert log_path.read_text(encoding="utf-8") == "session history\n"
-
-    def test_end_session_with_name_cleans_empty_session_dir(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        """begin without debug leaves an empty session dir; end --name removes it.
-
-        Locks the no-log-file edge path: session dir exists, debug.log was
-        never created, merge has nothing to append, but empty dir is cleaned.
-        """
-        ctx = self._ctx(tmp_path)
-        spex_root = Path(ctx.spex_root)
-        spec_dir = spex_root / "specs" / "2026-08-04-15-50-demo"
-        spec_dir.mkdir()
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_dir = Path(begin["log_path"]).parent
-            assert session_dir.is_dir()
-            assert not Path(begin["log_path"]).exists()
-            assert not (spec_dir / "logs" / "debug.log").exists()
-            create_helper.main(
-                ["end-session", "--name", "2026-08-04-15-50-demo"]
-            )
-            end = json.loads(capsys.readouterr().out.strip())
-
-        assert end == {
-            "ended": True,
-            "merged_into": None,
-            "deleted": False,
-        }
-        assert get_active_session_id(ctx.spex_root) is None
-        assert not session_dir.exists()
-        assert not (spex_root / "sessions" / begin["session_id"]).exists()
-        assert not (spec_dir / "logs" / "debug.log").exists()
-
-    def test_end_session_with_name_merges_then_deletes(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path)
-        spex_root = Path(ctx.spex_root)
-        spec_dir = spex_root / "specs" / "2026-08-04-15-50-demo"
-        spec_dir.mkdir()
-        (spec_dir / "logs").mkdir()
-        (spec_dir / "logs" / "debug.log").write_text(
-            "===== existing =====\n", encoding="utf-8",
-        )
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_log = Path(begin["log_path"])
-            session_log.write_text(
-                "===== session history =====\n", encoding="utf-8",
-            )
-            trace_history = {"schema_version": 1, "name": "begin-session"}
-            session_log.with_name("trace.jsonl").write_text(
-                json.dumps(trace_history) + "\n", encoding="utf-8",
-            )
-            create_helper.main(
-                ["end-session", "--name", "2026-08-04-15-50-demo"]
-            )
-            end = json.loads(capsys.readouterr().out.strip())
-
-        assert end["ended"] is True
-        assert end["deleted"] is True
-        assert end["merged_into"] == str(spec_dir / "logs" / "debug.log")
-        assert get_active_session_id(ctx.spex_root) is None
-        assert not session_log.exists()
-        assert not session_log.parent.exists()
-        spans = [
-            json.loads(line) for line in
-            (spec_dir / "logs" / "trace.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
-        assert spans == [trace_history]
-        assert (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8") == (
-            "===== existing =====\n"
-            "===== session history =====\n"
-        )
-        assert not (spec_dir / "debug.session-pre.log").exists()
-        assert not list(spex_root.glob("**/debug.session-pre.log"))
-
-    def test_end_session_with_spec_path_merges(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path)
-        spec_dir = Path(ctx.spex_root) / "specs" / "via-path"
-        spec_dir.mkdir()
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            Path(begin["log_path"]).write_text(
-                "pre-name timeline\n", encoding="utf-8",
-            )
-            create_helper.main(
-                ["end-session", "--spec-path", str(spec_dir)]
-            )
-            end = json.loads(capsys.readouterr().out.strip())
-
-        assert end["deleted"] is True
-        assert (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8") == (
-            "pre-name timeline\n"
-        )
-        assert get_active_session_id(ctx.spex_root) is None
-
-    def test_end_session_ambiguous_name_keeps_active_session(
-        self, tmp_path, monkeypatch, capsys, caplog,
-    ):
-        import logging
-
-        ctx = self._ctx(tmp_path)
-        spex_root = Path(ctx.spex_root)
-        (spex_root / "specs" / "2026-08-04-15-50-demo").mkdir()
-        (spex_root / "specs" / "2026-08-04-16-00-demo").mkdir()
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_id = begin["session_id"]
-            session_log = Path(begin["log_path"])
-            session_log.write_text("keep me\n", encoding="utf-8")
-            with caplog.at_level(logging.ERROR):
-                with pytest.raises(SystemExit) as exc_info:
-                    create_helper.main(["end-session", "--name", "demo"])
-
-        assert exc_info.value.code == 1
-        assert "multiple specs match 'demo'" in caplog.text
-        assert get_active_session_id(ctx.spex_root) == session_id
-        assert session_log.is_file()
-        assert session_log.read_text(encoding="utf-8") == "keep me\n"
-
-    def test_end_session_missing_name_keeps_active_session(
-        self, tmp_path, monkeypatch, capsys, caplog,
-    ):
-        import logging
-
-        ctx = self._ctx(tmp_path)
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_id = begin["session_id"]
-            session_log = Path(begin["log_path"])
-            session_log.write_text("orphan risk\n", encoding="utf-8")
-            with caplog.at_level(logging.ERROR):
-                with pytest.raises(SystemExit) as exc_info:
-                    create_helper.main(
-                        ["end-session", "--name", "no-such-spec"]
-                    )
-
-        assert exc_info.value.code == 1
-        assert "no spec matching 'no-such-spec'" in caplog.text
-        assert get_active_session_id(ctx.spex_root) == session_id
-        assert session_log.is_file()
-
-    def test_begin_session_fails_without_spex_root(
-        self, tmp_path, monkeypatch,
-    ):
-        ctx = ProjectContext(
-            cwd=tmp_path,
-            top_workdir=tmp_path,
-            main_worktree=tmp_path,
-            remote_url="",
-            branch="",
-            user_name="",
-            user_email="",
-            spex_tomls=[],
-            config={},
-            spex_root="",
-            spex_roots=[],
-        )
-        monkeypatch.chdir(tmp_path)
-        with patch.object(cfg, "get_project_context", return_value=ctx):
-            with pytest.raises(SystemExit) as exc_info:
-                create_helper.main(["begin-session"])
-        assert exc_info.value.code == 1
-
-    def test_precheck_without_flag_preserves_legacy_behavior(self):
-        with (
-            patch.object(create_helper, "cli_create_validate") as precheck,
-            patch.object(create_helper, "_do_begin_session") as begin_session,
-        ):
-            create_helper.main(["precheck"])
-
-        precheck.assert_called_once_with()
-        begin_session.assert_not_called()
-
-    def test_precheck_failure_does_not_start_session(self):
-        with (
-            patch.object(
-                create_helper, "cli_create_validate",
-                side_effect=SystemExit(1),
-            ),
-            patch.object(create_helper, "_do_begin_session") as begin_session,
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                create_helper.main(["precheck", "--begin-session"])
-
-        assert exc_info.value.code == 1
-        begin_session.assert_not_called()
-
-    def test_precheck_session_start_failure_reports_recovery(
-        self, capsys, caplog,
-    ):
-        with (
-            patch.object(create_helper, "cli_create_validate"),
-            patch.object(
-                create_helper, "_do_begin_session",
-                side_effect=OSError("session storage unavailable"),
-            ),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                create_helper.main(["precheck", "--begin-session"])
-
-        captured = capsys.readouterr()
-        assert exc_info.value.code == 1
-        assert captured.out == ""
-        assert "session storage unavailable" in caplog.text
-        assert "spex create-helper end-session" in caplog.text
-
-    def test_precheck_begin_session_outputs_session_json_after_precheck(
-        self, tmp_path, monkeypatch, capsys, caplog,
-    ):
-        ctx = self._ctx(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch(
-                "create_helper.validate_create_branch",
-                return_value="main",
-            ),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["precheck", "--begin-session"])
-
-        captured = capsys.readouterr()
-        result = json.loads(captured.out.strip())
-        assert result["active"] is True
-        assert result["session_id"] == get_active_session_id(ctx.spex_root)
-        assert "Valid: currently on branch 'main'" in caplog.text
-
-    def test_precheck_begin_session_reuses_existing_debug_session(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path, debug=True)
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch(
-                "create_helper.validate_create_branch",
-                return_value="main",
-            ),
-            patch("debug_log.debug_enabled", return_value=True),
-            patch(
-                "common.local_iso_timestamp",
-                return_value="2026-11-19T10:00:00+08:00",
-            ),
-        ):
-            create_helper.main(["begin-session"])
-            first = json.loads(capsys.readouterr().out.strip())
-            create_helper.main(["precheck", "--begin-session"])
-            second_capture = capsys.readouterr()
-
-        second = json.loads(second_capture.out.strip())
-        assert second == first
-        log_content = Path(second["log_path"]).read_text(encoding="utf-8")
-        assert log_content.count("===== CREATE session begin") == 1
-
-
-class TestPreparePostActionSession:
-    """Tests for prepare-spec handoff and post-action debug anchors."""
+class TestPostActionDebugAnchors:
+    """Tests for post-action debug anchors."""
 
     @pytest.fixture(autouse=True)
     def _clear_cache(self):
@@ -2078,298 +1697,6 @@ class TestPreparePostActionSession:
             spex_root=str(spex_root),
             spex_roots=[str(spex_root)],
         )
-
-    def _run_prepare(self, tmp_path, ctx, monkeypatch, capsys, name):
-        import common
-        import prompt as prompt_mod
-
-        specs_dir = Path(ctx.spex_root) / "specs"
-        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-        monkeypatch.chdir(tmp_path)
-        with (
-            patch.object(common, "get_specs_dir", return_value=str(specs_dir)),
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch.object(
-                prompt_mod, "render_prompt", return_value="# Template",
-            ),
-            patch("hooks.run_pre_action"),
-        ):
-            create_helper.main(
-                ["prepare-spec", "--name", name, "--description", "desc"],
-            )
-        return json.loads(capsys.readouterr().out.strip())
-
-    def test_prepare_merges_session_then_anchor_and_deletes(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path, debug=True)
-        name = "handoff"
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch(
-                "create_helper.validate_create_branch",
-                return_value="main",
-            ),
-            patch("debug_log.debug_enabled", return_value=True),
-        ):
-            create_helper.main(["precheck", "--begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_log = Path(begin["log_path"])
-            session_log.write_text(
-                "===== session history =====\n", encoding="utf-8",
-            )
-
-            with patch("debug_log.debug_enabled", return_value=True):
-                out = self._run_prepare(
-                    tmp_path, ctx, monkeypatch, capsys, name,
-                )
-
-        spec_dir = Path(out["spec_path"])
-        debug_log = spec_dir / "logs" / "debug.log"
-        assert out["spec_name"].endswith("-handoff")
-        assert get_active_session_id(ctx.spex_root) is None
-        assert not session_log.exists()
-        assert not session_log.parent.exists()
-        content = debug_log.read_text(encoding="utf-8")
-        assert content.index("===== session history =====\n") < content.index(
-            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
-        )
-        assert not (spec_dir / "debug.session-pre.log").exists()
-
-    def test_prepare_debug_false_clears_pointer_without_anchor(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        ctx = self._ctx(tmp_path, debug=False)
-        name = "no-debug"
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=False),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_dir = Path(begin["log_path"]).parent
-            assert session_dir.is_dir()
-            assert not Path(begin["log_path"]).exists()
-
-            out = self._run_prepare(
-                tmp_path, ctx, monkeypatch, capsys, name,
-            )
-
-        spec_dir = Path(out["spec_path"])
-        assert get_active_session_id(ctx.spex_root) is None
-        assert not session_dir.exists()
-        assert not (spec_dir / "logs" / "debug.log").exists()
-
-    def test_prepare_keeps_pointer_when_merge_fails(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        """Failed merge must not clear the active pointer (retryable handoff)."""
-        ctx = self._ctx(tmp_path, debug=True)
-        name = "merge-fail"
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=True),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_id = begin["session_id"]
-            session_log = Path(begin["log_path"])
-            session_log.write_text(
-                "===== session history =====\n", encoding="utf-8",
-            )
-
-            with patch(
-                "debug_log.merge_session_log_into_spec",
-                return_value=None,
-            ):
-                # Simulate OSError failure: merge returns None but log remains.
-                out = self._run_prepare(
-                    tmp_path, ctx, monkeypatch, capsys, name,
-                )
-
-        assert out["spec_name"].endswith("-merge-fail")
-        assert get_active_session_id(ctx.spex_root) == session_id
-        assert session_log.is_file()
-        # Prepare still succeeded; debug anchor may be written.
-        content = (Path(out["spec_path"]) / "logs" / "debug.log").read_text(
-            encoding="utf-8",
-        )
-        assert (
-            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
-            in content
-        )
-
-    def test_append_create_debug_anchor_raises_oserror(
-        self, tmp_path, monkeypatch,
-    ):
-        """CREATE writer must not swallow OSError (unlike APPLY soft append)."""
-        log_path = tmp_path / "debug.log"
-
-        def fail_open(*_args, **_kwargs):
-            raise OSError("permission denied")
-
-        monkeypatch.setattr(Path, "open", fail_open)
-        with pytest.raises(OSError, match="permission denied"):
-            create_helper._append_create_debug_anchor(
-                log_path,
-                "===== CREATE prepare-spec ok name=x =====",
-            )
-
-    def test_prepare_anchor_write_failure_keeps_pointer(
-        self, tmp_path, monkeypatch, capsys, caplog,
-    ):
-        """CREATE anchor write must raise so handoff does not clear session."""
-        ctx = self._ctx(tmp_path, debug=True)
-        name = "anchor-fail"
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=True),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_id = begin["session_id"]
-            Path(begin["log_path"]).write_text(
-                "===== session history =====\n", encoding="utf-8",
-            )
-
-            with patch.object(
-                create_helper,
-                "_append_create_debug_anchor",
-                side_effect=OSError("permission denied"),
-            ):
-                with pytest.raises(SystemExit) as failure:
-                    self._run_prepare(
-                        tmp_path, ctx, monkeypatch, capsys, name,
-                    )
-                assert failure.value.code == 3
-                assert "permission denied" in caplog.text
-
-        assert get_active_session_id(ctx.spex_root) == session_id
-
-    def test_prepare_growth_isolation_before_handoff(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        """Session size stays put when --name resolves elsewhere; handoff deletes."""
-        ctx = self._ctx(tmp_path, debug=True)
-        spex_root = Path(ctx.spex_root)
-        side_spec = spex_root / "specs" / "2026-08-04-15-50-side"
-        side_spec.mkdir()
-        name = "isolate"
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=True),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_log = Path(begin["log_path"])
-            session_log.write_text("session-entry\n", encoding="utf-8")
-            session_size = session_log.stat().st_size
-
-            with patch("debug_log.get_project_storage", return_value=ctx):
-                named_path = resolve_debug_log_path(
-                    ["spex", "prompt", "apply-one-task", "2026-08-04-15-50-side"],
-                )
-            assert named_path == side_spec / "logs" / "debug.log"
-            named_path.parent.mkdir()
-            named_path.write_text("spec-entry\n", encoding="utf-8")
-
-            assert session_log.stat().st_size == session_size
-            assert named_path.read_text(encoding="utf-8") == "spec-entry\n"
-
-            out = self._run_prepare(
-                tmp_path, ctx, monkeypatch, capsys, name,
-            )
-
-        new_spec = Path(out["spec_path"])
-        assert not session_log.exists()
-        assert get_active_session_id(ctx.spex_root) is None
-        content = (new_spec / "logs" / "debug.log").read_text(encoding="utf-8")
-        assert content.startswith("session-entry\n")
-        assert (
-            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
-            in content
-        )
-        # Side-spec log was never the handoff target.
-        assert (side_spec / "logs" / "debug.log").read_text(encoding="utf-8") == (
-            "spec-entry\n"
-        )
-
-    def test_prepare_under_trace_command_handoff_cli_path(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        """Regression: spex resolve + trace_command must not orphan session log."""
-        import common
-        import prompt as prompt_mod
-
-        ctx = self._ctx(tmp_path, debug=True)
-        name = "cli-path"
-        monkeypatch.chdir(tmp_path)
-        specs_dir = Path(ctx.spex_root) / "specs"
-
-        with (
-            patch.object(cfg, "get_project_context", return_value=ctx),
-            patch("debug_log.get_project_storage", return_value=ctx),
-            patch("debug_log.debug_enabled", return_value=True),
-        ):
-            create_helper.main(["begin-session"])
-            begin = json.loads(capsys.readouterr().out.strip())
-            session_log = Path(begin["log_path"])
-            session_log.write_text(
-                "===== session history =====\n", encoding="utf-8",
-            )
-
-            argv = [
-                "spex", "create-helper", "prepare-spec",
-                "--name", name, "--description", "desc",
-            ]
-            # Same pre-command resolve as spex: new --name does not exist yet.
-            log_path = resolve_debug_log_path(argv)
-            assert log_path == session_log
-
-            monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-            with (
-                patch.object(
-                    common, "get_specs_dir", return_value=str(specs_dir),
-                ),
-                patch.object(
-                    prompt_mod, "render_prompt", return_value="# Template",
-                ),
-                patch("hooks.run_pre_action"),
-                trace_command(log_path, argv),
-            ):
-                create_helper.main(
-                    ["prepare-spec", "--name", name, "--description", "desc"],
-                )
-            out = json.loads(capsys.readouterr().out.strip())
-
-        spec_dir = Path(out["spec_path"])
-        debug_log = spec_dir / "logs" / "debug.log"
-        assert get_active_session_id(ctx.spex_root) is None
-        assert not session_log.exists()
-        assert not session_log.parent.exists()
-        content = debug_log.read_text(encoding="utf-8")
-        history = "===== session history =====\n"
-        anchor = (
-            f"===== CREATE prepare-spec ok name={out['spec_name']} =====\n"
-        )
-        assert content.index(history) < content.index(anchor)
-        assert "argv: spex create-helper prepare-spec" in content
-        assert content.index(anchor) < content.index(
-            "argv: spex create-helper prepare-spec",
-        )
-        assert "===== END exit=0 duration_ms=" in content
-        span = json.loads((spec_dir / "logs" / "trace.jsonl").read_text(encoding="utf-8"))
-        assert span["name"] == "create-helper"
 
     def test_post_action_writes_anchor_when_debug_enabled(
         self, tmp_path, monkeypatch,

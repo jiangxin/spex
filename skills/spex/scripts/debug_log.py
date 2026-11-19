@@ -64,6 +64,29 @@ class TemporaryLogRoute:
 
     directory: Path | None = None
 
+    @contextmanager
+    def handoff(self, spec_dir: Path) -> Iterator[None]:
+        """Relocate all log files atomically and restore them if preparation fails."""
+        source = self.directory
+        if source is None:
+            raise ValueError("temporary log directory is missing")
+        target = spec_dir / SPEC_LOG_DIR
+        if target.exists() or target.is_symlink():
+            raise FileExistsError(f"spec log directory already exists: {target}")
+        if source.is_symlink() or source.parent.is_symlink() or not all(
+            entry.name in SPEC_LOG_FILES and _temporary_log_file(source, entry.name) is not None
+            for entry in source.iterdir()
+        ):
+            raise ValueError(f"unsafe file in temporary log directory: {source}")
+        source.rename(target)
+        self.directory = target
+        try:
+            yield
+        except BaseException:
+            target.rename(source)
+            self.directory = source
+            raise
+
 
 def trace_enabled() -> bool:
     """Check whether an explicit trace sink enables trace without debug."""
@@ -91,9 +114,6 @@ def spec_logs_only(entries: list[Path]) -> bool:
         elif entry.name not in SPEC_LOG_FILES or not entry.is_file():
             return False
     return True
-SESSIONS_DIR_NAME = "sessions"
-ACTIVE_SESSION_FILENAME = "active"
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _PROMPT_SUMMARY_KEYS = (
     "task_id",
     "commit_sha",
@@ -104,29 +124,6 @@ _PROMPT_SUMMARY_KEYS = (
     "resume_phase",
     "commit_title",
 )
-
-
-def validate_session_id(session_id: str) -> str:
-    """Return a safe session id or raise ``ValueError``.
-
-    Rejects empty values, ``.`` / ``..``, path separators, the reserved
-    active-pointer name (case-insensitive), and any id that is not in the
-    ``[A-Za-z0-9._-]+`` allowlist.
-    """
-    cleaned = (session_id or "").strip()
-    if not cleaned:
-        raise ValueError("session_id must be non-empty")
-    if cleaned in {".", ".."}:
-        raise ValueError(f"invalid session_id: {session_id!r}")
-    if "/" in cleaned or "\\" in cleaned or "\0" in cleaned:
-        raise ValueError(f"invalid session_id: {session_id!r}")
-    if not _SESSION_ID_RE.fullmatch(cleaned):
-        raise ValueError(f"invalid session_id: {session_id!r}")
-    if cleaned.casefold() == ACTIVE_SESSION_FILENAME.casefold():
-        raise ValueError(
-            f"session_id is reserved for the active pointer: {session_id!r}"
-        )
-    return cleaned
 
 
 def debug_enabled(argv: list[str]) -> bool:
@@ -485,177 +482,6 @@ def is_prompt_argv(argv: list[str]) -> bool:
     return _command_from_argv(argv) == "prompt"
 
 
-def sessions_dir(spex_root: str | Path) -> Path:
-    """Return ``<spex_root>/sessions``."""
-    return Path(spex_root) / SESSIONS_DIR_NAME
-
-
-def active_session_path(spex_root: str | Path) -> Path:
-    """Return the active-session pointer file path."""
-    return sessions_dir(spex_root) / ACTIVE_SESSION_FILENAME
-
-
-def session_debug_log_path(spex_root: str | Path, session_id: str) -> Path:
-    """Return ``<spex_root>/sessions/<session_id>/debug.log``.
-
-    Validates ``session_id`` and asserts the resolved path stays under
-    ``sessions_dir(spex_root)``.
-    """
-    safe_id = validate_session_id(session_id)
-    base = sessions_dir(spex_root).resolve()
-    path = (base / safe_id / DEBUG_LOG_NAME).resolve()
-    try:
-        path.relative_to(base)
-    except ValueError as exc:
-        raise ValueError(
-            f"session path escapes sessions dir: {session_id!r}"
-        ) from exc
-    return path
-
-
-def get_active_session_id(spex_root: str | Path) -> str | None:
-    """Read the active create-session id from the pointer file."""
-    pointer = active_session_path(spex_root)
-    if not pointer.is_file():
-        return None
-    try:
-        session_id = pointer.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        logger.debug("Failed to read active session pointer %s: %s", pointer, exc)
-        return None
-    if not session_id:
-        return None
-    try:
-        return validate_session_id(session_id)
-    except ValueError:
-        logger.debug("Ignoring invalid active session id %r", session_id)
-        return None
-
-
-def set_active_session(spex_root: str | Path, session_id: str) -> None:
-    """Write ``session_id`` as the active create-session pointer."""
-    safe_id = validate_session_id(session_id)
-    pointer = active_session_path(spex_root)
-    pointer.parent.mkdir(parents=True, exist_ok=True)
-    pointer.write_text(f"{safe_id}\n", encoding="utf-8")
-
-
-def clear_active_session(spex_root: str | Path) -> None:
-    """Remove the active create-session pointer if present."""
-    pointer = active_session_path(spex_root)
-    try:
-        pointer.unlink(missing_ok=True)
-    except OSError as exc:
-        logger.debug("Failed to clear active session pointer %s: %s", pointer, exc)
-
-
-def merge_session_log_into_spec(
-    spex_root: str | Path,
-    session_id: str,
-    spec_dir: str | Path,
-) -> Path | None:
-    """Append session log into ``spec_dir/logs/debug.log``, then delete session log.
-
-    Moves the default JSONL trace alongside the debug log.
-    Also relocates the session ``.prev_end`` sidecar onto the target log when
-    content was merged (so post-merge ``gap_ms`` continues), and always removes
-    the session sidecar so the empty session directory can be cleaned up.
-
-    Returns the merged target path when a session log file existed (even if
-    empty). Returns ``None`` when there was no session log to merge.
-    Does not clear the active-session pointer.
-    """
-    if not session_id:
-        return None
-
-    try:
-        session_log = session_debug_log_path(spex_root, session_id)
-    except ValueError:
-        logger.debug("Ignoring invalid session_id for merge: %r", session_id)
-        return None
-    session_dir = session_log.parent
-    target = spec_debug_log_path(spec_dir)
-    _merge_session_trace(session_dir, target.with_name(TRACE_JSONL_NAME))
-
-    def _rmdir_if_empty() -> None:
-        try:
-            if session_dir.is_dir() and not any(session_dir.iterdir()):
-                session_dir.rmdir()
-        except OSError as exc:
-            logger.debug("Failed to remove empty session dir %s: %s", session_dir, exc)
-
-    if not session_log.is_file():
-        # begin-session creates the dir even when debug is off and no log
-        # is written; still best-effort clean the empty session dir.
-        _rmdir_if_empty()
-        return None
-
-    try:
-        content = session_log.read_text(encoding="utf-8")
-        if content:
-            if not prepare_spec_log_parent(target):
-                return None
-            with target.open("a", encoding="utf-8") as handle:
-                handle.write(content)
-        session_log.unlink(missing_ok=True)
-
-        # gap_ms sidecar lives beside the log; move it with merged content so
-        # the session dir is empty enough for _rmdir_if_empty, and the first
-        # post-merge trace on the spec log can still emit gap_ms.
-        session_sidecar = _prev_end_state_path(session_log)
-        if session_sidecar.is_file():
-            try:
-                if content:
-                    session_sidecar.replace(_prev_end_state_path(target))
-                else:
-                    session_sidecar.unlink(missing_ok=True)
-            except OSError as exc:
-                logger.debug(
-                    "Failed to relocate/remove session prev_end %s: %s",
-                    session_sidecar,
-                    exc,
-                )
-                try:
-                    session_sidecar.unlink(missing_ok=True)
-                except OSError:
-                    pass
-
-        _rmdir_if_empty()
-    except OSError as exc:
-        logger.debug(
-            "Failed to merge session log %s into %s: %s",
-            session_log,
-            target,
-            exc,
-        )
-        return None
-
-    return target
-
-
-def _merge_session_trace(session_dir: Path, target: Path) -> None:
-    source = session_dir / TRACE_JSONL_NAME
-    if not source.is_file():
-        return
-    try:
-        if not prepare_spec_log_parent(target):
-            return
-        with source.open("rb") as incoming, target.open("ab") as output:
-            snapshot = os.fstat(incoming.fileno())
-            if os.path.samestat(snapshot, os.fstat(output.fileno())):
-                return
-            remaining = snapshot.st_size
-            while remaining:
-                chunk = incoming.read(min(remaining, 64 * 1024))
-                if not chunk:
-                    break
-                output.write(chunk)
-                remaining -= len(chunk)
-        source.unlink()
-    except OSError as exc:
-        logger.debug("Failed to merge session trace %s into %s: %s", source, target, exc)
-
-
 def _configured_log_dir() -> Path | None:
     value = os.environ.get("SPEX_LOG_DIR", "").strip()
     if not value:
@@ -676,8 +502,7 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
     3. Exact selector in ``archives/`` → ``<archived_dir>/logs/debug.log``
     4. Unique fuzzy selector in ``specs/`` → ``<spec_dir>/logs/debug.log``
     5. Unique fuzzy selector in ``archives/`` → ``<archived_dir>/logs/debug.log``
-    6. Active create session → ``sessions/<id>/debug.log``
-    7. Fallback → ``<spex_root>/debug.log``
+    6. Fallback → ``<spex_root>/debug.log``
     """
     log_dir = _configured_log_dir()
     if log_dir is not None:
@@ -710,10 +535,6 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
             matches = find_matching_specs(name, archives_dir)
             if len(matches) == 1:
                 return spec_debug_log_path(matches[0])
-
-    session_id = get_active_session_id(ctx.spex_root)
-    if session_id:
-        return session_debug_log_path(ctx.spex_root, session_id)
 
     return Path(ctx.spex_root) / DEBUG_LOG_NAME
 
@@ -1109,13 +930,8 @@ def trace_command(
 ) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
-    The flush path is chosen via ``safe_flush_debug_log_path`` after the
-    command body returns. This matters for ``prepare-spec``: the pre-command
-    path may be the active session log (the new spec does not exist yet),
-    but handoff merges/deletes that file and clears the active pointer, after
-    which the selector uniquely matches the new spec. Flushing the pre-resolved
-    session path would recreate an orphan session log; re-resolving appends
-    the tee block to ``<spec_dir>/logs/debug.log`` instead.
+    Explicit routes follow the directory allocated by precheck or moved by
+    prepare-spec. Flush only to an existing directory on these routes.
 
     After ``archive`` moves a spec to ``archives/``, re-resolve follows the
     archived directory so tee appends there instead of recreating a vanished

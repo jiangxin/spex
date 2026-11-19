@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
@@ -97,12 +98,6 @@ def _do_validate_name(args):
     print(json.dumps(result))
 
 
-def _new_session_id() -> str:
-    """Generate a collision-resistant create-session id."""
-    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    return f"{stamp}-{secrets.token_hex(2)}"
-
-
 def _require_spex_root() -> str:
     """Return spex_root or exit with an error."""
     import config as cfg
@@ -158,122 +153,12 @@ def _do_end_log(args) -> None:
         sys.exit(f"Error ending create log: {exc}")
 
 
-def _do_begin_session(_args=None):
-    """Create or reuse an active create session; print JSON to stdout."""
-    from common import local_iso_timestamp
-    from debug_log import (
-        debug_enabled,
-        get_active_session_id,
-        session_debug_log_path,
-        set_active_session,
-    )
-
-    spex_root = _require_spex_root()
-    existing = get_active_session_id(spex_root)
-    if existing:
-        log_path = session_debug_log_path(spex_root, existing)
-        print(
-            json.dumps(
-                {
-                    "session_id": existing,
-                    "log_path": str(log_path),
-                    "active": True,
-                }
-            )
-        )
-        return
-
-    session_id = _new_session_id()
-    log_path = session_debug_log_path(spex_root, session_id)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    set_active_session(spex_root, session_id)
-
-    if debug_enabled(sys.argv):
-        ts = local_iso_timestamp()
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                f"===== CREATE session begin id={session_id} ts={ts} =====\n"
-            )
-
-    print(
-        json.dumps(
-            {
-                "session_id": session_id,
-                "log_path": str(log_path),
-                "active": True,
-            }
-        )
-    )
-
-
-def _resolve_end_session_spec_dir(args, spex_root: str) -> Path | None:
-    """Resolve optional --name / --spec-path to an existing spec directory.
-
-    Returns ``None`` only when neither target flag was provided. When a target
-    was given but cannot be resolved uniquely, logs an error and exits 1.
-    """
-    spec_path = getattr(args, "spec_path", None)
-    if spec_path:
-        path = Path(spec_path)
-        if not path.is_dir():
-            logger.error(
-                "Error: spec path does not exist or is not a directory: %s",
-                path,
-            )
-            sys.exit(1)
-        return path
-
-    name = getattr(args, "name", None)
-    if not name:
-        return None
-
-    return resolve_spec_dir(name, Path(spex_root) / "specs")
-
-
-def _do_end_session(args):
-    """Clear active session; optionally merge-then-delete into a spec.
-
-    When ``--name`` / ``--spec-path`` is provided, resolve the target before
-    clearing the active pointer so a failed handoff leaves the session intact.
-    """
-    from debug_log import (
-        clear_active_session,
-        get_active_session_id,
-        merge_session_log_into_spec,
-    )
-
-    spex_root = _require_spex_root()
-    # Resolve explicit merge target first — may exit(1) without clearing.
-    spec_dir = _resolve_end_session_spec_dir(args, spex_root)
-
-    session_id = get_active_session_id(spex_root)
-    merged_into = None
-    deleted = False
-
-    if session_id and spec_dir is not None:
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-        if target is not None:
-            merged_into = str(target)
-            deleted = True
-
-    clear_active_session(spex_root)
-    print(
-        json.dumps(
-            {
-                "ended": True,
-                "merged_into": merged_into,
-                "deleted": deleted,
-            }
-        )
-    )
-
-
 def _append_create_debug_anchor(log_path: Path, line: str) -> None:
     """Append a CREATE debug anchor; propagate OSError (hard success signal).
 
     Unlike APPLY's soft ``append_debug_anchor`` (tee best-effort), CREATE
-    handoff/post-action anchors must fail loud so prepare does not clear
-    the active session after a missing prepare-ok marker.
+    handoff/post-action anchors must fail loud so prepare can restore
+    its temporary logs if the prepare-ok marker cannot be written.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     text = line if line.endswith("\n") else f"{line}\n"
@@ -281,52 +166,32 @@ def _append_create_debug_anchor(log_path: Path, line: str) -> None:
         handle.write(text)
 
 
-def _handoff_session_after_prepare(
-    spex_root: str, spec_dir: Path, spec_name: str,
-) -> None:
-    """Merge active session into spec debug.log, write prepare anchor, clear.
-
-    Fixed order: (1) merge session content into ``spec_dir/logs/debug.log`` and
-    delete the session log; (2) if debug, append prepare-spec ok anchor;
-    (3) clear the active-session pointer — only after a successful merge or
-    when there was no session log to merge (so a failed merge keeps the
-    pointer for retry).
-    """
-    from debug_log import (
-        clear_active_session,
-        debug_enabled,
-        get_active_session_id,
-        merge_session_log_into_spec,
-        prepare_spec_log_parent,
-        session_debug_log_path,
-        spec_debug_log_path,
-    )
-
-    session_id = get_active_session_id(spex_root)
-    should_clear = True
-    if session_id:
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-        if target is None:
-            # merge returns None for no-file noop *and* OSError failure.
-            # Keep the pointer only when the session log still exists.
-            try:
-                should_clear = not session_debug_log_path(
-                    spex_root, session_id,
-                ).is_file()
-            except ValueError:
-                should_clear = True
+def _append_prepare_anchor(spec_dir: Path, spec_name: str) -> tuple[Path, int, bytes] | None:
+    from debug_log import debug_enabled, prepare_spec_log_parent, spec_debug_log_path
 
     if debug_enabled(sys.argv):
         log_path = spec_debug_log_path(spec_dir)
         if not prepare_spec_log_parent(log_path):
             raise OSError(f"Cannot write spec log: {log_path}")
-        _append_create_debug_anchor(
-            log_path,
-            f"===== CREATE prepare-spec ok name={spec_name} =====",
-        )
+        offset = log_path.stat().st_size if log_path.exists() else 0
+        anchor = f"===== CREATE prepare-spec ok name={spec_name} =====\n"
+        _append_create_debug_anchor(log_path, anchor)
+        return log_path, offset, anchor.encode("utf-8")
+    return None
 
-    if should_clear:
-        clear_active_session(spex_root)
+
+def _remove_prepare_anchor(log_path: Path, offset: int, anchor: bytes) -> None:
+    """Undo the marker before returning the logs of a failed preparation."""
+    try:
+        with log_path.open("r+b") as handle:
+            handle.seek(offset)
+            if handle.read(len(anchor)) == anchor:
+                tail = handle.read()
+                handle.seek(offset)
+                handle.write(tail)
+                handle.truncate()
+    except OSError as err:
+        logger.warning("Could not remove prepare marker from %s: %s", log_path, err)
 
 
 def create_spec(spec, specs_dir, auto_prefix=True):
@@ -556,42 +421,46 @@ def cli_create_validate() -> None:
 
 
 def _do_precheck(args, log_route=None) -> None:
-    """Validate create branch state, then optionally start a debug session."""
+    """Validate create branch state, then optionally allocate a log."""
     cli_create_validate()
     if args.begin_log:
         _do_begin_log(log_route)
-        return
-    if not args.begin_session:
-        return
 
+
+def _do_prepare_spec(args, log_route=None):
     try:
-        _do_begin_session(args)
-    except SystemExit:
-        logger.error(
-            "If session startup left an active session, clean it up with: "
-            "spex create-helper end-session"
-        )
-        raise
-    except (OSError, RuntimeError, ValueError) as exc:
-        logger.error("Error starting create session: %s", exc)
-        logger.error(
-            "If session startup left an active session, clean it up with: "
-            "spex create-helper end-session"
-        )
-        sys.exit(1)
+        if args.log_id is not None and log_route is None:
+            from debug_log import TemporaryLogRoute, temporary_log_dir
 
-
-def _do_prepare_spec(args):
-    try:
-        exit_code = _prepare_spec(args)
+            log_route = TemporaryLogRoute(temporary_log_dir(_require_spex_root(), args.log_id))
+        source = log_route.directory if log_route is not None else None
+        exit_code = _prepare_spec(args, log_route)
     except (Exception, SystemExit) as err:
         logger.error("Error preparing spec: %s", err)
+        if args.log_id is not None and log_route is not None and source is not None:
+            _report_prepare_retry(args, source, log_route.directory)
         sys.exit(3)
     if exit_code:
         sys.exit(exit_code)
 
 
-def _prepare_spec(args):
+def _report_prepare_retry(args, source: Path, current: Path) -> None:
+    if current != source:
+        logger.error(
+            "Logs for ID %s remain at %s. Move that directory back to %s after "
+            "fixing the rollback error, then discard the incomplete spec with: %s",
+            args.log_id, current, source, shlex.join([
+                "spex", "create-helper", "discard-incomplete", "--name", current.parent.name,
+            ]),
+        )
+    command = [
+        "spex", "create-helper", "prepare-spec", "--log-id", args.log_id,
+        "--description", args.description, "--name", args.name, "--mode", args.mode,
+    ]
+    logger.error("Retry with the original requirement on stdin: %s", shlex.join(command))
+
+
+def _prepare_spec(args, log_route=None):
     """Create spec directory and return JSON with metadata."""
     import config as cfg
     import hooks
@@ -614,6 +483,7 @@ def _prepare_spec(args):
         logger.error(f"Error: {e}")
         return 1
 
+    source = log_route.directory if log_route is not None else None
     try:
         ctx = cfg.get_project_context()
         timestamp = local_iso_timestamp()
@@ -645,17 +515,6 @@ def _prepare_spec(args):
             discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
             return 2
 
-        if ctx.spex_root:
-            _handoff_session_after_prepare(ctx.spex_root, spec_dir, spec_name)
-
-        spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
-        hooks.run_pre_action(
-            "create",
-            {"spex_branch": spex_branch},
-            workdir=ctx.top_workdir,
-            spec_name=spec_name,
-        )
-
         result = {
             "spec_name": spec_name,
             "spec_path": str(spec_dir),
@@ -663,14 +522,30 @@ def _prepare_spec(args):
             "spec_prompt": spec_prompt,
             "task_mode": args.mode,
         }
-        print(json.dumps(result, indent=2))
+        rendered = json.dumps(result, indent=2)
+        with log_route.handoff(spec_dir) if log_route is not None else nullcontext():
+            anchor = _append_prepare_anchor(spec_dir, spec_name)
+            spex_branch = DEFAULT_SPEX_BRANCH_PREFIX + strip_date_prefix(spec_name)
+            try:
+                hooks.run_pre_action(
+                    "create",
+                    {"spex_branch": spex_branch},
+                    workdir=ctx.top_workdir,
+                    spec_name=spec_name,
+                )
+                print(rendered)
+            except BaseException:
+                if log_route is not None and anchor is not None:
+                    _remove_prepare_anchor(*anchor)
+                raise
     except BaseException:
         # prepare-spec owns the new directory until success; roll back stubs
         # so a retry with another name does not leave meta-only trees.
-        try:
-            discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
-        except ValueError as err:
-            logger.warning("prepare-spec rollback skipped: %s", err)
+        if log_route is None or log_route.directory == source:
+            try:
+                discard_incomplete_spec(spec_dir, specs_dir=specs_dir)
+            except ValueError as err:
+                logger.warning("prepare-spec rollback skipped: %s", err)
         raise
 
 
@@ -912,41 +787,13 @@ def _build_parser():
         description="Validate branch creation feasibility.",
         help="Validate branch creation feasibility",
     )
-    start = p_precheck.add_mutually_exclusive_group()
-    start.add_argument(
-        "--begin-session", action="store_true",
-        help="Start or reuse a create debug session after validation",
-    )
-    start.add_argument(
+    p_precheck.add_argument(
         "--begin-log", action="store_true",
         help="Allocate an isolated create log after validation",
     )
 
     p_end_log = subs.add_parser("end-log", help="Remove an isolated create log")
     p_end_log.add_argument("--log-id", required=True, help="Allocated temporary log ID")
-
-    subs.add_parser(
-        "begin-session",
-        description=(
-            "Create or reuse an active create debug session."
-        ),
-        help="Create or reuse an active create debug session",
-    )
-
-    p_end = subs.add_parser(
-        "end-session",
-        description=(
-            "Clear active create session; optionally merge into spec."
-        ),
-        help="Clear active create session; optionally merge into spec",
-    )
-    p_end.add_argument(
-        "--name", default=None, help="Spec name to merge session log into",
-    )
-    p_end.add_argument(
-        "--spec-path", default=None,
-        help="Spec directory path to merge session log into",
-    )
 
     p_validate_name = subs.add_parser(
         "validate-name",
@@ -973,6 +820,7 @@ def _build_parser():
     p_prepare.add_argument(
         "--name", required=True, help="Spec name",
     )
+    p_prepare.add_argument("--log-id", help="Allocated temporary log ID")
     p_prepare.add_argument(
         "--description", default="",
         help="Brief description (saved to meta.json)",
@@ -1040,14 +888,10 @@ def main(argv=None, *, log_route=None):
         _do_precheck(args, log_route)
     elif args.subcmd == "end-log":
         _do_end_log(args)
-    elif args.subcmd == "begin-session":
-        _do_begin_session(args)
-    elif args.subcmd == "end-session":
-        _do_end_session(args)
     elif args.subcmd == "validate-name":
         _do_validate_name(args)
     elif args.subcmd == "prepare-spec":
-        _do_prepare_spec(args)
+        _do_prepare_spec(args, log_route)
     elif args.subcmd == "discard-incomplete":
         _do_discard_incomplete(args)
     elif args.subcmd == "post-action":

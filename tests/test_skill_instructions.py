@@ -400,25 +400,22 @@ class TestCreatePlanOnlySop:
         _index(phase9, "outside `$spec_path`")
         _index(phase9, "plan-command-common.md")
 
-    def test_phase1_precheck_begins_session_in_same_call(self):
+    def test_both_modes_share_one_precheck_and_one_finalize_call(self):
         text = _read(CREATE_MD)
-        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Session")
-        _index(
-            phase1,
-            "create-helper precheck --begin-session",
-        )
-        assert "create-helper begin-session" not in phase1
-        _index(phase1, "only after the branch precheck succeeds")
-        assert "### Phase 1: Begin Session + Precheck" not in text
-        assert "### Phase 1: Validate Branch" not in text
+        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Log")
+        assert phase1.count("create-helper precheck --begin-log") == 1
+        _index(phase1, "used by both task modes")
+        _index(phase1, "`$log_id`")
+        _index(" ".join(phase1.split()), "only after the branch precheck succeeds")
+        phase7 = _h3_section(text, "Phase 7: Post-Action")
+        assert phase7.count('create-helper finalize "$spec_name"') == 1
         pre = _h2_section(text, "Preconditions")
-        _index(pre, "precheck --begin-session")
-        _index(pre, "precheck")
+        _index(pre, "precheck --begin-log")
 
     def test_phase1_precheck_side_effect_annotation(self):
         text = _read(CREATE_MD)
         assert "no side effects" not in text.lower()
-        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Session")
+        phase1 = _h3_section(text, "Phase 1: Precheck + Begin Log")
         _index(phase1, "may switch to main_branch_name")
         _index(phase1, "does not create the spec dir")
 
@@ -540,7 +537,7 @@ class TestCreatePlanOnlySop:
         text = _read(CREATE_MD)
         prepare = _h3_section(text, "Phase 4: Prepare Spec Directory")
         template_failure = prepare.split("IF exit 2", 1)[1].split("IF any other", 1)[0]
-        _index(template_failure, "create-helper end-session")
+        _index(template_failure, "create-helper end-log")
         _index(template_failure, "STOP")
         design = _h3_section(text, "Phase 5: Design Specification")
         _index(design, "Use `$spec_prompt` to guide")
@@ -557,9 +554,8 @@ class TestCreatePlanOnlySop:
         section = _h2_section(_read(CREATE_MD), "Failure Handling")
         _index(section, "ON_FAIL")
         _index(section, "validate-name")
-        _index(section, "precheck")
-        _index(section, "end-session")
-        _index(section, "Any termination before `prepare-spec` succeeds")
+        _index(section, "end-log")
+        _index(section, "Abandonment before `prepare-spec` succeeds")
         _index(section, "plan-command-common.md")
         _index(section, "immediate STOP")
         _index(section, "roll")
@@ -569,22 +565,25 @@ class TestCreatePlanOnlySop:
         _index(shared, "immediate STOP")
         _index(shared, "roll back")
 
-    def test_session_end_before_prepare_spec(self):
-        """R4-F6 / P1-6: end-session on any stop before prepare-spec."""
+    def test_abandonment_ends_only_the_allocated_log_before_prepare_spec(self):
         text = _read(CREATE_MD)
         fail = _h2_section(text, "Failure Handling")
-        _index(fail, "Any termination before `prepare-spec` succeeds")
-        _index(fail, "create-helper end-session")
+        _index(fail, "Abandonment before `prepare-spec` succeeds")
+        _index(fail, 'create-helper end-log --log-id "$log_id"')
         _index(fail, "Phase 2 user abandon")
         _index(fail, "Phase 3")
         phase2 = _h3_section(text, "Phase 2: Clarify Requirement")
-        _index(phase2, "create-helper end-session")
+        _index(phase2, "create-helper end-log")
         _index(phase2, "before `prepare-spec`")
         phase3 = _h3_section(
             text, "Phase 3: Generate Name and Description"
         )
-        _index(phase3, "create-helper end-session")
+        _index(phase3, "create-helper end-log")
         _index(phase3, "before `prepare-spec`")
+        _index(phase3, '--log-id "$log_id"')
+        phase4 = _h3_section(text, "Phase 4: Prepare Spec Directory")
+        _index(phase4, '--log-id "$log_id"')
+        _index(phase4, 'keep the same `$log_id`')
         assert "already certain" not in text
         assert "may skip `validate-name`" not in text
         assert "may skip" not in text.lower()

@@ -500,6 +500,7 @@ def _build_parser():
     parser = argparse.ArgumentParser(
         prog="spex",
         usage="spex <command>",
+        parents=[_log_option_parser()],
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=GROUPED_HELP,
         allow_abbrev=False,
@@ -542,10 +543,15 @@ def _build_parser():
     return parser
 
 
+def _log_option_parser():
+    parser = argparse.ArgumentParser(prog="spex", add_help=False, allow_abbrev=False)
+    parser.add_argument("--log-id", action="append", help="Route logs by allocated temporary ID")
+    return parser
+
+
 def _parse_log_option(argv):
     """Extract the routing option on either side of the subcommand."""
-    parser = argparse.ArgumentParser(prog="spex", add_help=False, allow_abbrev=False)
-    parser.add_argument("--log-id", action="append")
+    parser = _log_option_parser()
     args, remaining = parser.parse_known_args(argv)
     if args.log_id and len(args.log_id) != 1:
         parser.error("--log-id can only be passed once")
@@ -609,9 +615,10 @@ def main(argv=None):
     begin_log = create_action == "precheck" and "--begin-log" in options
     end_log = create_action == "end-log"
     temporary = _temporary_log_route(log_id, begin_log, end_log, parser)
-    if end_log and log_id is not None:
-        remaining = ["end-log", "--log-id", log_id, *remaining[1:]]
-    if begin_log:
+    prepare_log = create_action == "prepare-spec" and log_id is not None
+    if (end_log or prepare_log) and log_id is not None:
+        remaining = [create_action, "--log-id", log_id, *remaining[1:]]
+    if begin_log or prepare_log:
         from functools import partial
 
         import create_helper

@@ -747,9 +747,9 @@ class TestTemporaryCreateLogs:
         return result["log_id"], Path(result["log_path"]).parent
 
     def test_interleaved_create_logs_and_cleanup(self, storage, capsys):
-        from debug_log import set_active_session
-
-        set_active_session(storage, "legacy")
+        pointer = storage / "sessions" / "active"
+        pointer.parent.mkdir(parents=True)
+        pointer.write_text("legacy\n")
         a, first = self._begin(capsys, "-d")
         b, second = self._begin(capsys, "-d")
         assert a != b
@@ -777,6 +777,134 @@ class TestTemporaryCreateLogs:
         assert "argv: spex -d version" in (second / "debug.log").read_text()
         assert (storage / "sessions" / "active").read_text().strip() == "legacy"
         assert not (storage / "sessions" / "legacy").exists()
+
+    @pytest.fixture
+    def prepare(self, storage, monkeypatch, capsys):
+        import io
+
+        specs_dir = storage / "specs"
+        specs_dir.mkdir(parents=True)
+        monkeypatch.setattr("common.get_specs_dir", lambda: specs_dir)
+        monkeypatch.setattr("prompt.render_prompt", lambda *args, **kwargs: "# Template")
+        monkeypatch.setattr("hooks.run_pre_action", lambda *args, **kwargs: None)
+
+        def run(log_id, name, *, flags=(), mode="software"):
+            options = [] if log_id is None else ["--log-id", log_id]
+            argv = [
+                *flags, "create-helper", "prepare-spec", *options,
+                "--name", name, "--description", "Log migration test", "--mode", mode,
+            ]
+            monkeypatch.setattr(sys, "stdin", io.StringIO("Preserve temporary logs."))
+            monkeypatch.setattr(sys, "argv", ["spex", *argv])
+            _spex_mod.main(argv)
+            return Path(json.loads(capsys.readouterr().out)["spec_path"])
+
+        return run
+
+    @pytest.mark.parametrize("mode", ["software", "general"])
+    def test_prepare_moves_only_selected_logs_and_flushes_to_spec(
+        self, storage, prepare, capsys, mode,
+    ):
+        first_id, first = self._begin(capsys, "-d")
+        second_id, second = self._begin(capsys, "-d")
+        (first / "debug.log.apply_span").write_text("sidecar")
+        spec = prepare(first_id, "first", flags=["-d"], mode=mode)
+        logs = spec / "logs"
+        assert not first.exists()
+        assert {path.name for path in logs.iterdir()} == {
+            "debug.log", "debug.log.prev_end", "debug.log.apply_span", "trace.jsonl",
+        }
+        assert (logs / "debug.log.apply_span").read_text() == "sidecar"
+        debug = (logs / "debug.log").read_text()
+        assert debug.index("--begin-log") < debug.index("CREATE prepare-spec ok")
+        assert debug.index("CREATE prepare-spec ok") < debug.index(
+            "argv: spex -d create-helper prepare-spec"
+        )
+        spans = [
+            json.loads(line) for line in (logs / "trace.jsonl").read_text().splitlines()
+        ]
+        assert len(spans) == 2
+        assert "prepare-spec" in spans[-1]["attributes"]["process.command_args"]
+        _spex_mod.main(["-d", "version", "--log-id", second_id])
+        assert "version" in (second / "debug.log").read_text()
+        assert "--name first" not in (second / "debug.log").read_text()
+
+    def test_trace_only_prepare_preserves_explicit_trace_destination_isolation(
+        self, storage, prepare, capsys, monkeypatch,
+    ):
+        shared = storage / "shared.jsonl"
+        monkeypatch.setenv("SPEX_TRACE_FILE", str(shared))
+        log_id, source = self._begin(capsys)
+        logs = prepare(log_id, "trace-only") / "logs"
+        assert not source.exists()
+        assert not shared.exists()
+        assert {path.name for path in logs.iterdir()} == {"trace.jsonl"}
+        assert len((logs / "trace.jsonl").read_text().splitlines()) == 2
+
+    @pytest.mark.parametrize("phase", ["move", "hook", "anchor"])
+    def test_prepare_failure_restores_logs_and_reports_recovery(
+        self, storage, prepare, capsys, caplog, monkeypatch, phase,
+    ):
+        log_id, source = self._begin(capsys, "-d")
+        initial = (source / "trace.jsonl").read_text().splitlines()[0]
+        rename = Path.rename
+
+        def fail_move(path, target):
+            if path == source:
+                raise PermissionError("log move denied")
+            return rename(path, target)
+
+        def fail_hook(*args, **kwargs):
+            raise SystemExit(1)
+
+        with monkeypatch.context() as failure:
+            if phase == "move":
+                failure.setattr(Path, "rename", fail_move)
+            elif phase == "hook":
+                failure.setattr("hooks.run_pre_action", fail_hook)
+            else:
+                failure.setattr("create_helper._append_prepare_anchor", fail_hook)
+            with pytest.raises(SystemExit) as exc:
+                prepare(log_id, "retry", flags=["-d"])
+            assert exc.value.code == 3
+
+        assert source.is_dir()
+        assert not list((storage / "specs").iterdir())
+        assert f"prepare-spec --log-id {log_id}" in caplog.text
+        assert not capsys.readouterr().out
+        logs = prepare(log_id, "retry", flags=["-d"]) / "logs"
+        assert not source.exists()
+        trace = (logs / "trace.jsonl").read_text().splitlines()
+        assert trace.count(initial) == 1
+        assert len(trace) == 3
+        assert (logs / "debug.log").read_text().count("CREATE prepare-spec ok") == 1
+
+    def test_name_failure_keeps_only_selected_id_for_retry_or_abandonment(
+        self, storage, prepare, capsys,
+    ):
+        abandoned_id, abandoned = self._begin(capsys, "-d")
+        kept_id, kept = self._begin(capsys, "-d")
+        with pytest.raises(SystemExit) as exc:
+            prepare(abandoned_id, "Invalid name", flags=["-d"])
+        assert exc.value.code == 1
+        assert abandoned.is_dir() and kept.is_dir()
+        _spex_mod.main(["create-helper", "end-log", "--log-id", abandoned_id])
+        assert not abandoned.exists()
+        assert kept.is_dir()
+        with pytest.raises(SystemExit) as exc:
+            prepare(kept_id, "Another invalid name", flags=["-d"])
+        assert exc.value.code == 1
+        assert prepare(kept_id, "valid-name", flags=["-d"]).is_dir()
+
+    def test_prepare_without_id_preserves_legacy_logs(self, storage, prepare):
+        legacy = storage / "sessions" / "old"
+        legacy.mkdir(parents=True)
+        (legacy.parent / "active").write_text("old\n")
+        (legacy / "debug.log").write_text("legacy log\n")
+        spec = prepare(None, "independent", flags=["-d"])
+        assert (legacy.parent / "active").read_text() == "old\n"
+        assert (legacy / "debug.log").read_text() == "legacy log\n"
+        assert "legacy log" not in (spec / "logs" / "debug.log").read_text()
 
     def test_trace_only_and_debug_off(self, storage, tmp_path, monkeypatch, capsys):
         _, quiet = self._begin(capsys)
@@ -834,6 +962,16 @@ class TestTemporaryCreateLogs:
             _spex_mod.main(["-d", "create-helper", "precheck", "--begin-log"])
         assert not (storage / "tmp").exists()
 
+    def test_failed_log_allocation_preserves_previous_id(
+        self, storage, monkeypatch, capsys,
+    ):
+        _, existing = self._begin(capsys, "-d")
+        contents = (existing / "trace.jsonl").read_bytes()
+        monkeypatch.setattr("create_helper.secrets.token_hex", lambda size: existing.name[4:])
+        with pytest.raises(SystemExit, match="could not allocate a unique temporary log ID"):
+            self._begin(capsys, "-d")
+        assert (existing / "trace.jsonl").read_bytes() == contents
+
     @pytest.mark.slow
     def test_concurrent_create_prechecks_in_one_git_checkout(self, tmp_path, monkeypatch):
         monkeypatch.delenv("SPEX_LOG_DIR", raising=False)
@@ -847,9 +985,9 @@ class TestTemporaryCreateLogs:
         monkeypatch.setenv("SPEX_CONFIG_FILE", str(config))
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
 
-        def run(*args):
+        def run(*args, stdin=None):
             return subprocess.check_output(
-                [sys.executable, SPEX_SCRIPT, "-d", *args], cwd=tmp_path, text=True,
+                [sys.executable, SPEX_SCRIPT, "-d", *args], cwd=tmp_path, text=True, input=stdin,
             )
 
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -871,6 +1009,20 @@ class TestTemporaryCreateLogs:
             assert path.parent.parent == root / "tmp"
             assert marker in path.read_text() and other not in path.read_text()
             assert marker in path.with_name("trace.jsonl").read_text()
+
+        prepared = json.loads(run(
+            "create-helper", "prepare-spec", "--log-id", first["log_id"],
+            "--name", "alpha", "--description", "Independent log handoff",
+            stdin="Test isolated create log migration.",
+        ))
+        run("version", "--log-id", second["log_id"])
+        first_log = Path(first["log_path"])
+        second_log = Path(second["log_path"])
+        target = Path(prepared["spec_path"]) / "logs" / "debug.log"
+        assert not first_log.parent.exists()
+        assert "prepare-spec" in target.read_text()
+        assert "argv: spex -d version" in second_log.read_text()
+        assert "prepare-spec" not in second_log.read_text()
 
 
 class TestConfigColorPaths:
