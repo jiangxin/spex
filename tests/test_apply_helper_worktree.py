@@ -610,7 +610,8 @@ class TestValidateApplyWorktree:
 
 @pytest.mark.slow
 class TestPrecheckWorktreeOutput:
-    def test_precheck_prints_coding_path(self, tmp_path, monkeypatch, capsys):
+    @pytest.mark.parametrize("explicit_json", [False, True])
+    def test_precheck_prints_coding_path(self, tmp_path, monkeypatch, capsys, explicit_json):
         from apply_helper import cli_precheck
         from config import ProjectContext
 
@@ -645,10 +646,10 @@ class TestPrecheckWorktreeOutput:
             spex_roots=[str(tmp_path / ".spex")],
         )
 
-        with patch("config.get_project_context", return_value=ctx), \
+        with patch("config.get_project_context", return_value=ctx) as context, \
              patch("common.resolve_spec_dir", return_value=spec_dir), \
              patch("hooks.run_pre_action"):
-            cli_precheck(["--name", spec_name])
+            cli_precheck(["--name", spec_name] + (["--json"] if explicit_json else []))
 
         out = capsys.readouterr().out.strip()
         payload = json.loads(out)
@@ -657,8 +658,71 @@ class TestPrecheckWorktreeOutput:
         assert payload["spex_worktree"] == meta.spex_worktree
         assert payload["coding_path"] == meta.spex_worktree
         assert payload["spex_branch"] == meta.spex_branch
+        if explicit_json:
+            assert payload["spex_root"] == ctx.spex_root
+            assert context.call_args.args == (main,)
+            assert main != Path(payload["coding_path"])
+        else:
+            assert "spex_root" not in payload
 
         remove_worktree(meta.spex_worktree, force=True, cwd=main)
+
+    def test_precheck_json_resolves_root_after_in_place_switch(self, tmp_path, monkeypatch):
+        main = tmp_path / "repo"
+        _git_init_with_commit(main)
+        monkeypatch.delenv("SPEX_CONFIG_FILE", raising=False)
+
+        def git(*args):
+            subprocess.run(["git", *args], cwd=main, check=True, capture_output=True)
+
+        def commit_config(root):
+            (main / ".spex.toml").write_text(
+                f'[spex]\nspex_root = "{root}"\nbranch_management = true\n', encoding="utf-8",
+            )
+            git("add", ".spex.toml")
+            git("commit", "-m", "Set storage root")
+
+        spec_name = "precheck-switch"
+        branch = f"spex/{spec_name}"
+        commit_config("../original")
+        git("switch", "-c", branch)
+        commit_config("../switched")
+        git("switch", "main")
+        _write_spec(
+            tmp_path / "original" / "specs" / spec_name,
+            use_git_worktree=False, main_worktree=main, spex_branch=branch,
+        )
+
+        script = Path(__file__).resolve().parents[1] / "skills" / "spex" / "scripts" / "spex"
+
+        def run(*args):
+            return subprocess.run(
+                [sys.executable, script, *args], cwd=main, check=True,
+                capture_output=True, text=True,
+            ).stdout
+
+        assert not run("apply-helper", "precheck", "--name", spec_name)
+        paths = run("config").split("── Paths", 1)[1].split("── Config", 1)[0]
+        expected = next(line.split("=", 1)[1].strip() for line in paths.splitlines()
+                        if line.strip().startswith("spex_root"))
+        git("switch", "main")
+        payload = json.loads(run("apply-helper", "precheck", "--name", spec_name, "--json"))
+        assert expected == str(tmp_path / "switched")
+        assert payload == {
+            "spex_root": expected, "spex_branch": branch, "spex_worktree": "", "coding_path": "",
+        }
+
+
+def test_precheck_json_emits_no_result_when_hook_rejects(monkeypatch, capsys):
+    from apply_helper import cli_precheck
+
+    monkeypatch.setattr("apply_helper.validate_apply_branch", lambda *args, **kwargs: None)
+    monkeypatch.setattr("common.resolve_spec_dir", lambda name: Path(name))
+    monkeypatch.setattr("common.load_meta", lambda path: SpecMeta())
+    with patch("hooks.run_pre_action", side_effect=SystemExit(1)), \
+         pytest.raises(SystemExit, match="1"):
+        cli_precheck(["--name", "rejected", "--json"])
+    assert not capsys.readouterr().out
 
 
 @pytest.mark.slow

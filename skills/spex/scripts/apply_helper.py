@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -493,14 +494,20 @@ def _do_precheck(args):
         spec_name=spec_dir.name,
     )
 
-    if meta.spex_worktree:
-        coding_path = str(Path(meta.spex_worktree).resolve())
+    coding_path = str(Path(meta.spex_worktree).resolve()) if meta.spex_worktree else ""
+    if coding_path:
         logger.info("Coding path (spex worktree): %s", coding_path)
-        print(json.dumps({
+    if args.json or coding_path:
+        result = {
             "spex_worktree": coding_path,
             "spex_branch": meta.spex_branch or "",
             "coding_path": coding_path,
-        }))
+        }
+        if args.json:
+            # Match a fresh config process in the caller's checkout after branch setup and hooks.
+            cfg.clear_config_cache()
+            result["spex_root"] = cfg.get_project_context(ctx.cwd).spex_root
+        print(json.dumps(result))
 
 
 def cli_precheck(argv=None):
@@ -588,13 +595,18 @@ def cli_ensure_branch(argv=None):
 
 
 def _do_post_action(args):
+    from common import resolve_spec_dir
+
+    _run_post_action(resolve_spec_dir(args.name))
+
+
+def _run_post_action(spec_dir):
     """Run post-action hook, and show hint."""
     import common
     import config as cfg
     import hooks
     from debug_log import emit_apply_anchor
 
-    spec_dir = common.resolve_spec_dir(args.name)
     spec_name = spec_dir.name
     meta = common.load_meta(spec_dir)
     spex_branch = meta.spex_branch if meta else ""
@@ -605,7 +617,7 @@ def _do_post_action(args):
     ctx = cfg.get_project_context()
     workdir = resolve_apply_git_cwd(meta, ctx.top_workdir)
 
-    hooks.run_post_action(
+    hook_found = hooks.run_post_action(
         "apply",
         {
             "source_branch": spex_branch,
@@ -617,7 +629,7 @@ def _do_post_action(args):
 
     emit_apply_anchor(spec_dir, "===== APPLY post-action ok =====")
 
-    if hooks.find_hook("post-action", workdir) is None:
+    if not hook_found:
         logger.info(
             f"Development completed on spec branch {spex_branch}.\n"
             f"After local code review, run /spex merge to merge into\n"
@@ -737,6 +749,93 @@ def _do_verify_handoff(args):
     }))
 
 
+def _complete_step_transaction(spec_dir, args):
+    """Commit one completion and return the snapshot captured under the lock."""
+    from todo_helper import StaleBackupError, cmd_complete, cmd_transaction
+
+    todo_path = spec_dir / "todo.json"
+    backup = spec_dir / "todo.json.lock"
+    name = shlex.quote(spec_dir.name)
+    try:
+        cmd_transaction(todo_path, "start")
+    except StaleBackupError:
+        logger.error("Recovery command: spex todo-helper transaction commit %s", name)
+        raise
+    except SystemExit:
+        if backup.exists() or backup.is_symlink():
+            logger.error("Existing backup: %s. Leave it for its transaction owner.", backup)
+            for action in ("commit", "rollback"):
+                logger.error("Recovery command: spex todo-helper transaction %s %s", action, name)
+        raise
+
+    try:
+        data, changed = cmd_complete(todo_path, args, emit_done=False)
+        remaining = sum(not task["completed_at"] for task in data)
+    except (SystemExit, OSError, ValueError) as exc:
+        logger.error("Could not record step completion: %s", exc)
+        _finish_step_transaction(todo_path, backup, name, "rollback", 4)
+        sys.exit(1)
+
+    # Replays leave the original todo byte-for-byte intact.
+    action, exit_code = ("commit", 3) if changed else ("rollback", 4)
+    _finish_step_transaction(todo_path, backup, name, action, exit_code)
+    return changed, remaining
+
+
+def _finish_step_transaction(todo_path, backup, name, action, exit_code):
+    from todo_helper import cmd_transaction
+
+    try:
+        cmd_transaction(todo_path, action)
+    except (SystemExit, OSError, ValueError) as exc:
+        logger.error("Todo transaction %s failed: %s", action, exc)
+        logger.error("Todo transaction backup: %s", backup)
+        logger.error("Recovery command: spex todo-helper transaction %s %s", action, name)
+        if action == "commit":
+            logger.error("Recovery alternative: spex todo-helper transaction rollback %s", name)
+        sys.exit(exit_code)
+
+
+def _do_complete_step(args):
+    """Persist completion and report whether this invocation reached the tail."""
+    from common import resolve_spec_dir
+    from debug_log import emit_apply_task
+
+    spec_dir = resolve_spec_dir(args.name)
+    changed, remaining = _complete_step_transaction(spec_dir, args)
+    finalization = "not_needed"
+    if remaining == 0:
+        finalization = _finalize_completed_spec(spec_dir, args.id, changed)
+    elif changed:
+        emit_apply_task(spec_dir, "done", id=args.id)
+    print(json.dumps({
+        "completion": "completed" if changed else "already_completed",
+        "remaining": remaining,
+        "finalization": finalization,
+    }))
+
+
+def _finalize_completed_spec(spec_dir, step_id, changed):
+    from debug_log import emit_apply_task
+
+    if changed:
+        try:
+            emit_apply_task(spec_dir, "done", id=step_id)
+            _run_post_action(spec_dir)
+        except (Exception, KeyboardInterrupt) as exc:
+            logger.error("Post-action failed for %s: %s", spec_dir.name, exc)
+        else:
+            return "succeeded"
+
+    logger.warning("Todo completion for %s is saved. Post-action outcome is unknown.",
+                   spec_dir.name)
+    logger.warning("Recovery command: spex apply-helper post-action --name %s",
+                   shlex.quote(spec_dir.name))
+    if changed:
+        sys.exit(5)
+    return "unknown"
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
     parser = ArgumentParser(
@@ -755,6 +854,7 @@ def _build_parser():
     p_precheck.add_argument(
         "--name", required=True, help="Spec name",
     )
+    p_precheck.add_argument("--json", action="store_true", help="Report apply paths as JSON")
 
     p_ensure = subs.add_parser(
         "ensure-branch",
@@ -808,6 +908,14 @@ def _build_parser():
     p_handoff.add_argument("--id", required=True, type=int, help="Current task ID")
     p_handoff.add_argument("--head", required=True, help="Full SHA of the accepted checkout")
 
+    p_complete = subs.add_parser(
+        "complete-step", help="Commit step completion and report remaining work",
+    )
+    p_complete.add_argument("--name", required=True, help="Spec name")
+    p_complete.add_argument("--id", required=True, type=int, help="Current task ID")
+    p_complete.add_argument("--commit-title", help="Title of the completed step's commit")
+    p_complete.add_argument("--acceptance-evidence-stdin", action="store_true")
+
     return parser
 
 
@@ -831,3 +939,5 @@ def main(argv=None):
         _do_dirty(args)
     elif args.subcmd == "verify-handoff":
         _do_verify_handoff(args)
+    elif args.subcmd == "complete-step":
+        _do_complete_step(args)

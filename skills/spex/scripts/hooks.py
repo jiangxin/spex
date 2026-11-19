@@ -130,7 +130,10 @@ def run_hook(
     hook_path = find_hook(hook_name, workdir)
     if hook_path is None:
         return None
+    return _run_found_hook(hook_name, hook_path, event_data, workdir)
 
+
+def _run_found_hook(hook_name, hook_path, event_data, workdir):
     if not _is_safe_to_execute(hook_path, hook_name, workdir):
         return None
 
@@ -151,8 +154,8 @@ def run_hook(
 
 
 def run_post_action(event_type: str, payload: dict, workdir=None,
-                    spec_name: str | None = None) -> None:
-    """Convenience wrapper to run the post-action hook.
+                    spec_name: str | None = None) -> bool:
+    """Run post-action and report whether a hook was found.
 
     Args:
         event_type: The spex command that triggered this hook.
@@ -160,10 +163,16 @@ def run_post_action(event_type: str, payload: dict, workdir=None,
         workdir: Working directory for hook execution.
         spec_name: Optional spec name added to the payload.
     """
+    hook_name = "post-action"
+    hook_path = find_hook(hook_name, workdir)
+    if hook_path is None:
+        return False
+
     if spec_name:
         payload = {**payload, "spec_name": spec_name}
     data = partial(_build_event_data, event_type, payload, workdir)
-    run_hook("post-action", data, workdir)
+    _run_found_hook(hook_name, hook_path, data, workdir)
+    return True
 
 
 def run_pre_action(event_type: str, payload: dict, workdir=None,

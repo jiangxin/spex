@@ -1516,12 +1516,12 @@ class TestCliFinalize:
             "hooks._build_event_data", lambda *_args: {"event_type": "create"},
         )
 
-        def failed_hook(*_args):
-            create_helper.logger.warning("Hook 'post-action' exited with code 1")
-            return subprocess.CompletedProcess(["post-action"], 1)
-
+        hook = spec_dir / "post-action"
+        monkeypatch.setattr("hooks.find_hook", lambda *_args: hook)
+        monkeypatch.setattr("hooks._is_safe_to_execute", lambda *_args: True)
         monkeypatch.setattr(
-            "hooks.run_hook", failed_hook,
+            "hooks.subprocess.run",
+            lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, stderr="hook failed"),
         )
         create_helper.cli_finalize(["hook-failure"])
 
