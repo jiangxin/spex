@@ -1363,17 +1363,18 @@ class TestCliFinalize:
             create_helper.cli_finalize([])
         assert exc.value.code == 2
 
-    def test_missing_backup_fails_before_post_action(
-        self, tmp_path, monkeypatch,
+    def test_missing_backup_warns_and_runs_post_action(
+        self, tmp_path, monkeypatch, caplog,
     ):
         spec_dir = self._setup_finalize(tmp_path, "missing-backup")
         (spec_dir / "todo.json.lock").unlink()
         self._patch_spec_resolution(monkeypatch, spec_dir)
 
-        with patch("hooks.run_post_action") as hook, pytest.raises(SystemExit):
+        with patch("hooks.run_post_action") as hook:
             create_helper.cli_finalize(["missing-backup"])
 
-        hook.assert_not_called()
+        hook.assert_called_once()
+        assert "not found; skipping commit" in caplog.text
 
     def test_invalid_todo_fails_before_post_action(
         self, tmp_path, monkeypatch,

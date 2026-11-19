@@ -150,9 +150,10 @@ original sources.
 $spex_skill_dir/scripts/spex create-helper finalize "$spec_name"
 ```
 
-The helper requires `todo.json.lock`, then validates todo, syncs the
-description, automatically writes the anchor to `debug.log` if enabled,
-runs the post-action hook, and commits the todo transaction.
+The helper validates todo, syncs the description, automatically writes
+the anchor to `debug.log` if enabled, and runs the post-action hook. It commits
+the todo transaction when `todo.json.lock` exists. If the backup is
+missing, it warns and skips the commit.
 On failure follow the shared
 create recovery rules and stop before output.
 

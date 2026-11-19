@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -382,10 +383,13 @@ def cmd_transaction(todo_path, action):
         if action == "start":
             _start_transaction(todo_path, backup_path)
         elif action == "commit":
-            backup_path.stat()
+            backup_stat = backup_path.lstat()
             if todo_path.exists():
                 atomic_write_json(todo_path, validate_todo(todo_path))
-            backup_path.unlink()
+            if stat.S_ISDIR(backup_stat.st_mode):
+                backup_path.rmdir()
+            else:
+                backup_path.unlink()
         elif backup_path.stat().st_size:
             backup_path.replace(todo_path)
         else:

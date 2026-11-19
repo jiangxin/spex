@@ -491,14 +491,14 @@ class TestCreatePlanOnlySop:
         assert _index(phase6, "transaction start") < _index(phase6, "todo-helper-cookbook")
         phase7 = _h3_section(text, "Phase 7: Post-Action")
         _index(phase7, "create-helper finalize")
-        _index(phase7, "requires")
+        _index(phase7, "missing, it warns and skips the commit")
         _index(phase7, "todo.json.lock")
         shared = _h2_section(_read(PLAN_COMMAND_COMMON), "Todo transaction failure handling")
         _index(shared, "create-helper finalize")
         _index(shared, "run only")
         _index(shared, "todo-helper transaction commit")
         _index(" ".join(shared.split()), "Do not rerun finalize")
-        _index(shared, "Modify keeps its separate post-action")
+        _index(shared, "Phase 8 of modify")
 
     def test_create_reads_named_sources_before_preparation(self):
         text = _read(CREATE_MD)
@@ -692,11 +692,14 @@ class TestModifyPlanOnlySop:
             phase7, "For a rebuild only"
         ) < _index(phase7, "todo-helper remove-undone")
         phase8 = _h3_section(text, "Phase 8: Post-Action")
-        assert _index(phase8, "create-helper post-action") < _index(
-            phase8, "transaction commit"
-        )
-        _index(phase8, "After post-action exits successfully")
-        _index(phase8, "if one was started in Phase 7")
+        _index(phase8, 'create-helper finalize-modify "$spec_name"')
+        _index(phase8, 'it found a `todo.json.lock` backup')
+        assert "--transaction" not in phase8
+        assert _index(phase8, "retries the commit once") < _index(
+            phase8, "Exit `3`"
+        ) < _index(phase8, "then STOP before output")
+        assert "todo-helper transaction commit" not in phase8
+        _index(phase8, "report unknown state")
 
     def test_targeted_edits_use_current_positions_and_protect_review(self):
         phase7 = _h3_section(_read(MODIFY_MD), "Phase 7: Update Development Steps")

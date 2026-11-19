@@ -206,25 +206,25 @@ $spex_skill_dir/scripts/spex todo-helper remove-undone "$spec_name"
 - CMD:
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper post-action \
-  --name "$spec_name" --event-type modify
+$spex_skill_dir/scripts/spex create-helper finalize-modify "$spec_name"
 ```
 
 - The helper synchronizes a revised description with the bound repository's
   local Spex branch, when present. This is the shared write whitelist's
   Git configuration exception.
-- ON_FAIL: correct recoverable errors and re-run post-action. If a
-  todo edit is needed, follow Phase 7 transaction rules. If giving up,
-  follow Failure Handling.
-- After post-action exits successfully, commit the todo transaction
-  if one was started in Phase 7. Otherwise proceed to Phase 9.
-
-```bash
-$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
-```
-
-- IF non-zero exit -> follow the commit failure rule in
-  `references/plan-command-common.md` and STOP before output.
+- The helper validates todo and runs post-action, then commits if
+  it found a `todo.json.lock` backup. If the commit fails, the helper
+  retries the commit once.
+- Exit `0` -> proceed to Phase 9.
+- Exit `1` -> report the pre-commit failure. Correct recoverable
+  errors and retry finalize-modify. If a todo edit is needed, follow
+  Phase 7. If giving up, follow Failure Handling for any transaction
+  opened in this run.
+- Exit `3` -> both commit attempts failed. Follow the shared commit
+  failure rule: report stderr, the backup path, and the recovery
+  command, then STOP before output.
+- Other exit or process interruption -> report unknown state, preserve
+  any backup for inspection, and STOP before output.
 
 ### Phase 9: Output
 
@@ -253,8 +253,8 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 - ON_FAIL in Phase 4, Phase 5, or Phase 6 -> STOP before todo edits.
 - Todo transaction recovery: after successful Phase 7 start,
   ON_FAIL in Phase 7 -> roll back and STOP.
-  For Phase 8 failures or abandonment before successful commit,
-  follow the transaction rules in `references/plan-command-common.md`.
+  For Phase 8 abandonment before any attempt to commit, follow
+  the transaction rules in `references/plan-command-common.md`.
   A rollback restores the original task list before retrying.
 
 ## STOP / Outputs

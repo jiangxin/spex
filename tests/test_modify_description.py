@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import create_helper
 import pytest
+import todo_helper
 from branch import get_branch_description
 
 BRANCH = "spex/example"
@@ -40,8 +41,11 @@ def run_modify(tmp_path, monkeypatch):
     monkeypatch.setattr(create_helper, "resolve_spec_dir", lambda _name: spec)
     monkeypatch.setattr("hooks.run_post_action", hook)
 
-    def run():
-        create_helper.cli_post_action(["--name", "example", "--event-type", "modify"])
+    def run(*, finalize=False):
+        if finalize:
+            create_helper.main(["finalize-modify", "example"])
+        else:
+            create_helper.cli_post_action(["--name", "example", "--event-type", "modify"])
 
     return run, meta_path, hook
 
@@ -150,6 +154,89 @@ def test_invalid_meta_does_not_replace_repository_binding(run_modify):
         run()
     assert meta_path.read_text() == '{"main_worktree":'
     hook.assert_not_called()
+
+
+@pytest.mark.parametrize("transaction", ["none", "open"])
+def test_finalize_updates_description_and_finishes_transaction(tmp_path, run_modify, transaction):
+    run, meta_path, hook = run_modify
+    _write_meta(meta_path, tmp_path / "missing", spex_branch="")
+    if transaction == "open":
+        todo_helper.cmd_transaction(meta_path.parent / "todo.json", "start")
+    run(finalize=True)
+    assert json.loads(meta_path.read_text())["description"] == NEW_DESCRIPTION
+    assert not (meta_path.parent / "todo.json.lock").exists()
+    assert hook.call_args.args[0] == "modify"
+
+
+@pytest.mark.parametrize("backup_kind", ["empty-directory", "dangling-symlink"])
+def test_finalize_commits_with_non_file_backup(tmp_path, run_modify, backup_kind):
+    run, meta_path, hook = run_modify
+    _write_meta(meta_path, tmp_path / "missing", spex_branch="")
+    backup = meta_path.parent / "todo.json.lock"
+    if backup_kind == "empty-directory":
+        backup.mkdir()
+    else:
+        backup.symlink_to(tmp_path / "missing")
+    run(finalize=True)
+    assert not backup.exists()
+    assert not backup.is_symlink()
+    hook.assert_called_once()
+
+
+def test_finalize_validation_failure_keeps_backup(run_modify):
+    run, meta_path, hook = run_modify
+    todo = meta_path.parent / "todo.json"
+    backup = todo.with_suffix(".json.lock")
+    todo_helper.cmd_transaction(todo, "start")
+    before = backup.read_bytes()
+    todo.write_text("[]")
+    with pytest.raises(SystemExit) as error:
+        run(finalize=True)
+    assert error.value.code == 1
+    assert backup.read_bytes() == before
+    hook.assert_not_called()
+
+
+@pytest.mark.parametrize("failures", [1, 2])
+def test_finalize_retries_commit_without_replaying_hook(
+    tmp_path, run_modify, monkeypatch, caplog, failures,
+):
+    run, meta_path, hook = run_modify
+    _write_meta(meta_path, tmp_path / "missing", spex_branch="")
+    todo = meta_path.parent / "todo.json"
+    backup = todo.with_suffix(".json.lock")
+    todo_helper.cmd_transaction(todo, "start")
+    before = backup.read_bytes()
+
+    write_todo = todo_helper.atomic_write_json
+    attempts = 0
+
+    def flaky_write(*args):
+        nonlocal attempts
+        attempts += 1
+        assert hook.call_count == 1
+        if attempts <= failures:
+            raise OSError("Cannot write todo")
+        write_todo(*args)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(todo_helper, "atomic_write_json", flaky_write)
+        if failures == 1:
+            run(finalize=True)
+        else:
+            with pytest.raises(SystemExit) as error:
+                run(finalize=True)
+            assert error.value.code == 3
+    assert attempts == 2
+    if failures == 2:
+        assert str(backup) in caplog.text
+        assert "spex todo-helper transaction commit example" in caplog.text
+        assert backup.read_bytes() == before
+        todo_helper.cmd_transaction(todo, "commit")
+    else:
+        assert "Recovery command" not in caplog.text
+    assert not backup.exists()
+    hook.assert_called_once()
 
 
 @pytest.mark.slow

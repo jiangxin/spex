@@ -66,7 +66,8 @@ Shared PLAN-only rules for `/spex create` and `/spex modify`.
   Correct recoverable failures before the hook and retry finalize.
   If finalize reports a commit failure, keep the backup and run only
   `spex todo-helper transaction commit <spec-name>`. Do not rerun
-  finalize. Modify keeps its separate post-action and commit calls.
+  finalize. For modify, follow the exit-code branches in
+  [Phase 8 of modify](../commands/modify.md#phase-8-post-action).
 
 - Start failure: report stderr and stop before any todo writes.
   If `$spec_path/todo.json.lock` exists, report its path and the
