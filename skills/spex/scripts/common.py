@@ -377,16 +377,15 @@ def _sync_all_templates(spex_root_path: Path, verbose=False, dry_run=False):
                 )
 
 
-_SPEX_ROOT_GITIGNORE = "/specs/\n/archives/\n/sessions/\n"
-_SESSIONS_GITIGNORE_ENTRY = "/sessions/"
+_CREATE_LOG_GITIGNORE_ENTRY = "/tmp/log-*/"
+_SPEX_ROOT_GITIGNORE = f"/specs/\n/archives/\n/sessions/\n{_CREATE_LOG_GITIGNORE_ENTRY}\n"
 
 
 def _write_internal_gitignore(spex_root_path: Path, verbose=False,
                               dry_run=False, quiet=False):
     """Create .gitignore files inside spex_root to ignore generated content.
 
-    Ensures ``/sessions/`` is present for create-session runtime state, even
-    when an older spex_root ``.gitignore`` already exists without it.
+    Ignore allocated create logs even when an older ignore file already exists.
     """
     root_gi = spex_root_path / ".gitignore"
     if not root_gi.exists():
@@ -399,14 +398,14 @@ def _write_internal_gitignore(spex_root_path: Path, verbose=False,
     elif not dry_run:
         content = root_gi.read_text()
         lines = content.splitlines()
-        if _SESSIONS_GITIGNORE_ENTRY not in lines:
+        if _CREATE_LOG_GITIGNORE_ENTRY not in lines:
             separator = "" if not content or content.endswith("\n") else "\n"
             root_gi.write_text(
-                f"{content}{separator}{_SESSIONS_GITIGNORE_ENTRY}\n"
+                f"{content}{separator}{_CREATE_LOG_GITIGNORE_ENTRY}\n"
             )
             if not quiet:
                 logger.info("  Updated: %s (added %s)", root_gi,
-                            _SESSIONS_GITIGNORE_ENTRY)
+                            _CREATE_LOG_GITIGNORE_ENTRY)
     tpl_dir = spex_root_path / TEMPLATE_DIR
     tpl_gi = tpl_dir / ".gitignore"
     if not dry_run:
@@ -440,7 +439,7 @@ def ensure_initialized(spex_root, verbose=False, dry_run=False, quiet=False):
     if (spex_root_path / "specs").is_dir():
         if not quiet:
             logger.info("Already initialized: %s", spex_root_path)
-        # Migrate older spex_root .gitignore files to ignore /sessions/.
+        # Update the ignore file for temporary create logs.
         _write_internal_gitignore(spex_root_path, verbose=verbose,
                                   dry_run=dry_run, quiet=quiet)
         return

@@ -1,10 +1,6 @@
 # Plan Command Common (create / modify)
 
 Shared PLAN-only rules for `/spex create` and `/spex modify`.
-Load and follow this document exactly when a command says so.
-Command-specific binding, phases, and recovery stay in the
-command file — this file is deduplication, not a relaxation of
-PLAN-only guards.
 
 ## Write whitelist (SCOPE)
 
@@ -66,12 +62,19 @@ PLAN-only guards.
 
 ## Todo transaction failure handling
 
+- For create, `create-helper finalize` owns post-action and commit.
+  Correct recoverable failures before the hook and retry finalize.
+  If finalize reports a commit failure, keep the backup and run only
+  `spex todo-helper transaction commit <spec-name>`. Do not rerun
+  finalize. Modify keeps its separate post-action and commit calls.
+
 - Start failure: report stderr and stop before any todo writes.
   If `$spec_path/todo.json.lock` exists, report its path and the
   `transaction commit` and `transaction rollback` recovery commands.
   Leave that backup for its owning transaction.
-- After a successful start, roll back on final failure or abandonment
-  before commit, including a stop for an out-of-whitelist write.
+- After a successful start, roll back if the batch fails or is
+  abandoned before attempting commit, including after an
+  out-of-whitelist write.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper transaction rollback "$spec_name"

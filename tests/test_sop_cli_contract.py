@@ -387,7 +387,7 @@ def _combined_option_strings(
     command: str, subcmd: str | None,
 ) -> set[str]:
     parent = _parser_for_command(command)
-    opts = _option_strings(parent)
+    opts = _option_strings(parent) | _option_strings(_load_spex_entry()._log_option_parser())
     if subcmd:
         subs = _subparsers_map(parent)
         if subcmd in subs:

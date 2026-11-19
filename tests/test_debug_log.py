@@ -13,21 +13,15 @@ from debug_log import (
     MAX_STREAM_BYTES,
     PROMPT_STDOUT_LOG_BYTES,
     TeeIO,
-    clear_active_session,
     debug_enabled,
     emit_apply_anchor,
-    get_active_session_id,
     is_prompt_argv,
-    merge_session_log_into_spec,
     parse_flag_from_argv,
     parse_name_from_argv,
     resolve_debug_log_path,
     resolve_trace_file_path,
     safe_flush_debug_log_path,
-    session_debug_log_path,
-    set_active_session,
     trace_command,
-    validate_session_id,
 )
 
 
@@ -57,13 +51,6 @@ def _make_ctx(tmp_path: Path, *, debug: bool = False) -> ProjectContext:
         spex_root=str(spex_root),
         spex_roots=[str(spex_root)],
     )
-
-
-def _activate_session(spex_root: str | Path, session_id: str = "20260804T155021-a1b2") -> str:
-    set_active_session(spex_root, session_id)
-    log_path = session_debug_log_path(spex_root, session_id)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    return session_id
 
 
 class TestDebugEnabled:
@@ -116,7 +103,6 @@ def test_trace_path_precedence(tmp_path, monkeypatch, log_dir):
 def test_shared_cli_logs_preserve_spec_anchors(tmp_path, monkeypatch):
     ctx = _make_ctx(tmp_path, debug=True)
     spec_dir = Path(ctx.spex_root) / "specs" / "my-spec"
-    _activate_session(ctx.spex_root)
     log_dir = tmp_path / "cli-logs"
     monkeypatch.setenv("SPEX_LOG_DIR", str(log_dir))
     monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
@@ -241,235 +227,6 @@ class TestIsPromptArgv:
         assert is_prompt_argv(["spex", "todo-helper", "show"]) is False
 
 
-class TestSessionHelpers:
-    def test_get_set_clear_active_session(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spex_root.mkdir()
-        assert get_active_session_id(spex_root) is None
-
-        set_active_session(spex_root, "sess-1")
-        assert get_active_session_id(spex_root) == "sess-1"
-        assert session_debug_log_path(spex_root, "sess-1") == (
-            (spex_root / "sessions").resolve() / "sess-1" / "debug.log"
-        )
-
-        clear_active_session(spex_root)
-        assert get_active_session_id(spex_root) is None
-
-    @pytest.mark.parametrize(
-        "bad_id",
-        [
-            "",
-            "   ",
-            ".",
-            "..",
-            "../outside",
-            "../../outside",
-            "a/b",
-            "a\\b",
-            "id with space",
-            "active",
-            "Active",
-            "ACTIVE",
-        ],
-    )
-    def test_validate_session_id_rejects_unsafe(self, bad_id):
-        with pytest.raises(ValueError):
-            validate_session_id(bad_id)
-
-    @pytest.mark.parametrize(
-        "bad_id",
-        ["..", "../outside", "../../outside", "a/b", ".", "active", "ACTIVE"],
-    )
-    def test_set_active_session_rejects_path_traversal(self, tmp_path, bad_id):
-        spex_root = tmp_path / ".spex"
-        spex_root.mkdir()
-        with pytest.raises(ValueError):
-            set_active_session(spex_root, bad_id)
-        assert get_active_session_id(spex_root) is None
-
-    def test_set_active_session_rejects_reserved_active_id(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spex_root.mkdir()
-        with pytest.raises(ValueError, match="reserved"):
-            set_active_session(spex_root, "active")
-        assert get_active_session_id(spex_root) is None
-        set_active_session(spex_root, "sess-ok")
-        assert get_active_session_id(spex_root) == "sess-ok"
-
-    def test_get_active_session_id_ignores_unsafe_pointer(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        pointer = spex_root / "sessions" / "active"
-        pointer.parent.mkdir(parents=True)
-        pointer.write_text("../../outside\n", encoding="utf-8")
-        assert get_active_session_id(spex_root) is None
-
-    def test_session_debug_log_path_stays_under_sessions(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spex_root.mkdir()
-        sessions = (spex_root / "sessions").resolve()
-        path = session_debug_log_path(spex_root, "20260804T155021-a1b2")
-        assert path == sessions / "20260804T155021-a1b2" / "debug.log"
-        assert path.is_relative_to(sessions)
-        with pytest.raises(ValueError):
-            session_debug_log_path(spex_root, "../../outside")
-
-    def test_merge_invalid_session_id_returns_none(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        assert merge_session_log_into_spec(spex_root, "../outside", spec_dir) is None
-
-    def test_merge_session_log_into_spec_copies_then_deletes(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        session_id = _activate_session(spex_root)
-        session_log = session_debug_log_path(spex_root, session_id)
-        session_log.write_text("===== session history =====\n", encoding="utf-8")
-
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target == spec_dir / "logs" / "debug.log"
-        assert target.read_text(encoding="utf-8").startswith(
-            "===== session history =====\n"
-        )
-        assert not session_log.exists()
-        assert not session_log.parent.exists()
-        assert not (spec_dir / "debug.session-pre.log").exists()
-        # merge does not clear the active pointer
-        assert get_active_session_id(spex_root) == session_id
-
-    def test_merge_session_trace_does_not_copy_a_hard_link_to_itself(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        session_id = _activate_session(spex_root)
-        source = session_debug_log_path(spex_root, session_id).with_name("trace.jsonl")
-        span = b'{"schema_version":1}\n'
-        source.write_bytes(span)
-        target = spec_dir / "logs" / "trace.jsonl"
-        target.parent.mkdir()
-        target.hardlink_to(source)
-
-        merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target.read_bytes() == span
-
-    def test_merge_appends_to_existing_spec_debug_log(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        existing = "===== existing spec log =====\n"
-        (spec_dir / "logs").mkdir()
-        (spec_dir / "logs" / "debug.log").write_text(existing, encoding="utf-8")
-        session_id = _activate_session(spex_root)
-        session_log = session_debug_log_path(spex_root, session_id)
-        session_body = "===== session history =====\n"
-        session_log.write_text(session_body, encoding="utf-8")
-
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target == spec_dir / "logs" / "debug.log"
-        assert target.read_text(encoding="utf-8") == existing + session_body
-        assert not session_log.exists()
-        assert not session_log.parent.exists()
-        assert get_active_session_id(spex_root) == session_id
-
-    def test_merge_empty_session_log_deletes_without_creating_target(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        session_id = _activate_session(spex_root)
-        session_log = session_debug_log_path(spex_root, session_id)
-        session_log.write_text("", encoding="utf-8")
-
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target == spec_dir / "logs" / "debug.log"
-        assert not session_log.exists()
-        assert not (spec_dir / "logs" / "debug.log").exists()
-
-    def test_merge_missing_session_log_returns_none(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        assert merge_session_log_into_spec(spex_root, "missing", spec_dir) is None
-
-    def test_merge_missing_log_removes_empty_session_dir(self, tmp_path):
-        spex_root = tmp_path / ".spex"
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True)
-        session_id = _activate_session(spex_root)
-        session_log = session_debug_log_path(spex_root, session_id)
-        assert session_log.parent.is_dir()
-        assert not session_log.exists()
-
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target is None
-        assert not session_log.parent.exists()
-        assert get_active_session_id(spex_root) == session_id
-
-    def test_merge_relocates_prev_end_sidecar_and_gap_continues(
-        self, tmp_path, monkeypatch
-    ):
-        """Session .prev_end must move with merge so dir cleans and gap_ms works."""
-        from datetime import datetime, timedelta, timezone
-
-        monkeypatch.chdir(tmp_path)
-        ctx = _make_ctx(tmp_path, debug=True)
-        spex_root = Path(ctx.spex_root)
-        spec_dir = spex_root / "specs" / "my-spec"
-        spec_dir.mkdir(parents=True, exist_ok=True)
-        session_id = _activate_session(spex_root)
-        session_log = session_debug_log_path(spex_root, session_id)
-
-        tz = timezone(timedelta(hours=8))
-        t0 = datetime(2026, 8, 4, 17, 0, 0, tzinfo=tz)
-        t1 = t0 + timedelta(seconds=3)
-        stamps = iter([t0.isoformat(), t1.isoformat()])
-        monkeypatch.setattr(
-            "debug_log.local_iso_timestamp",
-            lambda: next(stamps),
-        )
-
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            with trace_command(session_log, ["spex", "version"]):
-                print("session")
-
-        session_sidecar = Path(str(session_log) + ".prev_end")
-        assert session_sidecar.is_file()
-
-        target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
-
-        assert target == spec_dir / "logs" / "debug.log"
-        assert not session_log.exists()
-        assert not session_sidecar.exists()
-        assert not session_log.parent.exists()
-
-        target_sidecar = Path(str(target) + ".prev_end")
-        assert target_sidecar.is_file()
-        assert target_sidecar.read_text(encoding="utf-8").strip() == t0.isoformat()
-
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            with trace_command(
-                target, ["spex", "prompt", "show", "my-spec"]
-            ):
-                print("after-merge")
-
-        metas = [
-            line
-            for line in target.read_text(encoding="utf-8").splitlines()
-            if line.startswith("meta:")
-        ]
-        assert metas
-        last_meta = metas[-1]
-        assert "gap_ms=" in last_meta
-        gap = int(last_meta.split("gap_ms=")[1].split()[0])
-        assert gap == 3000
-
-
 class TestResolveDebugLogPath:
     def test_with_name_resolves_spec_dir(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -478,32 +235,17 @@ class TestResolveDebugLogPath:
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
         assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
 
-    def test_name_wins_over_active_session(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+    def test_legacy_pointer_is_ignored(self, tmp_path, monkeypatch):
         ctx = _make_ctx(tmp_path)
-        session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
-        assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
-        assert path != session_debug_log_path(ctx.spex_root, session_id)
-
-    def test_active_session_without_name(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        ctx = _make_ctx(tmp_path)
-        session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "version"])
-        assert path == session_debug_log_path(ctx.spex_root, session_id)
-
-    def test_unsafe_active_pointer_falls_back_to_spex_root(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        ctx = _make_ctx(tmp_path)
-        pointer = Path(ctx.spex_root) / "sessions" / "active"
-        pointer.parent.mkdir(parents=True)
-        pointer.write_text("../../outside\n", encoding="utf-8")
+        legacy = Path(ctx.spex_root) / "sessions"
+        legacy.mkdir()
+        (legacy / "active").write_text("legacy-session\n")
+        (legacy / "legacy-session").mkdir()
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "version"])
         assert path == Path(ctx.spex_root) / "debug.log"
+        assert (legacy / "active").read_text() == "legacy-session\n"
+
 
     def test_without_name_uses_spex_root(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -519,14 +261,6 @@ class TestResolveDebugLogPath:
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
         assert path == Path(ctx.spex_root) / "debug.log"
 
-    def test_unknown_name_uses_active_session(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        ctx = _make_ctx(tmp_path)
-        session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "missing"])
-        assert path == session_debug_log_path(ctx.spex_root, session_id)
-
     def test_ambiguous_name_falls_back_to_spex_root(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         ctx = _make_ctx(tmp_path)
@@ -536,17 +270,6 @@ class TestResolveDebugLogPath:
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
         assert path == Path(ctx.spex_root) / "debug.log"
-
-    def test_ambiguous_name_uses_active_session(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        ctx = _make_ctx(tmp_path)
-        specs_dir = Path(ctx.spex_root) / "specs"
-        (specs_dir / "2026-01-01-foo").mkdir()
-        (specs_dir / "2026-01-01-foo-bar").mkdir()
-        session_id = _activate_session(ctx.spex_root)
-        with patch("debug_log.get_project_storage", return_value=ctx):
-            path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "foo"])
-        assert path == session_debug_log_path(ctx.spex_root, session_id)
 
     def test_no_spex_root_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

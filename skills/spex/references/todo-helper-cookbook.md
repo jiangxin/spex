@@ -1,9 +1,7 @@
 # Todo-Helper Cookbook
 
-Shared `spex todo-helper` usage for planning steps (`/spex create`
-Phase 6, `/spex modify` todo redesign, and templates such as
-`templates/modify-todo.md`). Load and follow when a command says
-to build or revise `todo.json` via todo-helper.
+Shared `spex todo-helper` examples. Read the sections needed for the
+current operation.
 
 ## Principles
 
@@ -17,9 +15,6 @@ to build or revise `todo.json` via todo-helper.
   a commit (and global `step_review` allows it)
 
 ## skip_commit Conventions
-
-Aligned with create Phase 6 and `templates/modify-todo.md`. Do
-**not** weaken the coding-default commit:
 
 | Step type | Flag |
 |-----------|------|
@@ -91,9 +86,6 @@ IDs at commit. Outside a transaction, the helper numbers them on write.
 $spex_skill_dir/scripts/spex todo-helper append "$spec_name" \
   --step-name "Short description for the step" \
   --details-from-stdin <<'DETAILS'
-Markdown-formatted description of what this step does,
-including file changes, logic, and acceptance criteria.
-
 - Create `src/auth.py` with login endpoint
 - Add input validation for email and password
 - Write unit tests in `tests/test_auth.py`

@@ -46,7 +46,7 @@ Internal commands (used by skill):
                 (precheck, ensure-branch, post-action)
   create-helper <subcommand> [--name <spec-name>]
                 Helper utilities for spec creation
-                (precheck, prepare-spec)
+                (precheck, prepare-spec, finalize)
   meta-helper <spec-name> [key] [value] [--stdin]
                 Get or set key/value in meta.json
   prompt <template> [<spec-name>] [-o <file>]
@@ -500,6 +500,7 @@ def _build_parser():
     parser = argparse.ArgumentParser(
         prog="spex",
         usage="spex <command>",
+        parents=[_log_option_parser()],
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=GROUPED_HELP,
         allow_abbrev=False,
@@ -542,19 +543,52 @@ def _build_parser():
     return parser
 
 
+def _log_option_parser():
+    parser = argparse.ArgumentParser(prog="spex", add_help=False, allow_abbrev=False)
+    parser.add_argument("--log-id", action="append", help="Route logs by allocated temporary ID")
+    return parser
+
+
+def _parse_log_option(argv):
+    """Extract the routing option on either side of the subcommand."""
+    parser = _log_option_parser()
+    args, remaining = parser.parse_known_args(argv)
+    if args.log_id and len(args.log_id) != 1:
+        parser.error("--log-id can only be passed once")
+    return (args.log_id[0] if args.log_id else None), remaining
+
+
+def _temporary_log_route(log_id, begin_log, end_log, parser):
+    from config import get_project_storage
+    from debug_log import TemporaryLogRoute, temporary_log_dir
+
+    if log_id is None:
+        return TemporaryLogRoute() if begin_log or end_log else None
+    if begin_log:
+        parser.error("--begin-log allocates its own log ID")
+    spex_root = get_project_storage().spex_root
+    if not spex_root:
+        parser.error("--log-id requires a configured spex_root")
+    try:
+        directory = temporary_log_dir(spex_root, log_id)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if not end_log and not directory.is_dir():
+        parser.error(f"temporary log ID does not exist: {log_id}")
+    return TemporaryLogRoute(directory)
+
+
 def main(argv=None):
     """CLI entry point."""
     if argv is None:
         argv = sys.argv[1:]
 
     from common import logger, setup_logging
-    from debug_log import debug_enabled, resolve_debug_log_path, trace_command
+    from debug_log import debug_enabled, resolve_debug_log_path, trace_command, trace_enabled
 
     argv = list(argv)
     full_argv = ["spex", *argv]
-    enabled = debug_enabled(full_argv)
-    setup_logging(verbose=enabled)
-
+    log_id, argv = _parse_log_option(argv)
     parser = _build_parser()
 
     # Normalize subcommand: underscores -> hyphens (for display-name
@@ -564,6 +598,7 @@ def main(argv=None):
         if not arg.startswith("-"):
             argv[i] = arg.replace("_", "-")
             if argv[i] not in _ALL_COMMANDS:
+                setup_logging(verbose=False)
                 logger.error("Unknown command: %s\n", argv[i])
                 parser.print_help(sys.stderr)
                 sys.exit(1)
@@ -576,14 +611,30 @@ def main(argv=None):
         sys.exit(0)
 
     options = remaining[:remaining.index("--")] if "--" in remaining else remaining
+    create_action = remaining[0] if args.command == "create-helper" and remaining else None
+    begin_log = create_action == "precheck" and "--begin-log" in options
+    end_log = create_action == "end-log"
+    temporary = _temporary_log_route(log_id, begin_log, end_log, parser)
+    prepare_log = create_action == "prepare-spec" and log_id is not None
+    if (end_log or prepare_log) and log_id is not None:
+        remaining = [create_action, "--log-id", log_id, *remaining[1:]]
+    if begin_log or prepare_log:
+        from functools import partial
+
+        import create_helper
+
+        args.func = partial(create_helper.main, log_route=temporary)
+
+    enabled = debug_enabled(full_argv)
+    setup_logging(verbose=enabled)
     read_only_list = args.command == "list" and "--read-only" in options
     read_only_prompt = (
         args.command == "prompt" and remaining
         and remaining[0].replace("_", "-") == "review-plan"
     )
-    if enabled and not (read_only_list or read_only_prompt):
-        log_path = resolve_debug_log_path(full_argv)
-        with trace_command(log_path, full_argv):
+    if not (read_only_list or read_only_prompt) and (enabled or trace_enabled()):
+        log_path = resolve_debug_log_path(full_argv) if enabled and temporary is None else None
+        with trace_command(log_path, full_argv, debug=enabled, temporary=temporary):
             args.func(remaining)
         return
 
