@@ -363,12 +363,12 @@ class TestCommandPersistRedact:
             "create.md must redact $requirement before prepare-spec persist"
         )
 
-    def test_modify_redacts_request_in_phase_3_before_meta_helper(self):
+    def test_modify_redacts_request_in_phase_3_before_begin_modify(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         redact_at = _index(phase3, "redact secrets in `$request`")
-        helper_at = _index(phase3, "meta-helper")
+        helper_at = _index(phase3, "create-helper begin-modify")
         assert redact_at < helper_at, (
-            "modify.md Phase 3 must redact $request before meta-helper persist"
+            "modify.md Phase 3 must redact $request before begin-modify persists it"
         )
         first_bullet = next(
             (line for line in phase3.splitlines() if line.startswith("- ")),
@@ -676,11 +676,18 @@ class TestModifyPlanOnlySop:
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         _index(phase3, "Load and follow `references/spec-assets.md`")
 
-    def test_modify_snapshots_before_saving_request(self):
+    def test_modify_save_precedes_assets_and_prompt_render(self):
         text = _read(MODIFY_MD)
-        snapshot = _index(text, 'create-helper begin-modify "$spec_name"')
-        persist = _index(text, 'meta-helper "$spec_name" prompts')
-        assert snapshot < persist
+        phase3 = _h3_section(text, "Phase 3: Save Request")
+        save = _index(phase3, """create-helper begin-modify "$spec_name" --stdin <<'EOF'""")
+        stop = _index(phase3, "STOP before asset registration")
+        assets = _index(phase3, "Load and follow `references/spec-assets.md`")
+        assert save < stop < assets
+        _index(phase3, "On failure or interruption")
+        _index(phase3, "Do not automatically rerun")
+        assert "--pre-action modify" not in text
+        assert text.count("create-helper begin-modify") == 1
+        assert _index(text, "meta-helper --add-images") < _index(text, "prompt modify-spec")
 
     def test_todo_transaction_wraps_modify(self):
         text = _read(MODIFY_MD)

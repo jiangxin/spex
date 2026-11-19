@@ -82,22 +82,19 @@ development plan.
 ### Phase 3: Save Request
 
 - Redact secrets in `$request` before persist
-- Back up the current spec and todo and advance the version before any
-  request or document writes. On failure follow Failure Handling.
+- The helper backs up the spec and todo, advances the version, runs
+  pre-action when configured, and atomically records the request in
+  `meta.json`.
 
 ```bash
-$spex_skill_dir/scripts/spex create-helper begin-modify "$spec_name"
-```
-
-- Record modification request in `meta.json`:
-
-```bash
-$spex_skill_dir/scripts/spex meta-helper "$spec_name" prompts \
-  --stdin --pre-action modify <<'EOF'
+$spex_skill_dir/scripts/spex create-helper begin-modify "$spec_name" --stdin <<'EOF'
 $request
 EOF
 ```
 
+- On failure or interruption, report stderr or the unknown save state
+  and STOP before asset registration. Do not automatically rerun the
+  command. Inspect the current request record if the response was lost.
 - Load and follow `references/spec-assets.md` for image discovery,
   copy into `$spec_path/assets/`, and `meta-helper --add-images`
   (modify timing notes in that doc). When updating `spec.md` in
