@@ -1,58 +1,29 @@
 # Resolve Spec via `list --json`
 
-Shared parsing for commands that resolve `$spec_name` /
-`$spec_path` from `spex list --json` (e.g. apply, apply-one-step,
-modify, merge). Caller supplies the exact CMD (flags such as
-`--must-undone` / `--must-done` and whether `$spec_name` is
-passed).
-
-For `--include-unfinished-on-miss`, validate the response using the
-[completion lookup contract](#list-completion-lookup).
-Apply only the candidate selection rows below to a validated
-`completed.specs` array. The caller handles the other statuses.
-
 ## Parse
 
-1. Run the caller's `list --json` CMD
-2. Parse stdout as a JSON array of objects (`spec_name`,
-   `spec_path`, …)
-3. Branch:
+Check the caller's `list --json` result per the
+[CLI contract](cli-contract.md). For `[]`, run the caller's
+recovery if specified. Otherwise report no match and stop. For a
+non-empty array of entries, follow [Candidate selection](#candidate-selection).
 
-| Result | Action |
-|--------|--------|
-| `[]` / zero elements | Report no match; **default STOP**, unless the caller's Preconditions define recovery (e.g. modify: rebound `$request` then list again with empty name) |
-| Single element | Set `$spec_name` / `$spec_path` from that entry |
-| Multiple | Numbered `spec_name` list -> user chooses -> set `$spec_name` / `$spec_path` from selected entry |
-| Script exits error | True error (not an empty result) → report stderr → **STOP** |
+## Candidate selection
 
-## Notes
-
-- Empty / missing `$spec_name` behavior depends on CLI flags and
-  whether the name arg is omitted — follow the caller's CMD
-- Do not invent a second match algorithm; trust `list` output
-- `list` patterns are **substring** matches (`pattern in name`).
-  A leading `^` triggers regex; `*`/`?` trigger glob. A
-  single-element result is **not** proof of an exact match —
-  callers that need exact semantics must compare `spec_name`
-  themselves
-- An empty array (`[]`) is **not** a script error. Never assume
-  that zero matches require exit 1; with ordinary `--json`, empty match
-  prints `[]` and exits 0. Only treat a non-zero exit (or
-  non-array stdout) as a true script failure
-- Without `--json`, empty match may still print
-  `No specs found.` on stderr and exit 1 — callers that need a
-  programmable empty result must use `--json`
+Use the sole entry or show numbered `spec_name` values in result order
+and wait for a pick. Set `$spec_name` and `$spec_path` from that entry.
+Use the matches returned by `list`. A leading `^` selects regex,
+`*` or `?` selects glob otherwise, and other patterns match substrings.
+For exact-name semantics, compare `spec_name` to the requested name.
 
 ## List completion lookup
 
 `list --json --must-done --include-unfinished-on-miss -- "<probe>"`
 requires one pattern, which may be empty. Omit `--details`.
 
-On exit 0, validate a JSON object with a known `status` and a `specs`
-array. Every entry must have a non-empty string `spec_name` and
-`spec_path`. Validate the fields and item counts for the reported status
-before routing. Report invalid JSON, a top-level array, an unknown
-status, or invalid fields or counts as a protocol error and stop.
+On exit 0, require a JSON object with a `status` from the table and a
+`specs` array. Each entry requires non-empty strings for `spec_name`
+and `spec_path`. Report a protocol error and stop on invalid JSON,
+wrong types, unknown status, or invalid entry fields or counts.
 
 | Status | Required `specs` content |
 |--------|--------------------------|
