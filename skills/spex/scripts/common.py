@@ -51,7 +51,7 @@ ICON_ARCHIVED = "\U0001f4e6"
 _SPEC_META_FIELD_ORDER = [
     "name", "workdir", "main_worktree", "remote_url", "branch",
     "user_name", "user_email", "created_at", "prompts", "description",
-    "spex_branch", "use_git_worktree", "spex_worktree", "task_mode",
+    "spex_branch", "use_git_worktree", "spex_worktree", "task_mode", "version",
 ]
 
 
@@ -74,6 +74,7 @@ class SpecMeta:
     spex_worktree: str = ""
     extras: dict = field(default_factory=dict)
     task_mode: str = SOFTWARE
+    version: int = 1
 
     def __post_init__(self):
         validate_task_mode(self.task_mode)

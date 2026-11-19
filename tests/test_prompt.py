@@ -689,6 +689,21 @@ class TestStdinExtraVars:
 class TestBuildTaskContext:
     """Test _build_task_context helper function."""
 
+    @pytest.mark.parametrize("description", ["Metadata summary", "", None])
+    def test_summary_uses_metadata_description_with_legacy_fallback(self, tmp_path, description):
+        from prompt import _build_task_context
+
+        (tmp_path / "spec.md").write_text(
+            "---\ndescription: Front matter summary\n---\n# Requirement\n\nBody.\n",
+            encoding="utf-8",
+        )
+        meta = {} if description is None else {"description": description}
+        (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        summary = _build_task_context(tmp_path)["spec_content_concise"]
+        assert summary.startswith(description or "Front matter summary")
+        if description:
+            assert "Front matter summary" not in summary
+
     def test_build_task_context(self, tmp_path):
         """Verifies correct return with sample spec data."""
         tasks = [

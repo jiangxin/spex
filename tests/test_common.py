@@ -1161,6 +1161,7 @@ class TestSpecMeta:
         assert m.use_git_worktree is False
         assert m.spex_worktree == ""
         assert m.extras == {}
+        assert m.version == 1
 
     def test_spec_meta_from_dict_full(self):
         data = {
@@ -1178,6 +1179,7 @@ class TestSpecMeta:
             "use_git_worktree": True,
             "spex_worktree": "/home/user/.spex/worktree/repo/my-topic",
             "task_mode": "general",
+            "version": 3,
         }
         m = SpecMeta.from_dict(data)
         result = m.to_dict()
@@ -1206,6 +1208,7 @@ class TestSpecMeta:
         assert "spex_branch" not in result
         assert "spex_worktree" not in result
         assert result["use_git_worktree"] is False
+        assert result["version"] == 1
 
     def test_spec_meta_from_dict_extras(self):
         data = {

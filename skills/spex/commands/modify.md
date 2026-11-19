@@ -45,10 +45,10 @@ development plan.
 ### Phase 1: Resolve Spec
 
 - Load and follow `references/resolve-spec-name.md` exactly.
-  Caller CMD (no extra flags):
+  Use read-only lookup to resolve the spec:
 
   ```bash
-  $spex_skill_dir/scripts/spex list --json "<probe>"
+  $spex_skill_dir/scripts/spex list --read-only --json -- "<probe>"
   ```
 
   where `<probe>` is `$first_word` or empty per that reference.
@@ -82,6 +82,13 @@ development plan.
 ### Phase 3: Save Request
 
 - Redact secrets in `$request` before persist
+- Back up the current spec and todo and advance the version before any
+  request or document writes. On failure follow Failure Handling.
+
+```bash
+$spex_skill_dir/scripts/spex create-helper begin-modify "$spec_name"
+```
+
 - Record modification request in `meta.json`:
 
 ```bash
@@ -203,6 +210,9 @@ $spex_skill_dir/scripts/spex create-helper post-action \
   --name "$spec_name" --event-type modify
 ```
 
+- The helper synchronizes a revised description with the bound repository's
+  local Spex branch, when present. This is the shared write whitelist's
+  Git configuration exception.
 - ON_FAIL: correct recoverable errors and re-run post-action. If a
   todo edit is needed, follow Phase 7 transaction rules. If giving up,
   follow Failure Handling.
@@ -227,8 +237,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 ### Phase 10: STOP — Do NOT Implement
 
-- Follow `references/plan-command-common.md` hard STOP — no
-  application code; any write outside `$spec_path` is a violation
+- Follow `references/plan-command-common.md` hard STOP and write whitelist.
 - Sole responsibility: update spec documents. Wait for user review
   -> `/spex apply` or `/spex apply-one-step`.
 
@@ -252,6 +261,7 @@ $spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
 
 - Writes: `spec.md`, `todo.json`, its temporary backup, and `meta.json`
   (plus optional `assets/`) under `$spec_path` per the shared whitelist.
+  The modify helper also manages snapshots and recovery state.
 - Phase 9: human summary + trailing fenced `json spex-result`
   (`spec_name`, `spec_path`); callers MUST parse the last fenced
   `json spex-result` block

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import shutil
@@ -11,11 +12,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from cli import ArgumentParser
+from cli import ArgumentParser, nonempty_spec_name
 from common import (
     DEFAULT_SPEX_BRANCH_PREFIX,
     SpecMeta,
     atomic_write_json,
+    get_spex_root,
     logger,
     resolve_spec_dir,
     strip_date_prefix,
@@ -29,6 +31,17 @@ DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-")
 CREATE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MAX_CREATE_NAME_BYTES = 31
 MAX_SPEC_NAME_BYTES = 64
+
+
+def _do_modify_session(args):
+    import modify_session
+
+    try:
+        specs_dir = Path(get_spex_root(auto_init=False)) / "specs"
+        spec_dir = resolve_spec_dir(args.name, specs_dir=specs_dir)
+        modify_session.begin(spec_dir)
+    except (OSError, RuntimeError, ValueError) as exc:
+        sys.exit(str(exc))
 
 
 def validate_create_name(name: str, description: str) -> dict:
@@ -231,19 +244,20 @@ def _handoff_session_after_prepare(
 ) -> None:
     """Merge active session into spec debug.log, write prepare anchor, clear.
 
-    Fixed order: (1) merge session content into ``spec_dir/debug.log`` and
+    Fixed order: (1) merge session content into ``spec_dir/logs/debug.log`` and
     delete the session log; (2) if debug, append prepare-spec ok anchor;
     (3) clear the active-session pointer — only after a successful merge or
     when there was no session log to merge (so a failed merge keeps the
     pointer for retry).
     """
     from debug_log import (
-        DEBUG_LOG_NAME,
         clear_active_session,
         debug_enabled,
         get_active_session_id,
         merge_session_log_into_spec,
+        prepare_spec_log_parent,
         session_debug_log_path,
+        spec_debug_log_path,
     )
 
     session_id = get_active_session_id(spex_root)
@@ -261,8 +275,11 @@ def _handoff_session_after_prepare(
                 should_clear = True
 
     if debug_enabled(sys.argv):
+        log_path = spec_debug_log_path(spec_dir)
+        if not prepare_spec_log_parent(log_path):
+            raise OSError(f"Cannot write spec log: {log_path}")
         _append_create_debug_anchor(
-            Path(spec_dir) / DEBUG_LOG_NAME,
+            log_path,
             f"===== CREATE prepare-spec ok name={spec_name} =====",
         )
 
@@ -300,14 +317,6 @@ def create_spec(spec, specs_dir, auto_prefix=True):
     return (spec, spec_dir)
 
 
-# prepare-spec stubs may only contain meta plus optional debug tee files.
-_INCOMPLETE_STUB_ALLOWED = frozenset({
-    "meta.json",
-    "debug.log",
-    "debug.log.prev_end",
-})
-
-
 def is_incomplete_spec_dir(spec_dir: Path) -> bool:
     """True when a directory exists but has no ``spec.md`` yet.
 
@@ -329,7 +338,7 @@ def is_incomplete_spec_stub(
     ``specs_dir`` is set, the path must be a direct child of that directory.
     """
     path = Path(spec_dir)
-    if not path.is_dir() or (path / "spec.md").is_file():
+    if path.is_symlink() or not path.is_dir() or (path / "spec.md").is_file():
         return False
     if not SPEC_NAME_PATTERN.match(path.name):
         return False
@@ -338,10 +347,15 @@ def is_incomplete_spec_stub(
         expected = Path(specs_dir).resolve()
         if parent != expected:
             return False
-    names = {entry.name for entry in path.iterdir()}
-    if not names:
+    entries = list(path.iterdir())
+    if not entries:
         return True
-    return "meta.json" in names and names <= _INCOMPLETE_STUB_ALLOWED
+    from debug_log import spec_logs_only
+
+    meta = path / "meta.json"
+    return meta.is_file() and not meta.is_symlink() and spec_logs_only(
+        [entry for entry in entries if entry.name != "meta.json"],
+    )
 
 
 def discard_incomplete_spec(
@@ -617,6 +631,90 @@ def cli_prepare_spec(argv=None):
     _do_prepare_spec(args)
 
 
+def _git_diagnostic(exc):
+    if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+        stderr = exc.stderr
+        return (stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr).strip()
+    return str(exc)
+
+
+def _description_git_env() -> dict[str, str]:
+    # Match Git's repository-local environment, plus ref namespace and
+    # discovery controls. Keep ordinary environment and user Git config.
+    overrides = {
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CEILING_DIRECTORIES",
+        "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
+        "GIT_DIR", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_GRAFT_FILE",
+        "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_NAMESPACE",
+        "GIT_NO_REPLACE_OBJECTS", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX",
+        "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE", "GIT_WORK_TREE",
+    }
+    return {name: value for name, value in os.environ.items() if name not in overrides}
+
+
+def _description_worktree(meta: SpecMeta, env: dict[str, str]) -> Path:
+    errors = []
+    for recorded in dict.fromkeys((meta.main_worktree, meta.workdir)):
+        if not recorded:
+            continue
+        cwd = Path(recorded)
+        try:
+            if not cwd.is_absolute():
+                raise ValueError("Expected an absolute worktree path.")
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=cwd, capture_output=True, text=True, check=True, env=env,
+            )
+            if Path(result.stdout.rstrip("\n")).resolve() != cwd.resolve():
+                raise ValueError("Recorded path is not the worktree root.")
+            return cwd
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            errors.append(f"{recorded}: {_git_diagnostic(exc)}")
+    details = "; ".join(errors) or "No worktree path was recorded."
+    raise ValueError(f"Spec repository is unavailable: {details}")
+
+
+def _sync_modified_description(meta_path: Path, meta: SpecMeta, description: str) -> None:
+    from branch import (
+        get_branch_description,
+        has_local_branch,
+        set_branch_description,
+        unset_branch_description,
+    )
+
+    branch = meta.spex_branch
+    env = _description_git_env()
+    cwd = _description_worktree(meta, env) if branch else None
+    changed_git = False
+    try:
+        if cwd is not None and has_local_branch(branch, cwd, env=env):
+            previous = get_branch_description(branch, cwd, env=env)
+            if previous != description:
+                set_branch_description(branch, description, cwd, env=env)
+                changed_git = True
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"{cwd}: branch.{branch}.description: {_git_diagnostic(exc)}") from exc
+
+    if meta.description == description:
+        return
+    meta.description = description
+    try:
+        atomic_write_json(meta_path, meta.to_dict())
+    except OSError as exc:
+        if changed_git:
+            try:
+                if previous is None:
+                    unset_branch_description(branch, cwd, env=env)
+                else:
+                    set_branch_description(branch, previous, cwd, env=env)
+            except (OSError, subprocess.CalledProcessError) as rollback_error:
+                raise ValueError(
+                    f"{exc}; could not restore branch.{branch}.description in "
+                    f"{cwd}: {_git_diagnostic(rollback_error)}"
+                ) from rollback_error
+        raise
+
+
 def _do_post_action(args):
     """Validate todo.json and trigger post-action hook."""
     from common import (
@@ -644,12 +742,22 @@ def _do_post_action(args):
         desc = parse_front_matter_description(spec_content)
         if desc:
             meta_path = spec_dir / "meta.json"
-            meta_data = load_meta(spec_dir) or SpecMeta()
-            meta_data.description = wrap_text(desc)
-            atomic_write_json(meta_path, meta_data.to_dict())
+            meta_data = load_meta(spec_dir)
+            description = wrap_text(desc)
+            if args.event_type == "modify":
+                if meta_data is None:
+                    sys.exit(f"Could not read spec metadata: {meta_path}")
+                try:
+                    _sync_modified_description(meta_path, meta_data, description)
+                except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+                    sys.exit(f"Could not synchronize the spec description: {_git_diagnostic(exc)}")
+            else:
+                meta_data = meta_data or SpecMeta()
+                meta_data.description = description
+                atomic_write_json(meta_path, meta_data.to_dict())
 
     import hooks
-    from debug_log import DEBUG_LOG_NAME, debug_enabled
+    from debug_log import debug_enabled, prepare_spec_log_parent, spec_debug_log_path
 
     meta = load_meta(spec_dir)
     spec_name = spec_dir.name
@@ -665,8 +773,11 @@ def _do_post_action(args):
     spex_branch = meta.spex_branch if meta else ""
 
     if debug_enabled(sys.argv):
+        log_path = spec_debug_log_path(spec_dir)
+        if not prepare_spec_log_parent(log_path):
+            raise OSError(f"Cannot write spec log: {log_path}")
         _append_create_debug_anchor(
-            spec_dir / DEBUG_LOG_NAME,
+            log_path,
             f"===== CREATE post-action ok name={spec_name} "
             f"steps={len(data)} =====",
         )
@@ -783,6 +894,9 @@ def _build_parser():
         help="Hook event type (default: create)",
     )
 
+    snapshot = subs.add_parser("begin-modify", help="Snapshot and increment the spec version")
+    snapshot.add_argument("name", type=nonempty_spec_name, metavar="<spec-name>")
+
     return parser
 
 
@@ -810,3 +924,5 @@ def main(argv=None):
         _do_discard_incomplete(args)
     elif args.subcmd == "post-action":
         _do_post_action(args)
+    elif args.subcmd == "begin-modify":
+        _do_modify_session(args)

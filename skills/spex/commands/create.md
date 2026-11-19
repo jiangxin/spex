@@ -36,7 +36,7 @@ and test plan.
 - Debug session: call `create-helper begin-session` **after** Phase 1
   `precheck` succeeds. Pre-name CLI traces go to the session log. On
   `prepare-spec` success, session content is merged into
-  `<spec_dir>/debug.log` and the session file is deleted. Runtime does
+  `<spec_dir>/logs/debug.log` and the session file is deleted. Runtime does
   not dual-write session and spec logs. Debug anchors are written
   automatically to `debug.log` by the scripts (`begin-session`,
   `prepare-spec`, `post-action`); the agent does not need to intervene.
@@ -141,7 +141,7 @@ EOF
 
 - Script creates spec directory + `meta.json` (`prompts` = requirement,
   `description` = description). On success it merges any active
-  session log into `$spec_path/debug.log`, deletes the session file,
+  session log into `$spec_path/logs/debug.log`, deletes the session file,
   and clears the active pointer (merge-then-delete; no dual-write).
 - IF exit 1 -> report stderr; keep the session and return to Phase 3
   with a different `$name`. This is the naming retry exception to
@@ -257,7 +257,7 @@ $spex_skill_dir/scripts/spex create-helper post-action --name "$spec_name"
 ```
 
 - With debug enabled, appends a post-action anchor to
-  `$spec_path/debug.log` automatically; the agent does not need to
+  `$spec_path/logs/debug.log` automatically; the agent does not need to
   intervene.
 - ON_FAIL: correct recoverable errors within the open transaction and
   re-run post-action. If giving up, follow Failure Handling.

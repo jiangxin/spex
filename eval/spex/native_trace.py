@@ -16,6 +16,7 @@ from performance import (
     IDENTIFIER,
     TIMELINE,
     debug_logs,
+    log_spec_name,
     number_field,
     stamp_bounds,
     timestamp,
@@ -143,10 +144,9 @@ def parse_timing_spans(lines: list[str], source: str, gaps: set) -> list[dict]:
         except (KeyError, TypeError, ValueError, RecursionError):
             gaps.add("unreadable_trace_jsonl")
             continue
-        parts = Path(source).parts
         record = {"log": source, "sequence": index, "start_ns": start, "end_ns": end}
-        if len(parts) == 3 and parts[0] in {"specs", "archives"}:
-            record["spec"] = parts[1]
+        if (spec := log_spec_name(source)) is not None:
+            record["spec"] = spec
         # Older captures can contain bounds without a command payload.
         if any(key in span for key in ("name", "attributes", "spex")):
             fields = span_command_fields(span)
@@ -359,8 +359,7 @@ def todo_selector(words: list[str], verb: str) -> tuple[str | None, str | None]:
 
 
 def parse(lines: list[str], source: str, gaps: set) -> list:
-    parts = Path(source).parts
-    spec = parts[1] if len(parts) == 3 and parts[0] == "specs" else None
+    spec = log_spec_name(source)
     events = []
     command = None
     reviews = {}

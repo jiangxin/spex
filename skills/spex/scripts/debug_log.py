@@ -20,6 +20,31 @@ MAX_STREAM_BYTES = 256 * 1024
 PROMPT_STDOUT_LOG_BYTES = 2 * 1024
 DEBUG_LOG_NAME = "debug.log"
 TRACE_JSONL_NAME = "trace.jsonl"
+SPEC_LOG_DIR = "logs"
+SPEC_LOG_FILES = frozenset({
+    DEBUG_LOG_NAME, TRACE_JSONL_NAME,
+    f"{DEBUG_LOG_NAME}.prev_end", f"{DEBUG_LOG_NAME}.apply_span",
+})
+
+
+def spec_debug_log_path(spec_dir: str | Path) -> Path:
+    return Path(spec_dir) / SPEC_LOG_DIR / DEBUG_LOG_NAME
+
+
+def spec_logs_only(entries: list[Path]) -> bool:
+    """Recognize known log files in either layout without traversing symlinks."""
+    for entry in entries:
+        if entry.is_symlink():
+            return False
+        if entry.name == SPEC_LOG_DIR and entry.is_dir():
+            if not all(
+                child.name in SPEC_LOG_FILES and child.is_file() and not child.is_symlink()
+                for child in entry.iterdir()
+            ):
+                return False
+        elif entry.name not in SPEC_LOG_FILES or not entry.is_file():
+            return False
+    return True
 SESSIONS_DIR_NAME = "sessions"
 ACTIVE_SESSION_FILENAME = "active"
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -72,7 +97,8 @@ def append_debug_anchor(log_path: Path, line: str) -> None:
     ``create_helper`` instead — do not route those through this helper.
     """
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if not _prepare_debug_log_parent(log_path):
+            return
         text = line if line.endswith("\n") else f"{line}\n"
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(text)
@@ -88,7 +114,7 @@ def emit_apply_anchor(
     """Append an APPLY timeline anchor when debug is enabled."""
     if not debug_enabled(argv if argv is not None else sys.argv):
         return
-    append_debug_anchor(Path(spec_dir) / DEBUG_LOG_NAME, line)
+    append_debug_anchor(spec_debug_log_path(spec_dir), line)
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +170,31 @@ def apply_timestamp() -> str:
 
 def apply_span_state_path(spec_dir: str | Path) -> Path:
     """Sidecar path for open review-flow spans beside ``debug.log``."""
-    return Path(spec_dir) / f"{DEBUG_LOG_NAME}.apply_span"
+    return spec_debug_log_path(spec_dir).with_name(f"{DEBUG_LOG_NAME}.apply_span")
+
+
+def _migrate_log_sidecar(path: Path) -> None:
+    """Consume a legacy sidecar once, preserving any newer state."""
+    legacy = path.parent.parent / path.name
+    if legacy.is_symlink() or not legacy.is_file() or not prepare_spec_log_parent(path):
+        return
+    try:
+        if not path.exists():
+            try:
+                os.link(legacy, path)
+            except FileExistsError:
+                pass
+        legacy.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug("Failed to migrate log sidecar %s: %s", legacy, exc)
 
 
 def read_apply_spans(spec_dir: str | Path) -> dict:
     """Load open span map ``{kind: {...}}``; empty dict on missing/invalid."""
     path = apply_span_state_path(spec_dir)
+    if path.is_symlink() or path.parent.is_symlink() or path.parent.parent.is_symlink():
+        return {}
+    _migrate_log_sidecar(path)
     if not path.is_file():
         return {}
     try:
@@ -168,11 +213,12 @@ def has_open_apply_span(spec_dir: str | Path, kind: str) -> bool:
 def _write_apply_spans(spec_dir: str | Path, spans: dict) -> None:
     """Persist open span map; delete sidecar when empty."""
     path = apply_span_state_path(spec_dir)
+    if not prepare_spec_log_parent(path):
+        return
     try:
         if not spans:
             path.unlink(missing_ok=True)
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(spans, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -452,7 +498,7 @@ def merge_session_log_into_spec(
     session_id: str,
     spec_dir: str | Path,
 ) -> Path | None:
-    """Append session log into ``spec_dir/debug.log``, then delete session log.
+    """Append session log into ``spec_dir/logs/debug.log``, then delete session log.
 
     Moves the default JSONL trace alongside the debug log.
     Also relocates the session ``.prev_end`` sidecar onto the target log when
@@ -472,7 +518,8 @@ def merge_session_log_into_spec(
         logger.debug("Ignoring invalid session_id for merge: %r", session_id)
         return None
     session_dir = session_log.parent
-    _merge_session_trace(session_dir, Path(spec_dir))
+    target = spec_debug_log_path(spec_dir)
+    _merge_session_trace(session_dir, target.with_name(TRACE_JSONL_NAME))
 
     def _rmdir_if_empty() -> None:
         try:
@@ -487,11 +534,11 @@ def merge_session_log_into_spec(
         _rmdir_if_empty()
         return None
 
-    target = Path(spec_dir) / DEBUG_LOG_NAME
     try:
         content = session_log.read_text(encoding="utf-8")
         if content:
-            target.parent.mkdir(parents=True, exist_ok=True)
+            if not prepare_spec_log_parent(target):
+                return None
             with target.open("a", encoding="utf-8") as handle:
                 handle.write(content)
         session_log.unlink(missing_ok=True)
@@ -503,7 +550,6 @@ def merge_session_log_into_spec(
         if session_sidecar.is_file():
             try:
                 if content:
-                    target.parent.mkdir(parents=True, exist_ok=True)
                     session_sidecar.replace(_prev_end_state_path(target))
                 else:
                     session_sidecar.unlink(missing_ok=True)
@@ -531,13 +577,13 @@ def merge_session_log_into_spec(
     return target
 
 
-def _merge_session_trace(session_dir: Path, spec_dir: Path) -> None:
+def _merge_session_trace(session_dir: Path, target: Path) -> None:
     source = session_dir / TRACE_JSONL_NAME
     if not source.is_file():
         return
-    target = spec_dir / TRACE_JSONL_NAME
     try:
-        spec_dir.mkdir(parents=True, exist_ok=True)
+        if not prepare_spec_log_parent(target):
+            return
         with source.open("rb") as incoming, target.open("ab") as output:
             snapshot = os.fstat(incoming.fileno())
             if os.path.samestat(snapshot, os.fstat(output.fileno())):
@@ -570,10 +616,10 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
     Priority (runtime never dual-writes); exact-before-fuzzy across both trees:
     1. ``SPEX_LOG_DIR`` → ``<log_dir>/debug.log``
-    2. Exact selector in ``specs/`` → ``<spec_dir>/debug.log``
-    3. Exact selector in ``archives/`` → ``<archived_dir>/debug.log``
-    4. Unique fuzzy selector in ``specs/`` → ``<spec_dir>/debug.log``
-    5. Unique fuzzy selector in ``archives/`` → ``<archived_dir>/debug.log``
+    2. Exact selector in ``specs/`` → ``<spec_dir>/logs/debug.log``
+    3. Exact selector in ``archives/`` → ``<archived_dir>/logs/debug.log``
+    4. Unique fuzzy selector in ``specs/`` → ``<spec_dir>/logs/debug.log``
+    5. Unique fuzzy selector in ``archives/`` → ``<archived_dir>/logs/debug.log``
     6. Active create session → ``sessions/<id>/debug.log``
     7. Fallback → ``<spex_root>/debug.log``
     """
@@ -593,21 +639,21 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
         exact_specs = specs_dir / name
         if exact_specs.is_dir():
-            return exact_specs / DEBUG_LOG_NAME
+            return spec_debug_log_path(exact_specs)
 
         exact_archives = archives_dir / name
         if exact_archives.is_dir():
-            return exact_archives / DEBUG_LOG_NAME
+            return spec_debug_log_path(exact_archives)
 
         if specs_dir.is_dir():
             matches = find_matching_specs(name, specs_dir)
             if len(matches) == 1:
-                return matches[0] / DEBUG_LOG_NAME
+                return spec_debug_log_path(matches[0])
 
         if archives_dir.is_dir():
             matches = find_matching_specs(name, archives_dir)
             if len(matches) == 1:
-                return matches[0] / DEBUG_LOG_NAME
+                return spec_debug_log_path(matches[0])
 
     session_id = get_active_session_id(ctx.spex_root)
     if session_id:
@@ -618,26 +664,31 @@ def resolve_debug_log_path(argv: list[str]) -> Path | None:
 
 def resolve_trace_file_path(debug_path: Path | None) -> Path | None:
     """Resolve the trace destination, preferring environment over config."""
+    return _resolve_trace_destination(debug_path)[0]
+
+
+def _resolve_trace_destination(debug_path: Path | None) -> tuple[Path | None, bool]:
+    """Return the trace path and whether it came from an explicit override."""
     log_dir = _configured_log_dir()
     env_path = os.environ.get("SPEX_TRACE_FILE", "").strip()
     if env_path:
         path = Path(env_path).expanduser()
-        return log_dir / path if log_dir is not None else path
+        return (log_dir / path if log_dir is not None else path), True
 
     ctx = get_project_storage()
     configured = str(ctx.config.get("trace_file") or "").strip()
     if configured:
         path = Path(configured).expanduser()
         if path.is_absolute():
-            return path
+            return path, True
         if log_dir is not None:
-            return log_dir / path
+            return log_dir / path, True
         if ctx.spex_root:
-            return Path(ctx.spex_root) / path
-        return None
+            return Path(ctx.spex_root) / path, True
+        return None, True
     if log_dir is not None:
-        return log_dir / TRACE_JSONL_NAME
-    return debug_path.with_name(TRACE_JSONL_NAME) if debug_path is not None else None
+        return log_dir / TRACE_JSONL_NAME, True
+    return (debug_path.with_name(TRACE_JSONL_NAME) if debug_path is not None else None), False
 
 
 def safe_flush_debug_log_path(
@@ -665,7 +716,7 @@ def safe_flush_debug_log_path(
     return None
 
 
-def _is_under_specs_tree(path: Path) -> bool:
+def _is_under_specs_tree(path: Path, *, explicit: bool) -> bool:
     """Return True if ``path`` lies under ``<spex_root>/specs`` (may be missing).
 
     Uses path structure relative to configured ``spex_root``, so the check
@@ -679,22 +730,29 @@ def _is_under_specs_tree(path: Path) -> bool:
             return True
         except ValueError:
             return False
-    # No spex_root: refuse classic ``.../specs/<name>/`` parents.
-    return path.parent.name == "specs"
+    # Without a storage root, infer only default spec destinations.
+    return not explicit and path.parent.name == "specs"
 
 
-def _prepare_debug_log_parent(log_path: Path) -> bool:
+def _is_spec_log_path(path: Path) -> bool:
+    parent = path.parent
+    return parent.name == SPEC_LOG_DIR and parent.parent.parent.name in {"specs", "archives"}
+
+
+def _prepare_debug_log_parent(log_path: Path, *, explicit: bool = False) -> bool:
     """Ensure ``log_path`` parent exists; never recreate vanished specs dirs.
 
     Returns False when the write should be skipped.
     """
     parent = log_path.parent
+    if not explicit and _is_spec_log_path(log_path):
+        return prepare_spec_log_parent(log_path)
     if parent.is_dir():
         return True
 
     # Refuse mkdir for any missing parent under specs/, even if specs/ itself
     # is absent. Never mkdir(parents=True) for a missing parent under specs/.
-    if _is_under_specs_tree(parent):
+    if _is_under_specs_tree(parent, explicit=explicit):
         logger.debug(
             "Refusing to recreate vanished specs debug log parent: %s",
             parent,
@@ -706,6 +764,22 @@ def _prepare_debug_log_parent(log_path: Path) -> bool:
         return True
     except OSError as exc:
         logger.debug("Failed to create debug log parent %s: %s", parent, exc)
+        return False
+
+
+def prepare_spec_log_parent(log_path: Path) -> bool:
+    """Create only the logs child of an existing spec directory."""
+    parent = log_path.parent
+    if (
+        parent.is_symlink() or log_path.is_symlink()
+        or parent.parent.is_symlink() or not parent.parent.is_dir()
+    ):
+        return False
+    try:
+        parent.mkdir(exist_ok=True)
+        return True
+    except OSError as exc:
+        logger.debug("Failed to create spec log directory %s: %s", parent, exc)
         return False
 
 
@@ -820,7 +894,7 @@ def _prev_end_state_path(log_path: Path) -> Path:
     return Path(str(log_path) + ".prev_end")
 
 
-def _previous_end_instant(log_path: Path) -> datetime | None:
+def _previous_end_instant(log_path: Path, *, explicit: bool = False) -> datetime | None:
     """Return previous END wall time for gap_ms.
 
     BEGIN is stamped at flush time (command end), so that stamp is the END.
@@ -828,9 +902,11 @@ def _previous_end_instant(log_path: Path) -> datetime | None:
     regex-scanning the log body, which can be poisoned by BEGIN/END lines
     embedded in stdout/stderr payloads.
     """
-    if not log_path.is_file():
-        return None
     state_path = _prev_end_state_path(log_path)
+    if not explicit and _is_spec_log_path(log_path):
+        _migrate_log_sidecar(state_path)
+    elif not log_path.is_file():
+        return None
     if not state_path.is_file():
         return None
     try:
@@ -840,17 +916,18 @@ def _previous_end_instant(log_path: Path) -> datetime | None:
     return _parse_iso_timestamp(raw)
 
 
-def _remember_end_instant(log_path: Path, end: datetime) -> None:
+def _remember_end_instant(log_path: Path, end: datetime, *, explicit: bool = False) -> None:
     """Persist last END stamp next to the log for the next gap_ms calculation."""
     state_path = _prev_end_state_path(log_path)
     try:
-        state_path.write_text(end.isoformat() + "\n", encoding="utf-8")
+        if _prepare_debug_log_parent(state_path, explicit=explicit):
+            state_path.write_text(end.isoformat() + "\n", encoding="utf-8")
     except OSError as exc:
         logger.debug("Failed to write gap prev_end to %s: %s", state_path, exc)
 
 
 def _build_meta_line(
-    argv: list[str], log_path: Path, now: datetime
+    argv: list[str], log_path: Path, now: datetime, *, explicit: bool = False,
 ) -> str:
     """Build ``meta:`` line with argv fields and gap_ms since previous END."""
     step = parse_flag_from_argv(argv, "--step")
@@ -864,7 +941,7 @@ def _build_meta_line(
     if commit is not None:
         parts.append(f"commit={commit}")
 
-    prev_end = _previous_end_instant(log_path)
+    prev_end = _previous_end_instant(log_path, explicit=explicit)
     if prev_end is not None:
         gap_ms = max(0, int((now - prev_end).total_seconds() * 1000))
         parts.append(f"gap_ms={gap_ms}")
@@ -883,11 +960,15 @@ def _append_trace(
     stderr_meta: dict,
     exit_code: int,
     duration_ms: int,
+    *,
+    explicit: bool = False,
 ) -> str | None:
+    if not _prepare_debug_log_parent(log_path, explicit=explicit):
+        return None
     timestamp = local_iso_timestamp()
     now = _parse_iso_timestamp(timestamp) or datetime.now().astimezone()
     argv_text = " ".join(argv)
-    meta_line = _build_meta_line(argv, log_path, now)
+    meta_line = _build_meta_line(argv, log_path, now, explicit=explicit)
     block = (
         f"===== BEGIN {timestamp} =====\n"
         f"argv: {argv_text}\n"
@@ -896,12 +977,10 @@ def _append_trace(
         f"{_format_stream_block('stderr', stderr_parts, stderr_meta)}"
         f"===== END exit={exit_code} duration_ms={duration_ms} =====\n"
     )
-    if not _prepare_debug_log_parent(log_path):
-        return None
     try:
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(block)
-        _remember_end_instant(log_path, now)
+        _remember_end_instant(log_path, now, explicit=explicit)
     except OSError as exc:
         logger.debug("Failed to write debug log to %s: %s", log_path, exc)
         return None
@@ -922,6 +1001,7 @@ def _normalize_exit_code(code) -> int:
 def _append_cli_span(
     path: Path, argv: list[str], start_ns: int, end_ns: int,
     duration_ms: int, exit_code: int, debug_logged_at: str | None,
+    *, explicit: bool = False,
 ) -> None:
     command = next((arg.replace("_", "-") for arg in argv[1:] if not arg.startswith("-")), "")
     attributes = {
@@ -949,7 +1029,7 @@ def _append_cli_span(
     }
     if debug_logged_at is not None:
         span["spex"]["debug_logged_at"] = debug_logged_at
-    if _prepare_debug_log_parent(path):
+    if _prepare_debug_log_parent(path, explicit=explicit):
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(span, separators=(",", ":")) + "\n")
 
@@ -964,7 +1044,7 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
     but handoff merges/deletes that file and clears the active pointer, after
     which the selector uniquely matches the new spec. Flushing the pre-resolved
     session path would recreate an orphan session log; re-resolving appends
-    the tee block to ``<spec_dir>/debug.log`` instead.
+    the tee block to ``<spec_dir>/logs/debug.log`` instead.
 
     After ``archive`` moves a spec to ``archives/``, re-resolve follows the
     archived directory so tee appends there instead of recreating a vanished
@@ -1008,14 +1088,16 @@ def trace_command(log_path: Path | None, argv: list[str]) -> Iterator[None]:
                 stderr_meta,
                 exit_code,
                 duration_ms,
+                explicit=_configured_log_dir() is not None,
             )
         try:
-            trace_path = resolve_trace_file_path(flush_path)
+            trace_path, explicit_trace = _resolve_trace_destination(flush_path)
             if trace_path is not None and (
                 flush_path is None or trace_path.resolve() != flush_path.resolve()
             ):
                 _append_cli_span(
                     trace_path, argv, start_ns, end_ns, duration_ms, exit_code, debug_logged_at,
+                    explicit=explicit_trace,
                 )
         except (OSError, RuntimeError, ValueError) as exc:
             logger.debug("Failed to write CLI span: %s", exc)

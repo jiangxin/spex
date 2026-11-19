@@ -393,7 +393,7 @@ class TestCreatePlanOnlySop:
         _index(pre, "Load and follow `references/plan-command-common.md`")
         _index(pre, "untrusted")
         shared = _read(PLAN_COMMAND_COMMON)
-        _index(shared, "write **only** under `$spec_path`")
+        _index(shared, "Spec writes are limited to `$spec_path`")
         _index(shared, "Glob")
         _index(shared, "Grep")
         phase9 = _h3_section(text, "Phase 9: STOP — Do NOT Implement")
@@ -607,16 +607,19 @@ class TestModifyPlanOnlySop:
         assert "name candidate" not in text
         assert "≤ 64" not in text
 
-    def test_plan_write_whitelist_only_spec_path(self):
+    def test_plan_write_whitelist_limits_git_config_exception(self):
         text = _read(MODIFY_MD)
         pre = _h2_section(text, "Preconditions")
         _index(pre, "Load and follow `references/plan-command-common.md`")
         shared = _read(PLAN_COMMAND_COMMON)
-        _index(shared, "write **only** under `$spec_path`")
+        _index(shared, "Spec writes are limited to `$spec_path`")
+        _index(shared, "The modify post-action helper may update or restore")
+        _index(shared, "`branch.<spex_branch>.description`")
+        _index(shared, "This is the only permitted Git configuration write")
         _index(shared, "Glob")
         _index(shared, "Grep")
         phase10 = _h3_section(text, "Phase 10: STOP — Do NOT Implement")
-        _index(phase10, "outside `$spec_path`")
+        _index(phase10, "write whitelist")
         _index(phase10, "plan-command-common.md")
 
     def test_phase1_loads_resolve_spec_name_and_list(self):
@@ -670,6 +673,12 @@ class TestModifyPlanOnlySop:
     def test_phase3_loads_spec_assets(self):
         phase3 = _h3_section(_read(MODIFY_MD), "Phase 3: Save Request")
         _index(phase3, "Load and follow `references/spec-assets.md`")
+
+    def test_modify_snapshots_before_saving_request(self):
+        text = _read(MODIFY_MD)
+        snapshot = _index(text, 'create-helper begin-modify "$spec_name"')
+        persist = _index(text, 'meta-helper "$spec_name" prompts')
+        assert snapshot < persist
 
     def test_todo_transaction_wraps_modify(self):
         text = _read(MODIFY_MD)
@@ -1760,7 +1769,7 @@ class TestPlanCommandCommonReference:
         assert PLAN_COMMAND_COMMON.is_file()
         text = _read(PLAN_COMMAND_COMMON)
         _index(text, "Write whitelist")
-        _index(text, "write **only** under `$spec_path`")
+        _index(text, "Spec writes are limited to `$spec_path`")
         _index(text, "Explore whitelist")
         _index(text, "Glob")
         _index(text, "Grep")

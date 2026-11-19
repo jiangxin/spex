@@ -90,7 +90,7 @@ class TestDebugEnabled:
 @pytest.mark.parametrize("log_dir", [None, "   ", "trial-logs"])
 def test_trace_path_precedence(tmp_path, monkeypatch, log_dir):
     ctx = _make_ctx(tmp_path)
-    debug_path = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+    debug_path = Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
     if log_dir is not None:
@@ -131,9 +131,41 @@ def test_shared_cli_logs_preserve_spec_anchors(tmp_path, monkeypatch):
     assert "===== BEGIN " in debug_path.read_text(encoding="utf-8")
     span = json.loads((log_dir / "trace.jsonl").read_text(encoding="utf-8"))
     assert span["attributes"]["process.command_args"] == argv
-    assert (spec_dir / "debug.log").read_text(encoding="utf-8") == (
+    assert (spec_dir / "logs" / "debug.log").read_text(encoding="utf-8") == (
         "===== APPLY task begin =====\n"
     )
+
+
+@pytest.mark.parametrize("trace_override", [None, "environment", "config"])
+def test_explicit_log_routes_can_resemble_spec_paths(tmp_path, monkeypatch, trace_override):
+    ctx = _make_ctx(tmp_path)
+    log_dir = tmp_path / "capture" / "archives" / "trial" / "logs"
+    trace_path = tmp_path / "capture" / "specs" / "trial" / "logs" / "explicit.jsonl"
+    monkeypatch.setenv("SPEX_LOG_DIR", str(log_dir))
+    monkeypatch.delenv("SPEX_TRACE_FILE", raising=False)
+    if trace_override == "environment":
+        monkeypatch.setenv("SPEX_TRACE_FILE", str(trace_path))
+    elif trace_override == "config":
+        ctx.config["trace_file"] = str(trace_path)
+    else:
+        trace_path = log_dir / "trace.jsonl"
+
+    argv = ["spex", "prompt", "show", "my-spec"]
+    with patch("debug_log.get_project_storage", return_value=ctx):
+        debug_path = resolve_debug_log_path(argv)
+        with trace_command(debug_path, argv):
+            pass
+
+        assert debug_path.is_file()
+        assert trace_path.is_file()
+        previous = log_dir.parent / "debug.log.prev_end"
+        previous.write_text("2026-08-04T17:00:00+08:00\n")
+        with trace_command(debug_path, argv):
+            pass
+
+    assert previous.read_text() == "2026-08-04T17:00:00+08:00\n"
+    assert (log_dir / "debug.log.prev_end").is_file()
+    assert len(trace_path.read_text().splitlines()) == 2
 
 
 def test_failed_span_write_preserves_command_failure(tmp_path, monkeypatch):
@@ -298,7 +330,7 @@ class TestSessionHelpers:
 
         target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
 
-        assert target == spec_dir / "debug.log"
+        assert target == spec_dir / "logs" / "debug.log"
         assert target.read_text(encoding="utf-8").startswith(
             "===== session history =====\n"
         )
@@ -316,7 +348,8 @@ class TestSessionHelpers:
         source = session_debug_log_path(spex_root, session_id).with_name("trace.jsonl")
         span = b'{"schema_version":1}\n'
         source.write_bytes(span)
-        target = spec_dir / "trace.jsonl"
+        target = spec_dir / "logs" / "trace.jsonl"
+        target.parent.mkdir()
         target.hardlink_to(source)
 
         merge_session_log_into_spec(spex_root, session_id, spec_dir)
@@ -328,7 +361,8 @@ class TestSessionHelpers:
         spec_dir = spex_root / "specs" / "my-spec"
         spec_dir.mkdir(parents=True)
         existing = "===== existing spec log =====\n"
-        (spec_dir / "debug.log").write_text(existing, encoding="utf-8")
+        (spec_dir / "logs").mkdir()
+        (spec_dir / "logs" / "debug.log").write_text(existing, encoding="utf-8")
         session_id = _activate_session(spex_root)
         session_log = session_debug_log_path(spex_root, session_id)
         session_body = "===== session history =====\n"
@@ -336,7 +370,7 @@ class TestSessionHelpers:
 
         target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
 
-        assert target == spec_dir / "debug.log"
+        assert target == spec_dir / "logs" / "debug.log"
         assert target.read_text(encoding="utf-8") == existing + session_body
         assert not session_log.exists()
         assert not session_log.parent.exists()
@@ -352,9 +386,9 @@ class TestSessionHelpers:
 
         target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
 
-        assert target == spec_dir / "debug.log"
+        assert target == spec_dir / "logs" / "debug.log"
         assert not session_log.exists()
-        assert not (spec_dir / "debug.log").exists()
+        assert not (spec_dir / "logs" / "debug.log").exists()
 
     def test_merge_missing_session_log_returns_none(self, tmp_path):
         spex_root = tmp_path / ".spex"
@@ -387,6 +421,7 @@ class TestSessionHelpers:
         ctx = _make_ctx(tmp_path, debug=True)
         spex_root = Path(ctx.spex_root)
         spec_dir = spex_root / "specs" / "my-spec"
+        spec_dir.mkdir(parents=True, exist_ok=True)
         session_id = _activate_session(spex_root)
         session_log = session_debug_log_path(spex_root, session_id)
 
@@ -408,7 +443,7 @@ class TestSessionHelpers:
 
         target = merge_session_log_into_spec(spex_root, session_id, spec_dir)
 
-        assert target == spec_dir / "debug.log"
+        assert target == spec_dir / "logs" / "debug.log"
         assert not session_log.exists()
         assert not session_sidecar.exists()
         assert not session_log.parent.exists()
@@ -441,7 +476,7 @@ class TestResolveDebugLogPath:
         ctx = _make_ctx(tmp_path)
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
-        assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+        assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
 
     def test_name_wins_over_active_session(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -449,7 +484,7 @@ class TestResolveDebugLogPath:
         session_id = _activate_session(ctx.spex_root)
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
-        assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+        assert path == Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
         assert path != session_debug_log_path(ctx.spex_root, session_id)
 
     def test_active_session_without_name(self, tmp_path, monkeypatch):
@@ -541,7 +576,7 @@ class TestResolveDebugLogPath:
         shutil.rmtree(spex_root / "specs" / "my-spec")
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "archive", "my-spec"])
-        assert path == archived / "debug.log"
+        assert path == archived / "logs" / "debug.log"
 
     def test_specs_match_wins_over_archives(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -551,7 +586,7 @@ class TestResolveDebugLogPath:
         archived.mkdir(parents=True)
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "prompt", "apply-one-task", "my-spec"])
-        assert path == spex_root / "specs" / "my-spec" / "debug.log"
+        assert path == spex_root / "specs" / "my-spec" / "logs" / "debug.log"
 
     def test_archived_exact_wins_over_specs_fuzzy_sibling(
         self, tmp_path, monkeypatch
@@ -567,7 +602,7 @@ class TestResolveDebugLogPath:
         (archives_dir / "foo").mkdir(parents=True)
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = resolve_debug_log_path(["spex", "archive", "foo"])
-        assert path == archives_dir / "foo" / "debug.log"
+        assert path == archives_dir / "foo" / "logs" / "debug.log"
 
 
 class TestSafeFlushDebugLogPath:
@@ -576,7 +611,7 @@ class TestSafeFlushDebugLogPath:
         ctx = _make_ctx(tmp_path)
         pre = tmp_path / "pre" / "debug.log"
         pre.parent.mkdir()
-        resolved = Path(ctx.spex_root) / "specs" / "my-spec" / "debug.log"
+        resolved = Path(ctx.spex_root) / "specs" / "my-spec" / "logs" / "debug.log"
         with patch("debug_log.get_project_storage", return_value=ctx):
             path = safe_flush_debug_log_path(
                 ["spex", "prompt", "apply-one-task", "my-spec"],
@@ -758,7 +793,7 @@ class TestTraceCommand:
     def test_reresolves_flush_path_after_handoff(self, tmp_path, monkeypatch):
         """Flush must not recreate a deleted session log after routing changes."""
         session_log = tmp_path / "sessions" / "sess-1" / "debug.log"
-        spec_log = tmp_path / "specs" / "my-spec" / "debug.log"
+        spec_log = tmp_path / "specs" / "my-spec" / "logs" / "debug.log"
         session_log.parent.mkdir(parents=True)
         spec_log.parent.mkdir(parents=True)
         argv = [
@@ -946,7 +981,8 @@ class TestTraceCommandArchiveFollow:
         spec_dir = spex_root / "specs" / "my-spec"
         archives_dir = spex_root / "archives"
         archives_dir.mkdir(parents=True)
-        pre_log = spec_dir / "debug.log"
+        pre_log = spec_dir / "logs" / "debug.log"
+        pre_log.parent.mkdir()
         pre_log.write_text("===== pre-archive =====\n", encoding="utf-8")
         argv = ["spex", "archive", "my-spec"]
 
@@ -955,7 +991,7 @@ class TestTraceCommandArchiveFollow:
                 shutil.move(str(spec_dir), str(archives_dir / "my-spec"))
 
         assert not spec_dir.exists()
-        archived_log = archives_dir / "my-spec" / "debug.log"
+        archived_log = archives_dir / "my-spec" / "logs" / "debug.log"
         content = archived_log.read_text(encoding="utf-8")
         assert "===== pre-archive =====\n" in content
         assert "argv: spex archive my-spec" in content
@@ -965,6 +1001,47 @@ class TestTraceCommandArchiveFollow:
         # Must not recreate a specs stub for tee.
         assert not (spex_root / "specs" / "my-spec").exists()
 
+    @pytest.mark.parametrize("outside_logs", [False, True])
+    def test_runtime_logs_and_legacy_sidecars(self, tmp_path, monkeypatch, outside_logs):
+        from debug_log import end_apply_span, has_open_apply_span
+
+        monkeypatch.chdir(tmp_path)
+        ctx = _make_ctx(tmp_path, debug=True)
+        spec_dir = Path(ctx.spex_root) / "specs" / "my-spec"
+        (spec_dir / "debug.log").write_text("legacy\n")
+        previous = spec_dir / "debug.log.prev_end"
+        previous.write_text("2026-08-04T17:00:00+08:00\n")
+        open_span = spec_dir / "debug.log.apply_span"
+        open_span.write_text(json.dumps({"review": {"start_ns": 0, "fields": {}}}))
+        logs = spec_dir / "logs"
+        outside = tmp_path / "outside"
+        if outside_logs:
+            outside.mkdir()
+            logs.symlink_to(outside, target_is_directory=True)
+
+        argv = ["spex", "prompt", "show", "my-spec"]
+        with (
+            patch("debug_log.get_project_storage", return_value=ctx),
+            patch("debug_log.debug_enabled", return_value=True),
+            patch("debug_log.local_iso_timestamp", return_value="2026-08-04T17:00:03+08:00"),
+        ):
+            with trace_command(resolve_debug_log_path(argv), argv):
+                pass
+            if not outside_logs:
+                assert has_open_apply_span(spec_dir, "review")
+                end_apply_span(spec_dir, "review")
+                assert not has_open_apply_span(spec_dir, "review")
+
+        assert (spec_dir / "debug.log").read_text() == "legacy\n"
+        if outside_logs:
+            assert not list(outside.iterdir())
+            assert previous.is_file() and open_span.is_file()
+        else:
+            assert not previous.exists() and not open_span.exists()
+            assert "gap_ms=3000" in (logs / "debug.log").read_text()
+            assert (logs / "debug.log.prev_end").is_file()
+            assert (logs / "trace.jsonl").is_file()
+
     def test_vanished_specs_without_archives_uses_spex_root(
         self, tmp_path, monkeypatch
     ):
@@ -972,7 +1049,8 @@ class TestTraceCommandArchiveFollow:
         ctx = _make_ctx(tmp_path, debug=True)
         spex_root = Path(ctx.spex_root)
         spec_dir = spex_root / "specs" / "my-spec"
-        pre_log = spec_dir / "debug.log"
+        pre_log = spec_dir / "logs" / "debug.log"
+        pre_log.parent.mkdir()
         pre_log.write_text("keep\n", encoding="utf-8")
         argv = ["spex", "archive", "my-spec"]
 
@@ -1098,7 +1176,7 @@ class TestApplyFlowTelemetryHelpers:
         assert closed is not None
         assert closed["duration_ms"] >= 10
         assert not has_open_apply_span(tmp_path, "review")
-        content = (tmp_path / DEBUG_LOG_NAME).read_text(encoding="utf-8")
+        content = (tmp_path / "logs" / DEBUG_LOG_NAME).read_text(encoding="utf-8")
         assert "===== APPLY review begin" in content
         assert "===== APPLY review end" in content
         assert f"duration_ms={closed['duration_ms']}" in content

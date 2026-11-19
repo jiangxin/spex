@@ -562,6 +562,46 @@ def test_native_timing_prefers_precise_spans_and_keeps_legacy_only_folders(tmp_p
     assert "timing_events" not in after and after["events"] == []
 
 
+def test_native_checkpoint_tracks_new_and_legacy_logs_independently(tmp_path):
+    import performance
+
+    root = tmp_path / ".spex"
+    paths = [
+        root / location / "example" / layout
+        for location in ("specs", "archives")
+        for layout in (".", "logs")
+    ]
+    for folder in paths:
+        folder.mkdir(parents=True)
+        (folder / "debug.log").write_text(cli_log("list"))
+        (folder / "trace.jsonl").write_text("")
+    baseline = native_trace.snapshot(tmp_path)
+    workflow_baseline = performance.workflow_metrics(tmp_path)
+    for index, folder in enumerate(paths, start=1):
+        with (folder / "debug.log").open("a") as handle:
+            handle.write(cli_log("show"))
+        with (folder / "trace.jsonl").open("a") as handle:
+            handle.write(json.dumps({
+                "schema_version": 1, "start_time_unix_nano": index, "end_time_unix_nano": index,
+            }) + "\n")
+
+    checkpoint, evidence = native_trace.window(tmp_path, baseline)
+    assert len(checkpoint) == 8 and checkpoint.keys() == baseline.keys()
+    assert {event["log"] for event in evidence["events"]} == {
+        (folder / "debug.log").relative_to(root).as_posix() for folder in paths
+    }
+    assert {event["spec"] for event in evidence["events"]} == {"example"}
+    assert {
+        event["start_ns"] for event in evidence["timing_events"]
+        if event["log"].endswith("/trace.jsonl")
+    } == {1, 2, 3, 4}
+    workflow = performance.workflow_metrics(tmp_path, workflow_baseline, new_turn=True)
+    assert len(workflow["logs"]) == 4
+    assert all(log["turn_offsets"] == [len(cli_log("list"))] for log in workflow["logs"])
+    _, repeated = native_trace.window(tmp_path, checkpoint)
+    assert repeated["events"] == [] and "timing_events" not in repeated
+
+
 @pytest.mark.parametrize("flush_delay", [0, 1_000_000_000])
 @pytest.mark.parametrize("extra_args", [[], ["--details", "first line\nsecond line"]])
 def test_native_timing_deduplicates_matching_commands_without_hiding_legacy(

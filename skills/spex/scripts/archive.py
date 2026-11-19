@@ -29,12 +29,7 @@ from common import (
     same_path,
 )
 from config import get_project_context
-from debug_log import DEBUG_LOG_NAME
-
-_DEBUG_ORPHAN_ALLOWED = frozenset({
-    DEBUG_LOG_NAME,
-    f"{DEBUG_LOG_NAME}.prev_end",
-})
+from debug_log import DEBUG_LOG_NAME, spec_debug_log_path, spec_logs_only
 
 
 @dataclass(frozen=True)
@@ -111,16 +106,13 @@ def _emit_json(dry_run: bool, results: list[ArchiveItem]) -> None:
 def is_debug_orphan_stub(spec_dir: Path) -> bool:
     """Return True if ``spec_dir`` only contains debug tee artifacts.
 
-    A debug orphan stub is a directory whose entries are a subset of
-    ``{debug.log, debug.log.prev_end}`` and that contains ``debug.log``.
-    Directories with any other file (e.g. ``.DS_Store``) are not stubs.
+    Require a debug log in either layout and allow only recognized log files.
     """
-    if not spec_dir.is_dir():
+    if spec_dir.is_symlink() or not spec_dir.is_dir():
         return False
-    if not (spec_dir / DEBUG_LOG_NAME).is_file():
-        return False
-    names = {p.name for p in spec_dir.iterdir()}
-    return names <= _DEBUG_ORPHAN_ALLOWED
+    return spec_logs_only(list(spec_dir.iterdir())) and (
+        (spec_dir / DEBUG_LOG_NAME).is_file() or spec_debug_log_path(spec_dir).is_file()
+    )
 
 
 def remove_debug_orphan_stub(

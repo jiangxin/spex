@@ -69,8 +69,8 @@ following these rules:
 4. **Test Plan**: Update the test plan to cover new or modified behavior.
 5. **Constraints**: Update if any constraints have changed.
 6. **Language**: Use the same language as the user's modification request.
-7. **Front-matter**: Keep the `description` field and update it to
-   reflect the modified specification content.
+7. **Front-matter**: Keep the `description` field. Revise it only if
+   the current description no longer summarizes the modified requirements.
 8. **Markers**: Preserve all `<!-- spex:begin:* -->` HTML comment markers.
 
 Before writing, analyze the current repository structure, architecture,
