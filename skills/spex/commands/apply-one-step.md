@@ -16,10 +16,10 @@ Apply a single step from a specification's todo list.
 
 | Dimension | `/spex apply` | `/spex apply-one-step` |
 |-----------|---------------|------------------------|
-| Tasks | Loop until `all_done` | Exactly one step, then HARD STOP |
+| Tasks | Loop until the spec finishes | Exactly one step, then HARD STOP |
 | Phases 4–5 | Sub-agent + handoff checklist | In-session; no handoff; ignore `outcome=` |
 | After Phase 7 | Return to Phase 3 for next task | Never return to Phase 3 |
-| post-action | Phase 9 (once per completed spec) | Only when `$remaining` == 0 |
+| post-action | Phase 7 when `$remaining` == 0 | Same as apply |
 | `--all` | Supported | Not supported |
 
 ## Preconditions
@@ -143,27 +143,9 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 
 - **HARD STOP for implementation.** Do NOT loop back to Phase 3 or
   implement additional steps after this phase begins
-- Count remaining undone tasks via helper (not by reading the todo
-  file directly):
-
-  ```bash
-  $spex_skill_dir/scripts/spex todo-helper show "$spec_name" --undone
-  ```
-
-  Parse JSON stdout array length -> `$remaining`
-- Display summary:
-  - Completed step name and `$commit_title` (or
-    `(skip_commit / no commit)` when empty)
-  - `$remaining` (undone tasks left)
-- IF `$remaining` is 0 -> run post-action (spec fully done):
-
-  ```bash
-  $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
-  ```
-
-  Display output to user
-- ELSE IF `$remaining` > 0 -> skip `post-action` (unfinished work
-  remains)
+- Display the completed step name, `$commit_title` (or
+  `(skip_commit / no commit)`), and `$remaining` from Phase 7.
+  When `$remaining` == 0, Phase 7 already ran post-action.
 
 - **This command implements exactly one step. STOP here.** User
   must invoke `/spex apply-one-step` again to continue
@@ -189,5 +171,5 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 ## STOP / Outputs
 
 - Exactly one step then STOP
-- Conditional post-action only when `$remaining` == 0
+- Phase 7 handles post-action when `$remaining` == 0
 - Abnormal Phase 6 STOP leaves step incomplete for resume

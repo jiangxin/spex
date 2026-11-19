@@ -45,7 +45,7 @@ Apply a specification to implement code step by step.
 
 ## Control flow
 
-Three nested loops; abnormal Phase 6 STOP aborts all of them.
+Abort all loops when Phase 6 or Phase 7 stops.
 `--all`: `list` **once** in Phase 1; iterate `$specs` only — never
 re-run `list` inside the loop. Next `$specs` item always resumes at
 Phase 2. Branch base is guaranteed by Phase 2 precheck
@@ -57,14 +57,15 @@ for each spec in $specs (or the one resolved spec):
   Phase 2 validate + bind $spex_root / $spex_worktree
   loop:                                                  # Phase 8 tasks
     Phase 3 prompt / resume
-    IF all_done -> Phase 9 -> break
+    IF all_done -> report completion and unknown finalization -> STOP
     IF resume=review -> Phase 6
     ELSE -> Phases 4–5 sub-agent -> handoff check
             -> Phase 6 (committed) or Phase 7 (skip)
     IF Phase 6 abnormal STOP -> end /spex apply (no 7/8/9, no next)
-    Phase 7 mark complete
-    -> next undone task (Phase 3)
-  Phase 9 post-action (once per completed spec)
+    Phase 7 complete step and handle finalization
+    IF Phase 7 STOP -> end /spex apply
+    IF remaining > 0 -> next undone task (Phase 3)
+    ELSE -> Phase 9 summary -> break
 -> next $specs item at Phase 2, or STOP
 ```
 
@@ -72,7 +73,7 @@ for each spec in $specs (or the one resolved spec):
 flowchart TD
   P1[Phase 1 resolve / --all] --> P2[Phase 2 validate]
   P2 --> P3[Phase 3 prompt / resume]
-  P3 -->|all_done| P9[Phase 9 post-action]
+  P3 -->|all_done, finalization unknown| STOP
   P3 -->|review| P6[Phase 6 review]
   P3 -->|implement| SA[Phases 4-5 sub-agent]
   SA --> HO[handoff checklist]
@@ -83,7 +84,8 @@ flowchart TD
   P6 -->|OK| P7
   P7 --> P8{more tasks?}
   P8 -->|yes| P3
-  P8 -->|no / via all_done| P9
+  P7 -->|failure / duplicate| STOP
+  P8 -->|no, finalized| P9[Phase 9 summary]
   P9 --> ALL{--all more?}
   ALL -->|yes| P2
   ALL -->|no| END[STOP]
@@ -111,7 +113,9 @@ for outer loops; Phase bodies below do not restate the diagram.
     `meta.branch`; `--all` does **not** chain the previous spec's
     commits. Dependent specs must be applied and merged one at a time
   - For each entry in `$specs`: set `$spec_name` / `$spec_path` ->
-    Phases 2–9 (Phase 9 when that spec's tasks all done)
+    Phases 2–9. On a new invocation the same filter skips completed
+    specs without a lock, including a spec whose finalization is unknown.
+    Use the standalone recovery from the prior diagnostic for that spec.
   - After Phase 9 for one spec -> next `$specs` item at Phase 2.
     IF none remain -> **STOP**
 - ELSE:
@@ -174,9 +178,9 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 
 - IF non-zero exit -> report stderr -> STOP
 - ELSE parse JSON stdout:
-  - IF `"all_done": true` -> Phase 9 (skip Phase 8). In `--all`
-    mode, after Phase 9 continue to next `$specs` item at Phase 2,
-    or **STOP** if none remain
+  - IF `"all_done": true` -> report that todo is complete but finalization
+    is unknown. Follow the standalone recovery in
+    `references/apply-task-phases.md` and STOP the current invocation.
   - ELSE -> Load and follow `references/apply-task-phases.md`
     Phase 3 exactly (bind `$task_prompt` / `$current_task_id` /
     `$resume_phase` / `$commit_title` / `$skip_commit`; shared
@@ -209,21 +213,13 @@ $spex_skill_dir/scripts/spex prompt apply-one-task --json "$spec_name"
 
 ### Phase 8: Next Task
 
-- Go back to Phase 3 for next undone task. Each iteration uses
-  fresh sub-agent for Phases 4–5 when `resume_phase` is `implement`
-- When Phase 3 reports `"all_done": true`, Phase 3 routes to
-  Phase 9 (do not loop further for this spec)
+- If `$remaining` > 0, return to Phase 3. Use a fresh sub-agent
+  for Phases 4–5 when `resume_phase` is `implement`.
+- If `$remaining` == 0 and Phase 7 confirmed finalization, go directly
+  to Phase 9. Phase 7 already ran post-action.
 
 ### Phase 9: Post Action
 
-- Run for **current** `$spec_name` (once per completed spec,
-  including each `--all` entry):
-
-```bash
-$spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
-```
-
-- Display output to user
 - Summarize the current spec's delivered behavior, covering preserved work
   from earlier steps and changes completed in this run. Use the Phase 2
   record to identify the steps that were already complete and the steps
@@ -264,5 +260,5 @@ $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
 ## STOP / Outputs
 
 - Phases 1–9 including `--all` `$specs` loop (list once), Phase 8
-  next-task loop, Phase 9 post-action
+  next-task loop, Phase 9 summary
 - Abnormal Phase 6 STOP leaves step incomplete for resume

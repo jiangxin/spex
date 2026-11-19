@@ -1029,9 +1029,12 @@ class TestApplyStepReviewSop:
         _index(phase1_apply, "--must-done")
         _index(phase1_apply, "already")
         _index(phase1_apply, "post-action")
-        _index(_h3_section(apply, "Phase 8: Next Task"), "Phase 3")
+        phase8_apply = _h3_section(apply, "Phase 8: Next Task")
+        _index(phase8_apply, "return to Phase 3")
+        _index(phase8_apply, "Phase 7 confirmed finalization")
         phase9 = _h3_section(apply, "Phase 9: Post Action")
-        _index(phase9, "post-action")
+        assert "apply-helper post-action" not in phase9
+        assert "prompt apply-one-task" not in phase9
         _index(phase9, "next `$specs` item at Phase 2")
         assert "Phase 1 outer" not in apply
         assert "apply-subagent-handoff" not in one
@@ -1056,8 +1059,8 @@ class TestApplyStepReviewSop:
         _index(phase4, "**Only** `$current_task_id`")
         phase8 = _h3_section(one, "Phase 8: Summary and Conditional Post Action")
         _index(phase8, "HARD STOP")
-        _index(phase8, "todo-helper")
-        _index(phase8, 'show "$spec_name" --undone')
+        _index(phase8, "`$remaining` from Phase 7")
+        assert "todo-helper" not in phase8
         assert "todo.json" not in phase8
         assert "null" not in phase8.lower()
         phase3_one = _h3_section(one, "Phase 3: Build Prompt / Resume Gate")
@@ -1141,12 +1144,17 @@ class TestApplyStepReviewSop:
         phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
         _index(phase7, "`$did_commit`")
         _index(phase7, "Refresh `$commit_title` if needed")
-        start = _index(phase7, "transaction start")
-        commit = _index(phase7, "todo-helper transaction commit")
-        assert phase7.count("--completed-at") == 2
-        assert (
-            start < phase7.index("--completed-at") < phase7.rindex("--completed-at") < commit
-        )
+        normal, recovery = phase7.split("### Recover a completion or finalization")
+        assert normal.count("apply-helper complete-step") == 2  # one per task mode
+        assert "todo-helper" not in normal
+        assert _index(normal, "verify-handoff") < _index(normal, "complete-step \\")
+        _index(normal, "completion=completed")
+        _index(normal, "finalization=succeeded")
+        _index(normal, "Never\n  retry finalization automatically")
+        assert _index(recovery, "todo-helper transaction commit") < _index(
+            recovery, "todo-helper show"
+        ) < _index(recovery, "If none remain, offer standalone")
+        _index(recovery, "apply-helper post-action")
         failures = _h2_section(phases, "Todo status transaction failures")
         _index(failures, "transaction rollback")
         _index(failures, "before starting another transaction")
@@ -1631,8 +1639,13 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         gate = _h2_section(phases, "Todo status recovery gate")
         _index(gate, "`$spec_path/todo.json.lock` exists")
         _index(gate, "stop before building a task")
-        _index(gate, "todo-helper transaction commit")
-        _index(gate, "todo-helper transaction rollback")
+        _index(gate, "Carry forward the original recovery diagnostic across invocations")
+        _index(gate, "For a commit-only diagnostic, offer only `todo-helper transaction commit`")
+        assert _index(gate, "verify\n  that the backup can safely be restored") < _index(
+            gate, "todo-helper transaction rollback"
+        )
+        phase7 = _h2_section(phases, "Phase 7: Mark Task Complete")
+        _index(phase7, "do not infer rollback from a lock alone")
         phase2 = _h2_section(phases, "Phase 2: Validate Branch")
         assert _index(phase2, "Todo status recovery gate") < _index(
             phase2, "apply-helper precheck"
@@ -1663,8 +1676,9 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         phase8 = _h3_section(
             one, "Phase 8: Summary and Conditional Post Action"
         )
-        _index(phase8, "todo-helper show \"$spec_name\" --undone")
-        _index(phase8, "array length")
+        _index(phase8, "`$remaining` from Phase 7")
+        assert "todo-helper show" not in phase8
+        assert "apply-helper post-action" not in phase8
         assert "todo.json" not in phase8
         assert "empty/`null`" not in phase8
         assert "null" not in phase8.lower()
@@ -1686,7 +1700,11 @@ class TestApplyOneStepCompletedSpecAndDedupe:
         _index(phase1, "must **not** switch branches by hand")
         phase3 = _h3_section(apply, "Phase 3: Build Prompt / Resume Gate")
         _index(phase3, '"all_done": true')
-        _index(phase3, "Phase 9")
+        _index(phase3, "is unknown. Follow the standalone recovery")
+        _index(phase3, "STOP the current invocation")
+        _index(phase1, "--must-undone-or-locked")
+        _index(phase1, "same filter skips completed")
+        _index(phase1, "Use the standalone recovery from the prior diagnostic")
 
 
 class TestHandoffChecklistAndRetryPreconditions:
@@ -2105,7 +2123,7 @@ class TestRound3RegressionGate:
         _index(_h2_section(one, "Differences from `/spex apply`"), "HARD STOP")
         _index(
             _h3_section(one, "Phase 8: Summary and Conditional Post Action"),
-            "todo-helper show \"$spec_name\" --undone",
+            "`$remaining` from Phase 7",
         )
         loop = _read(APPLY_REVIEW_LOOP)
         assert "## Round Model" not in loop

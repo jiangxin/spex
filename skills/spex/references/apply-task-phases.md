@@ -15,7 +15,7 @@ FAIL/STOP, residual-dirty STOP, or `commit_title` before
 
 Command-specific wrappers (not duplicated here): Phase 1 resolve,
 `--all` / multi-task loops, apply Phases 4–5 sub-agent launch,
-apply-one-step single-step STOP + conditional post-action.
+apply-one-step single-step STOP.
 
 ## Phase 2: Validate Branch
 
@@ -60,9 +60,8 @@ $spex_skill_dir/scripts/spex config
   manual recovery in [the split reference](apply-step-split.md) before
   normal routing. The operator identifies the interrupted split.
 
-Caller runs `prompt apply-one-task` (and handles `"all_done"` /
-command-specific post-action routing). Then parse JSON stdout and
-route as below.
+Caller runs `prompt apply-one-task` and handles `all_done` per its SOP.
+Parse JSON stdout and route as follows.
 
 - Save:
   - `$task_prompt` ← `"prompt"` (never call this `$prompt`)
@@ -313,8 +312,8 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
 
 - Only after Phase 6 finishes successfully, or when Phase 4/5
   skipped review because `$did_commit` is false. Set
-  **`completed_at`** using a new short transaction. The step is
-  complete after that transaction commits.
+  **`completed_at`** through `complete-step`. A step is complete
+  after its todo transaction commits.
 
 - For `general` in either apply entrypoint, use the pre-execution SHA
   as `$acceptance_head` after a clean skip. After a commit, compare the
@@ -338,60 +337,79 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   Stop on failure. Keep the validated `acceptance_evidence` and
   `commit_title` from stdout. The title is empty after a clean skip.
 
-```bash
-$spex_skill_dir/scripts/spex todo-helper transaction start "$spec_name"
-```
-
-- IF `$task_mode` is `general`, write validated evidence and completion
-  in one operation. Include verified output paths and the actual checks
-  in the completion summary:
+- For general tasks, pass the validated evidence and title. Include
+  verified output paths and actual checks in the completion summary.
 
   ```bash
-  $spex_skill_dir/scripts/spex todo-helper complete "$spec_name" \
-    --id "$current_task_id" --commit-title "$commit_title" --acceptance-evidence-stdin <<'EOF'
+  $spex_skill_dir/scripts/spex apply-helper complete-step \
+    --name "$spec_name" --id "$current_task_id" --commit-title "$commit_title" \
+    --acceptance-evidence-stdin <<'EOF'
   <validated JSON array of acceptance evidence>
   EOF
   ```
 
-- ELSE IF `$did_commit`:
-  - Refresh `$commit_title` if needed (from todo `commit_title`,
-    or `git log -1 --pretty="%h: %s"`) before the edit below —
-    main's `$commit_title` may still be empty after a Phases 4–5
-    sub-agent
+- For software tasks, refresh `$commit_title` if needed (from todo
+  or `git log -1 --pretty="%h: %s"`) when `$did_commit` is true.
+  Otherwise omit `--commit-title`.
 
-```bash
-$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
-  --id "$current_task_id" --completed-at now \
-  --commit-title "$commit_title"
-```
+  ```bash
+  $spex_skill_dir/scripts/spex apply-helper complete-step \
+    --name "$spec_name" --id "$current_task_id" --commit-title "$commit_title"
+  ```
 
-- ELSE (`$did_commit` false — keep `commit_title` empty):
+- The helper starts, updates and commits the todo transaction and
+  runs post-action only after this call commits the last unfinished step.
+- Exit 0: read JSON `completion`, `remaining` and `finalization`.
+  Bind `$remaining` only for `completion=completed` with a matching
+  pair: positive `remaining` and `finalization=not_needed`, or zero
+  `remaining` and `finalization=succeeded`. Display the helper output
+  and continue in the caller. For `already_completed`, report the
+  duplicate and stop. If its finalization is `unknown`, give the
+  recovery below. On any unexpected result, stop with status unknown.
+- Nonzero exit: report stderr and STOP the current invocation, including
+  any `--all` loop. Follow the helper's recovery diagnostic exactly;
+  do not infer rollback from a lock alone. Exit 3 means commit failed.
+  Exit 4 means rollback failed. Exit 5 means completion persisted but
+  finalization failed. For interruption or an unknown result, inspect
+  the current todo and lock before reporting what persisted. Never
+  retry finalization automatically.
 
-```bash
-$spex_skill_dir/scripts/spex todo-helper edit "$spec_name" \
-  --id "$current_task_id" --completed-at now
-```
+### Recover a completion or finalization
 
-- After either edit succeeds:
+- If the helper reports an open transaction, let its owner resolve it.
+  When the intended completion is present, the owner may run
+  `spex todo-helper transaction commit <spec-name>` if directed by
+  the diagnostic. After success, check
+  `spex todo-helper show <spec-name> --undone`. If steps remain, resume
+  through the normal entrypoint. If none remain, offer standalone
+  post-action as below. If rollback is chosen per the diagnostic, resume
+  with the restored todo; Phase 5's separately committed title is
+  available for review. On recovery command failure, stop and report
+  the remaining backup and exact failed command.
+- If the todo is committed and finalization failed or is unknown,
+  report the full resolved spec name and offer the operator this
+  standalone recovery command. Check whether post-action already ran
+  before using it. Stop the current invocation.
 
-```bash
-$spex_skill_dir/scripts/spex todo-helper transaction commit "$spec_name"
-```
-
-- ON_FAIL of start, edit, or commit: follow Todo status transaction
-  failures below and STOP. On rollback, Phase 5's separately committed
-  `commit_title` remains available for review on resume.
+  ```bash
+  $spex_skill_dir/scripts/spex apply-helper post-action --name "$spec_name"
+  ```
 
 ## Todo status recovery gate
 
 - If `$spec_path/todo.json.lock` exists, stop before building a task
-  prompt or treating the spec as complete. Report the backup path and
-  the `todo-helper transaction commit` and
-  `todo-helper transaction rollback` recovery commands.
-- Resolve the open transaction before continuing. Use commit when the
-  intended edit succeeded and rollback to restore the saved task list.
-  Check the stored commit title against the existing Git commit before
-  resuming a Phase 5 persistence failure.
+  prompt or treating the spec as complete. Report the backup path.
+  Carry forward the original recovery diagnostic across invocations.
+  For a commit-only diagnostic, offer only `todo-helper transaction commit`.
+- If the diagnostic is unavailable, have the transaction owner verify
+  that the backup can safely be restored before offering
+  `todo-helper transaction rollback`. A lock alone cannot establish
+  that the backup predates the intended edit without missing a
+  concurrent completion. The owner may commit when the intended edit
+  is present and the current todo is the state to keep.
+- Resume only after the owner resolves the transaction. For a Phase 5
+  persistence failure, verify the stored title against the existing
+  Git commit before resuming.
 
 ## Todo status transaction failures
 
