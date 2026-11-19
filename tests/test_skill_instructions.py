@@ -1934,25 +1934,24 @@ class TestMergeArchiveInitSop:
         _index(report, "After an actual `archived` or")
         _index(report, "`restored` result, use its `spec_path` as `$spec_path`")
 
-    def test_init_edge_notes_and_failure_handling(self):
+    def test_init_invokes_without_arguments_and_reports_by_exit_code(self):
         text = _read(INIT_MD)
-        pre = _h2_section(text, "Preconditions")
-        _index(pre, "`$user_prompt`")
-        # R3-F15 / P2-20: definitive wording — no "usually"
-        _index(pre, "Ignore all tokens")
-        _index(pre, "accepts no")
-        assert "usually" not in pre.lower()
-        # P2-24: edge cases moved from Preconditions into Phase 2
-        assert "Non-git" not in pre
-        assert "Already initialized" not in pre
-        phase2 = _h2_section(text, "Phase 2: Report Results")
-        _index(phase2, "Non-git")
-        _index(phase2, "Already initialized")
-        _index(phase2, "Warnings")
-        fail = _h2_section(text, "Failure Handling")
-        _index(fail, "ON_FAIL")
-        _index(fail, "exit 0")
-        _index(fail, "Warnings")
+        run = _h2_section(text, "Phase 1: Run Initialization")
+        _index(run, "Ignore the remaining")
+        _index(run, "`$user_prompt`")
+        _index(run, "without arguments")
+        assert run.count("scripts/spex init") == 1
+        assert "$spex_skill_dir/scripts/spex init\n```" in run
+
+        report = _h2_section(text, "Phase 2: Report Results")
+        assert _index(report, "non-zero exit, report stderr and stop") < _index(
+            report, "exit 0, report completion"
+        )
+        _index(report, "existing layout")
+        _index(report, "non-Git")
+        _index(report, "installation warnings")
+        _index(report, "manual fixes when the")
+        _index(report, "Stop after reporting")
 
     def test_no_mark_phase_under_skills_spex(self):
         """R3-F13 / P2-14: mark-phase is not a real subcommand — drop it."""
