@@ -294,7 +294,7 @@ def cmd_edit(todo_path, args):
     _emit_todo_edit_apply_anchor(todo_path, args, item)
 
 
-def cmd_complete(todo_path, args):
+def cmd_complete(todo_path, args, *, emit_done=True):
     """Persist completion and its required evidence in a single write."""
     from debug_log import emit_apply_task
 
@@ -302,7 +302,7 @@ def cmd_complete(todo_path, args):
     task = data[_step_index(data, args.id)]
     if task["completed_at"]:
         logger.info("%s is already complete.", todo_step_label(args.id, len(data)))
-        return
+        return data, False
 
     try:
         general = _is_general_todo(todo_path)
@@ -323,7 +323,9 @@ def cmd_complete(todo_path, args):
         sys.exit(1)
 
     logger.info("Completed %s.", todo_step_label(args.id, len(data)))
-    emit_apply_task(todo_path.parent, "done", id=args.id)
+    if emit_done:
+        emit_apply_task(todo_path.parent, "done", id=args.id)
+    return data, True
 
 
 def cmd_move(todo_path, args):
@@ -360,6 +362,10 @@ def cmd_remove_undone(todo_path):
         logger.info("Removed %d unfinished step(s).", removed)
 
 
+class StaleBackupError(SystemExit):
+    """A failed start left a backup that cannot safely be restored."""
+
+
 def _start_transaction(todo_path, backup_path):
     """Publish a complete snapshot without replacing an existing backup."""
     try:
@@ -374,6 +380,21 @@ def _start_transaction(todo_path, backup_path):
             temporary.write(snapshot)
             temporary.flush()
         os.link(temporary.name, backup_path)
+        try:
+            current = todo_path.read_bytes() if todo_path.exists() else b""
+            if snapshot != current:
+                raise OSError(f"{todo_path} changed while opening the transaction")
+        except OSError:
+            try:
+                backup_path.unlink()
+            except OSError as exc:
+                logger.error(
+                    "Cannot remove potentially stale todo backup '%s': %s. "
+                    "Preserve the current todo; do not roll back from this backup.",
+                    backup_path, exc,
+                )
+                raise StaleBackupError(1) from exc
+            raise
 
 
 def cmd_transaction(todo_path, action):
