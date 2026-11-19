@@ -1469,16 +1469,6 @@ class TestSharedSopReferences:
                 "for --must-done before empty-name STOP"
             )
 
-        # merge: candidate remains for plain list re-check
-        merge_p1 = _h3_section(_read(MERGE_MD), "Phase 1: Resolve Spec")
-        cand = _index(merge_p1, "recovery candidate")
-        plain = _index(merge_p1, 'list --json "$spec_name"')
-        empty_stop = _index(merge_p1, "empty / missing `$spec_name`")
-        assert cand < plain < empty_stop, (
-            "merge: recovery candidate must stay available for plain "
-            "list re-check before empty-name STOP"
-        )
-
     def test_apply_task_phases_exists_with_core_anchors(self):
         assert APPLY_TASK_PHASES.is_file()
         text = _read(APPLY_TASK_PHASES)
@@ -1834,6 +1824,8 @@ class TestCliContractReference:
         _index(text, "stderr")
         _index(text, "Route by exit code and")
         _index(text, "[]")
+        _index(text, "Expect an array")
+        _index(text, "resolve-spec-list.md#list-completion-lookup")
         _index(text, '"$spec_name"')
         _index(text, "json spex-result")
         _index(text, "last")
@@ -1874,6 +1866,15 @@ class TestMergeArchiveInitSop:
     """§6–8 polish: Inputs vs Phase 1, dry-run STOP, slim archive,
     init edges, Failure Handling / `$user_prompt` binding."""
 
+    def test_completion_lookup_contract_stops_on_invalid_responses(self):
+        lookup = _h2_section(_read(RESOLVE_SPEC_LIST), "List completion lookup")
+        _index(lookup, "validate a JSON object with a known `status`")
+        _index(lookup, "a top-level array")
+        _index(lookup, "status, or invalid fields or counts as a protocol error and stop")
+        _index(lookup, "`completed` | Non-empty array")
+        _index(lookup, "`unfinished` | Non-empty array")
+        _index(lookup, "`no_match` | Empty array")
+
     def test_merge_inputs_flags_only_selection_in_phase1(self):
         text = _read(MERGE_MD)
         inputs = _h2_section(text, "Inputs")
@@ -1888,15 +1889,19 @@ class TestMergeArchiveInitSop:
         )
         _index(
             phase1,
-            "Load and follow `references/resolve-spec-list.md`",
+            "resolve-spec-list.md#parse",
         )
-        _index(phase1, "--must-done")
-        _index(phase1, "Unfinished-spec recovery")
-        _index(phase1, "recovery candidate")
-        _index(phase1, 'list --json "$spec_name"')
-        _index(phase1, "not finished")
-        _index(phase1, "x/y")
+        assert phase1.count("scripts/spex list ") == 1
+        _index(phase1, "list --json --must-done")
+        _index(phase1, '--include-unfinished-on-miss -- "$first_word"')
+        assert _index(phase1, "unknown status, or malformed") < _index(
+            phase1, "use only `completed.specs`"
+        )
+        _index(phase1, "`done/total`")
         _index(phase1, "/spex apply")
+        for status in ("unfinished", "no_match"):
+            branch = phase1.split(f"- IF `{status}`", 1)[1].split("- IF ", 1)[0]
+            assert "**STOP**" in branch
         # Contiguous phases after dropping optional Validate
         assert "### Phase 2: Validate" not in text
         assert "Validate (optional)" not in text

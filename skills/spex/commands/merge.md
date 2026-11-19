@@ -17,7 +17,8 @@ Submit completed work by merging the feature branch or creating a PR.
 ## Preconditions
 
 - Load and follow `references/cli-contract.md` exactly
-- Load and follow `references/resolve-spec-name.md` exactly
+- Load and follow `references/resolve-spec-name.md` with the
+  lookup override in Phase 1
   (shared first-word probe; Usage flags bind before that algorithm;
   conditional skip-confirm on S1/S2/S3 — no always-wait after lock)
 - Bind from `$user_prompt`: recognize known Usage flags **anywhere** in
@@ -36,37 +37,27 @@ Submit completed work by merging the feature branch or creating a PR.
 
 ### Phase 1: Resolve Spec
 
-- Load and follow `references/resolve-spec-name.md` exactly.
-  Caller CMD:
+- Load and follow `references/resolve-spec-name.md` for the first
+  word, request remainder, and lock handling. Replace its query and
+  empty-result recovery with one lookup:
 
   ```bash
-  $spex_skill_dir/scripts/spex list --json --must-done "<probe>"
+  $spex_skill_dir/scripts/spex list --json --must-done \
+    --include-unfinished-on-miss -- "$first_word"
   ```
 
-  where `<probe>` is `$first_word` or empty per that reference.
-  Load and follow `references/resolve-spec-list.md`. Empty `[]`
-  recovery below overrides the default STOP when `$spec_name` is
-  non-empty: a list lock, or the **first-word probe** / preserved
-  recovery candidate left when `--must-done` returns `[]`.
-  resolve-spec-name step 3 only empty-name re-lists; it does not
-  invent a candidate name for recovery
-- **Empty `[]` handling:** IF resolve yields `[]`:
-  - IF `$spec_name` is non-empty (first-word probe / preserved
-    recovery candidate, or list lock with no completed match) →
-    **Unfinished-spec recovery**, re-check:
-
-    ```bash
-    $spex_skill_dir/scripts/spex list --json "$spec_name"
-    ```
-
-    - IF hit (non-empty array) -> report that the spec exists but
-      is not finished (`x/y` steps from the hit's `spec_path`
-      todo progress, `format_spec` style); suggest
-      `/spex apply "<spec>"` -> **STOP**
-    - IF still `[]` -> report no match -> **STOP**
-  - ELSE (empty / missing `$spec_name`, including after
-    resolve-spec-name step 3 empty-name re-list) → report no
-    match → **STOP**
+- Pass an empty string when there is no first word. Check the exit code
+  and validate the
+  [completion lookup object](../references/resolve-spec-list.md#list-completion-lookup)
+  before routing. On a non-zero exit, unknown status, or malformed
+  response -> **STOP** per the CLI contract.
+- IF `completed` -> use only `completed.specs` for candidate selection
+  per [Resolve Spec via list](../references/resolve-spec-list.md#parse).
+  After the lock and echo, proceed to Phase 2.
+- IF `unfinished` -> report each unfinished spec with `done/total`
+  steps and suggest `/spex apply "<spec>"` -> **STOP**.
+- IF `no_match` -> report no match for the probe (or no completed
+  specs for an empty probe) -> **STOP**.
 
 ### Phase 2: Submit
 
@@ -121,7 +112,7 @@ $spex_skill_dir/scripts/spex merge "$spec_name" [-n|--dry-run] [--no-archive]
 - CLI exit / stdout / stderr: follow `references/cli-contract.md`
   (trust the script; missing `spex_branch` and other merge failures
   appear on stderr)
-- ON_FAIL Phase 1 list / resolve / unfinished-spec recovery -> STOP
+- ON_FAIL Phase 1 list / resolve -> STOP
 - ON_FAIL Phase 2 merge (non-zero, non-JSON, or `errors` non-empty)
   -> STOP
 - `--dry-run` complete -> STOP (re-invoke for real submit)
