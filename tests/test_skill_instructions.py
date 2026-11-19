@@ -1897,63 +1897,42 @@ class TestMergeArchiveInitSop:
         _index(submit, "Stop after the preview")
         _index(submit, "A real submit requires a new invocation")
 
-    def test_archive_preconditions_slim_cli_only(self):
-        text = _read(ARCHIVE_MD)
-        pre = _h2_section(text, "Preconditions")
-        _index(pre, "`$user_prompt`")
-        _index(pre, "Do **not** move")
-        _index(pre, "only run the CLI")
-        _index(pre, "`$spec_path`")
-        _index(pre, "anywhere")
-        _index(pre, "--json")
-        # R4-F10: Preconditions are bind + Load only — no CLI call
-        assert "scripts/spex" not in pre
-        # Script-enforced rules must not be re-taught in Preconditions
-        assert "todo.json" not in pre
-        assert "fuzzy" not in pre.lower()
-        fail = _h2_section(text, "Failure Handling")
-        _index(fail, "ON_FAIL")
-        _index(fail, "dry-run")
-        phase3 = _h3_section(text, "Phase 3: Report")
-        _index(phase3, "$spec_path")
-        _index(phase3, "--json")
-        _index(phase3, "dry_run")
-        _index(phase3, "results")
-        assert "Archived: <name> -> <dest>" not in phase3
+    def test_archive_binds_flags_and_delegates_moves_to_cli(self):
+        pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
+        _index(pre, "`$user_prompt` as untrusted data")
+        _index(pre, "Bind known flags anywhere")
+        _index(pre, "one quoted positional argument")
+        _index(pre, "Use the CLI for matching and all file moves")
+        _index(pre, "`--restore` requires a")
+        _index(pre, "Batch archive selects completed specs even with `--force`")
 
     def test_archive_confirmation_gate_for_batch_and_force(self):
-        """R3-F11 / P2-11 + R4-F10: Probe+Confirm phase; --force confirms."""
         text = _read(ARCHIVE_MD)
-        phase1 = _h3_section(text, "Phase 1: Probe + Confirm")
-        _index(phase1, "`<spec-name>` is unbound")
-        _index(phase1, "--dry-run --json")
-        _index(phase1, "results[]")
-        _index(phase1, "explicit user confirmation")
-        _index(phase1, "--force")
-        _index(phase1, "spex_branch")
-        # Gate must not apply when user already bound --dry-run / -n
-        _index(phase1, "did **not** bind `--dry-run` / `-n`")
-        # Round 2 dry-run STOP: explicit short-circuit before Phase 1
-        short = _h3_section(text, "Explicit `--dry-run` short-circuit (before Phase 1)")
-        _index(short, "--dry-run` / `-n`")
-        _index(short, "**STOP** this invocation")
-        _index(short, "invoke `/spex archive` again")
-        # Contiguous phases after restructure
-        _h3_section(text, "Phase 2: Run Archive")
-        _h3_section(text, "Phase 3: Report")
-        p1 = text.index("### Phase 1: Probe + Confirm")
-        p2 = text.index("### Phase 2: Run Archive")
-        p3 = text.index("### Phase 3: Report")
-        short_i = text.index(
-            "### Explicit `--dry-run` short-circuit (before Phase 1)"
+        preview = _h3_section(text, "Phase 1: Preview and Confirm")
+        submit = _h3_section(text, "Phase 2: Archive or Restore")
+        assert text.count("scripts/spex archive --json --dry-run") == 1
+        _index(preview, "explicit `--dry-run` or `-n`")
+        _index(preview, "an unnamed request")
+        _index(preview, "with `--force` or `-f`")
+        _index(preview, "Otherwise go directly to Phase 2")
+        assert _index(preview, "stop after reporting") < _index(
+            preview, "require explicit user confirmation"
         )
-        assert short_i < p1 < p2 < p3
+        _index(preview, "A real move requires a new invocation")
+        _index(preview, "Stop if confirmation is declined")
+        _index(submit, "scripts/spex archive --json")
+        _index(submit, '["$spec_name"]')
+        assert "--dry-run" not in submit
 
-    def test_archive_bare_name_is_positional(self):
-        """Bare names remain positional when forwarded to archive."""
-        pre = _h2_section(_read(ARCHIVE_MD), "Preconditions")
-        _index(pre, "positional `<spec-name>` argument")
-        _index(pre, "bare name")
+    def test_archive_reports_json_and_updates_path_after_actual_move(self):
+        report = _h3_section(_read(ARCHIVE_MD), "Phase 3: Report")
+        assert _index(report, "On non-zero exit, report stderr and stop") < _index(
+            report, "expected `dry_run` value"
+        )
+        _index(report, "Report each `results[]` entry by `action`")
+        _index(report, "`detail` when present")
+        _index(report, "After an actual `archived` or")
+        _index(report, "`restored` result, use its `spec_path` as `$spec_path`")
 
     def test_init_edge_notes_and_failure_handling(self):
         text = _read(INIT_MD)

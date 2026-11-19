@@ -1264,7 +1264,8 @@ class TestArchiveSopSpecPath:
         assert "results" in content
         assert "spec_path" in content
         assert "$spec_path" in content
-        assert "pre-move" in content or "specs/..." in content
+        assert "After an actual `archived` or\n`restored` result" in content
+        assert "use its `spec_path` as `$spec_path`" in content
         assert "Archived: <name> -> <dest>" not in content
         assert "known Usage flags" in content or "anywhere" in content
 
