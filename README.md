@@ -425,9 +425,9 @@ and planning tasks. The existing software skeleton remains compatible.
 | `create-todo.md` | `general-create-todo.md` | Task planning guidance with the saved `spec_content` and `spec_name` |
 
 Spex looks for the mode-specific filename in the selected `spex_root/templates/`,
-then uses the built-in file of that name as the fallback. Copy built-in examples
-from `templates/examples/`. The template guide lists the full mapping for create,
-modify, apply, commit, review, and fix. [Template guide](skills/spex/templates/AGENTS.md)
+then uses the built-in file of that name as the fallback.
+See [Customizing spex Templates](#customizing-spex-templates) for setup
+and the [template guide](skills/spex/templates/AGENTS.md) for all filenames.
 
 #### Task Modes
 
@@ -566,8 +566,13 @@ resolves from `spex_root`.
 ### Customizing spex Templates
 
 Run `spex config get spex_root` to find the selected storage directory.
-Put custom templates in its `templates/` directory. Spex falls back to
-built-in templates, which you can copy from `templates/examples/`.
+Copy the built-in file for your task mode from
+[`skills/spex/templates/`](skills/spex/templates/) into that storage
+directory's `templates/` directory, keeping the filename.
+An existing copy in `templates/examples/` can also serve as a starting
+point. Edit the copy in `templates/` to activate the override.
+Spex skips `templates/examples/` during lookup and may overwrite its
+files when syncing built-in examples.
 
 To customize `/spex review-plan`, copy the built-in
 [`review-plan.md`](skills/spex/templates/review-plan.md) for software specs
@@ -575,7 +580,8 @@ or [`general-review-plan.md`](skills/spex/templates/general-review-plan.md)
 for general specs into the invoking project's effective template directory.
 These templates receive `spec_name`, `task_mode`, `spec_content`,
 `todo_json`, and `prompt_context` (the review focus). Plan review reads
-the spec and tasks from the selected path and runs without writing files.
+the spec and tasks from the selected path. It runs read-only, so it
+leaves `templates/examples/` untouched.
 
 ### Customizing Hooks
 

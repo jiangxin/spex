@@ -130,12 +130,21 @@ not evaluated as Spex template syntax.
 Use the logical template name in workflow commands. Spex selects the
 filename for the persisted task mode, then looks in the selected
 `spex_root/templates/` and falls back to the built-in file of that name.
-Template rendering usually syncs built-in examples to
-`templates/examples/`. Plan review runs read-only, so copy its built-in
-files directly to customize them. Existing custom `spec-template.md`
-files continue to serve as software skeletons.
+
+Run `spex config get spex_root` to find the selected storage directory.
+Copy the built-in file for your task mode from `skills/spex/templates/`
+into that storage directory's `templates/` directory, keeping the filename.
+An existing copy in `templates/examples/` can also serve as a starting
+point. Edit the copy in `templates/` to activate the override. Spex skips
+`templates/examples/` during lookup and may overwrite its files when
+syncing built-in examples. Existing custom `spec-template.md` files
+continue to serve as software skeletons.
 
 ## Plan review context
+
+For software specs, copy `review-plan.md`. For general specs, copy
+`general-review-plan.md`. Plan review runs read-only and leaves
+`templates/examples/` untouched.
 
 The invoking project's effective `spex_root/templates/` supplies the
 override. The selected spec's exact path supplies the review data, even
