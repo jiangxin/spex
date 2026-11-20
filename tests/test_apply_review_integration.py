@@ -452,6 +452,45 @@ class TestLegacyReviewFile:
         assert "pending_findings" not in on_disk
 
 
+class TestCorruptReviewFile:
+    def test_status_reports_abnormal_stop_for_corrupt_file(
+        self, integ, capsys, caplog,
+    ):
+        (integ / "review-step-8.json").write_text(
+            "{oops", encoding="utf-8",
+        )
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "status", "integ", "--step", "step-8", "--json",
+            ])
+        assert capsys.readouterr().out == ""
+        assert "is corrupt" in caplog.text
+        assert "abnormal STOP" in caplog.text
+        assert "Do not run review-helper init" in caplog.text
+
+    def test_init_refuses_to_replace_a_corrupt_review(
+        self, integ, capsys, caplog,
+    ):
+        path = integ / "review-step-8.json"
+        path.write_text("{oops", encoding="utf-8")
+        with pytest.raises(SystemExit):
+            review_helper.main([
+                "init", "integ", "--step", "step-8", "--commit", "base0001",
+            ])
+        assert "is corrupt" in caplog.text
+        assert "refusing to replace" in caplog.text
+        assert "abnormal STOP" in caplog.text
+        assert path.read_text(encoding="utf-8") == "{oops"
+
+    def test_init_creates_a_missing_review(self, integ, capsys):
+        review_helper.main([
+            "init", "integ", "--step", "step-8", "--commit", "base0001",
+        ])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["step_id"] == "step-8"
+        assert (integ / "review-step-8.json").is_file()
+
+
 class TestDisabledReviewWithMajor:
     def test_open_major_blocks_silent_complete(
         self, integ, monkeypatch, capsys,

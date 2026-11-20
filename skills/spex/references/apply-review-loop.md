@@ -56,6 +56,10 @@ $spex_skill_dir/scripts/spex review-helper status "$spec_name" \
 - IF non-zero exit -> report stderr -> STOP
 - ELSE parse JSON stdout; keep that object for the decisions below.
 
+A non-zero `status` caused by an unreadable or corrupt review file is an
+abnormal STOP. Report the file and the parse error. Do **not** run
+`review-helper init`, rewrite, or delete the file to continue.
+
 Also resolve the current tip:
 
 ```bash

@@ -247,22 +247,43 @@ def _pending_ids_have_major(data: dict, pending_ids: list) -> bool:
     return False
 
 
+def _corrupt_review(path: Path, detail: str) -> None:
+    """Report an unreadable review file as an abnormal STOP and exit."""
+    logger.error(
+        "Error: review file '%s' is corrupt (%s). "
+        "This is an abnormal STOP: report the file and this error to the "
+        "user. Do not run review-helper init or rewrite the file to continue.",
+        path, detail,
+    )
+    sys.exit(1)
+
+
+def _review_corruption(path: Path) -> Optional[str]:
+    """Return the corruption reason, or None for a readable review file."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return f"invalid JSON: {exc}"
+    if not isinstance(data, dict):
+        return "expected a JSON object"
+    if "findings" not in data or not isinstance(data["findings"], list):
+        return "missing 'findings' list"
+    return None
+
+
 def load_review(path: Path) -> dict:
-    """Load a review file; exit on missing or invalid JSON."""
+    """Load a review file; exit on missing or corrupt content."""
     if not path.is_file():
         logger.error("Error: review file not found: %s", path)
         sys.exit(1)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        logger.error("Error: invalid JSON in '%s': %s", path, exc)
-        sys.exit(1)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        _corrupt_review(path, f"invalid JSON: {exc}")
     if not isinstance(data, dict):
-        logger.error("Error: review file must be a JSON object.")
-        sys.exit(1)
+        _corrupt_review(path, "expected a JSON object")
     if "findings" not in data or not isinstance(data["findings"], list):
-        logger.error("Error: review file missing 'findings' list.")
-        sys.exit(1)
+        _corrupt_review(path, "missing 'findings' list")
     return normalize_review_state(data)
 
 
@@ -312,7 +333,15 @@ def _new_review_document(step_id: int | str, commit_sha: str) -> dict:
 
 
 def cmd_init(path: Path, step_id: int | str, commit_sha: str) -> None:
-    """Create or reset a review file for the step."""
+    """Create or reset a review file, refusing to replace a corrupt one."""
+    if path.is_file() and (reason := _review_corruption(path)) is not None:
+        logger.error(
+            "Error: review file '%s' is corrupt (%s); refusing to replace it. "
+            "This is an abnormal STOP: report the file and this error to the "
+            "user. Do not rewrite the file to continue.",
+            path.name, reason,
+        )
+        sys.exit(1)
     data = _new_review_document(step_id, commit_sha)
     path.parent.mkdir(parents=True, exist_ok=True)
     save_review(path, data)
@@ -1404,7 +1433,10 @@ def _build_parser():
 
     p_init = subs.add_parser(
         "init",
-        description="Create or reset a review file for a step.",
+        description=(
+            "Create or reset a review file for a step. Refuses to replace "
+            "a corrupt file; findings are recorded with append."
+        ),
         help="Create or reset review-step-N.json",
     )
     p_init.add_argument("--step", required=True, help="Step id (e.g. step-1)")
