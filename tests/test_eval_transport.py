@@ -807,7 +807,7 @@ def test_manual_publish_preserves_concurrent_reply(tmp_path, monkeypatch, other_
 
 @pytest.mark.slow
 def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
-    runner, tmp_path, monkeypatch,
+    runner, monkeypatch,
 ):
     info = run.execute(runner.parse_args([
         "prepare", "--case", "clarify", "--host", "cursor",
@@ -820,7 +820,7 @@ def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
     reply = Path(start["reply"])
     timer = manual.host_turn_timer.pending_path(reply)
     wall = collect_handoff.host_wall_clock_sidecar(reply)
-    staged = tmp_path / "reply.txt"
+    staged = reply.with_name(f"{reply.name}.staging")
 
     def stop(turn="1", source=staged):
         return manual_action(sandbox, "stop", key, turn, "--reply-file", str(source))
@@ -832,9 +832,9 @@ def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
     with pytest.raises(UnicodeDecodeError):
         stop()
     staged.write_bytes(b"What type?\r\n")
-    linked = tmp_path / "linked.txt"
+    linked = reply.with_name(f"{reply.name}.linked")
     linked.symlink_to(staged)
-    with pytest.raises(ValueError, match="regular reply"):
+    with pytest.raises(ValueError, match="regular staging file"):
         stop(source=linked)
     with pytest.raises(ValueError, match="pending turn is 1"):
         stop(turn="2")
