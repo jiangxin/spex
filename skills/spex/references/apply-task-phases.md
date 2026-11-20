@@ -304,7 +304,8 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   Reinspect any external files before relying on them. On resume, do
   not rerun implementation or create another commit. Leave the step
   unfinished if evidence is unavailable or a check fails.
-- Validate the handoff using the selected SHA and successful evidence:
+- For `general` only, validate the handoff using the selected SHA and
+  successful evidence:
 
   ```bash
   $spex_skill_dir/scripts/spex apply-helper verify-handoff \
@@ -315,6 +316,10 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
 
   Stop on failure. Keep the validated `acceptance_evidence` and
   `commit_title` from stdout. The title is empty after a clean skip.
+
+- For `software`, skip `verify-handoff` and call the software
+  `complete-step` form below directly; there is no handoff stdout to
+  keep.
 
 - For general tasks, pass the validated evidence and title. Include
   verified output paths and actual checks in the completion summary.
@@ -359,12 +364,14 @@ duplicate the four steps in `apply.md` / `apply-one-step.md`.
   When the intended completion is present, the owner may run
   `spex todo-helper transaction commit <spec-name>` if directed by
   the diagnostic. After success, check
-  `spex todo-helper show <spec-name> --undone`. If steps remain, resume
-  through the normal entrypoint. If none remain, offer standalone
-  post-action as below. If rollback is chosen per the diagnostic, resume
-  with the restored todo; Phase 5's separately committed title is
-  available for review. On recovery command failure, stop and report
-  the remaining backup and exact failed command.
+  `spex todo-helper show <spec-name> --undone`. That command has no
+  `--json` flag: JSON is the default output; add `--format markdown`
+  for text. If steps remain, resume through the normal entrypoint.
+  If none remain, offer standalone post-action as below. If rollback is
+  chosen per the diagnostic, resume with the restored todo; Phase 5's
+  separately committed title is available for review. On recovery
+  command failure, stop and report the remaining backup and exact
+  failed command.
 - If the todo is committed and finalization failed or is unknown,
   report the full resolved spec name and offer the operator this
   standalone recovery command. Check whether post-action already ran

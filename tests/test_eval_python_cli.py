@@ -43,6 +43,41 @@ def test_python_cli_smoke_covers_each_command_and_has_anchored_rubrics():
     assert any(not value.isascii() for value in inputs)
 
 
+def test_plan_review_cases_have_read_only_checks_and_reply_rubrics():
+    cases = select_cases(EVAL / "suites", suite="python-cli", tag="review-plan")
+    rubrics = json.loads((SUITE / "rubrics.json").read_text(encoding="utf-8"))["cases"]
+    assert [case.id for case in cases] == ["review-plan-findings", "review-plan-clean"]
+    for case, next_command in zip(cases, ("modify", "apply")):
+        turn, = case.definition["turns"]
+        _, _, spec_name = turn["input"].split()
+        assert turn["input"] == f"/spex review-plan {spec_name}"
+        assert set(turn["checks"]) == {"no-code-change", "no-spec-write", "no-progress"}
+        criterion, = rubrics[case.id]
+        assert criterion["turn"] == 1
+        assert criterion["threshold"] == 2
+        assert criterion["requires"] == ["reply"]
+        assert f"/spex {next_command} {spec_name}" in criterion["anchors"][2]
+
+
+def test_plan_review_fixtures_differ_only_in_invalid_count_coverage(tmp_path):
+    scenarios = ("review-plan-findings", "review-plan-clean")
+    contents = []
+    for case_id in scenarios:
+        repo = tmp_path / case_id
+        spec = repo / ".spex/specs/2000-01-01-00-00-greeting-format"
+        spec.mkdir(parents=True)
+        subprocess.run([sys.executable, str(SUITE / "setup.py"), str(repo), case_id], check=True)
+        task, = json.loads((spec / "todo.json").read_text(encoding="utf-8"))
+        contents.append(((spec / "spec.md").read_text(encoding="utf-8"), task))
+    (findings_spec, findings), (clean_spec, clean) = contents
+    assert findings_spec == clean_spec
+    assert "exit 2" in clean_spec
+    assert clean["details"].startswith(findings["details"])
+    assert "exit 2" in clean["details"]
+    assert "exit 2" not in findings["details"]
+    assert {**clean, "details": findings["details"]} == findings
+
+
 def acceptance(trial, scenario):
     run = subprocess.run(
         [sys.executable, str(SUITE / "acceptance.py"), str(trial.repo), scenario],

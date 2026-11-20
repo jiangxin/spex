@@ -47,5 +47,7 @@ unfinished steps with a recorded `commit_title`.
 
 For actionable findings, give one copyable
 `/spex modify <spec-name> <suggested changes>` command with the resolved
-name and concise corrections for the user to run manually. Otherwise
-state the conclusion.
+name and concise corrections for the user to run manually. If the review
+completes with no actionable findings, state the conclusion and give one
+copyable `/spex apply <spec-name>` command with the resolved name for the
+user to run manually.
