@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "spex"))
 try:
     import issues
@@ -19,30 +21,13 @@ def stamp(value):
 def command(name, subcommand, exit_code, turn=1, started_at=None, argv=None):
     entry = {
         "turn": turn, "command": name, "subcommand": subcommand,
-        "exit_code": exit_code,
+        "exit_code": exit_code, "spec": "demo",
     }
     if started_at is not None:
         entry["started_at"] = started_at
     if argv is not None:
         entry["argv"] = argv
     return entry
-
-
-def test_helper_identity_parses_spex_argv():
-    assert issues.helper_identity(
-        {"argv": ["/usr/bin/spex", "todo-helper", "edit", "--id", "step-1"]},
-    ) == ("todo-helper", "edit")
-    assert issues.helper_identity({"argv": ["spex", "review-helper", "status"]}) == (
-        "review-helper", "status",
-    )
-
-
-def test_helper_identity_rejects_other_commands():
-    assert issues.helper_identity({"argv": ["python3", "todo-helper", "edit"]}) is None
-    assert issues.helper_identity({"argv": ["spex", "apply", "run"]}) is None
-    assert issues.helper_identity({"argv": ["spex", "todo-helper"]}) is None
-    assert issues.helper_identity({"argv": ["spex", "todo-helper", "--flag"]}) is None
-    assert issues.helper_identity({"command": "todo-helper"}) is None
 
 
 def test_turn_windows_use_host_stamps_only():
@@ -79,20 +64,23 @@ def test_recovered_by_retry_requires_same_turn_and_identity():
     assert issues.recovered_by_retry(0, other_subcommand, windows, 1) is False
 
 
-def test_recovered_by_retry_ignores_exits_after_the_window():
+@pytest.mark.parametrize("started_at", [
+    "2026-11-16T11:59:59+00:00", "2026-11-16T12:11:00+00:00",
+])
+def test_recovered_by_retry_ignores_exits_outside_the_window(started_at):
     windows = {1: (stamp("2026-11-16T12:00:00+00:00"),
                    stamp("2026-11-16T12:10:00+00:00"))}
     commands = [
         command("todo-helper", "edit", 1),
-        command("todo-helper", "edit", 0, started_at="2026-11-16T12:11:00+00:00"),
+        command("todo-helper", "edit", 0, started_at=started_at),
     ]
     assert issues.recovered_by_retry(0, commands, windows, 1) is False
 
 
 def test_recovered_by_retry_matches_argv_identity():
     commands = [
-        command("todo-helper", "edit", 1, argv=["spex", "todo-helper", "edit"]),
-        command("todo-helper", "edit", 0, argv=["spex", "todo-helper", "edit"]),
+        command("unknown", "edit", 1, argv=["spex", "todo-helper", "edit", "demo"]),
+        command("todo-helper", "edit", 0, argv=["spex", "todo-helper", "edit", "demo"]),
     ]
     assert issues.recovered_by_retry(0, commands, {}, 1) is True
 
@@ -118,6 +106,49 @@ def test_recovered_by_retry_requires_the_same_operation_target():
         targeted("todo-helper", "edit", 0, None, "step-1", "two"),
     ]
     assert issues.recovered_by_retry(0, same, {}, 1) is True
+
+
+@pytest.mark.parametrize(("code", "target", "expected"), [
+    (2, "demo", True), (2, "other", False), (1, "demo", False), (2, None, False),
+])
+def test_argument_rejection_can_recover_with_corrected_selector(code, target, expected):
+    argv = ["spex", "todo-helper", "edit"]
+    failed = dict(command("todo-helper", "edit", code), spec=None, step="typo",
+                  argv=argv + ([target] if target else []))
+    success = dict(failed, spec="demo", step="step-1", exit_code=0, argv=argv + ["demo"])
+    assert issues.recovered_by_retry(0, [failed, success], {}, 1) is expected
+
+
+def test_create_todo_retry_requires_target_and_complete_window():
+    start = "2026-11-16T12:00:00+00:00"
+    windows = {1: (stamp(start), stamp("2026-11-16T12:10:00+00:00"))}
+    failed = command("prompt", "create-todo", 1)
+    success = dict(failed, exit_code=0, started_at=start)
+    assert issues.recovered_by_retry(0, [failed, success], windows, 1)
+    assert not issues.recovered_by_retry(0, [failed, success], {}, 1)
+    for change in ({"started_at": None}, {"spec": "other"}, {"turn": 2}):
+        assert not issues.recovered_by_retry(0, [failed, dict(success, **change)], windows, 1)
+
+
+@pytest.mark.parametrize(("action", "expected"), [
+    ("start", True), ("rollback", False), (None, False),
+])
+def test_transaction_retry_requires_matching_action(action, expected):
+    failed = dict(command("todo-helper", "transaction", 2), transaction_action="start")
+    argv = ["spex", "todo-helper", "transaction", "--name", "demo"]
+    success = command("todo-helper", "transaction", 0, argv=argv + ([action] if action else []))
+    native = {"timing_events": [failed, success]}
+    summary = performance.command_timeline({1: {"spex_commands": native["timing_events"]}}, {})
+    assert issues.recovered_by_retry(0, summary, {}, 1) is expected
+
+
+def test_help_diagnostics_distinguish_probe_from_option_value():
+    probe = command("todo-helper", None, 2, argv=["spex", "todo-helper", "--help"])
+    failed = command("todo-helper", "edit", 2, argv=[
+        "spex", "todo-helper", "edit", "demo", "--details", "--help",
+    ])
+    diagnostics = issues.script_issues({}, [probe, failed], {}, {}, [])
+    assert [item["command"] for item in diagnostics] == ["todo-helper edit"]
 
 
 def test_trial_issues_reports_script_exits_with_recovery():

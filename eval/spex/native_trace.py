@@ -305,14 +305,21 @@ def command_arguments(words: list[str]):
         yield flag, value
 
 
-def command_facts(event: dict) -> tuple[str | None, str | None, str | None, bool]:
-    """Return the command, verb, argv target, and help flag for an event."""
+TRANSACTION_ACTIONS = {"start", "commit", "rollback"}
+
+
+def recorded_arguments(event: dict) -> list[tuple[str | None, str | None]]:
     argv = event.get("argv")
-    name, verb = event.get("command"), event.get("subcommand")
     if (not isinstance(argv, list) or not argv or not all(isinstance(word, str) for word in argv)
             or Path(argv[0]).name != "spex"):
-        return name, verb, None, False
-    parsed = list(command_arguments(argv[1:]))
+        return []
+    return list(command_arguments(argv[1:]))
+
+
+def command_facts(event: dict) -> tuple[str | None, str | None, str | None, bool]:
+    """Return the command, verb, argv target, and help flag for an event."""
+    name, verb = event.get("command"), event.get("subcommand")
+    parsed = recorded_arguments(event)
     positionals = [value for flag, value in parsed if flag is None]
     if not positionals or not IDENTIFIER.fullmatch(positionals[0]):
         return name, verb, None, False
@@ -320,12 +327,24 @@ def command_facts(event: dict) -> tuple[str | None, str | None, str | None, bool
     verb = positionals[1].replace("_", "-") if len(positionals) > 1 else None
     targets = positionals[2:]
     if (name == "todo-helper" and verb == "transaction" and targets
-            and targets[0] in {"start", "commit", "rollback"}):
+            and targets[0] in TRANSACTION_ACTIONS):
         targets = targets[1:]
     targets += [value for flag, value in parsed if flag in {"--name", "--todo-file", "--todo-json"}]
     target = (targets[0] or None) if len(targets) == 1 else None
     help_requested = any(flag in HELP_SWITCHES and value is None for flag, value in parsed)
     return name, verb, target, help_requested
+
+
+def transaction_action(event: dict) -> str | None:
+    """Read a transaction action from its trace field or structured argv."""
+    action = event.get("transaction_action")
+    if isinstance(action, str) and action in TRANSACTION_ACTIONS:
+        return action
+    positionals = [value for flag, value in recorded_arguments(event) if flag is None]
+    if (len(positionals) >= 3 and positionals[0] in {"todo-helper", "todo_helper"}
+            and positionals[1] == "transaction" and positionals[2] in TRANSACTION_ACTIONS):
+        return positionals[2]
+    return None
 
 
 def review_help_events(trace: dict) -> set[int]:
@@ -426,7 +445,7 @@ def todo_selector(words: list[str], verb: str) -> tuple[str | None, str | None]:
         return None, None
     action = None
     if verb == "transaction":
-        if not positionals or positionals[0] not in {"start", "commit", "rollback"}:
+        if not positionals or positionals[0] not in TRANSACTION_ACTIONS:
             return None, None
         action = positionals.pop(0)
     if len(positionals) > 1 or len(positionals) + len(locators) != 1:
