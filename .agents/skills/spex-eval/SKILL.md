@@ -139,7 +139,8 @@ in the original queue before preparing a separate rerun.
    and environment at session launch, use
    `exec <suite/id> -- <command> ...` on each shell call.
 3. Send the returned `next_input` exactly. Continue in the same session for
-   later turns. Workers write the full reply to a staging file. Finish any
+   later turns. Workers write the full reply to the returned `staging_reply`
+   path. Finish any
    optional `.events.jsonl` transcript beside the canonical reply path before
    publishing the reply. Publish with
    `stop <suite/id> <turn> --reply-file <staging-file>` or atomically rename

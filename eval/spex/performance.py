@@ -19,6 +19,7 @@ LOG = logging.getLogger(__name__)
 USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
 TIMELINE = re.compile(r"^===== APPLY (task (?:begin|committed|done)|"
                       r"(?:review|fix|checks) (?:begin|end)|route|post-action ok)(?: (.*))? =====$")
+CREATE_ANCHOR = re.compile(r"^===== CREATE (?:prepare-spec|post-action) ok(?: .*)? =====$")
 CLI_END = re.compile(r"^===== END exit=(-?\d+) duration_ms=(\d+) =====$")
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 MAX_LOG_BYTES = 16 * 1024 * 1024
@@ -185,11 +186,15 @@ def validate_host_timing(host: dict, native: dict | None) -> None:
     evidence = native or {}
     events = evidence.get("timing_events", evidence.get("events", []))
     bounds = [pair for event in events if (pair := event_bounds(event)) is not None]
+    slack = 5 * 10**9
+    if start is not None:
+        # A republished log can replay the previous turn's events; drop only
+        # events that finished before this turn's host window began.
+        bounds = [pair for pair in bounds if pair[1] >= start[0] - slack]
     if not bounds:
         gaps.append("missing_turn_timing_evidence")
         return
     first, last = min(pair[0] for pair in bounds), max(pair[1] for pair in bounds)
-    slack = 5 * 10**9
     if (
         (duration is not None and duration * 10**6 + slack < last - first)
         or (start is not None and start[0] > first + slack)
@@ -210,6 +215,7 @@ def parse_log(segments: list[str]) -> dict:
     commands = []
     command = None
     last_stamp = None
+    anchor_seen = False
     gaps = set()
     for line in log_lines(segments):
         if line is None:
@@ -237,6 +243,11 @@ def parse_log(segments: list[str]) -> dict:
                     command["logged_at"] = stamp.isoformat()
                 commands.append(command)
                 command = None
+            continue
+        if CREATE_ANCHOR.fullmatch(line):
+            # A recognized CREATE flow marker proves this is a Spex log; the
+            # anchor itself carries no task, span, or route data.
+            anchor_seen = True
             continue
         match = TIMELINE.fullmatch(line)
         if not match:
@@ -321,7 +332,7 @@ def parse_log(segments: list[str]) -> dict:
                 routes.append({"step": step, "round": round_no, "mode": mode, "result": result})
     if command is not None:
         gaps.add("incomplete_cli_log")
-    if not (tasks or spans or routes or commands):
+    if not (tasks or spans or routes or commands or anchor_seen):
         gaps.add("unrecognized_debug_log")
     for item in tasks:
         if item.get("review_started_at") and item.get("ended_at"):
@@ -473,7 +484,7 @@ def update(output: Path, *, turn: int | None = None, repo: Path | None = None,
                     {key: event[key] for key in (
                         "log", "sequence", "spec", "step", "todo_file_hash", "command",
                         "subcommand", "exit_code", "duration_ms", "start_ns", "end_ns",
-                        "argv", "at",
+                        "argv", "at", "transaction_action",
                     ) if key in event}
                     for event in native.get("timing_events", native.get("events", []))
                     if "command" in event
@@ -610,7 +621,7 @@ def command_timeline(turns: dict, workflow: dict) -> list[dict]:
             "exit_code": exit_code if type(exit_code) is int else None,
             "argv": argv_list(command.get("argv")),
         }
-        for key in ("spec", "step", "todo_file_hash"):
+        for key in ("spec", "step", "todo_file_hash", "transaction_action"):
             if isinstance(command.get(key), str):
                 entry[key] = command[key]
         commands.append(entry)

@@ -336,27 +336,96 @@ def test_timeout_keeps_host_duration_and_partial_metrics(tmp_path, monkeypatch):
 
 
 def test_turn_timing_uses_only_its_saved_events_and_legacy_flush_stamp(tmp_path):
+    started_at = "2026-11-17T09:00:20.100000+08:00"
     host = performance.host_metrics(
         None, 1000, "adapter",
-        started_at="2026-11-17T09:00:20.100000+08:00",
+        started_at=started_at,
         ended_at="2026-11-17T09:00:21.100000+08:00",
     )
-    early = {"events": [
-        {"command": "list", "at": "2026-11-17T09:00:01+08:00", "duration_ms": 700},
-    ]}
-    later = {"events": [
-        {"command": "list", "at": "2026-11-17T09:00:21.100000054+08:00", "duration_ms": 700},
-    ]}
-    performance.update(tmp_path, turn=1, host={**host, "gaps": []}, native=early)
-    performance.update(tmp_path, turn=2, host={**host, "gaps": []}, native=later)
-    performance.update(tmp_path, turn=2, host={**host, "gaps": []}, native=later)
+    start_ns = performance.stamp_bounds(started_at)[0]
+    # The precheck BEGIN log is republished into the spec log on the next turn.
+    stale = {"command": "create-helper", "subcommand": "precheck",
+             "start_ns": start_ns - 20 * 10**9, "end_ns": start_ns - 19 * 10**9}
+    current = {"command": "prompt", "subcommand": "apply",
+               "start_ns": start_ns + 10**8, "end_ns": start_ns + 3 * 10**8}
+    late = {"command": "list", "at": "2026-11-17T09:00:31.000000054+08:00",
+            "duration_ms": 700}
+    performance.update(tmp_path, turn=1, host={**host, "gaps": []},
+                       native={"timing_events": [stale]})
+    performance.update(tmp_path, turn=2, host={**host, "gaps": []},
+                       native={"timing_events": [stale, current]})
+    performance.update(tmp_path, turn=2, host={**host, "gaps": []},
+                       native={"timing_events": [stale, current]})
+    performance.update(tmp_path, turn=3, host={**host, "gaps": []},
+                       native={"events": [late]})
+    # A stale event ending 4s before `start` survives the window filter
+    # (inside slack); with activity just past `ended_at` (also inside slack),
+    # only the short-window span rule can flag the 1000ms host interval.
+    # Widening the filter to `start[0]` would drop the stale event and hide
+    # the mismatch from every rule.
+    stale_at_boundary = {"command": "create-helper", "subcommand": "precheck",
+                         "start_ns": start_ns - 4_900_000_000,
+                         "end_ns": start_ns - 4 * 10**9}
+    tail = {"command": "prompt", "subcommand": "apply",
+            "start_ns": start_ns + 1_200_000_000,
+            "end_ns": start_ns + 1_700_000_000}
+    performance.update(tmp_path, turn=4, host={**host, "gaps": []},
+                       native={"timing_events": [stale_at_boundary, tail]})
     turns = performance.read_performance(tmp_path)["turns"]
-    assert "implausible_host_duration" in turns["1"]["host"]["gaps"]
+    assert turns["1"]["host"]["gaps"] == ["missing_turn_timing_evidence"]
     assert turns["2"]["host"]["gaps"] == []
-    assert turns["1"]["spex_commands"] == early["events"]
-    assert turns["2"]["spex_commands"] == later["events"]
-    nano, end = performance.stamp_bounds("2026-11-17T09:00:21.100000054+08:00")
+    assert "implausible_host_duration" in turns["3"]["host"]["gaps"]
+    assert turns["4"]["host"]["gaps"] == ["implausible_host_duration"]
+    assert turns["4"]["spex_commands"] == [stale_at_boundary, tail]
+    # Window filtering changes attribution only; reported commands stay complete.
+    assert turns["1"]["spex_commands"] == [stale]
+    assert turns["2"]["spex_commands"] == [stale, current]
+    nano, end = performance.stamp_bounds("2026-11-17T09:00:31.000000054+08:00")
     assert nano == end and nano % 1000 == 54
+
+
+CREATE_ANCHORS = [
+    "===== CREATE prepare-spec ok name=eval-spec =====",
+    "===== CREATE post-action ok name=eval-spec steps=2 =====",
+]
+
+
+def test_create_anchor_marks_log_recognized_without_events(tmp_path):
+    repo = tmp_path / "repo"
+    debug = repo / ".spex/specs/example/debug.log"
+    debug.parent.mkdir(parents=True)
+    debug.write_text("\n".join(CREATE_ANCHORS) + "\n", encoding="utf-8")
+    metrics = performance.workflow_metrics(repo)
+    assert metrics["gaps"] == []
+    log = metrics["logs"][0]
+    assert log["tasks"] == log["spans"] == log["routes"] == log["commands"] == []
+    assert log["last_event_at"] is None
+
+
+def test_apply_log_parsing_is_unchanged_by_create_anchors():
+    apply_only = performance.parse_log(["\n".join([
+        anchor("task begin", 1, "id=step-1"),
+        anchor("route", 1, "id=step-1 result=phase7_no_findings"),
+        anchor("task done", 2, "id=step-1"),
+    ]) + "\n"])
+    assert apply_only["gaps"] == []
+    assert [(task["step"], task["duration_ms"]) for task in apply_only["tasks"]] == [
+        ("step-1", 1000),
+    ]
+    assert apply_only["spans"] == apply_only["commands"] == []
+    assert [route["result"] for route in apply_only["routes"]] == ["phase7_no_findings"]
+    mixed = performance.parse_log(["\n".join([
+        CREATE_ANCHORS[0], anchor("route", 3, "id=step-1 result=batch_fix"),
+        CREATE_ANCHORS[1],
+    ]) + "\n"])
+    assert mixed["gaps"] == []
+    assert mixed["tasks"] == mixed["spans"] == mixed["commands"] == []
+    assert [route["result"] for route in mixed["routes"]] == ["batch_fix"]
+
+
+def test_empty_log_still_reports_unrecognized_debug_log():
+    assert performance.parse_log([""])["gaps"] == ["unrecognized_debug_log"]
+    assert performance.parse_log(["\n\n"])["gaps"] == ["unrecognized_debug_log"]
 
 
 def test_timeline_marks_spex_skill_turns_from_metadata():

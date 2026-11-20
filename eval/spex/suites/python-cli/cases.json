@@ -59,6 +59,30 @@
     ]
   },
   {
+    "id": "review-plan-findings",
+    "fixture": "greeting",
+    "setup": "review-plan-findings",
+    "tags": ["review-plan"],
+    "turns": [
+      {
+        "input": "/spex review-plan 2000-01-01-00-00-greeting-format",
+        "checks": ["no-code-change", "no-spec-write", "no-progress"]
+      }
+    ]
+  },
+  {
+    "id": "review-plan-clean",
+    "fixture": "greeting",
+    "setup": "review-plan-clean",
+    "tags": ["review-plan"],
+    "turns": [
+      {
+        "input": "/spex review-plan 2000-01-01-00-00-greeting-format",
+        "checks": ["no-code-change", "no-spec-write", "no-progress"]
+      }
+    ]
+  },
+  {
     "id": "apply",
     "fixture": "greeting",
     "tags": [

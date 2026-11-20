@@ -24,6 +24,45 @@ def state(*tasks):
     }
 
 
+@pytest.mark.parametrize(("args", "facts"), [
+    (["-d", "todo_helper", "edit", "example", "--details", "--help"],
+     ("todo-helper", "edit", "example", False)),
+    (["todo-helper", "transaction", "start", "--todo-file=plans/todo.json"],
+     ("todo-helper", "transaction", "plans/todo.json", False)),
+    (["todo-helper", "edit", "example", "--name", "other"],
+     ("todo-helper", "edit", None, False)),
+    (["todo-helper", "show", "--", "--help"], ("todo-helper", "show", "--help", False)),
+    (["review-helper", "--help"], ("review-helper", None, None, True)),
+    (["prompt", "create-todo", "example"], ("prompt", "create-todo", "example", False)),
+])
+def test_trace_command_facts(args, facts):
+    assert native_trace.command_facts({"argv": ["/installed/bin/spex", *args]}) == facts
+
+
+@pytest.mark.parametrize("flag", ["--done", "--undone", "--wrap", "--no-wrap"])
+def test_trace_todo_switch_does_not_consume_target(flag):
+    event = {"argv": ["spex", "todo-helper", "show", flag, "example"]}
+    assert native_trace.command_facts(event) == ("todo-helper", "show", "example", False)
+
+
+@pytest.mark.parametrize(("legacy_count", "span_count", "expected"), [
+    (1, 1, {0}), (2, 1, set()), (1, 2, set()), (1, 0, set()),
+])
+def test_review_help_requires_unique_legacy_correlation(legacy_count, span_count, expected):
+    legacy = {"action": "apply.review-command", "command": "review-helper",
+              "at": "2026-01-01T00:00:00Z", "duration_ms": 12, "exit_code": 0}
+    span = {**legacy, "argv": ["spex", "review-helper", "--help"]}
+    assert native_trace.review_help_events({
+        "events": [legacy] * legacy_count, "timing_events": [span] * span_count,
+    }) == expected
+
+
+def test_review_help_preserves_commands_with_help_values_or_subcommands():
+    events = [{"action": "apply.review-command", "argv": ["spex", "review-helper", *args]}
+              for args in (["-h"], ["status", "--help"], ["append", "--title", "--help"])]
+    assert native_trace.review_help_events({"events": events}) == {0}
+
+
 def task(task_id, completed_at="", **extra):
     return {"id": task_id, "completed_at": completed_at, **extra}
 
@@ -34,6 +73,34 @@ def cli_log(argv, code=0):
         f"argv: spex {argv}\n"
         f"===== END exit={code} duration_ms=10 =====\n"
     )
+
+
+@pytest.mark.parametrize(("args", "legacy_count", "span_count", "verdict"), [
+    (["insert", "--help"], 1, 1, "pass"),
+    (["insert", "--help"], 2, 1, "insufficient_evidence"),
+    (["insert", "--help"], 1, 2, "insufficient_evidence"),
+    (["insert", "--help"], 1, 0, "insufficient_evidence"),
+    (["move", "--help"], 1, 1, "insufficient_evidence"),
+    (["insert", "--before", "2"], 1, 1, "insufficient_evidence"),
+    (["insert", "--step-name", "--help"], 1, 1, "insufficient_evidence"),
+])
+def test_modify_targeted_legacy_todo_help(tmp_path, args, legacy_count, span_count, verdict):
+    # The live modify-targeted trace retains help argv only in the timing span.
+    log = "".join(cli_log(f"todo-helper {entry} eval-spec") for entry in (
+        "transaction start", "insert", "move", "remove",
+    )) + cli_log("create-helper post-action --event-type=modify --name eval-spec")
+    log += cli_log("todo-helper transaction commit eval-spec")
+    events = native_trace.parse(log.splitlines(), native_trace.CENTRAL_DEBUG_LOG, set())
+    help_event = {
+        **events[1], "at": "2026-11-20T17:00:41+08:00", "duration_ms": 5, "spec": None,
+    }
+    span = {**help_event, "argv": ["spex", "todo-helper", *args]}
+    events[1:1] = [help_event] * legacy_count
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(tmp_path, 1, state(task(2)), native={
+        "gaps": [], "events": events, "timing_events": [span] * span_count,
+    })
+    assert evidence.check_gate("modify-targeted-path", before, after)["verdict"] == verdict
 
 
 @pytest.mark.parametrize(
@@ -102,6 +169,32 @@ def test_native_todo_selector(argv, spec, action):
     event, = native_trace.parse(cli_log(argv).splitlines(), native_trace.CENTRAL_DEBUG_LOG, set())
     assert event["spec"] == spec
     assert event.get("transaction_action") == action
+
+
+@pytest.mark.parametrize(("path", "edits"), [
+    ("rebuild", ("remove-undone", "append")),
+    ("targeted", ("insert", "move", "remove")),
+])
+@pytest.mark.parametrize(("finalizers", "code", "verdict"), [
+    (["eval-spec"], 0, "pass"),
+    ([""], 0, "pass"),
+    (["", ""], 0, "insufficient_evidence"),
+    (["other-spec"], 0, "fail"),
+    (["eval-spec"], 1, "fail"),
+])
+def test_modify_finalize_path(tmp_path, path, edits, finalizers, code, verdict):
+    log = cli_log("todo-helper transaction start eval-spec")
+    log += "".join(cli_log(f"todo-helper {edit} eval-spec") for edit in edits)
+    log += "".join(cli_log(f"create-helper finalize-modify {spec}".strip(), code)
+                   for spec in finalizers)
+    gaps = set()
+    events = native_trace.parse(log.splitlines(), native_trace.CENTRAL_DEBUG_LOG, gaps)
+    assert events[-1]["spec"] == (finalizers[-1] or None)
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task(2)), native={"gaps": sorted(gaps), "events": events},
+    )
+    assert evidence.check_gate(f"modify-{path}-path", before, after)["verdict"] == verdict
 
 
 @pytest.mark.parametrize(
@@ -323,6 +416,37 @@ def test_review_failure_stop_checks_spec_identity_and_pending_order(tmp_path, wr
             tmp_path, turn, snapshot, native={"events": events, "gaps": sorted(gaps)},
         )
         assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == expected
+
+
+@pytest.mark.parametrize(("variant", "verdict"), [
+    ("direct", "pass"),
+    ("legacy", "pass"),
+    ("ambiguous", "fail"),
+    ("unbound-before-failure", "insufficient_evidence"),
+    ("continuation", "fail"),
+])
+def test_review_failure_stop_excludes_only_confirmed_help(tmp_path, variant, verdict):
+    pending = state(task("step-1"))
+    gaps = set()
+    log = cli_log("review-helper status eval-spec --step 1", 1)
+    log += cli_log("review-helper --help").replace("10:00:00", "10:00:01")
+    events = native_trace.parse(log.splitlines(), "eval-logs/debug.log", gaps)
+    help_event = events[-1]
+    argv = ["spex", "review-helper", "--help"]
+    spans = [{**help_event, "argv": argv}]
+    if variant == "direct":
+        help_event["argv"] = argv
+    elif variant == "ambiguous":
+        spans.append(dict(spans[0]))
+    elif variant == "unbound-before-failure":
+        events.insert(0, {**help_event, "at": "2026-11-11T09:59:59+08:00", "sequence": -1})
+    elif variant == "continuation":
+        events.append({**events[0], "sequence": help_event["sequence"] + 1, "exit_code": 0})
+    before = evidence.persist_turn(tmp_path, 0, pending)
+    after = evidence.persist_turn(tmp_path, 1, pending, native={
+        "events": events, "gaps": sorted(gaps), "timing_events": spans,
+    })
+    assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == verdict
 
 
 def test_native_prompt_skip_requires_logged_output_and_success():

@@ -18,6 +18,7 @@ from judge import (  # noqa: E402
     final_verdict,
     grade,
     packet_for,
+    validate,
 )
 from transport import TransportError  # noqa: E402
 
@@ -167,6 +168,43 @@ def test_export_packet_and_apply_external_grades():
     rejected = apply_grades(packet, json.dumps([{**good[0], "evidence_refs": ["turn-2:state"]}]))
     assert rejected["error"] == "judge_invalid_output"
     assert rejected["invalid_reference_attempts"] == 1
+
+
+GOOD_ROW = {
+    "criterion_id": "coverage", "score": 2, "verdict": "pass",
+    "reason": "The specification covers the required behavior.",
+    "evidence_refs": ["turn-1:state"],
+}
+
+
+@pytest.mark.parametrize("turn", [1, "1"])
+def test_apply_grades_normalizes_matching_turn(turn):
+    packet = {"criteria": [CRITERION], "evidence": {"turn-1:state": {}}}
+    result = apply_grades(packet, json.dumps([{**GOOD_ROW, "turn": turn}]))
+    assert result["results"] == [GOOD_ROW]
+
+
+@pytest.mark.parametrize("turn", [2, "2", True, 1.0, "１", None])
+def test_apply_grades_rejects_invalid_turn(turn):
+    evidence = {"turn-1:state": {}}
+    packet = {"criteria": [CRITERION], "evidence": evidence}
+    raw = json.dumps([{**GOOD_ROW, "turn": turn}])
+    with pytest.raises(ValueError, match="Result turn does not match criterion"):
+        validate(raw, [CRITERION], evidence)
+    assert apply_grades(packet, raw)["error"] == "judge_invalid_output"
+
+
+def test_validate_strips_turn_from_unscored_row():
+    row = {**GOOD_ROW, "score": None, "verdict": "insufficient_evidence", "evidence_refs": []}
+    raw = json.dumps([{**row, "turn": 1}])
+    assert validate(raw, [CRITERION], {"turn-1:state": {}}) == [row]
+
+
+def test_validate_names_missing_and_unknown_fields():
+    row = {key: value for key, value in GOOD_ROW.items() if key != "verdict"}
+    row.update(turn=1, note="extra")
+    with pytest.raises(ValueError, match=r"missing \['verdict'\], unexpected \['note'\]"):
+        validate(json.dumps([row]), [CRITERION], {"turn-1:state": {}})
 
 
 def test_repair_does_not_hide_invalid_reference_after_invalid_score():

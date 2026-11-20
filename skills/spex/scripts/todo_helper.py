@@ -676,9 +676,64 @@ def _add_new_entry_options(parser):
     )
 
 
+_NEW_ENTRY_EXAMPLES = {
+    "append": (
+        "Example: spex todo-helper append <spec-name>"
+        ' --step-name "..." --details ...'
+    ),
+    "insert": (
+        "Example: spex todo-helper insert <spec-name>"
+        ' --step-name "..." --before <step-id> --details ...'
+    ),
+}
+
+
+class TodoHelperParser(ArgumentParser):
+    """ArgumentParser with todo-helper-specific usage hints."""
+
+    _subcommand = None
+    _has_title_flag = False
+    _root_parser = None
+
+    def parse(self, argv):
+        # _parse_args has already hoisted valid locator options to the front.
+        index = 0
+        while index < len(argv):
+            flag, sep, _ = argv[index].partition("=")
+            if flag not in _LOCATOR_FLAGS_WITH_VALUE:
+                break
+            index += 1 if sep else 2
+        self._subcommand = argv[index] if index < len(argv) else None
+        self._has_title_flag = any(
+            word.partition("=")[0] == "--title" for word in argv[index + 1:]
+        )
+        return super().parse(argv)
+
+    def error(self, message):
+        root = self._root_parser or self
+        hints = []
+        example = _NEW_ENTRY_EXAMPLES.get(root._subcommand)
+        if example:
+            hints.append(
+                "--step-name is required for todo append/insert entries.",
+            )
+            if root._has_title_flag:
+                # Agents commonly confuse the review-helper finding field
+                # ``--title`` with the todo task name field.
+                hints.append(
+                    "--title is a review-helper finding field;"
+                    " the todo task name field is --step-name.",
+                )
+            hints.append(example)
+        if hints:
+            super().error(message + "\n" + "\n".join(hints))
+        else:
+            super().error(message)
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
-    parser = ArgumentParser(
+    parser = TodoHelperParser(
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
@@ -849,6 +904,40 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
+    # Compatibility alias for agent probes (prefer show).
+    p_list = subs.add_parser(
+        "list",
+        description=(
+            "Alias: display entries as JSON (same as show --format json)."
+        ),
+        help="Alias for show (JSON)",
+    )
+    list_filter = p_list.add_mutually_exclusive_group()
+    list_filter.add_argument(
+        "--done", action="store_true",
+        help="Show only completed entries",
+    )
+    list_filter.add_argument(
+        "--undone", action="store_true",
+        help="Show only incomplete entries",
+    )
+    p_list.add_argument(
+        "--id", dest="step_id", type=_parse_step_selector, default=None,
+        help=(
+            f"{_STEP_SELECTOR_HELP}. Selects one entry regardless of --done/--undone"
+        ),
+    )
+    p_list.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON (the default)",
+    )
+    p_list.add_argument(
+        "--format", dest="fmt",
+        choices=["json", "markdown"], default="json",
+        help="Output format (default: json)",
+    )
+    p_list.set_defaults(wrap=False)
+
     p_transaction = subs.add_parser(
         "transaction",
         description=(
@@ -871,8 +960,9 @@ def _build_parser():
 
     for subparser in (
         p_validate, p_append, p_insert, p_edit, p_complete, p_move, p_remove, p_remove_undone,
-        p_renumber, p_show, p_transaction,
+        p_renumber, p_show, p_list, p_transaction,
     ):
+        subparser._root_parser = parser
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
             help="Spec name (omit when using --todo-file)",
@@ -923,6 +1013,8 @@ def main(argv=None):
     elif args.subcmd == "renumber":
         cmd_renumber(todo_path)
     elif args.subcmd == "show":
+        cmd_show(todo_path, args)
+    elif args.subcmd == "list":
         cmd_show(todo_path, args)
     elif args.subcmd == "transaction":
         cmd_transaction(todo_path, args.action)

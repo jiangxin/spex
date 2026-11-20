@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -464,6 +466,48 @@ class TestTraceCommand:
         assert span["end_time_unix_nano"] >= span["start_time_unix_nano"] > 0
         assert span["spex"]["duration_ms"] >= 0
         assert f'===== BEGIN {span["spex"]["debug_logged_at"]} =====' in content
+
+    @pytest.mark.parametrize("fail", [False, True])
+    def test_captures_owned_logging_and_restores_stream(self, tmp_path, capsys, monkeypatch, fail):
+        from common import logger, setup_logging
+
+        log_path = tmp_path / "debug.log"
+        root = logging.getLogger()
+        saved_handlers = root.handlers[:]
+        saved_level = root.level
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        handler = setup_logging()
+        unrelated = logging.StreamHandler(old_stderr)
+        external_logger = logging.getLogger("trace-test-external")
+        monkeypatch.setattr(external_logger, "handlers", [unrelated])
+        monkeypatch.setattr(external_logger, "propagate", False)
+
+        def traced_call():
+            with trace_command(log_path, ["spex", "version"], log_handler=handler):
+                assert handler.stream is sys.stderr
+                assert unrelated.stream is old_stderr
+                external_logger.warning("unrelated")
+                logger.error("Spex diagnostic")
+                if fail:
+                    raise RuntimeError("command failed")
+
+        try:
+            if fail:
+                with pytest.raises(RuntimeError, match="command failed"):
+                    traced_call()
+            else:
+                traced_call()
+            assert sys.stdout is old_stdout
+            assert sys.stderr is old_stderr
+            assert handler.stream is old_stderr
+            assert capsys.readouterr().err == "unrelated\nSpex diagnostic\n"
+        finally:
+            root.handlers[:] = saved_handlers
+            root.setLevel(saved_level)
+
+        content = log_path.read_text(encoding="utf-8")
+        assert "----- stderr -----\nSpex diagnostic\n" in content
+        assert "unrelated" not in content
 
     def test_records_nonzero_exit_on_system_exit(self, tmp_path):
         log_path = tmp_path / "debug.log"

@@ -56,6 +56,10 @@ $spex_skill_dir/scripts/spex review-helper status "$spec_name" \
 - IF non-zero exit -> report stderr -> STOP
 - ELSE parse JSON stdout; keep that object for the decisions below.
 
+A non-zero `status` caused by an unreadable or corrupt review file is an
+abnormal STOP. Report the file and the parse error. Do **not** run
+`review-helper init`, rewrite, or delete the file to continue.
+
 Also resolve the current tip:
 
 ```bash
@@ -477,11 +481,13 @@ without another status.
 
 ```text
 REQUIRED: <spec-name> after the subcommand on every invocation
-REQUIRED: --step <id> for most subcommands (status, open-batch,
+REQUIRED: --step <id> for most subcommands (open-batch,
           set-pending, complete-batch, show, append, edit,
-          bump-round, set-commit, list, get, next)
+          bump-round, set-commit, get, next)
 USE:      status --json | open-batch | set-pending | complete-batch
           | show --step S [--id ID]
+HINT:     status/list without --step only return usage hints.
+          Always pass --step for workflow routing.
 ALIASES:  list → show summary; get → show --id
 ```
 

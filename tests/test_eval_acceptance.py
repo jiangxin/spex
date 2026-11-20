@@ -40,6 +40,19 @@ def test_valid_task_ids_accepts_step_and_integer_forms(acceptance_checker, ids, 
     assert acceptance_checker.valid_task_ids(ids, 2) is valid
 
 
+@pytest.mark.parametrize(("clause", "expected"), [
+    ("Do not add `--prefix` or `--suffix`.", set()),
+    ("Must not support `--suffix`.", set()),
+    ("`--features` are not required.", set()),
+    ("Do not remove `--prefix`.", {"--prefix"}),
+    ("Do not drop `--suffix`.", {"--suffix"}),
+    ("Keep `--upper`.", {"--upper"}),
+])
+def test_active_options_distinguishes_negated_requirements(acceptance_checker, clause, expected):
+    spec = f"<!-- spex:begin:requirement -->\n- {clause}"
+    assert acceptance_checker.active_options(spec) == expected
+
+
 def test_plan_checks_accepts_renumbered_integer_ids(acceptance_checker, tmp_path):
     write_spec(tmp_path, "2000-01-01-00-02-new-plan", [task(1), task(2)])
     checks = acceptance_checker.plan_checks(tmp_path, "new-plan")

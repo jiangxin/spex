@@ -10,6 +10,38 @@ SPEC = Path(".spex/specs/2000-01-01-00-01-greeting-decoration")
 BRANCH = "spex/greeting-decoration"
 MODIFY_SPEC = Path(".spex/specs/2000-01-01-00-00-greeting-format")
 MODIFY_CASES = ("modify-rebuild", "modify-targeted")
+PLAN_REVIEW_CASES = ("review-plan-findings", "review-plan-clean")
+
+
+def seed_plan_review(repo, scenario):
+    spec = repo / MODIFY_SPEC
+    (spec / "spec.md").write_text(
+        "# Requirement\n\n"
+        "Add --repeat COUNT to greet.py. Accept integers 1 through 5, default 1, "
+        "and print the greeting on COUNT separate lines. Preserve the existing "
+        "name and --upper behavior. Invalid counts must produce an argparse "
+        "diagnostic on stderr, exit 2, and leave stdout empty.\n\n"
+        "# Test Plan\n\n"
+        "Test the default, repeated uppercase output, and invalid counts. "
+        "Assert the exit code and both output streams for invalid counts.\n",
+        encoding="utf-8",
+    )
+    details = (
+        "Spec sections: Requirement, Test Plan\n\n"
+        "Add --repeat COUNT with argparse, default 1 and range 1 through 5. "
+        "Emit the formatted greeting on COUNT separate lines. Preserve name "
+        "and --upper. In test_greet.py, check default and repeated uppercase output."
+    )
+    if scenario == "review-plan-clean":
+        details += (
+            " Reject out-of-range and nonnumeric counts through argparse. "
+            "Add regression tests asserting exit 2, stderr diagnostic, and empty stdout."
+        )
+    tasks = [{
+        "id": 1, "name": "Add --repeat with tests", "details": details,
+        "completed_at": "", "commit_title": "",
+    }]
+    (spec / "todo.json").write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
 
 
 def seed_modify(repo, scenario):
@@ -83,9 +115,13 @@ def seed_review(repo, fail_review):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=Path)
-    parser.add_argument("scenario", choices=("review-resume", "review-failure", *MODIFY_CASES))
+    parser.add_argument(
+        "scenario", choices=("review-resume", "review-failure", *MODIFY_CASES, *PLAN_REVIEW_CASES),
+    )
     args = parser.parse_args()
     if args.scenario in MODIFY_CASES:
         seed_modify(args.repo, args.scenario)
+    elif args.scenario in PLAN_REVIEW_CASES:
+        seed_plan_review(args.repo, args.scenario)
     else:
         seed_review(args.repo, args.scenario == "review-failure")

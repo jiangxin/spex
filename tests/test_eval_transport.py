@@ -336,7 +336,7 @@ def test_failed_host_turn_preserves_sanitized_evidence(tmp_path, monkeypatch, mo
     ("What type?", "pass", 2), ("Implementation finished.", "insufficient_evidence", 2),
     ("Acceptance failure", "run_error", 1),
 ])
-def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verdict, turns):
+def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, capsys, reply, verdict, turns):
     fake = tmp_path / "fake-codex"
     fake.write_text(
         f"#!{sys.executable}\n"
@@ -380,10 +380,19 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
         cases[0]["turns"][0]["acceptance"] = "expected"
         manifest.write_text(json.dumps(cases), encoding="utf-8")
 
-        def fail_acceptance(*args):
-            raise transport.TransportError("acceptance_error")
+        suite = run.SUITES / "batch-import"
+        suite.mkdir()
+        (suite / "acceptance.py").write_text("", encoding="utf-8")
+        acceptance = run.acceptance
 
-        monkeypatch.setattr(run, "acceptance", fail_acceptance)
+        def fail_dependency_resolution():
+            raise FileNotFoundError("SQLite library unavailable")
+
+        def batch_import_acceptance(trial, suite, selector):
+            return acceptance(trial, "batch-import", selector)
+
+        monkeypatch.setattr(run, "sqlite_acceptance_libraries", fail_dependency_resolution)
+        monkeypatch.setattr(run, "acceptance", batch_import_acceptance)
     result = run.execute(runner.parse_args(["run", "--model", "example", "--tag", "smoke"]))
     row = result["trials"][0]
     output = Path(result["run"]) / "example" / "clarify" / "1"
@@ -391,6 +400,10 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     assert (output / f"host-{turns}.jsonl").is_file()
     if verdict == "run_error":
         assert row["error"] == "acceptance_error"
+        assert (
+            f"Acceptance dependency resolution failed (SQLite, interpreter: {sys.executable})"
+            in capsys.readouterr().err
+        )
         assert row["turn_results"] == []
     else:
         assert len(row["turn_results"]) == turns
@@ -601,6 +614,28 @@ def test_summary_does_not_classify_unfinished_trials_as_passes(runner):
     assert result["classifications"] == {"pending": 1, "run_error": 1}
 
 
+@pytest.mark.parametrize("error", ["manual_host_timeout", None])
+def test_summary_reports_hard_run_error_once(runner, error):
+    sandbox = run.resolve_sandbox(None)
+    output = workspace.case_dir(sandbox, "example", "failed")
+    output.mkdir(parents=True)
+    run.write_json(output / "trial.json", {
+        "suite": "example", "case_id": "failed", "verdict": "run_error",
+        "error_stage": "collect", "error": error,
+    })
+
+    result = run.summarize_sandbox(sandbox)
+    report = run.read_json(Path(result["report_json"]))
+    (issue,) = report["issues"]
+    assert issue["kind"] == "run_error"
+    assert issue["message"] == (error or "run_error")
+    assert issue["stage"] == "collect"
+    assert issue["evidence"] == ["example/failed/trial.json"]
+    (improvement,) = result["improvements"]
+    assert improvement["issue_id"] == issue["id"]
+    assert improvement["priority"] == "P0"
+
+
 def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)
@@ -772,7 +807,7 @@ def test_manual_publish_preserves_concurrent_reply(tmp_path, monkeypatch, other_
 
 @pytest.mark.slow
 def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
-    runner, tmp_path, monkeypatch,
+    runner, monkeypatch,
 ):
     info = run.execute(runner.parse_args([
         "prepare", "--case", "clarify", "--host", "cursor",
@@ -785,7 +820,7 @@ def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
     reply = Path(start["reply"])
     timer = manual.host_turn_timer.pending_path(reply)
     wall = collect_handoff.host_wall_clock_sidecar(reply)
-    staged = tmp_path / "reply.txt"
+    staged = reply.with_name(f"{reply.name}.staging")
 
     def stop(turn="1", source=staged):
         return manual_action(sandbox, "stop", key, turn, "--reply-file", str(source))
@@ -797,9 +832,9 @@ def test_manual_stop_publishes_a_valid_reply_and_recovers_on_retry(
     with pytest.raises(UnicodeDecodeError):
         stop()
     staged.write_bytes(b"What type?\r\n")
-    linked = tmp_path / "linked.txt"
+    linked = reply.with_name(f"{reply.name}.linked")
     linked.symlink_to(staged)
-    with pytest.raises(ValueError, match="regular reply"):
+    with pytest.raises(ValueError, match="regular staging file"):
         stop(source=linked)
     with pytest.raises(ValueError, match="pending turn is 1"):
         stop(turn="2")
@@ -1229,6 +1264,7 @@ def test_collect_handoff_reports_missing_reply(runner, tmp_path):
 @pytest.mark.parametrize(("suite", "case_id", "selector"), [
     ("python-cli", "create", "new-plan"),
     ("docs", "analyze-incident", "analyze-incident"),
+    ("batch-import", "apply-resume", "apply-resume"),
 ])
 def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, selector):
     case = workspace.select_cases(run.SUITES, suite=suite, case_id=case_id)[0]
@@ -1238,26 +1274,57 @@ def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, select
     assert result["checks"]
 
 
+@pytest.mark.parametrize("external", [False, True])
+def test_sqlite_acceptance_libraries(tmp_path, monkeypatch, external):
+    origin = tmp_path / "_sqlite3.so"
+    library = tmp_path / "libsqlite3.0.dylib"
+    library.touch()
+    install_name = library if external else Path("/usr/lib/libsqlite3.dylib")
+    monkeypatch.setattr(run.importlib.util, "find_spec", lambda name: type(
+        "Extension", (), {"origin": str(origin)},
+    )())
+
+    def otool(argv, **kwargs):
+        assert argv == ["/usr/bin/otool", "-L", str(origin)]
+        return (
+            f"{origin}:\n"
+            f"\t{install_name} (compatibility version 9.0.0, current version 9.0.0)\n"
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
+        )
+
+    monkeypatch.setattr(run.subprocess, "check_output", otool)
+    assert run.sqlite_acceptance_libraries() == ({library.resolve()} if external else set())
+
+
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "darwin", reason="Requires the macOS acceptance sandbox")
-def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
+def test_macos_sqlite_acceptance_preserves_sandbox_isolation(runner, tmp_path):
     case = workspace.select_cases(run.SUITES)[0]
     trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case")
     canary = tmp_path / "other-trial" / "evidence.json"
     canary.parent.mkdir()
     canary.write_text("fixture canary", encoding="utf-8")
-    (run.SUITES / "example" / "acceptance.py").write_text(
-        "import json\nfrom pathlib import Path\n"
-        "try:\n"
-        f"    Path({str(canary)!r}).read_text()\n"
-        "except PermissionError:\n"
-        "    print(json.dumps({'passed': True}))\n"
-        "else:\n"
+    suite = run.SUITES / "batch-import"
+    suite.mkdir()
+    (suite / "acceptance.py").write_text(
+        "import json, socket, sqlite3\nfrom pathlib import Path\n"
+        "assert sqlite3.connect(':memory:').execute('select 1').fetchone() == (1,)\n"
+        "operations = [\n"
+        f"    Path({str(canary)!r}).read_text,\n"
+        "    lambda: Path('blocked.txt').write_text('canary'),\n"
+        "    lambda: socket.socket().bind(('127.0.0.1', 0)),\n"
+        "]\n"
+        "for operation in operations:\n"
+        "    try:\n"
+        "        operation()\n"
+        "    except PermissionError:\n"
+        "        continue\n"
         "    print(json.dumps({'passed': False}))\n"
-        "    raise SystemExit(1)\n",
+        "    raise SystemExit(1)\n"
+        "print(json.dumps({'passed': True}))\n",
         encoding="utf-8",
     )
-    assert run.acceptance(trial, "example", "canary") == {"passed": True}
+    assert run.acceptance(trial, "batch-import", "canary") == {"passed": True}
 
 
 def _start_rewritten_timer(tmp_path, *, started_at, monotonic):
@@ -1438,12 +1505,52 @@ def test_summary_explains_partially_graded_hard_failure(runner):
         2, 2, 1, 2,
     )
     markdown = Path(result["report"]).read_text(encoding="utf-8")
-    assert "| Case | Verdict | Score | Criteria |" in markdown
+    assert "| Case | Verdict | Score [1] | Criteria |" in markdown
     assert (
-        r"| example/partial-score | fail | 2/2 (1/2 criteria) \* | goal=2, later=ungraded |"
+        "| example/partial-score | fail | 2/2 (1/2 criteria) [2] | goal=2, later=ungraded |"
     ) in markdown
-    assert "`example/partial-score` had 1/2 criteria graded" in markdown
+    assert "- [1] Score cells read `points/max (graded/total criteria)`." in markdown
+    assert "Ungraded criteria are excluded from both earned points" in markdown
+    assert "- [2] `example/partial-score` had 1/2 criteria graded" in markdown
     assert "`turn1:no-post-action=fail`" in markdown
+
+
+def test_summary_numbers_score_notes_in_trial_order(runner):
+    sandbox = run.resolve_sandbox(None)
+    for case_id in ("beta", "ungraded", "alpha"):
+        out = workspace.case_dir(sandbox, "example", case_id)
+        out.mkdir(parents=True)
+        run.write_json(out / "trial.json", {
+            "suite": "example", "case_id": case_id, "verdict": "fail",
+            "turn_results": [{"turn": 1, "checks": [
+                {"check_id": "no-post-action", "verdict": "fail"},
+            ]}],
+        })
+        if case_id != "ungraded":
+            run.write_json(out / "judge.json", {
+                "verdict": "pass",
+                "results": [{"criterion_id": "goal", "score": 2, "verdict": "pass"}],
+            })
+
+    result = run.summarize_sandbox(sandbox)
+    trials = run.read_json(Path(result["report_json"]))["trials"]
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    cases = [row["case_id"] for row in trials if row["criteria_scored"]]
+    assert len(cases) == 2
+    for number, case in enumerate(cases, 2):
+        assert f"| example/{case} | fail | 2/2 (1/1 criteria) [{number}] | goal=2 |" in markdown
+        assert f"- [{number}] `example/{case}` had 1/1 criteria graded." in markdown
+    assert "| example/ungraded | fail | — | ungraded |" in markdown
+    assert "[4]" not in markdown
+
+
+def test_summary_explains_score_even_when_no_trials_are_graded(runner):
+    sandbox = run.resolve_sandbox(None)
+    result = run.summarize_sandbox(sandbox)
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "| Case | Verdict | Score [1] | Criteria |" in markdown
+    assert "- [1] Score cells read `points/max (graded/total criteria)`." in markdown
+    assert "[2]" not in markdown
 
 
 @pytest.mark.parametrize("gaps", [None, "prefix implausible_host_duration suffix"])
@@ -1533,7 +1640,8 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         },
     })
     result = run.summarize_sandbox(sandbox)
-    row = run.read_json(Path(result["report_json"]))["trials"][0]
+    report = run.read_json(Path(result["report_json"]))
+    row = report["trials"][0]
     assert [(i["command"], i["recovered"]) for i in row["issues"]] == [
         ("todo-helper edit", True), ("todo-helper append", False),
         ("todo-helper edit", False), ("todo-helper show", False),
@@ -1545,6 +1653,8 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
     assert all(
         i["evidence"] == ["example/retry/performance.json"] for i in row["issues"]
     )
+    assert [{key: value for key, value in item.items() if key != "id"}
+            for item in report["issues"]] == row["issues"]
     markdown = Path(result["report"]).read_text(encoding="utf-8")
     assert "todo-helper edit exited with code 1" in markdown
     assert "recovered: yes" in markdown
@@ -1555,6 +1665,17 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         "example/retry: Turn 1: todo-helper show exited with code 6",
         "example/retry: Turn 1: todo-helper edit exited with code 4",
     ]
+    assert {item["issue_id"] for item in result["improvements"]} == {
+        item["id"] for item in report["issues"] if not item["recovered"]
+    }
+    sections = [
+        "## Score summary", "## Execution diagnostics", "### Observed issues",
+        "### Proposed improvements", "## Trial outcomes", "## Performance",
+        "## How to read results",
+    ]
+    assert all(markdown.count(heading) == 1 for heading in sections)
+    positions = [markdown.index(heading) for heading in sections]
+    assert positions == sorted(positions)
 
 
 def test_record_issue_writes_a_file_and_summary_merges_it(
@@ -1692,6 +1813,14 @@ def test_clarification_signal_reads_the_source_handoff_conflict_reply():
     ("Please do one of the following:\n1. Keep the default at 10\n2. Raise it to 100",
      "explicit-request"),
     ("Once you confirm the default I will continue.", "blocked-on-answer"),
+    ("Once you provide the source I will continue.", "blocked-on-answer"),
+    ("Reply with one of the following sources.", "explicit-request"),
+    ("Provide the source documents.", "explicit-request"),
+    ("The source is missing. Provide the source documents.", "explicit-request"),
+    ("To continue, reply with the source path.", "explicit-request"),
+    ("I will provide the source documents.", None),
+    ("I will reply with the source path.", None),
+    ("I will provide a default of ten.", None),
     ("I cannot proceed before I can design the schema.", "blocked-on-answer"),
     ("## questions\n- 10\n- 100", "question-heading"),
     ("请确认默认范围后再继续。", "explicit-request-zh"),

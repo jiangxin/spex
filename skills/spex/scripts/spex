@@ -626,7 +626,7 @@ def main(argv=None):
         args.func = partial(create_helper.main, log_route=temporary)
 
     enabled = debug_enabled(full_argv)
-    setup_logging(verbose=enabled)
+    log_handler = setup_logging(verbose=enabled)
     read_only_list = args.command == "list" and "--read-only" in options
     read_only_prompt = (
         args.command == "prompt" and remaining
@@ -634,7 +634,9 @@ def main(argv=None):
     )
     if not (read_only_list or read_only_prompt) and (enabled or trace_enabled()):
         log_path = resolve_debug_log_path(full_argv) if enabled and temporary is None else None
-        with trace_command(log_path, full_argv, debug=enabled, temporary=temporary):
+        with trace_command(
+            log_path, full_argv, debug=enabled, temporary=temporary, log_handler=log_handler,
+        ):
             args.func(remaining)
         return
 

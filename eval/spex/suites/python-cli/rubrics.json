@@ -70,6 +70,32 @@
         ]
       }
     ],
+    "review-plan-findings": [
+      {
+        "id": "actionable-omission-and-modify",
+        "turn": 1,
+        "requires": ["reply"],
+        "threshold": 2,
+        "anchors": [
+          "Approves the incomplete plan, recommends apply, or misses the invalid-count omission.",
+          "Notes missing invalid-count coverage but does not provide a concrete correction and a copyable modify command with the full spec name.",
+          "Identifies the step 1 omission and asks to add invalid-count handling and regression tests for exit 2, stderr, and empty stdout in one copyable /spex modify 2000-01-01-00-00-greeting-format command, without recommending apply."
+        ]
+      }
+    ],
+    "review-plan-clean": [
+      {
+        "id": "clean-conclusion-and-apply",
+        "turn": 1,
+        "requires": ["reply"],
+        "threshold": 2,
+        "anchors": [
+          "Reports unsupported actionable findings or recommends modifying the plan.",
+          "Concludes that the plan is ready but omits a copyable apply command with the full spec name.",
+          "States that the plan has no actionable findings and gives one copyable /spex apply 2000-01-01-00-00-greeting-format command, without recommending modify."
+        ]
+      }
+    ],
     "apply": [
       {
         "id": "accurate-summary",

@@ -35,6 +35,7 @@ def setup_logging(verbose=False):
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    return handler
 
 
 TODO_FILE = "todo.json"

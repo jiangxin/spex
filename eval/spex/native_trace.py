@@ -277,14 +277,121 @@ def option(words: list[str], flag: str) -> str | None:
     return None
 
 
-# Boolean flags accepted by ``prompt`` / ``review-helper``: they consume no value.
+# Boolean flags accepted by recorded commands consume no value.
 POSITIONAL_SWITCHES = {
     "--json", "--quiet", "--verbose", "--debug", "--force", "--all",
     "--dry-run", "--must-undone", "--must-done", "--help", "-h", "-v", "-d",
     "--stdin", "--details-from-stdin", "--evidence-from-stdin",
+    "--done", "--undone", "--wrap", "--no-wrap",
 }
 # Short options that take a value and therefore support the attached form ``-oreport``.
 SHORT_VALUE_OPTIONS = {"-o"}
+HELP_SWITCHES = {"-h", "--help"}
+
+
+def command_arguments(words: list[str]):
+    """Yield option/value pairs and positionals from a recorded argument list."""
+    arguments = iter(words)
+    for word in arguments:
+        if word == "--":
+            yield from ((None, value) for value in arguments)
+            return
+        if not word.startswith("-"):
+            yield None, word
+            continue
+        flag, equals, value = word.partition("=")
+        if not equals:
+            value = next(arguments, None) if takes_value(word) else None
+        yield flag, value
+
+
+TRANSACTION_ACTIONS = {"start", "commit", "rollback"}
+
+
+def recorded_arguments(event: dict) -> list[tuple[str | None, str | None]]:
+    argv = event.get("argv")
+    if (not isinstance(argv, list) or not argv or not all(isinstance(word, str) for word in argv)
+            or Path(argv[0]).name != "spex"):
+        return []
+    return list(command_arguments(argv[1:]))
+
+
+def command_facts(event: dict) -> tuple[str | None, str | None, str | None, bool]:
+    """Return the command, verb, argv target, and help flag for an event."""
+    name, verb = event.get("command"), event.get("subcommand")
+    parsed = recorded_arguments(event)
+    positionals = [value for flag, value in parsed if flag is None]
+    if not positionals or not IDENTIFIER.fullmatch(positionals[0]):
+        return name, verb, None, False
+    name = positionals[0].replace("_", "-")
+    verb = positionals[1].replace("_", "-") if len(positionals) > 1 else None
+    targets = positionals[2:]
+    if (name == "todo-helper" and verb == "transaction" and targets
+            and targets[0] in TRANSACTION_ACTIONS):
+        targets = targets[1:]
+    targets += [value for flag, value in parsed if flag in {"--name", "--todo-file", "--todo-json"}]
+    target = (targets[0] or None) if len(targets) == 1 else None
+    help_requested = any(flag in HELP_SWITCHES and value is None for flag, value in parsed)
+    return name, verb, target, help_requested
+
+
+def transaction_action(event: dict) -> str | None:
+    """Read a transaction action from its trace field or structured argv."""
+    action = event.get("transaction_action")
+    if isinstance(action, str) and action in TRANSACTION_ACTIONS:
+        return action
+    positionals = [value for flag, value in recorded_arguments(event) if flag is None]
+    if (len(positionals) >= 3 and positionals[0] in {"todo-helper", "todo_helper"}
+            and positionals[1] == "transaction" and positionals[2] in TRANSACTION_ACTIONS):
+        return positionals[2]
+    return None
+
+
+def review_help_events(trace: dict) -> set[int]:
+    """Identify top-level review help without obscuring review operations."""
+    return help_event_indices(trace, "apply.review-command", "review-helper")
+
+
+def help_event_indices(trace: dict, action: str, command: str) -> set[int]:
+    """Identify pure help, associating unbound legacy records only when unique."""
+    events = trace["events"]
+    legacy = defaultdict(list)
+    spans = defaultdict(list)
+    for index, event in enumerate(events):
+        if (key := help_invocation(event, command)) is not None:
+            legacy[key].append(index)
+    for span in trace.get("timing_events", ()):
+        if (key := help_invocation(span, command)) is not None:
+            spans[key].append(span)
+    result = set()
+    for index, event in enumerate(events):
+        if event.get("action") != action:
+            continue
+        if pure_help(event, command):
+            result.add(index)
+        elif not ("argv" in event or event.get("stage") or event.get("spec")):
+            key = help_invocation(event, command)
+            if (legacy[key] == [index] and len(spans[key]) == 1
+                    and pure_help(spans[key][0], command)
+                    and (command != "todo-helper"
+                         or command_facts(spans[key][0])[1] == event.get("subcommand"))):
+                result.add(index)
+    return result
+
+
+def help_invocation(event: dict, command: str) -> tuple | None:
+    stamp = timestamp(event.get("at"))
+    if event.get("command") == command and stamp is not None:
+        verb = event.get("subcommand") if command == "todo-helper" else None
+        return stamp, verb, event.get("duration_ms"), event.get("exit_code")
+    return None
+
+
+def pure_help(event: dict, command: str) -> bool:
+    name, verb, target, help_requested = command_facts(event)
+    has_verb = command == "todo-helper"
+    return (name == command and (verb is not None) == has_verb and target is None
+            and help_requested and len(event["argv"]) == 3 + has_verb)
 
 
 def takes_value(word: str) -> bool:
@@ -348,7 +455,7 @@ def todo_selector(words: list[str], verb: str) -> tuple[str | None, str | None]:
         return None, None
     action = None
     if verb == "transaction":
-        if not positionals or positionals[0] not in {"start", "commit", "rollback"}:
+        if not positionals or positionals[0] not in TRANSACTION_ACTIONS:
             return None, None
         action = positionals.pop(0)
     if len(positionals) > 1 or len(positionals) + len(locators) != 1:
@@ -401,7 +508,7 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                 else:
                     selector = option(words, "--name")
                 if (selector is None and source == CENTRAL_DEBUG_LOG
-                        and name in {"apply-helper", "review-helper", "prompt"}
+                        and name in {"apply-helper", "create-helper", "review-helper", "prompt"}
                         and command.get("subcommand")):
                     # Some pinned refs use a positional spec selector after the verb.
                     selector = positional_selector(words, verb)

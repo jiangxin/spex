@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import stat
@@ -920,6 +921,16 @@ def _append_cli_span(
             handle.write(json.dumps(span, separators=(",", ":")) + "\n")
 
 
+def _set_log_stream(handler: logging.StreamHandler, stream) -> None:
+    # StreamHandler flushes on emit. Skipping an extra flush lets restoration
+    # succeed even when writing or flushing the stream raised an exception.
+    handler.acquire()
+    try:
+        handler.stream = stream
+    finally:
+        handler.release()
+
+
 @contextmanager
 def trace_command(
     log_path: Path | None,
@@ -927,6 +938,7 @@ def trace_command(
     *,
     debug: bool = True,
     temporary: TemporaryLogRoute | None = None,
+    log_handler: logging.StreamHandler | None = None,
 ) -> Iterator[None]:
     """Context manager that tees stdout/stderr and appends a trace block.
 
@@ -947,10 +959,14 @@ def trace_command(
 
     old_stdout = sys.stdout
     old_stderr = sys.stderr
+    tee_stderr = TeeIO(old_stderr, stderr_parts, stderr_meta)
+    capture_logs = log_handler is not None and log_handler.stream is old_stderr
     sys.stdout = TeeIO(old_stdout, stdout_parts, stdout_meta)
-    sys.stderr = TeeIO(old_stderr, stderr_parts, stderr_meta)
+    sys.stderr = tee_stderr
 
     try:
+        if capture_logs:
+            _set_log_stream(log_handler, tee_stderr)
         yield
     except SystemExit as exc:
         exit_code = _normalize_exit_code(exc.code)
@@ -961,6 +977,8 @@ def trace_command(
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
+        if capture_logs and log_handler.stream is tee_stderr:
+            _set_log_stream(log_handler, old_stderr)
         duration_ms = int((time.monotonic() - start) * 1000)
         end_ns = time.time_ns()
         if temporary is not None:

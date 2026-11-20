@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -251,7 +252,7 @@ def record_issue(args: argparse.Namespace) -> dict:
 
 
 def derive_skill_improvements(trials: list[dict]) -> list[dict]:
-    """Prioritized Spex-skill issues derived from hard checks and verdicts.
+    """Prioritized Spex-skill issues derived from checks and scores.
 
     Categories: functionality, execution, efficiency. Host-only trace gaps
     are listed as efficiency/evidence friction for the eval harness, not as
@@ -260,22 +261,6 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
     items: list[dict] = []
     for row in trials:
         case = f"{row.get('suite')}/{row.get('case_id')}"
-        hard = str(row.get("hard_verdict") or "")
-        if hard == "run_error":
-            items.append({
-                "priority": "P0",
-                "category": "execution",
-                "case": case,
-                "stage": row.get("error_stage") or "unknown",
-                "kind": "run_error",
-                "summary": (
-                    f"{case} ended in run_error"
-                    + (
-                        f" ({row.get('earliest_non_pass')})"
-                        if row.get("earliest_non_pass") else ""
-                    )
-                ),
-            })
         for label in row.get("observed_fails") or []:
             items.append({
                 "priority": "P0",
@@ -316,19 +301,6 @@ def derive_skill_improvements(trials: list[dict]) -> list[dict]:
                 "summary": (
                     f"{case} has incomplete workflow evidence for {', '.join(trace_gaps)}"
                 ),
-            })
-        for issue in row.get("issues") or []:
-            if issue.get("recovered") or issue.get("kind") == "run_error":
-                continue
-            priority = "P2" if issue["kind"] == "implausible_host_duration" else "P1"
-            items.append({
-                "priority": priority,
-                "category": "execution",
-                "case": case,
-                "stage": issue.get("stage"),
-                "kind": issue.get("kind"),
-                "summary": f"{case}: {issue['message']}",
-                "evidence": issue["evidence"],
             })
         scores = row.get("scores") or []
         weak = [
@@ -422,10 +394,15 @@ def render_summary_markdown(report: dict) -> str:
         "",
         "## Score summary",
         "",
-        "| Case | Verdict | Score | Criteria |",
+        "| Case | Verdict | Score [1] | Criteria |",
         "| --- | --- | --- | --- |",
     ]
-    footnotes = []
+    footnotes = [
+        "- [1] Score cells read `points/max (graded/total criteria)`. "
+        "Ungraded criteria are excluded from both earned points and the maximum. "
+        "A trial with no graded criteria shows `—`. "
+        "Hard verdicts take precedence over semantic scores.",
+    ]
     for row in report["trials"]:
         case = f"{row.get('suite')}/{row.get('case_id')}"
         final, hard = row.get("final_verdict"), row.get("hard_verdict")
@@ -441,24 +418,22 @@ def render_summary_markdown(report: dict) -> str:
             for item in (row.get("scores") or [])
         ) or "ungraded"
         if graded and row.get("score_sum") == row.get("score_max") and final != "pass":
-            score += r" \*"
+            number = len(footnotes) + 1
+            score += f" [{number}]"
             reason = (
                 (row.get("observed_fails") or row.get("evidence_gaps") or [None])[0]
                 or row.get("earliest_non_pass") or f"verdict {verdict}"
             )
             footnotes.append(
-                f"- `{case}` had {graded}/{total} criteria graded. Reason: `{reason}`."
+                f"- [{number}] `{case}` had {graded}/{total} criteria graded. Reason: `{reason}`."
             )
         lines.append(f"| {case} | {verdict} | {score} | {criteria} |")
-    if footnotes:
-        lines.extend([
-            "",
-            r"\* The score excludes ungraded criteria. Hard verdicts take precedence.",
-            "",
-            *footnotes,
-        ])
+    lines.extend(["", *footnotes, ""])
+    lines.extend(issues.report_lines(
+        report, heading="Execution diagnostics",
+        evidence_root=Path(report["sandbox"]),
+    ))
     lines.extend([
-        "",
         "## Trial outcomes",
         "",
         "| Case | Trial agent | Trial model | Judge agent | Judge model | "
@@ -483,10 +458,8 @@ def render_summary_markdown(report: dict) -> str:
     performance_rows = [row for row in report["trials"] if "performance" in row]
     if performance_rows:
         lines.extend(performance.report_lines(performance_rows))
-    lines.extend(issues.report_lines(
-        report, heading="Execution diagnostics",
-        evidence_root=Path(report["sandbox"]),
-    ))
+    if lines[-1]:
+        lines.append("")
     lines.extend([
         "## How to read results",
         "",
@@ -821,6 +794,31 @@ def setup(
     return trial
 
 
+def sqlite_acceptance_libraries() -> set[Path]:
+    """Read SQLite install names from the runner's own extension."""
+    extension = importlib.util.find_spec("_sqlite3")
+    if extension is None or not extension.origin:
+        raise ValueError("SQLite extension unavailable")
+    if extension.origin in {"built-in", "frozen"}:
+        return set()
+    dependencies = subprocess.check_output(
+        ["/usr/bin/otool", "-L", extension.origin], text=True, timeout=10,
+    )
+    libraries = set()
+    for line in dependencies.splitlines():
+        install_name = line.strip().partition(" (compatibility version ")[0]
+        path = Path(install_name)
+        if not re.fullmatch(r"libsqlite3(?:\.\d+)*\.dylib", path.name):
+            continue
+        if not path.is_absolute():
+            raise ValueError("SQLite library lacks an absolute install name")
+        if path.parent == Path("/usr/lib"):
+            # System libraries may exist only in the dyld shared cache.
+            continue
+        libraries.add(path.resolve(strict=True))
+    return libraries
+
+
 def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     script = SUITES / suite / "acceptance.py"
     if not IDENTIFIER.fullmatch(selector) or not script.is_file() or script.is_symlink():
@@ -840,6 +838,16 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     except (OSError, subprocess.SubprocessError) as error:
         raise TransportError("acceptance_error") from error
     env["PATH"] = str(system_git.parent) + os.pathsep + env["PATH"]
+    libraries = set()
+    if suite == "batch-import":
+        try:
+            libraries = sqlite_acceptance_libraries()
+        except (ImportError, OSError, ValueError, subprocess.SubprocessError) as error:
+            print(
+                f"Acceptance dependency resolution failed (SQLite, interpreter: {sys.executable})",
+                file=sys.stderr,
+            )
+            raise TransportError("acceptance_error") from error
     paths = {
         trial.directory.resolve(), script.parent.resolve(), Path(sys.prefix).resolve(),
         Path(sys.base_prefix).resolve(), Path("/usr"), Path("/System"),
@@ -851,7 +859,8 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     allowed = " ".join(
         f"({kind} {json.dumps(str(path))})"
         for kind, entries in (
-            ("subpath", paths), ("literal", parents | {system_git, *system_git.parents}),
+            ("subpath", paths),
+            ("literal", parents | libraries | {system_git, *system_git.parents}),
         )
         for path in sorted(entries)
     )
@@ -885,11 +894,14 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
 CLARIFICATION_SIGNALS = (
     ("question-mark", re.compile(r"[?？]")),
     ("blocked-on-answer", re.compile(
-        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me)"
+        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me"
+        r"|provide|supply|share)"
         r"|before I (?:can )?(?:write|continue|proceed|design|finali[sz]e))\b", re.I,
     )),
     ("explicit-request", re.compile(
-        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one)\b", re.I,
+        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one"
+        r")\b|(?:^|[.!?][ \t]+)[ \t]*(?:[-*][ \t]+)?(?:to continue,[ \t]*)?"
+        r"(?:reply with|provide (?:the|me))\b", re.I | re.M,
     )),
     ("question-heading", re.compile(r"(?m)^\s*(?:\*\*|#{1,6}\s*)?questions?\b", re.I)),
     ("explicit-request-zh", re.compile(r"请(?:选择|确认|指定|回复|提供|补充)")),

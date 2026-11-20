@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+import native_trace
 import performance
 
 STAGES = ("prepare", "host", "collect", "judge", "script", "unknown")
@@ -98,46 +99,23 @@ def read_recorded(sandbox: Path) -> list[dict]:
     return issues
 
 
-def helper_identity(command: dict) -> tuple | None:
-    """Parse ``spex <x-helper> <subcommand>`` from a recorded argv list."""
-    argv = command.get("argv") if isinstance(command, dict) else None
-    if not isinstance(argv, list) or len(argv) < 3:
-        return None
-    if any(not isinstance(word, str) for word in argv):
-        return None
-    if Path(argv[0]).name != "spex":
-        return None
-    helper, subcommand = argv[1], argv[2]
-    if not helper.endswith("-helper") or not performance.IDENTIFIER.fullmatch(helper):
-        return None
-    if subcommand.startswith("-") or not performance.IDENTIFIER.fullmatch(subcommand):
-        return None
-    return helper, subcommand
-
-
-def command_identity(command: dict) -> tuple | None:
-    """Prefer argv, else the summarized command/subcommand pair."""
-    identity = helper_identity(command)
-    if identity is not None:
-        return identity
-    helper = command.get("command")
-    subcommand = command.get("subcommand")
-    if (isinstance(helper, str) and helper.endswith("-helper")
-            and performance.IDENTIFIER.fullmatch(helper)
-            and isinstance(subcommand, str)
-            and performance.IDENTIFIER.fullmatch(subcommand)):
-        return helper, subcommand
-    return None
-
-
-def operation_key(command: dict) -> tuple | None:
-    """Identity plus the helper target, so unrelated calls never pair up."""
-    identity = command_identity(command)
-    if identity is None:
-        return None
-    return identity + (
-        command.get("spec"), command.get("todo_file_hash"), command.get("step"),
-    )
+def same_retry_target(failed: dict, later: dict, original: str | None,
+                      retry: str | None, *, argument_error: bool) -> bool:
+    old_spec, new_spec = failed.get("spec"), later.get("spec")
+    old_file, new_file = failed.get("todo_file_hash"), later.get("todo_file_hash")
+    if old_spec and new_spec and old_spec != new_spec:
+        return False
+    if old_file and new_file and old_file != new_file:
+        return False
+    if argument_error:
+        # A rejected selector can leave the canonical target unresolved.
+        return bool((old_spec and old_spec == new_spec and not (old_file or new_file))
+                    or (old_file and old_file == new_file)
+                    or (original and original == retry))
+    if (old_spec, old_file, failed.get("step")) != (new_spec, new_file, later.get("step")):
+        return False
+    return bool(old_file or (old_spec and not (original and retry and original != retry))
+                or (original and original == retry))
 
 
 def turn_windows(data: dict) -> dict:
@@ -153,7 +131,7 @@ def turn_windows(data: dict) -> dict:
             continue
         start = performance.timestamp(host.get("started_at"))
         end = performance.timestamp(host.get("ended_at"))
-        if start is not None and end is not None:
+        if start is not None and end is not None and start <= end:
             windows[turn] = (start, end)
     return windows
 
@@ -171,21 +149,50 @@ def turn_number(value) -> int | None:
 def recovered_by_retry(index: int, commands: list[dict], windows: dict,
                        turn: int | None) -> bool:
     """A later exit 0 with the same identity inside the same turn window."""
-    identity = operation_key(commands[index])
-    if identity is None:
+    failed = commands[index]
+    name, verb, target, help_probe = native_trace.command_facts(failed)
+    create_todo = (name, verb) == ("prompt", "create-todo")
+    if turn is None or help_probe or not verb or not name:
         return False
-    window = windows.get(turn) if turn is not None else None
+    if not create_todo and not name.endswith("-helper"):
+        return False
+    transaction = (name, verb) == ("todo-helper", "transaction")
+    action = native_trace.transaction_action(failed) if transaction else None
+    if transaction and action is None:
+        return False
+    window = windows.get(turn)
+    if create_todo and (window is None or not failed.get("spec")):
+        return False
+    if not within_turn(failed, window):
+        return False
+    argument_error = not create_todo and failed.get("exit_code") == 2
     for later in commands[index + 1:]:
-        if turn_number(later.get("turn")) != turn:
+        if turn_number(later.get("turn")) != turn or later.get("exit_code") != 0:
             continue
-        if later.get("exit_code") != 0 or operation_key(later) != identity:
+        next_name, next_verb, next_target, next_help = native_trace.command_facts(later)
+        if next_help or (next_name, next_verb) != (name, verb):
             continue
-        if window is not None:
-            started = performance.timestamp(later.get("started_at"))
-            if started is not None and started > window[1]:
-                continue
-        return True
+        if transaction and native_trace.transaction_action(later) != action:
+            continue
+        if not within_turn(later, window, require_start=create_todo):
+            continue
+        if create_todo:
+            if failed["spec"] == later.get("spec"):
+                return True
+        elif same_retry_target(failed, later, target, next_target, argument_error=argument_error):
+            return True
     return False
+
+
+def within_turn(command: dict, window: tuple | None, *, require_start: bool = False) -> bool:
+    if window is None:
+        return not require_start
+    started = performance.timestamp(command.get("started_at"))
+    if started is None:
+        if require_start:
+            return False
+        started = performance.timestamp(command.get("logged_at"))
+    return started is None or window[0] <= started <= window[1]
 
 
 def issue(row: dict, *, stage: str, kind: str, message: str,
@@ -240,7 +247,7 @@ def script_issues(row: dict, commands: list[dict], metadata: dict,
         name, code = command.get("command"), command.get("exit_code")
         if not isinstance(name, str) or type(code) is not int or code == 0:
             continue
-        if index in stops:
+        if index in stops or native_trace.command_facts(command)[3]:
             continue
         turn = turn_number(command.get("turn"))
         label = " ".join(filter(None, (name, command.get("subcommand"))))
