@@ -904,6 +904,40 @@ def _build_parser():
         help="Do not wrap lines (default)",
     )
 
+    # Compatibility alias for agent probes (prefer show).
+    p_list = subs.add_parser(
+        "list",
+        description=(
+            "Alias: display entries as JSON (same as show --format json)."
+        ),
+        help="Alias for show (JSON)",
+    )
+    list_filter = p_list.add_mutually_exclusive_group()
+    list_filter.add_argument(
+        "--done", action="store_true",
+        help="Show only completed entries",
+    )
+    list_filter.add_argument(
+        "--undone", action="store_true",
+        help="Show only incomplete entries",
+    )
+    p_list.add_argument(
+        "--id", dest="step_id", type=_parse_step_selector, default=None,
+        help=(
+            f"{_STEP_SELECTOR_HELP}. Selects one entry regardless of --done/--undone"
+        ),
+    )
+    p_list.add_argument(
+        "--json", action="store_true", dest="json_mode",
+        help="Output JSON (the default)",
+    )
+    p_list.add_argument(
+        "--format", dest="fmt",
+        choices=["json", "markdown"], default="json",
+        help="Output format (default: json)",
+    )
+    p_list.set_defaults(wrap=False)
+
     p_transaction = subs.add_parser(
         "transaction",
         description=(
@@ -926,7 +960,7 @@ def _build_parser():
 
     for subparser in (
         p_validate, p_append, p_insert, p_edit, p_complete, p_move, p_remove, p_remove_undone,
-        p_renumber, p_show, p_transaction,
+        p_renumber, p_show, p_list, p_transaction,
     ):
         subparser._root_parser = parser
         subparser.add_argument(
@@ -979,6 +1013,8 @@ def main(argv=None):
     elif args.subcmd == "renumber":
         cmd_renumber(todo_path)
     elif args.subcmd == "show":
+        cmd_show(todo_path, args)
+    elif args.subcmd == "list":
         cmd_show(todo_path, args)
     elif args.subcmd == "transaction":
         cmd_transaction(todo_path, args.action)

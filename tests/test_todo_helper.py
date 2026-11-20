@@ -246,6 +246,28 @@ class TestFileLocating:
             todo_helper.main(["validate"])
 
 
+class TestListAlias:
+    """``list`` is a compatibility alias for ``show`` (JSON)."""
+
+    def test_list_matches_show_json(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main(["list", "--todo-file", str(todo_file)])
+        listed = json.loads(capsys.readouterr().out)
+        todo_helper.main(["show", "--todo-file", str(todo_file)])
+        shown = json.loads(capsys.readouterr().out)
+        assert listed == shown
+        assert len(listed) == len(SAMPLE_DATA)
+
+    def test_list_accepts_json_flag_and_filter(self, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([
+            "list", "--todo-file", str(todo_file), "--json", "--undone",
+        ])
+        listed = json.loads(capsys.readouterr().out)
+        assert len(listed) == 1
+        assert listed[0]["completed_at"] == ""
+
+
 class TestTransaction:
     @pytest.mark.parametrize("action", ["commit", "rollback"])
     def test_split_pending_step_preserves_prior_progress(self, todo_file, action):
