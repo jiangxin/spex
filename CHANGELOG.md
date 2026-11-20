@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
+
+### Features
+
+- Plan and execute both software and general tasks, including external
+  deliverables with recorded acceptance evidence and optional Git commits.
+- Add read-only `/spex review-plan` and support project-specific prompts
+  for planning and plan review.
+- Expose task modes and spec metadata in `spex list` and `spex show`,
+  with structured output for automation.
+- Update todo plans transactionally with numeric step IDs, incremental
+  edits, and guarded splitting of an in-progress step.
+- Snapshot specs before revision, keep descriptions in sync with Git,
+  and store runtime logs under `logs/`.
+- Support opt-in Git worktrees for apply and report checkout and
+  worktree outcomes during merge and archive.
+- Add Spex evaluation tooling for isolated trials, batch dispatch,
+  evidence collection, judging, and timeline reports.
+- Place execution diagnostics below the eval score summary and add
+  numbered notes for score coverage and verdicts.
+
+### Bug Fixes
+
+- Restore the caller's checkout after merge and preserve the restored
+  worktree during archive.
+- Resolve a single Spex storage root and support configuration inheritance
+  boundaries.
+- Recover apply review after interrupted runs and preserve amended commits
+  when reattaching to the spec branch.
+- Report each observed eval issue once, with its original turn
+  and recovery status.
 
 ### Refactoring
+
+- Bundle planning and step completion into fewer CLI calls and streamline
+  the command workflows.
+- Batch review fixes and render delta prompts for subsequent review rounds.
+- Use positional spec and step selectors across prompt, todo, review,
+  archive, and hook commands.
+- Remove XML support from `todo-helper`. Convert existing XML task
+  files to JSON before upgrading.
 
 - **Stdlib template engine** — replace the Jinja2 prompt renderer with
   `skills/spex/scripts/template.py` (dialect documented in
