@@ -336,7 +336,7 @@ def test_failed_host_turn_preserves_sanitized_evidence(tmp_path, monkeypatch, mo
     ("What type?", "pass", 2), ("Implementation finished.", "insufficient_evidence", 2),
     ("Acceptance failure", "run_error", 1),
 ])
-def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verdict, turns):
+def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, capsys, reply, verdict, turns):
     fake = tmp_path / "fake-codex"
     fake.write_text(
         f"#!{sys.executable}\n"
@@ -380,10 +380,19 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
         cases[0]["turns"][0]["acceptance"] = "expected"
         manifest.write_text(json.dumps(cases), encoding="utf-8")
 
-        def fail_acceptance(*args):
-            raise transport.TransportError("acceptance_error")
+        suite = run.SUITES / "batch-import"
+        suite.mkdir()
+        (suite / "acceptance.py").write_text("", encoding="utf-8")
+        acceptance = run.acceptance
 
-        monkeypatch.setattr(run, "acceptance", fail_acceptance)
+        def fail_dependency_resolution():
+            raise FileNotFoundError("SQLite library unavailable")
+
+        def batch_import_acceptance(trial, suite, selector):
+            return acceptance(trial, "batch-import", selector)
+
+        monkeypatch.setattr(run, "sqlite_acceptance_libraries", fail_dependency_resolution)
+        monkeypatch.setattr(run, "acceptance", batch_import_acceptance)
     result = run.execute(runner.parse_args(["run", "--model", "example", "--tag", "smoke"]))
     row = result["trials"][0]
     output = Path(result["run"]) / "example" / "clarify" / "1"
@@ -391,6 +400,10 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, reply, verd
     assert (output / f"host-{turns}.jsonl").is_file()
     if verdict == "run_error":
         assert row["error"] == "acceptance_error"
+        assert (
+            f"Acceptance dependency resolution failed (SQLite, interpreter: {sys.executable})"
+            in capsys.readouterr().err
+        )
         assert row["turn_results"] == []
     else:
         assert len(row["turn_results"]) == turns
@@ -1229,6 +1242,7 @@ def test_collect_handoff_reports_missing_reply(runner, tmp_path):
 @pytest.mark.parametrize(("suite", "case_id", "selector"), [
     ("python-cli", "create", "new-plan"),
     ("docs", "analyze-incident", "analyze-incident"),
+    ("batch-import", "apply-resume", "apply-resume"),
 ])
 def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, selector):
     case = workspace.select_cases(run.SUITES, suite=suite, case_id=case_id)[0]
@@ -1238,26 +1252,57 @@ def test_macos_acceptance_launches_real_fixture(tmp_path, suite, case_id, select
     assert result["checks"]
 
 
+@pytest.mark.parametrize("external", [False, True])
+def test_sqlite_acceptance_libraries(tmp_path, monkeypatch, external):
+    origin = tmp_path / "_sqlite3.so"
+    library = tmp_path / "libsqlite3.0.dylib"
+    library.touch()
+    install_name = library if external else Path("/usr/lib/libsqlite3.dylib")
+    monkeypatch.setattr(run.importlib.util, "find_spec", lambda name: type(
+        "Extension", (), {"origin": str(origin)},
+    )())
+
+    def otool(argv, **kwargs):
+        assert argv == ["/usr/bin/otool", "-L", str(origin)]
+        return (
+            f"{origin}:\n"
+            f"\t{install_name} (compatibility version 9.0.0, current version 9.0.0)\n"
+            "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
+        )
+
+    monkeypatch.setattr(run.subprocess, "check_output", otool)
+    assert run.sqlite_acceptance_libraries() == ({library.resolve()} if external else set())
+
+
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "darwin", reason="Requires the macOS acceptance sandbox")
-def test_macos_acceptance_denies_sibling_trial_reads(runner, tmp_path):
+def test_macos_sqlite_acceptance_preserves_sandbox_isolation(runner, tmp_path):
     case = workspace.select_cases(run.SUITES)[0]
     trial = workspace.prepare_trial(REPO, case, parent=tmp_path / "case")
     canary = tmp_path / "other-trial" / "evidence.json"
     canary.parent.mkdir()
     canary.write_text("fixture canary", encoding="utf-8")
-    (run.SUITES / "example" / "acceptance.py").write_text(
-        "import json\nfrom pathlib import Path\n"
-        "try:\n"
-        f"    Path({str(canary)!r}).read_text()\n"
-        "except PermissionError:\n"
-        "    print(json.dumps({'passed': True}))\n"
-        "else:\n"
+    suite = run.SUITES / "batch-import"
+    suite.mkdir()
+    (suite / "acceptance.py").write_text(
+        "import json, socket, sqlite3\nfrom pathlib import Path\n"
+        "assert sqlite3.connect(':memory:').execute('select 1').fetchone() == (1,)\n"
+        "operations = [\n"
+        f"    Path({str(canary)!r}).read_text,\n"
+        "    lambda: Path('blocked.txt').write_text('canary'),\n"
+        "    lambda: socket.socket().bind(('127.0.0.1', 0)),\n"
+        "]\n"
+        "for operation in operations:\n"
+        "    try:\n"
+        "        operation()\n"
+        "    except PermissionError:\n"
+        "        continue\n"
         "    print(json.dumps({'passed': False}))\n"
-        "    raise SystemExit(1)\n",
+        "    raise SystemExit(1)\n"
+        "print(json.dumps({'passed': True}))\n",
         encoding="utf-8",
     )
-    assert run.acceptance(trial, "example", "canary") == {"passed": True}
+    assert run.acceptance(trial, "batch-import", "canary") == {"passed": True}
 
 
 def _start_rewritten_timer(tmp_path, *, started_at, monotonic):

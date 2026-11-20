@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -821,6 +822,31 @@ def setup(
     return trial
 
 
+def sqlite_acceptance_libraries() -> set[Path]:
+    """Read SQLite install names from the runner's own extension."""
+    extension = importlib.util.find_spec("_sqlite3")
+    if extension is None or not extension.origin:
+        raise ValueError("SQLite extension unavailable")
+    if extension.origin in {"built-in", "frozen"}:
+        return set()
+    dependencies = subprocess.check_output(
+        ["/usr/bin/otool", "-L", extension.origin], text=True, timeout=10,
+    )
+    libraries = set()
+    for line in dependencies.splitlines():
+        install_name = line.strip().partition(" (compatibility version ")[0]
+        path = Path(install_name)
+        if not re.fullmatch(r"libsqlite3(?:\.\d+)*\.dylib", path.name):
+            continue
+        if not path.is_absolute():
+            raise ValueError("SQLite library lacks an absolute install name")
+        if path.parent == Path("/usr/lib"):
+            # System libraries may exist only in the dyld shared cache.
+            continue
+        libraries.add(path.resolve(strict=True))
+    return libraries
+
+
 def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     script = SUITES / suite / "acceptance.py"
     if not IDENTIFIER.fullmatch(selector) or not script.is_file() or script.is_symlink():
@@ -840,6 +866,16 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     except (OSError, subprocess.SubprocessError) as error:
         raise TransportError("acceptance_error") from error
     env["PATH"] = str(system_git.parent) + os.pathsep + env["PATH"]
+    libraries = set()
+    if suite == "batch-import":
+        try:
+            libraries = sqlite_acceptance_libraries()
+        except (ImportError, OSError, ValueError, subprocess.SubprocessError) as error:
+            print(
+                f"Acceptance dependency resolution failed (SQLite, interpreter: {sys.executable})",
+                file=sys.stderr,
+            )
+            raise TransportError("acceptance_error") from error
     paths = {
         trial.directory.resolve(), script.parent.resolve(), Path(sys.prefix).resolve(),
         Path(sys.base_prefix).resolve(), Path("/usr"), Path("/System"),
@@ -851,7 +887,8 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
     allowed = " ".join(
         f"({kind} {json.dumps(str(path))})"
         for kind, entries in (
-            ("subpath", paths), ("literal", parents | {system_git, *system_git.parents}),
+            ("subpath", paths),
+            ("literal", parents | libraries | {system_git, *system_git.parents}),
         )
         for path in sorted(entries)
     )
