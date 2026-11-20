@@ -138,7 +138,7 @@ The runner does not open host sessions. The portable interface is:
 | Env | Source the `env_script` written by `prepare` (`_handoff/env-<suite>-<case>.sh`) or returned by `dispatch`; never rebuild the exports by hand. Verify the prepared cwd and pinned CLI before dispatch. Use `manual.py exec` for per-call setup in shells. Unset inherited `SPEX_TRACE_FILE` so CLI logs stay in the trial's `.spex/eval-logs`. |
 | Skill | Use the pinned `skill` path from prepare; limit writes to `workspace` |
 | Input | Dispatch each turn with `manual.py dispatch`, send its `next_input` exactly, and keep the same session for later turns |
-| Output | Write the final reply under `_handoff/`; optional `--events` only if the host can emit a compatible Codex-style JSONL |
+| Output | Write the final reply to the returned `staging_reply` before publishing to `reply`. Finish any compatible JSONL transcript beside `reply` before publishing |
 | Collect | `collect --session ID --reply <handoff-file> [--events …]` |
 
 For guarded current-host batches, `prepare` publishes each handoff to
@@ -161,7 +161,7 @@ these commands.
 | `status --require-terminal` | Exit 1 until every queued case has a terminal verdict |
 
 `dispatch` returns `case`, `turn`, `session`, `trial`, `workspace`, `skill`,
-`env_script`, `reply`, and `next_input`. Dispatch a running case again to
+`env_script`, `reply`, `staging_reply`, and `next_input`. Dispatch a running case again to
 start its next turn. Add `--turn N` to assert the expected next turn; a
 mismatch fails without touching the queue. A failed dispatch also leaves the
 queue unchanged: an invalid or conflicting session, an already-started turn,
@@ -273,13 +273,14 @@ judge Agent hosts and model IDs for each case. Use `import-grades --host`
 and `--model` for the judge's identity. Missing identities appear as
 `unknown`, and trials without a judge record show `ungraded`.
 The **Score summary** has one row per trial with four columns:
-`Case | Verdict | Score | Criteria`. The verdict cell shows the hard
-verdict in parentheses when it differs from the final verdict. The score
-cell states how many rubric criteria were graded, and the criteria cell
-lists each criterion's score (`ungraded` when none was judged). An
-asterisk beside full marks on a non-passing trial links the score
-coverage to the verdict reason below the table. Hard failures take
-precedence.
+`Case | Verdict | Score [1] | Criteria`. The verdict cell shows the hard
+verdict in parentheses when it differs from the final verdict. A score
+cell reads `points/max (graded/total criteria)` and shows `—` when there
+are no graded criteria. The criteria cell lists each criterion's score.
+Note `[1]` always explains the format, grading coverage, and hard verdict
+precedence. Full marks on a non-passing trial carry their own notes
+(`[2]`, `[3]`, and so on in trial order), which name the case, its grading
+coverage, and verdict reason.
 
 ### Batch close-out
 
@@ -307,7 +308,7 @@ per-case errors. Keep `import-grades TRIAL --grades FILE` and
 `complete SUITE/CASE` as single-case fallbacks. The terminal gate remains
 `manual.py --sandbox PATH status --require-terminal`.
 
-**Execution diagnostics** reports observed issues under two headings.
+**Execution diagnostics** appears below the Score summary and above Trial outcomes.
 **Observed issues** assigns each one a stable `I001…` id and lists its
 case and trial scope, stage and kind, whether a retry recovered it, its
 message, and links to the saved evidence. **Proposed improvements**

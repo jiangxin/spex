@@ -614,6 +614,28 @@ def test_summary_does_not_classify_unfinished_trials_as_passes(runner):
     assert result["classifications"] == {"pending": 1, "run_error": 1}
 
 
+@pytest.mark.parametrize("error", ["manual_host_timeout", None])
+def test_summary_reports_hard_run_error_once(runner, error):
+    sandbox = run.resolve_sandbox(None)
+    output = workspace.case_dir(sandbox, "example", "failed")
+    output.mkdir(parents=True)
+    run.write_json(output / "trial.json", {
+        "suite": "example", "case_id": "failed", "verdict": "run_error",
+        "error_stage": "collect", "error": error,
+    })
+
+    result = run.summarize_sandbox(sandbox)
+    report = run.read_json(Path(result["report_json"]))
+    (issue,) = report["issues"]
+    assert issue["kind"] == "run_error"
+    assert issue["message"] == (error or "run_error")
+    assert issue["stage"] == "collect"
+    assert issue["evidence"] == ["example/failed/trial.json"]
+    (improvement,) = result["improvements"]
+    assert improvement["issue_id"] == issue["id"]
+    assert improvement["priority"] == "P0"
+
+
 def test_summary_improvements_prioritize_acceptance_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     sandbox = run.resolve_sandbox(None)
@@ -1483,12 +1505,52 @@ def test_summary_explains_partially_graded_hard_failure(runner):
         2, 2, 1, 2,
     )
     markdown = Path(result["report"]).read_text(encoding="utf-8")
-    assert "| Case | Verdict | Score | Criteria |" in markdown
+    assert "| Case | Verdict | Score [1] | Criteria |" in markdown
     assert (
-        r"| example/partial-score | fail | 2/2 (1/2 criteria) \* | goal=2, later=ungraded |"
+        "| example/partial-score | fail | 2/2 (1/2 criteria) [2] | goal=2, later=ungraded |"
     ) in markdown
-    assert "`example/partial-score` had 1/2 criteria graded" in markdown
+    assert "- [1] Score cells read `points/max (graded/total criteria)`." in markdown
+    assert "Ungraded criteria are excluded from both earned points" in markdown
+    assert "- [2] `example/partial-score` had 1/2 criteria graded" in markdown
     assert "`turn1:no-post-action=fail`" in markdown
+
+
+def test_summary_numbers_score_notes_in_trial_order(runner):
+    sandbox = run.resolve_sandbox(None)
+    for case_id in ("beta", "ungraded", "alpha"):
+        out = workspace.case_dir(sandbox, "example", case_id)
+        out.mkdir(parents=True)
+        run.write_json(out / "trial.json", {
+            "suite": "example", "case_id": case_id, "verdict": "fail",
+            "turn_results": [{"turn": 1, "checks": [
+                {"check_id": "no-post-action", "verdict": "fail"},
+            ]}],
+        })
+        if case_id != "ungraded":
+            run.write_json(out / "judge.json", {
+                "verdict": "pass",
+                "results": [{"criterion_id": "goal", "score": 2, "verdict": "pass"}],
+            })
+
+    result = run.summarize_sandbox(sandbox)
+    trials = run.read_json(Path(result["report_json"]))["trials"]
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    cases = [row["case_id"] for row in trials if row["criteria_scored"]]
+    assert len(cases) == 2
+    for number, case in enumerate(cases, 2):
+        assert f"| example/{case} | fail | 2/2 (1/1 criteria) [{number}] | goal=2 |" in markdown
+        assert f"- [{number}] `example/{case}` had 1/1 criteria graded." in markdown
+    assert "| example/ungraded | fail | — | ungraded |" in markdown
+    assert "[4]" not in markdown
+
+
+def test_summary_explains_score_even_when_no_trials_are_graded(runner):
+    sandbox = run.resolve_sandbox(None)
+    result = run.summarize_sandbox(sandbox)
+    markdown = Path(result["report"]).read_text(encoding="utf-8")
+    assert "| Case | Verdict | Score [1] | Criteria |" in markdown
+    assert "- [1] Score cells read `points/max (graded/total criteria)`." in markdown
+    assert "[2]" not in markdown
 
 
 @pytest.mark.parametrize("gaps", [None, "prefix implausible_host_duration suffix"])
@@ -1578,7 +1640,8 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         },
     })
     result = run.summarize_sandbox(sandbox)
-    row = run.read_json(Path(result["report_json"]))["trials"][0]
+    report = run.read_json(Path(result["report_json"]))
+    row = report["trials"][0]
     assert [(i["command"], i["recovered"]) for i in row["issues"]] == [
         ("todo-helper edit", True), ("todo-helper append", False),
         ("todo-helper edit", False), ("todo-helper show", False),
@@ -1590,6 +1653,8 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
     assert all(
         i["evidence"] == ["example/retry/performance.json"] for i in row["issues"]
     )
+    assert [{key: value for key, value in item.items() if key != "id"}
+            for item in report["issues"]] == row["issues"]
     markdown = Path(result["report"]).read_text(encoding="utf-8")
     assert "todo-helper edit exited with code 1" in markdown
     assert "recovered: yes" in markdown
@@ -1600,6 +1665,17 @@ def test_summary_distinguishes_recovered_exits_from_open_issues(runner):
         "example/retry: Turn 1: todo-helper show exited with code 6",
         "example/retry: Turn 1: todo-helper edit exited with code 4",
     ]
+    assert {item["issue_id"] for item in result["improvements"]} == {
+        item["id"] for item in report["issues"] if not item["recovered"]
+    }
+    sections = [
+        "## Score summary", "## Execution diagnostics", "### Observed issues",
+        "### Proposed improvements", "## Trial outcomes", "## Performance",
+        "## How to read results",
+    ]
+    assert all(markdown.count(heading) == 1 for heading in sections)
+    positions = [markdown.index(heading) for heading in sections]
+    assert positions == sorted(positions)
 
 
 def test_record_issue_writes_a_file_and_summary_merges_it(
