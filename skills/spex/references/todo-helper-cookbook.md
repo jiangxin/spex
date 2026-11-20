@@ -14,6 +14,16 @@ current operation.
 - No per-step review flag — review runs only when a step produces
   a commit (and global `step_review` allows it)
 
+## Selecting a Step
+
+Use a positive step number (`2`) or a label with `--id` for `show`,
+`edit`, `complete`, and `remove`, with `--before` or `--after` for
+`insert`, or with `--from` and `--to` for `move`. The `step` prefix is
+case-insensitive and accepts a hyphen or a space before the number. For example,
+`--id step-2`, `--id STEP-2/5`, and `--id "STEP 2/5"` all select the
+second entry in the current list. Only the step number before the
+first slash is parsed. Everything after that slash is ignored.
+
 ## skip_commit Conventions
 
 | Step type | Flag |
@@ -118,7 +128,7 @@ displayed by `show`. Supply the same entry fields as for `append`.
 
 ```bash
 $spex_skill_dir/scripts/spex todo-helper insert "$spec_name" \
-  --before 2 --step-name "Add input validation" \
+  --before "STEP 2/5" --step-name "Add input validation" \
   --details "Reject empty input."
 ```
 
@@ -159,7 +169,7 @@ DETAILS
 Swap two steps by their current positions:
 
 ```bash
-$spex_skill_dir/scripts/spex todo-helper move "$spec_name" --from 2 --to 5
+$spex_skill_dir/scripts/spex todo-helper move "$spec_name" --from Step-2/5 --to 5
 ```
 
 Each step keeps its stored ID when swapped. The next `show` displays

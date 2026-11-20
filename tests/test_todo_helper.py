@@ -789,7 +789,13 @@ class TestAppendCompletedAtNow:
 class TestInsert:
     @pytest.mark.parametrize(
         ("anchor", "position", "index"),
-        [("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3)],
+        [
+            ("--before", "1", 0), ("--after", "1", 1), ("--after", "3", 3),
+            ("--before", "2", 1), ("--after", "2", 2),
+            ("--before", "Step-2/5", 1), ("--after", "Step-2/5", 2),
+            ("--before", "STEP 2/ignored", 1), ("--after", "STEP 2/ignored", 2),
+            ("--before", "STEP 2/5", 1), ("--after", "STEP 2/5", 2),
+        ],
     )
     def test_insert_by_spec_name(self, todo_file, monkeypatch, anchor, position, index):
         monkeypatch.setattr(todo_helper, "resolve_spec_dir", lambda name: todo_file.parent)
@@ -813,6 +819,8 @@ class TestInsert:
             (["--before", "1", "--after", "2"], SAMPLE_DATA, 2),
             (["--before", "0"], SAMPLE_DATA, 2),
             (["--after", "4"], SAMPLE_DATA, 1),
+            (["--before", "Step-4/5"], SAMPLE_DATA, 1),
+            (["--after", "STEP 0/5"], SAMPLE_DATA, 2),
             (["--before", "1"], [], 1),
         ],
     )
@@ -865,6 +873,16 @@ class TestInsert:
 # move
 # -----------------------------------------------------------------------
 class TestMove:
+    @pytest.mark.parametrize("selector", ["2", "Step-2/5", "STEP 2/5", "STEP 2/ignored"])
+    @pytest.mark.parametrize("flag", ["--from", "--to"])
+    def test_swap_by_position(self, todo_file, selector, flag):
+        _write(todo_file, SAMPLE_DATA)
+        other_flag = "--to" if flag == "--from" else "--from"
+        todo_helper.main([
+            "move", "--todo-file", str(todo_file), flag, selector, other_flag, "1",
+        ])
+        assert _read(todo_file) == [SAMPLE_DATA[1], SAMPLE_DATA[0], SAMPLE_DATA[2]]
+
     def test_swap_by_spec_name_preserves_full_entries(self, todo_file, monkeypatch, capsys):
         monkeypatch.setattr(
             todo_helper, "resolve_spec_dir", lambda name: todo_file.parent,
@@ -882,7 +900,10 @@ class TestMove:
 
     @pytest.mark.parametrize(
         ("source", "target", "exit_code"),
-        [("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2)],
+        [
+            ("2", "2", None), ("4", "4", 1), ("1", "4", 1), ("0", "1", 2),
+            ("Step-4/5", "1", 1), ("1", "STEP 0/5", 2),
+        ],
     )
     def test_invalid_or_same_position_keeps_file(self, todo_file, source, target, exit_code):
         todo_file.write_text(json.dumps(SAMPLE_DATA), encoding="utf-8")
@@ -992,19 +1013,54 @@ class TestRenumber:
 
 
 # -----------------------------------------------------------------------
+# --id selectors
+# -----------------------------------------------------------------------
+class TestStepSelector:
+    @pytest.mark.parametrize(("command", "flags"), [
+        ("show", []),
+        ("edit", ["--step-name", "Updated step"]),
+        ("complete", []),
+        ("remove", []),
+    ])
+    @pytest.mark.parametrize("label", [
+        "step-2", "step-2/5", "STEP-2", "STEP-2/5",
+        "step 2", "step 2/5", "STEP 2", "STEP 2/5", "Step 2/5",
+        "STEP 2/0", "step-2/", "STEP-2/unknown", "step-2/3/4",
+    ])
+    def test_label_matches_numeric_id(self, todo_file, command, flags, label, capsys, monkeypatch):
+        monkeypatch.setattr(todo_helper, "local_iso_timestamp", lambda: "2026-01-03T12:00:00+08:00")
+        argv = [command, "--todo-file", str(todo_file), *flags, "--id"]
+        _write(todo_file, SAMPLE_DATA)
+        todo_helper.main([*argv, "2"])
+        expected_output = capsys.readouterr().out
+        expected_file = todo_file.read_bytes()
+        _write(todo_file, SAMPLE_DATA)
+
+        todo_helper.main([*argv, label])
+
+        assert capsys.readouterr().out == expected_output
+        assert todo_file.read_bytes() == expected_file
+
+    @pytest.mark.parametrize("command", ["edit", "complete", "remove"])
+    @pytest.mark.parametrize(("value", "exit_code"), [
+        (None, 2), ("", 2), ("0", 2), ("step-0", 2), ("step-１", 2),
+        ("step-/5", 2), ("step-4/5", 1),
+        ("STEP 0", 2), ("STEP2", 2), ("STEP 4/5", 1),
+    ])
+    def test_invalid_mutation_selector_preserves_file(self, todo_file, command, value, exit_code):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        selector = [] if value is None else ["--id", value]
+        with pytest.raises(SystemExit) as exc:
+            todo_helper.main([command, "--todo-file", str(todo_file), *selector])
+        assert exc.value.code == exit_code
+        assert todo_file.read_bytes() == original
+
+
+# -----------------------------------------------------------------------
 # remove
 # -----------------------------------------------------------------------
 class TestRemove:
-    @pytest.mark.parametrize("command", ["edit", "remove"])
-    @pytest.mark.parametrize("selector", [[], ["--id", "0"], ["--id", "step-1"]])
-    def test_mutation_requires_positive_integer_id(self, todo_file, command, selector):
-        _write(todo_file, SAMPLE_DATA)
-        original = todo_file.read_bytes()
-        with pytest.raises(SystemExit) as exc:
-            todo_helper.main([command, "--todo-file", str(todo_file), *selector])
-        assert exc.value.code == 2
-        assert todo_file.read_bytes() == original
-
     def test_remove_by_id(self, todo_file):
         _write(todo_file, SAMPLE_DATA)
         todo_helper.main([
