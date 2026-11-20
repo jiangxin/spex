@@ -12,6 +12,7 @@ from functools import cmp_to_key
 from itertools import combinations
 from pathlib import Path
 
+from native_trace import command_facts, review_help_events, transaction_action
 from performance import stamp_bounds, timestamp
 from workspace import Trial, git
 
@@ -224,12 +225,16 @@ def modify_path_check(check: str, old: dict, new: dict, trace: dict | None) -> b
     target = changed[0]
     candidates = [event for event in trace["events"] if modify_operation(event)]
     events = [event for event in candidates if event.get("spec") == target]
+    unbound = [event for event in candidates if event.get("spec") is None]
+    if len(unbound) == 1 and modify_operation(unbound[0]) == "finalize":
+        # Older central logs can omit the finalize selector for the changed spec.
+        events.append(unbound.pop())
     if check == "modify-targeted-path" and any(
-        event["subcommand"] == "remove-undone" for event in events
+        modify_operation(event) == "remove-undone" for event in events
     ):
         return False
     if (set(trace["gaps"]) - {"incomplete_review_log", "unpaired_review_end"}
-            or any(event.get("spec") is None for event in candidates)
+            or unbound
             or not order_modify_events(events)):
         return None
     operations = [modify_operation(event) for event in events if event.get("exit_code") == 0]
@@ -237,9 +242,13 @@ def modify_path_check(check: str, old: dict, new: dict, trace: dict | None) -> b
 
 
 def modify_operation(event: dict) -> str | None:
-    command, verb = event.get("command"), event.get("subcommand")
+    command, verb, _, help_requested = command_facts(event)
+    if help_requested:
+        return None
     if command == "todo-helper" and verb in TODO_COMMANDS:
-        return event.get("transaction_action", "transaction") if verb == "transaction" else verb
+        return (transaction_action(event) or "transaction") if verb == "transaction" else verb
+    if command == "create-helper" and verb == "finalize-modify":
+        return "finalize"
     if command == "create-helper" and verb == "post-action" and event.get("event_type") == "modify":
         return "post-action"
     return None
@@ -273,7 +282,11 @@ def committed_modify_path(check: str, operations: list[str]) -> bool:
             edits = []
         elif operation == "rollback" and edits is not None:
             edits = None
-        elif operation == "commit" and edits is not None and not committed:
+        elif operation in {"commit", "finalize"} and edits is not None and not committed:
+            if operation == "finalize":
+                if "post-action" in edits:
+                    return False
+                edits.append("post-action")
             committed = valid_modify_edits(check, edits)
             if not committed:
                 return False
@@ -324,6 +337,16 @@ def native_check(
     if check == "resumed-review":
         result = resumed_review(old, completed(new), {"value": events}, native=True)
         return result if result is not None else False if complete else None
+
+    if help_calls := review_help_events(trace):
+        unbound = {index for index, event in enumerate(events)
+                   if event["action"] in {"apply.review-command", "apply.post-action"}
+                   and not event.get("spec")}
+        gaps = set(trace["gaps"])
+        if unbound and unbound <= help_calls:
+            gaps.discard("missing_trace_spec")
+        complete = not gaps
+        events = [event for index, event in enumerate(events) if index not in help_calls]
 
     old_todos, new_todos = (
         {name: artifacts["todo.json"] for name, artifacts in state["specs"].items()

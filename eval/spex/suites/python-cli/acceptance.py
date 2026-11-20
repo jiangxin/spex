@@ -17,12 +17,16 @@ MODIFY_PLANS = {
     "modify-targeted": ("--upper", "--punctuation", "--prefix", "--separator", "--suffix"),
 }
 OPTION = re.compile(r"--[a-z]+(?:-[a-z]+)*")
+# A cancellation applies to the clause or heading it introduces.
 CANCELED_OPTIONS = re.compile(
-    r"(?i)^(?:cancel(?:ed|led)?|drop(?:ped)?|remov(?:e|ed)|"
+    r"(?i)^(?:(?:do not|don't|must not|should not|never)\s+"
+    r"(?:add|implement|support|include|introduce|plan)|"
+    r"cancel(?:ed|led)?|drop(?:ped)?|remov(?:e|ed)|"
     r"out of scope|no longer (?:required|planned)|excluded)(?:\s|:|$)"
 )
 CANCELED_STATUS = re.compile(
-    r"(?i)^(?:`?--[a-z-]+`?)\s+(?:is|was)\s+(?:canceled|cancelled|dropped|removed|"
+    r"(?i)^(?:`?--[a-z-]+`?)\s+(?:is|are|was|were)\s+(?:"
+    r"not\s+(?:required|planned|supported|needed)|canceled|cancelled|dropped|removed|"
     r"out of scope|no longer (?:required|planned))\s*[.!]?$"
 )
 

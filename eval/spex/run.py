@@ -922,11 +922,14 @@ def acceptance(trial: Trial, suite: str, selector: str) -> dict:
 CLARIFICATION_SIGNALS = (
     ("question-mark", re.compile(r"[?？]")),
     ("blocked-on-answer", re.compile(
-        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me)"
+        r"\b(?:need you to|once you (?:answer|confirm|choose|decide|reply|tell me"
+        r"|provide|supply|share)"
         r"|before I (?:can )?(?:write|continue|proceed|design|finali[sz]e))\b", re.I,
     )),
     ("explicit-request", re.compile(
-        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one)\b", re.I,
+        r"\b(?:please|choose|select|tell me|let me know|confirm|clarify|which one"
+        r")\b|(?:^|[.!?][ \t]+)[ \t]*(?:[-*][ \t]+)?(?:to continue,[ \t]*)?"
+        r"(?:reply with|provide (?:the|me))\b", re.I | re.M,
     )),
     ("question-heading", re.compile(r"(?m)^\s*(?:\*\*|#{1,6}\s*)?questions?\b", re.I)),
     ("explicit-request-zh", re.compile(r"请(?:选择|确认|指定|回复|提供|补充)")),

@@ -498,7 +498,7 @@ def parse(lines: list[str], source: str, gaps: set) -> list:
                 else:
                     selector = option(words, "--name")
                 if (selector is None and source == CENTRAL_DEBUG_LOG
-                        and name in {"apply-helper", "review-helper", "prompt"}
+                        and name in {"apply-helper", "create-helper", "review-helper", "prompt"}
                         and command.get("subcommand")):
                     # Some pinned refs use a positional spec selector after the verb.
                     selector = positional_selector(words, verb)

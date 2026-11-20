@@ -143,6 +143,32 @@ def test_native_todo_selector(argv, spec, action):
     assert event.get("transaction_action") == action
 
 
+@pytest.mark.parametrize(("path", "edits"), [
+    ("rebuild", ("remove-undone", "append")),
+    ("targeted", ("insert", "move", "remove")),
+])
+@pytest.mark.parametrize(("finalizers", "code", "verdict"), [
+    (["eval-spec"], 0, "pass"),
+    ([""], 0, "pass"),
+    (["", ""], 0, "insufficient_evidence"),
+    (["other-spec"], 0, "fail"),
+    (["eval-spec"], 1, "fail"),
+])
+def test_modify_finalize_path(tmp_path, path, edits, finalizers, code, verdict):
+    log = cli_log("todo-helper transaction start eval-spec")
+    log += "".join(cli_log(f"todo-helper {edit} eval-spec") for edit in edits)
+    log += "".join(cli_log(f"create-helper finalize-modify {spec}".strip(), code)
+                   for spec in finalizers)
+    gaps = set()
+    events = native_trace.parse(log.splitlines(), native_trace.CENTRAL_DEBUG_LOG, gaps)
+    assert events[-1]["spec"] == (finalizers[-1] or None)
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(
+        tmp_path, 1, state(task(2)), native={"gaps": sorted(gaps), "events": events},
+    )
+    assert evidence.check_gate(f"modify-{path}-path", before, after)["verdict"] == verdict
+
+
 @pytest.mark.parametrize(
     ("path", "argv", "structured", "verdict"),
     [
@@ -362,6 +388,37 @@ def test_review_failure_stop_checks_spec_identity_and_pending_order(tmp_path, wr
             tmp_path, turn, snapshot, native={"events": events, "gaps": sorted(gaps)},
         )
         assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == expected
+
+
+@pytest.mark.parametrize(("variant", "verdict"), [
+    ("direct", "pass"),
+    ("legacy", "pass"),
+    ("ambiguous", "fail"),
+    ("unbound-before-failure", "insufficient_evidence"),
+    ("continuation", "fail"),
+])
+def test_review_failure_stop_excludes_only_confirmed_help(tmp_path, variant, verdict):
+    pending = state(task("step-1"))
+    gaps = set()
+    log = cli_log("review-helper status eval-spec --step 1", 1)
+    log += cli_log("review-helper --help").replace("10:00:00", "10:00:01")
+    events = native_trace.parse(log.splitlines(), "eval-logs/debug.log", gaps)
+    help_event = events[-1]
+    argv = ["spex", "review-helper", "--help"]
+    spans = [{**help_event, "argv": argv}]
+    if variant == "direct":
+        help_event["argv"] = argv
+    elif variant == "ambiguous":
+        spans.append(dict(spans[0]))
+    elif variant == "unbound-before-failure":
+        events.insert(0, {**help_event, "at": "2026-11-11T09:59:59+08:00", "sequence": -1})
+    elif variant == "continuation":
+        events.append({**events[0], "sequence": help_event["sequence"] + 1, "exit_code": 0})
+    before = evidence.persist_turn(tmp_path, 0, pending)
+    after = evidence.persist_turn(tmp_path, 1, pending, native={
+        "events": events, "gaps": sorted(gaps), "timing_events": spans,
+    })
+    assert evidence.check_gate("review-failure-stop", before, after)["verdict"] == verdict
 
 
 def test_native_prompt_skip_requires_logged_output_and_success():
