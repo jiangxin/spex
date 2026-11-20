@@ -21,7 +21,7 @@ the portable interface documented in [`../README.md`](../README.md):
 | Env | Source the `env_script` that `prepare` wrote (`_handoff/env-<suite>-<case>.sh`) and `dispatch` returned; it applies `SPEX_LOG_DIR`. Never rebuild the exports by hand, and unset inherited `SPEX_TRACE_FILE`. Use `manual.py exec` for shell commands. |
 | Skill | Follow the pinned `skill` path and write under `workspace` |
 | Input | Dispatch each turn with `manual.py dispatch SUITE/CASE --session ID`, send its exact `next_input`, and preserve the session |
-| Output | Stage the full reply and publish with `manual.py stop SUITE/CASE TURN --reply-file PATH` or atomically rename it from the same directory to the reply path returned by `dispatch` |
+| Output | Write the full reply to the returned `staging_reply` path, then publish with `manual.py stop SUITE/CASE TURN --reply-file PATH` or atomically rename it to the returned `reply` path |
 | Events | Finish optional supplementary Codex-style JSONL beside the reply with suffix `.events.jsonl` before publishing the reply |
 | Timing | Stop the current turn timer once its final reply is ready |
 | Collect | Use `manual.py collect` before starting the next turn |
@@ -208,6 +208,9 @@ these observations instead of describing them only in prose.
 ## Pure manual (any IDE)
 
 - Paste the input returned by `manual.py dispatch` into the prepared session.
-- Stage the final reply, then run `manual.py stop SUITE/CASE TURN --reply-file PATH`
-  to publish it and stop the timer. Run `manual.py collect` for that turn.
+- Write the final reply to the returned `staging_reply` path in `_handoff`.
+  Pass that path to `manual.py stop SUITE/CASE TURN --reply-file PATH`
+  to publish it and stop the timer. A reply from another turn or directory,
+  a symlink, or a blank or invalid UTF-8 reply leaves the turn running so
+  you can correct the input and retry. Run `manual.py collect` for that turn.
 - Supply an events sidecar only when a compatible transcript is available.

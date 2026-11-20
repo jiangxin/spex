@@ -89,6 +89,20 @@ def publish_reply(source: Path, reply: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def validate_reply_source(source: Path, reply: Path, workspace: Path) -> None:
+    """Require a named staging file beside this turn's canonical reply."""
+    expected = f"{reply.name} or {reply.name}.staging"
+    if source.is_symlink():
+        raise ValueError(f"Expected a regular staging file named {expected}: {source}")
+    source = source.resolve()
+    if source.parent != reply.parent.resolve() or not (
+        source.name == reply.name or source.name.startswith(f"{reply.name}.")
+    ):
+        raise ValueError(f"Stage {expected} beside {reply}: {source}")
+    if workspace.resolve() in source.parents:
+        raise ValueError(f"Stage {expected} outside the workspace: {source}")
+
+
 def turn_paths(sandbox: Path, suite: str, case: str, turn: int) -> tuple[Path, Path, Path]:
     """Return the reply, pending-timer, and wall-clock paths for one turn."""
     reply = collect_handoff.handoff_reply(sandbox, suite, case, turn)
@@ -143,6 +157,7 @@ def turn_action(args, sandbox: Path, output: Path, trial: Trial, metadata: dict,
         if source is not None:
             if not stopped and (timer.is_symlink() or not timer.is_file()):
                 raise ValueError("Start the current turn timer before publishing its reply")
+            validate_reply_source(source, reply, trial.repo)
             publish_reply(source, reply)
         if stopped:
             return {"turn": current, "reply": str(reply),
@@ -309,6 +324,7 @@ def dispatch_case(args, sandbox: Path, queue_file: Path, queue: dict, entries: d
     """Claim a pending case and start its next turn in one call, returning the bundle."""
     target = dispatch_target(args, sandbox, queue, entries)
     row, handoff, current = target["row"], target["handoff"], target["turn"]
+    reply = target["reply"]
     snapshot = dict(row)
     row["status"] = "running"
     row["dispatch"] = {"turn": current, "session": args.session}
@@ -316,7 +332,7 @@ def dispatch_case(args, sandbox: Path, queue_file: Path, queue: dict, entries: d
         host_turn_timer.start_timer(sandbox, target["suite"], target["case_id"], current)
         manual_batch.write(queue_file, queue)
     except BaseException:
-        timer = host_turn_timer.pending_path(target["reply"])
+        timer = host_turn_timer.pending_path(reply)
         if timer.is_file() and not timer.is_symlink():
             timer.unlink(missing_ok=True)  # Keep the case dispatchable after a failed write.
         row.clear()
@@ -326,7 +342,8 @@ def dispatch_case(args, sandbox: Path, queue_file: Path, queue: dict, entries: d
         "case": args.case, "turn": current, "session": args.session,
         "trial": handoff["trial"], "workspace": handoff["workspace"],
         "skill": handoff["skill"], "env_script": str(target["script"]),
-        "reply": str(target["reply"]), "next_input": handoff["next_input"],
+        "reply": str(reply), "staging_reply": f"{reply}.staging",
+        "next_input": handoff["next_input"],
     }
 
 

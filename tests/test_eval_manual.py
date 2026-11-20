@@ -264,6 +264,7 @@ def test_dispatch_claims_and_starts_a_pending_turn(tmp_path, monkeypatch):
         "skill": str(trial / "workspace" / "repo" / ".agents" / "skills" / "spex"),
         "env_script": str(sandbox / "_handoff" / "env-example-alpha.sh"),
         "reply": str(sandbox / "_handoff" / "example-alpha-turn1.txt"),
+        "staging_reply": str(sandbox / "_handoff" / "example-alpha-turn1.txt.staging"),
         "next_input": "turn 1",
     }
     assert manual_batch.read(sandbox / "queue.json")["example/alpha"] == {
@@ -368,6 +369,52 @@ def test_dispatch_requires_the_prepared_env_script(tmp_path, monkeypatch):
         manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
 
     assert (sandbox / "queue.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("defect", ["other-case", "other-dir", "symlink", "blank", "utf-8"])
+def test_stop_rejects_invalid_staging_without_changing_the_turn(
+    tmp_path, monkeypatch, defect,
+):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    bundle, code = manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
+    assert code == 0
+    reply = Path(bundle["reply"])
+    staged = Path(bundle["staging_reply"])
+    timer = host_turn_timer.pending_path(reply)
+    queue = sandbox / "queue.json"
+    queue_before, timer_before = queue.read_bytes(), timer.read_bytes()
+    source = staged
+    if defect == "other-case":
+        source = reply.with_name("example-bravo-turn1.txt.staging")
+    elif defect == "other-dir":
+        source = tmp_path / staged.name
+
+    if defect == "symlink":
+        target = staged.with_suffix(".original")
+        target.write_text("wrong reply", encoding="utf-8")
+        source.symlink_to(target)
+    else:
+        source.write_bytes({"blank": b" \n", "utf-8": b"\xff"}.get(defect, b"wrong reply"))
+
+    monkeypatch.setattr(run, "resolve_sandbox", lambda path=None: sandbox)
+    monkeypatch.setattr(sys, "argv", [
+        "manual.py", "--sandbox", str(sandbox), "stop", "example/alpha", "1",
+        "--reply-file", str(source),
+    ])
+    assert manual.main() == 2
+    assert not reply.exists()
+    assert queue.read_bytes() == queue_before
+    assert timer.read_bytes() == timer_before
+
+    staged.unlink(missing_ok=True)
+    staged.write_text("done", encoding="utf-8")
+    result, code = manual_action(
+        sandbox, "stop", "example/alpha", "1", "--reply-file", str(staged),
+    )
+    assert code == 0
+    assert result["action"] == "stop"
+    assert reply.read_text(encoding="utf-8") == "done"
+    assert not timer.exists()
 
 
 def test_dispatch_reuses_slots_released_by_trials_awaiting_grades(tmp_path, monkeypatch):
