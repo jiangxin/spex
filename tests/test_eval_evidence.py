@@ -75,6 +75,34 @@ def cli_log(argv, code=0):
     )
 
 
+@pytest.mark.parametrize(("args", "legacy_count", "span_count", "verdict"), [
+    (["insert", "--help"], 1, 1, "pass"),
+    (["insert", "--help"], 2, 1, "insufficient_evidence"),
+    (["insert", "--help"], 1, 2, "insufficient_evidence"),
+    (["insert", "--help"], 1, 0, "insufficient_evidence"),
+    (["move", "--help"], 1, 1, "insufficient_evidence"),
+    (["insert", "--before", "2"], 1, 1, "insufficient_evidence"),
+    (["insert", "--step-name", "--help"], 1, 1, "insufficient_evidence"),
+])
+def test_modify_targeted_legacy_todo_help(tmp_path, args, legacy_count, span_count, verdict):
+    # The live modify-targeted trace retains help argv only in the timing span.
+    log = "".join(cli_log(f"todo-helper {entry} eval-spec") for entry in (
+        "transaction start", "insert", "move", "remove",
+    )) + cli_log("create-helper post-action --event-type=modify --name eval-spec")
+    log += cli_log("todo-helper transaction commit eval-spec")
+    events = native_trace.parse(log.splitlines(), native_trace.CENTRAL_DEBUG_LOG, set())
+    help_event = {
+        **events[1], "at": "2026-11-20T17:00:41+08:00", "duration_ms": 5, "spec": None,
+    }
+    span = {**help_event, "argv": ["spex", "todo-helper", *args]}
+    events[1:1] = [help_event] * legacy_count
+    before = evidence.persist_turn(tmp_path, 0, state(task(1)))
+    after = evidence.persist_turn(tmp_path, 1, state(task(2)), native={
+        "gaps": [], "events": events, "timing_events": [span] * span_count,
+    })
+    assert evidence.check_gate("modify-targeted-path", before, after)["verdict"] == verdict
+
+
 @pytest.mark.parametrize(
     ("path", "edits", "verdict"),
     [

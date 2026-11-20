@@ -348,40 +348,50 @@ def transaction_action(event: dict) -> str | None:
 
 
 def review_help_events(trace: dict) -> set[int]:
-    """Identify pure review help, associating legacy records only when unique."""
+    """Identify top-level review help without obscuring review operations."""
+    return help_event_indices(trace, "apply.review-command", "review-helper")
+
+
+def help_event_indices(trace: dict, action: str, command: str) -> set[int]:
+    """Identify pure help, associating unbound legacy records only when unique."""
     events = trace["events"]
     legacy = defaultdict(list)
     spans = defaultdict(list)
     for index, event in enumerate(events):
-        if (key := review_invocation(event)) is not None:
+        if (key := help_invocation(event, command)) is not None:
             legacy[key].append(index)
     for span in trace.get("timing_events", ()):
-        if (key := review_invocation(span)) is not None:
+        if (key := help_invocation(span, command)) is not None:
             spans[key].append(span)
     result = set()
     for index, event in enumerate(events):
-        if event.get("action") != "apply.review-command":
+        if event.get("action") != action:
             continue
-        if pure_review_help(event):
+        if pure_help(event, command):
             result.add(index)
         elif not ("argv" in event or event.get("stage") or event.get("spec")):
-            key = review_invocation(event)
-            if legacy[key] == [index] and len(spans[key]) == 1 and pure_review_help(spans[key][0]):
+            key = help_invocation(event, command)
+            if (legacy[key] == [index] and len(spans[key]) == 1
+                    and pure_help(spans[key][0], command)
+                    and (command != "todo-helper"
+                         or command_facts(spans[key][0])[1] == event.get("subcommand"))):
                 result.add(index)
     return result
 
 
-def review_invocation(event: dict) -> tuple | None:
+def help_invocation(event: dict, command: str) -> tuple | None:
     stamp = timestamp(event.get("at"))
-    if event.get("command") == "review-helper" and stamp is not None:
-        return stamp, event.get("duration_ms"), event.get("exit_code")
+    if event.get("command") == command and stamp is not None:
+        verb = event.get("subcommand") if command == "todo-helper" else None
+        return stamp, verb, event.get("duration_ms"), event.get("exit_code")
     return None
 
 
-def pure_review_help(event: dict) -> bool:
+def pure_help(event: dict, command: str) -> bool:
     name, verb, target, help_requested = command_facts(event)
-    return (name == "review-helper" and verb is None and target is None and help_requested
-            and len(event["argv"]) == 3)
+    has_verb = command == "todo-helper"
+    return (name == command and (verb is not None) == has_verb and target is None
+            and help_requested and len(event["argv"]) == 3 + has_verb)
 
 
 def takes_value(word: str) -> bool:

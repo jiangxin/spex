@@ -12,7 +12,7 @@ from functools import cmp_to_key
 from itertools import combinations
 from pathlib import Path
 
-from native_trace import command_facts, review_help_events, transaction_action
+from native_trace import command_facts, help_event_indices, review_help_events, transaction_action
 from performance import stamp_bounds, timestamp
 from workspace import Trial, git
 
@@ -223,7 +223,9 @@ def modify_path_check(check: str, old: dict, new: dict, trace: dict | None) -> b
     if trace is None:
         return None
     target = changed[0]
-    candidates = [event for event in trace["events"] if modify_operation(event)]
+    help_calls = help_event_indices(trace, "spex.command", "todo-helper")
+    candidates = [event for index, event in enumerate(trace["events"])
+                  if index not in help_calls and modify_operation(event)]
     events = [event for event in candidates if event.get("spec") == target]
     unbound = [event for event in candidates if event.get("spec") is None]
     if len(unbound) == 1 and modify_operation(unbound[0]) == "finalize":
