@@ -24,6 +24,45 @@ def state(*tasks):
     }
 
 
+@pytest.mark.parametrize(("args", "facts"), [
+    (["-d", "todo_helper", "edit", "example", "--details", "--help"],
+     ("todo-helper", "edit", "example", False)),
+    (["todo-helper", "transaction", "start", "--todo-file=plans/todo.json"],
+     ("todo-helper", "transaction", "plans/todo.json", False)),
+    (["todo-helper", "edit", "example", "--name", "other"],
+     ("todo-helper", "edit", None, False)),
+    (["todo-helper", "show", "--", "--help"], ("todo-helper", "show", "--help", False)),
+    (["review-helper", "--help"], ("review-helper", None, None, True)),
+    (["prompt", "create-todo", "example"], ("prompt", "create-todo", "example", False)),
+])
+def test_trace_command_facts(args, facts):
+    assert native_trace.command_facts({"argv": ["/installed/bin/spex", *args]}) == facts
+
+
+@pytest.mark.parametrize("flag", ["--done", "--undone", "--wrap", "--no-wrap"])
+def test_trace_todo_switch_does_not_consume_target(flag):
+    event = {"argv": ["spex", "todo-helper", "show", flag, "example"]}
+    assert native_trace.command_facts(event) == ("todo-helper", "show", "example", False)
+
+
+@pytest.mark.parametrize(("legacy_count", "span_count", "expected"), [
+    (1, 1, {0}), (2, 1, set()), (1, 2, set()), (1, 0, set()),
+])
+def test_review_help_requires_unique_legacy_correlation(legacy_count, span_count, expected):
+    legacy = {"action": "apply.review-command", "command": "review-helper",
+              "at": "2026-01-01T00:00:00Z", "duration_ms": 12, "exit_code": 0}
+    span = {**legacy, "argv": ["spex", "review-helper", "--help"]}
+    assert native_trace.review_help_events({
+        "events": [legacy] * legacy_count, "timing_events": [span] * span_count,
+    }) == expected
+
+
+def test_review_help_preserves_commands_with_help_values_or_subcommands():
+    events = [{"action": "apply.review-command", "argv": ["spex", "review-helper", *args]}
+              for args in (["-h"], ["status", "--help"], ["append", "--title", "--help"])]
+    assert native_trace.review_help_events({"events": events}) == {0}
+
+
 def task(task_id, completed_at="", **extra):
     return {"id": task_id, "completed_at": completed_at, **extra}
 

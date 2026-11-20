@@ -277,14 +277,92 @@ def option(words: list[str], flag: str) -> str | None:
     return None
 
 
-# Boolean flags accepted by ``prompt`` / ``review-helper``: they consume no value.
+# Boolean flags accepted by recorded commands consume no value.
 POSITIONAL_SWITCHES = {
     "--json", "--quiet", "--verbose", "--debug", "--force", "--all",
     "--dry-run", "--must-undone", "--must-done", "--help", "-h", "-v", "-d",
     "--stdin", "--details-from-stdin", "--evidence-from-stdin",
+    "--done", "--undone", "--wrap", "--no-wrap",
 }
 # Short options that take a value and therefore support the attached form ``-oreport``.
 SHORT_VALUE_OPTIONS = {"-o"}
+HELP_SWITCHES = {"-h", "--help"}
+
+
+def command_arguments(words: list[str]):
+    """Yield option/value pairs and positionals from a recorded argument list."""
+    arguments = iter(words)
+    for word in arguments:
+        if word == "--":
+            yield from ((None, value) for value in arguments)
+            return
+        if not word.startswith("-"):
+            yield None, word
+            continue
+        flag, equals, value = word.partition("=")
+        if not equals:
+            value = next(arguments, None) if takes_value(word) else None
+        yield flag, value
+
+
+def command_facts(event: dict) -> tuple[str | None, str | None, str | None, bool]:
+    """Return the command, verb, argv target, and help flag for an event."""
+    argv = event.get("argv")
+    name, verb = event.get("command"), event.get("subcommand")
+    if (not isinstance(argv, list) or not argv or not all(isinstance(word, str) for word in argv)
+            or Path(argv[0]).name != "spex"):
+        return name, verb, None, False
+    parsed = list(command_arguments(argv[1:]))
+    positionals = [value for flag, value in parsed if flag is None]
+    if not positionals or not IDENTIFIER.fullmatch(positionals[0]):
+        return name, verb, None, False
+    name = positionals[0].replace("_", "-")
+    verb = positionals[1].replace("_", "-") if len(positionals) > 1 else None
+    targets = positionals[2:]
+    if (name == "todo-helper" and verb == "transaction" and targets
+            and targets[0] in {"start", "commit", "rollback"}):
+        targets = targets[1:]
+    targets += [value for flag, value in parsed if flag in {"--name", "--todo-file", "--todo-json"}]
+    target = (targets[0] or None) if len(targets) == 1 else None
+    help_requested = any(flag in HELP_SWITCHES and value is None for flag, value in parsed)
+    return name, verb, target, help_requested
+
+
+def review_help_events(trace: dict) -> set[int]:
+    """Identify pure review help, associating legacy records only when unique."""
+    events = trace["events"]
+    legacy = defaultdict(list)
+    spans = defaultdict(list)
+    for index, event in enumerate(events):
+        if (key := review_invocation(event)) is not None:
+            legacy[key].append(index)
+    for span in trace.get("timing_events", ()):
+        if (key := review_invocation(span)) is not None:
+            spans[key].append(span)
+    result = set()
+    for index, event in enumerate(events):
+        if event.get("action") != "apply.review-command":
+            continue
+        if pure_review_help(event):
+            result.add(index)
+        elif not ("argv" in event or event.get("stage") or event.get("spec")):
+            key = review_invocation(event)
+            if legacy[key] == [index] and len(spans[key]) == 1 and pure_review_help(spans[key][0]):
+                result.add(index)
+    return result
+
+
+def review_invocation(event: dict) -> tuple | None:
+    stamp = timestamp(event.get("at"))
+    if event.get("command") == "review-helper" and stamp is not None:
+        return stamp, event.get("duration_ms"), event.get("exit_code")
+    return None
+
+
+def pure_review_help(event: dict) -> bool:
+    name, verb, target, help_requested = command_facts(event)
+    return (name == "review-helper" and verb is None and target is None and help_requested
+            and len(event["argv"]) == 3)
 
 
 def takes_value(word: str) -> bool:
