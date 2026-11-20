@@ -309,6 +309,14 @@ def dispatch_target(args, sandbox: Path, queue: dict, entries: dict) -> dict:
         raise ValueError(f"No next input for turn {current}")
     reply, timer, wall = turn_paths(sandbox, suite, case, current)
     ensure_unstarted(reply, timer, wall)
+    staging = reply.with_name(f"{reply.name}.staging")
+    if staging.is_file() and not staging.is_symlink():
+        # Work already happened before the timer started; the host window
+        # will under-measure this turn.
+        sys.stderr.write(
+            f"Warning: staging reply already exists for {key} turn {current}; "
+            "the host window will under-measure the work behind it.\n"
+        )
     script = runner.env_script_path(sandbox, suite, case)
     if script.is_symlink() or not script.is_file():
         raise ValueError(

@@ -273,6 +273,19 @@ def test_dispatch_claims_and_starts_a_pending_turn(tmp_path, monkeypatch):
     assert host_turn_timer.pending_path(Path(bundle["reply"])).is_file()
 
 
+def test_dispatch_warns_when_a_staging_reply_predates_the_timer(
+    tmp_path, monkeypatch, capsys,
+):
+    sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch)
+    staging = sandbox / "_handoff" / "example-alpha-turn1.txt.staging"
+    staging.write_text("already answered", encoding="utf-8")
+
+    _, code = manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")
+
+    assert code == 0
+    assert "under-measure" in capsys.readouterr().err
+
+
 def test_dispatch_reuses_a_running_slot_for_the_next_turn(tmp_path, monkeypatch):
     sandbox = build_sandbox(tmp_path, ["example/alpha"], 1, monkeypatch, turns=2)
     manual_action(sandbox, "dispatch", "example/alpha", "--session", "sess-1")

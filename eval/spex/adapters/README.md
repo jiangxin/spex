@@ -141,6 +141,19 @@ session.
   import-grades → complete → claim`, and the last collect releases the
   execution slot while `complete` (or `fail` for a recorded host failure)
   closes the trial.
+- Dispatch a turn before sending its input. If a `staging_reply` already
+  exists, the work happened before the timer started: `dispatch` warns and
+  the recorded host window under-measures that turn. Treat those durations
+  as unmeasured instead of reporting them as latency.
+
+### Host diagnostics
+
+Some hosts expose no per-turn tool trace, request events, or subagent
+usage. Qoder Desktop is one: every trial reports `missing_host_trace`,
+`missing_request_events`, and `missing_subagent_usage`, and host timing
+cannot be cross-checked against native evidence. Treat these gaps as
+adapter limits, not Spex defects, and describe host latency as approximate
+in the batch summary.
 
 ### Account for host capacity
 
