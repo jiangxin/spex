@@ -33,6 +33,7 @@ the Spex trace for observed skips. Use completed_reviews for observed completed
 reviews. Missing review observations do not establish either outcome.
 """
 KINDS = {"input", "reply", "state", "events", "acceptance", "spex-trace"}
+RESULT_KEYS = ("criterion_id", "evidence_refs", "reason", "score", "verdict")
 
 
 class InvalidReference(ValueError):
@@ -180,25 +181,38 @@ def validate(raw, criteria, evidence):
     validate_references(rows, expected, evidence)
     if not isinstance(rows, list) or len(rows) != len(expected):
         raise ValueError("Expected one result per criterion")
+    validated = []
     for row in rows:
-        if not isinstance(row, dict) or set(row) != {
-            "criterion_id", "evidence_refs", "reason", "score", "verdict",
-        }:
+        if not isinstance(row, dict):
             raise ValueError("Invalid result fields")
+        missing = set(RESULT_KEYS) - row.keys()
+        extra = row.keys() - {*RESULT_KEYS, "turn"}
+        if missing or extra:
+            raise ValueError(
+                f"Invalid result fields: missing {sorted(missing)}, unexpected {sorted(extra)}"
+            )
         item = expected.pop(row["criterion_id"], None)
         if item is None:
             raise ValueError("Unexpected or duplicate criterion")
+        if "turn" in row:
+            turn = row["turn"]
+            if isinstance(turn, str) and turn.isascii() and turn.isdecimal():
+                turn = int(turn)
+            if type(turn) is not int or turn != item["turn"]:
+                raise ValueError("Result turn does not match criterion")
         refs, reason = row["evidence_refs"], row["reason"]
         score, verdict = row["score"], row["verdict"]
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("Missing reason")
-        if verdict == "insufficient_evidence" and score is None:
-            continue
-        if (type(score) is not int or score not in range(3) or not refs
-                or not required_refs(item) <= set(refs)
-                or verdict != ("pass" if score >= item["threshold"] else "fail")):
+        unscored = verdict == "insufficient_evidence" and score is None
+        if not unscored and (
+            type(score) is not int or score not in range(3) or not refs
+            or not required_refs(item) <= set(refs)
+            or verdict != ("pass" if score >= item["threshold"] else "fail")
+        ):
             raise ValueError("Invalid score, verdict, or missing required references")
-    return rows
+        validated.append({key: row[key] for key in RESULT_KEYS})
+    return validated
 
 
 def codex_judge(prompt, model, timeout, *, runtime: CodexRuntime | None = None):

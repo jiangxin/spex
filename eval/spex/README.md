@@ -261,7 +261,12 @@ re-summarize workspace evidence), then feed the grades JSON to
 tool traces, are already marked insufficient and are not sent to the judge.
 `import-grades --grades -` reads the same JSON from stdin.
 `import-grades` reuses the same score and evidence-reference checks as the
-automatic judge. `summary` writes `manifest.json`, `report.json`, and
+automatic judge. Each result row includes `criterion_id`, `evidence_refs`,
+`reason`, `score`, and `verdict`. An optional `turn` must match the criterion
+as an integer or an ASCII decimal string. Normalized results contain the
+five standard fields. Other fields are rejected by name.
+
+`summary` writes `manifest.json`, `report.json`, and
 `report.md` at the sandbox root and returns a `cleanup_hint`; delete the
 timestamp directory manually when finished. Both reports list the trial and
 judge Agent hosts and model IDs for each case. Use `import-grades --host`
