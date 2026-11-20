@@ -1560,3 +1560,73 @@ class TestSubcommandHelp:
             todo_helper.main(["validate"])
         assert exc_info.value.code == 2
         assert "<spec-name>" in capsys.readouterr().err
+
+
+class TestNewEntryParameterHints:
+    """append/insert errors must point at --step-name."""
+
+    @pytest.mark.parametrize("title_args", [["--title", "Fourth step"], ["--title=Fourth step"]])
+    def test_title_option_hints_step_name(self, todo_file, capsys, title_args):
+        _write(todo_file, [])
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "append",
+                *title_args, "--details", "Details",
+            ])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "--step-name" in err
+        assert "review-helper" in err
+        assert "spex todo-helper append <spec-name>" in err
+        assert _read(todo_file) == []
+
+    @pytest.mark.parametrize("options,subcmd", [
+        (["append"], "append"),
+        (["insert", "--before", "step-1"], "insert"),
+    ])
+    def test_missing_step_name_hints_step_name(self, options, subcmd, todo_file, capsys):
+        _write(todo_file, SAMPLE_DATA)
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main([
+                "--todo-file", str(todo_file), *options, "--details", "Details",
+            ])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "--step-name" in err
+        assert "review-helper" not in err
+        assert f"spex todo-helper {subcmd} <spec-name>" in err
+        assert todo_file.read_bytes() == original
+
+    def test_invalid_choice_has_no_title_hint(self, todo_file, capsys):
+        """An unrelated error on append must not mention --title."""
+        _write(todo_file, [])
+        original = todo_file.read_bytes()
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main([
+                "--todo-file", str(todo_file), "append",
+                "--step-name", "Fourth step", "--details", "Details",
+                "--skip-commit", "maybe",
+            ])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "--step-name" in err
+        assert "review-helper" not in err
+        assert todo_file.read_bytes() == original
+
+    def test_valid_append_exits_0_without_hint(self, todo_file, capsys):
+        _write(todo_file, [])
+        todo_helper.main([
+            "--todo-file", str(todo_file), "append",
+            "--step-name", "Fourth step", "--details", "Details",
+        ])
+        captured = capsys.readouterr()
+        assert "--title is a review-helper finding field" not in captured.err
+        assert _read(todo_file)[-1]["name"] == "Fourth step"
+
+    def test_unrelated_error_has_no_hint(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            todo_helper.main(["validate", "append", "--unexpected"])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "--step-name" not in err

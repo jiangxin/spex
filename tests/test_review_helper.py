@@ -905,15 +905,45 @@ class TestCliHints:
         assert "Valid subcommands:" in err
         assert "show" in err
 
-    def test_status_missing_step_shows_example(self, capsys):
+    def test_status_without_step_returns_hint(self, spec_dir, capsys, monkeypatch):
+        """Bare status reports a hint instead of an argparse error."""
+        (spec_dir / "review-step-1.json").write_text(
+            json.dumps({"commit_sha": "abc123", "findings": []}),
+            encoding="utf-8",
+        )
+
+        def _fail(_path):
+            raise AssertionError("must not read the review file")
+
+        monkeypatch.setattr(review_helper, "load_review", _fail)
+        review_helper.main(["status", "my-topic"])
+        payload = json.loads(capsys.readouterr().out)
+        assert set(payload) == {"step_id", "exists", "hint"}
+        assert payload["step_id"] == ""
+        assert payload["exists"] is False
+        assert "--step" in payload["hint"]
+        assert "step-1" in payload["hint"]
+
+    def test_status_with_step_unchanged(self, spec_dir, capsys):
+        review_helper.main(["status", "my-topic", "--step", "step-1", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["step_id"] == "step-1"
+        assert payload["exists"] is False
+        assert "hint" not in payload
+
+    def test_status_rejects_explicit_empty_step(self, spec_dir, capsys, caplog):
         with pytest.raises(SystemExit) as exc:
-            review_helper.main([
-                "status", "my-topic",
-            ])
+            review_helper.main(["status", "my-topic", "--step", "", "--json"])
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "cannot derive step number" in caplog.text
+
+    def test_other_subcommands_still_require_step(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            review_helper.main(["open-batch", "my-topic"])
         assert exc.value.code == 2
-        err = capsys.readouterr().err
-        assert "status <spec-name> --step step-1" in err
-        assert "Valid subcommands:" not in err
+        assert "--step" in capsys.readouterr().err
 
     def test_known_subcommand_missing_args_no_subcommand_list(self, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -925,16 +955,15 @@ class TestCliHints:
         err = capsys.readouterr().err
         assert "Valid subcommands:" not in err
 
-    def test_status_hint_when_argv_is_none(self, capsys, monkeypatch):
+    def test_status_hint_reads_argv_from_sys(self, spec_dir, capsys, monkeypatch):
         monkeypatch.setattr(
             sys, "argv",
             ["spex", "status", "my-topic"],
         )
-        with pytest.raises(SystemExit) as exc:
-            review_helper.main()
-        assert exc.value.code == 2
-        err = capsys.readouterr().err
-        assert "status <spec-name> --step step-1" in err
+        review_helper.main()
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["exists"] is False
+        assert "--step" in payload["hint"]
 
     def test_id_value_get_missing_args_no_valid_list(self, capsys):
         """Missing append args with --id get must not list subcommands."""

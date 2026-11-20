@@ -676,9 +676,64 @@ def _add_new_entry_options(parser):
     )
 
 
+_NEW_ENTRY_EXAMPLES = {
+    "append": (
+        "Example: spex todo-helper append <spec-name>"
+        ' --step-name "..." --details ...'
+    ),
+    "insert": (
+        "Example: spex todo-helper insert <spec-name>"
+        ' --step-name "..." --before <step-id> --details ...'
+    ),
+}
+
+
+class TodoHelperParser(ArgumentParser):
+    """ArgumentParser with todo-helper-specific usage hints."""
+
+    _subcommand = None
+    _has_title_flag = False
+    _root_parser = None
+
+    def parse(self, argv):
+        # _parse_args has already hoisted valid locator options to the front.
+        index = 0
+        while index < len(argv):
+            flag, sep, _ = argv[index].partition("=")
+            if flag not in _LOCATOR_FLAGS_WITH_VALUE:
+                break
+            index += 1 if sep else 2
+        self._subcommand = argv[index] if index < len(argv) else None
+        self._has_title_flag = any(
+            word.partition("=")[0] == "--title" for word in argv[index + 1:]
+        )
+        return super().parse(argv)
+
+    def error(self, message):
+        root = self._root_parser or self
+        hints = []
+        example = _NEW_ENTRY_EXAMPLES.get(root._subcommand)
+        if example:
+            hints.append(
+                "--step-name is required for todo append/insert entries.",
+            )
+            if root._has_title_flag:
+                # Agents commonly confuse the review-helper finding field
+                # ``--title`` with the todo task name field.
+                hints.append(
+                    "--title is a review-helper finding field;"
+                    " the todo task name field is --step-name.",
+                )
+            hints.append(example)
+        if hints:
+            super().error(message + "\n" + "\n".join(hints))
+        else:
+            super().error(message)
+
+
 def _build_parser():
     """Build the top-level parser with subcommand sub-parsers."""
-    parser = ArgumentParser(
+    parser = TodoHelperParser(
         prog="spex todo-helper",
         description=(
             "Operate on todo files"
@@ -873,6 +928,7 @@ def _build_parser():
         p_validate, p_append, p_insert, p_edit, p_complete, p_move, p_remove, p_remove_undone,
         p_renumber, p_show, p_transaction,
     ):
+        subparser._root_parser = parser
         subparser.add_argument(
             "name", nargs="?", metavar="<spec-name>",
             help="Spec name (omit when using --todo-file)",

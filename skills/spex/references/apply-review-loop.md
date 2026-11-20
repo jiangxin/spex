@@ -477,11 +477,13 @@ without another status.
 
 ```text
 REQUIRED: <spec-name> after the subcommand on every invocation
-REQUIRED: --step <id> for most subcommands (status, open-batch,
+REQUIRED: --step <id> for most subcommands (open-batch,
           set-pending, complete-batch, show, append, edit,
-          bump-round, set-commit, list, get, next)
+          bump-round, set-commit, get, next)
 USE:      status --json | open-batch | set-pending | complete-batch
           | show --step S [--id ID]
+HINT:     status/list without --step only return usage hints.
+          Always pass --step for workflow routing.
 ALIASES:  list → show summary; get → show --id
 ```
 

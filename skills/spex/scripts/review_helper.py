@@ -1504,7 +1504,7 @@ def _build_parser():
         description="Show open finding counts and done flag.",
         help="Show review status",
     )
-    p_status.add_argument("--step", required=True, help="Step id")
+    p_status.add_argument("--step", default=None, help="Step id")
     p_status.add_argument(
         "--json", action="store_true", dest="json_mode",
         help="Output JSON",
@@ -1666,6 +1666,19 @@ def main(argv=None):
             "hint": (
                 "Provide --step S "
                 "(same as show --step S --json)."
+            ),
+        }, indent=2, ensure_ascii=False))
+        return
+
+    # Bare `status` (agent probe) must exit 0 with a hint, not argparse
+    # exit=2, and must not read the review file.
+    if args.subcmd == "status" and args.step is None:
+        print(json.dumps({
+            "step_id": "",
+            "exists": False,
+            "hint": (
+                "Provide --step S "
+                "(e.g. spex review-helper status <spec-name> --step step-1)."
             ),
         }, indent=2, ensure_ascii=False))
         return

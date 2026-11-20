@@ -121,6 +121,11 @@ DETAILS
 Optional on `append`, `insert`, and `edit`: `--skip-commit true|auto|false`
 (default `false` / omit).
 
+The task name field on `append` and `insert` is `--step-name`.
+`--title` belongs to `review-helper append` findings, not to todo
+entries; passing it here exits 2 with a hint pointing at
+`--step-name`.
+
 ## Insert
 
 Use exactly one of `--before` or `--after` with the current position
