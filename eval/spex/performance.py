@@ -130,7 +130,14 @@ def host_metrics(raw: str | bytes | None, duration_ms: int | None, source: str,
 def timestamp(value):
     if isinstance(value, str) and value:
         try:
-            stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            # Normalize fractional seconds for Python 3.9, while preserving
+            # the original string for nanosecond precision in stamp_bounds().
+            normalized = re.sub(
+                r"^(\d{4}-\d{2}-\d{2}.\d{2}:\d{2}:\d{2})[.,](\d+)",
+                lambda match: match[1] + "." + match[2][:6].ljust(6, "0"),
+                value, flags=re.DOTALL,
+            )
+            stamp = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
             return stamp if stamp.tzinfo is not None else None
         except ValueError:
             pass

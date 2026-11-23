@@ -265,6 +265,14 @@ def test_timeline_rejects_unsafe_timestamp_separators(separator):
     assert performance.report_stamp(precise) == precise
 
 
+@pytest.mark.parametrize("fraction", ["1", "12345", "123456", "123456789"])
+def test_timestamp_preserves_fractional_precision(fraction):
+    value = f"2026-01-01T00:00:01.{fraction}+00:00"
+    start, end = performance.stamp_bounds(value)
+    assert end - start == 10 ** (9 - len(fraction)) - 1
+    assert start % 10**9 == int(fraction.ljust(9, "0"))
+
+
 def test_resumed_task_does_not_include_time_between_host_turns(tmp_path):
     debug = tmp_path / "repo/.spex/specs/example/debug.log"
     debug.parent.mkdir(parents=True)

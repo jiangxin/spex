@@ -50,7 +50,13 @@ class TestLoadTomlConfig:
         p = tmp_path / "bad.toml"
         p.write_text("this is not [valid\n", encoding="utf-8")
 
-        assert _load_toml_config(p) is None
+        from config import tomllib
+
+        if tomllib is None:
+            with pytest.raises(ConfigParseError, match="line 1"):
+                _load_toml_config(p)
+        else:
+            assert _load_toml_config(p) is None
 
     def test_nonexistent_file(self, tmp_path):
         p = tmp_path / "nope.toml"
