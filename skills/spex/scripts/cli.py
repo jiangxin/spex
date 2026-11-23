@@ -46,7 +46,7 @@ def parse_run_hook_args(argv=None, usage=None):
     parser.add_argument("--event-type")
     parser.add_argument("--json-payload")
     parser.add_argument("--workdir")
-    args = parser.parse(argv)
+    args = parser.parse_intermixed_args(argv)
     if not args.event_type:
         parser.exit(1, "Error: --event-type is required\n")
     try:
