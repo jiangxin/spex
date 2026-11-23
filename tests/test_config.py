@@ -873,7 +873,7 @@ class TestGetMainWorktree:
 
         assert result is None
 
-    def test_linked_worktree(self, tmp_path):
+    def test_linked_worktree(self, tmp_path, git_test_identity):
         """Linked worktree (.git is a file) resolves to main worktree."""
         main = tmp_path / "main"
         main.mkdir()
@@ -897,7 +897,7 @@ class TestGetMainWorktree:
 
         assert result == main.resolve()
 
-    def test_submodule(self, tmp_path):
+    def test_submodule(self, tmp_path, git_test_identity):
         """Submodule (.git is a file) resolves to parent project main worktree."""
         parent = tmp_path / "parent"
         parent.mkdir()

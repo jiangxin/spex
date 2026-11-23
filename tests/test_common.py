@@ -552,7 +552,7 @@ class TestLinkedWorktreeResolution:
     """Verify specs resolve to main worktree's .spex/ from a linked worktree."""
 
     @pytest.fixture()
-    def linked_repo(self, tmp_path):
+    def linked_repo(self, tmp_path, git_test_identity):
         """Create a git repo with a linked worktree and a spec in .spex/specs/."""
         main = tmp_path / "main"
         main.mkdir()

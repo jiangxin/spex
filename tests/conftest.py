@@ -60,3 +60,12 @@ def isolated_home(monkeypatch, tmp_path):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     return home
+
+
+@pytest.fixture
+def git_test_identity(monkeypatch):
+    """Give temporary Git repositories an identity independent of user config."""
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
