@@ -1,5 +1,5 @@
 {
-  "globs": ["*.md", "commands/*.md"],
+  "globs": ["*.md", "commands/*.md", "skills/spex/SKILL.md", "skills/spex/commands/*.md", "skills/spex/references/*.md"],
   "ignores": ["node_modules/**", "skills/spex/templates/**"],
   "config": {
     "MD009": true,

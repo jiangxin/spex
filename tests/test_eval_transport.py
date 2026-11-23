@@ -391,6 +391,14 @@ def test_automatic_turns_use_fake_cli(runner, tmp_path, monkeypatch, capsys, rep
         def batch_import_acceptance(trial, suite, selector):
             return acceptance(trial, "batch-import", selector)
 
+        check_output = subprocess.check_output
+
+        def find_git(command, *args, **kwargs):
+            if command == ["/usr/bin/xcrun", "--find", "git"]:
+                return sys.executable
+            return check_output(command, *args, **kwargs)
+
+        monkeypatch.setattr(run.subprocess, "check_output", find_git)
         monkeypatch.setattr(run, "sqlite_acceptance_libraries", fail_dependency_resolution)
         monkeypatch.setattr(run, "acceptance", batch_import_acceptance)
     result = run.execute(runner.parse_args(["run", "--model", "example", "--tag", "smoke"]))

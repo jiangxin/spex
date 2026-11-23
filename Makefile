@@ -14,7 +14,7 @@ help:
 		'  lint-md             Lint Markdown files' \
 		'  format              Format Python files' \
 		'  test                Run fast tests' \
-		'  test-all            Run all tests, including slow tests' \
+		'  test-all            Run all tests, including slow and e2e tests' \
 		'  check               Check versions, run linters and fast tests' \
 		'  check-all           Check versions, run linters and all tests' \
 		'  coverage            Measure coverage with fast tests' \
@@ -51,7 +51,7 @@ test: dev-env
 	$(VENV_PYTHON) -m pytest -n auto
 
 test-all: dev-env
-	@echo "==> Running all tests (including slow)..."
+	@echo "==> Running all tests (including slow and e2e)..."
 	$(VENV_PYTHON) -m pytest -m "" -n auto
 
 version:

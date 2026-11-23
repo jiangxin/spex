@@ -1,5 +1,7 @@
 """Fast checks for manual batch dispatch and batch grade import."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import re

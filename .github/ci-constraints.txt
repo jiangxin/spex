@@ -1,0 +1,5 @@
+# Keep the main CI tools consistent across supported Python versions.
+pytest==8.4.2
+pytest-cov==6.2.1
+pytest-xdist==3.8.0
+ruff==0.14.14
