@@ -247,7 +247,7 @@ class TestEnsureInitialized:
 
         assert (spex_root / "specs").is_dir()
 
-    def test_get_spex_root_auto_initializes(self, tmp_path, monkeypatch):
+    def test_get_spex_root_auto_initializes(self, tmp_path, monkeypatch, isolated_home):
         spex_root = tmp_path / "empty_spex"
         ctx = _make_context(
             spex_root=str(spex_root), spex_roots=[str(spex_root)]

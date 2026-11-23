@@ -223,7 +223,7 @@ class TestErrorOnMissingTopic:
         assert result.returncode == 1
         assert "no spec matching" in result.stderr
 
-    def test_missing_spec_via_main(self, monkeypatch, tmp_path):
+    def test_missing_spec_via_main(self, monkeypatch, tmp_path, isolated_home):
         from config import ProjectContext
         (tmp_path / "specs").mkdir(parents=True)
         ctx = ProjectContext(
@@ -801,6 +801,7 @@ class TestModuleMain:
         assert "meta-helper" in result.stderr
 
 
+@pytest.mark.usefixtures("isolated_home")
 class TestDirectImportInternal:
     """Direct-import tests for internal functions to achieve coverage."""
 

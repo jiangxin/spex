@@ -51,3 +51,12 @@ def _no_real_cli_install(monkeypatch):
     ``init._install_cli`` with the real function explicitly.
     """
     monkeypatch.setattr("init._install_cli", MagicMock())
+
+
+@pytest.fixture
+def isolated_home(monkeypatch, tmp_path):
+    """Keep automatic user configuration writes inside the test directory."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    return home

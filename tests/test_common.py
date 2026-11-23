@@ -646,7 +646,14 @@ class TestLinkedWorktreeResolution:
         assert resolve_spec_dir("my-feature") == spec
 
 
+@pytest.mark.usefixtures("isolated_home")
 class TestGetTemplate:
+    @pytest.fixture(autouse=True)
+    def isolated_skill_templates(self, monkeypatch, tmp_path):
+        skill_path = tmp_path / "skill"
+        (skill_path / "templates").mkdir(parents=True)
+        monkeypatch.setattr("common._get_skill_path", lambda: skill_path)
+
     def test_get_template_generic(self, monkeypatch, tmp_path):
         """get_template works with any template name."""
         from unittest.mock import patch
